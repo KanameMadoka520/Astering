@@ -44,5 +44,6 @@ func GetTables() []interface{} {
 	return []interface{}{
 		&File{},
 		&DriveFile{},
+		&DriveChatRef{},
 	}
 }

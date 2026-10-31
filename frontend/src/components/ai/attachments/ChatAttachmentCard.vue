@@ -10,6 +10,7 @@ defineEmits<{remove: [id: string]}>()
 const {t} = useI18n({useScope: 'global'})
 const isImage = computed(() => /^image\/(png|jpeg|gif|webp)$/.test(props.file.mime || ''))
 const blob = useQuery(computed(() => chatAttachmentQuery(props.conversationId, props.file.id!, isImage.value && !props.file.missing)))
+const inDrive = computed(() => Boolean(props.file.drive_file_id))
 const missing = computed(() => { const error = blob.error.value as {status?: number, response?: {status?: number}} | null; return props.file.missing || error?.status === 404 || error?.response?.status === 404 })
 const url = ref('')
 const failed = ref(false)
@@ -47,6 +48,11 @@ async function download() {
 				class="file-name"
 				:title="file.name"
 			>{{ file.name }}</span><small>{{ chatBytes(file.size) }}</small>
+			<small
+				v-if="inDrive"
+				class="in-drive"
+				:title="t('chatFiles.inDriveHint')"
+			>{{ t('chatFiles.inDrive') }}</small>
 			<span
 				v-if="missing"
 				class="file-error"
@@ -140,6 +146,10 @@ figcaption {
 
 	small {
 		color: var(--text-tertiary);
+	}
+
+	.in-drive {
+		color: var(--text-secondary);
 	}
 
 	button {

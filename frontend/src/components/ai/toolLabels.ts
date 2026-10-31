@@ -25,10 +25,20 @@ const AGENT_TOOLS = [
 	'configure_task_routine',
 	'check_in_task_routine',
 	'get_task_routine_history',
+	'delegate_tasks',
+	'read_tool_result',
+	'view_attachment',
+	'list_project_views',
+	'list_buckets',
+	'create_bucket',
+	'update_bucket',
+	'move_task_to_bucket',
+	'set_view_buckets',
+	'delete_bucket',
 ] as const
 
 // Deleting is irreversible; everything else Arona writes can be edited back.
-export const DESTRUCTIVE_TOOLS: ReadonlySet<string> = new Set(['delete_task'])
+export const DESTRUCTIVE_TOOLS: ReadonlySet<string> = new Set(['delete_task', 'delete_bucket'])
 
 export function toolLabels(t: (key: string) => string): Record<string, string> {
 	return {

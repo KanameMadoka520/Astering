@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import {computed, onMounted, onBeforeUnmount, ref} from 'vue'
+import {computed, nextTick, onMounted, onBeforeUnmount, ref, useId} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {useQuery} from '@tanstack/vue-query'
 import {assistantPreferencesQuery, useSaveAssistantPreferences} from '@/client/queries/assistantPreferences'
 import {aiSettingsQuery} from '@/client/queries/tcyAi'
 import {builtinProfileIDs, normalizeOptions, profileOptions, validOptions, type AssistantOptions} from '@/helpers/assistantProfiles'
 import {useProjects} from '@/composables/useProjects'
+import {useAronaDisplayPreferences, defaultAronaDisplayPreferences} from '@/composables/useAronaDisplayPreferences'
 import type {AssistantPreferences} from '@/client/generated'
 const props = defineProps<{options: AssistantOptions, profile: string}>()
 const emit = defineEmits<{close: [], apply: [options: AssistantOptions, profile: string]}>()
@@ -31,6 +32,7 @@ const unavailable = computed(() => draft.value.write_project_ids.filter(id => !p
 const valid = computed(() => validOptions(draft.value))
 const models = computed(() => settings.data.value?.connections.filter(c => c.kind === 'chat') ?? [])
 const defaultID = computed(() => preferences.data.value?.default_profile || 'ask')
+const optionId = useId()
 function choose(id: string) {
 	selected.value = id
 	const p = custom.value.find(p => p.id === id)
@@ -67,8 +69,43 @@ function apply() {
 	emit('apply', normalizeOptions(draft.value), selected.value)
 	emit('close')
 }
+// Display defaults are device-local view settings: they apply at once and never enter the run-option draft.
+const {preferences: display, update: updateDisplay, reset: resetDisplay} = useAronaDisplayPreferences()
+const displayFields = [
+	{key: 'showIntermediate', label: 'aronaDisplay.intermediate', hint: 'aronaDisplay.intermediateHint'},
+	{key: 'expandReasoning', label: 'aronaDisplay.reasoning', hint: 'aronaDisplay.reasoningHint'},
+	{key: 'expandToolDetails', label: 'aronaDisplay.tools', hint: 'aronaDisplay.toolsHint'},
+] as const
+type DisplayKey = typeof displayFields[number]['key']
+const displayId = useId()
+const displayDefault = computed(() => displayFields.every(({key}) => display.value[key] === defaultAronaDisplayPreferences[key]))
+const displayNote = ref('')
+let displayNoteTimer: ReturnType<typeof setTimeout> | undefined
+let displayNoteRequest = 0
+// The status region stays mounted; emptying it first makes a repeated message a change that is announced again.
+async function noteDisplay(message: string) {
+	clearTimeout(displayNoteTimer)
+	const request = ++displayNoteRequest
+	displayNote.value = ''
+	await nextTick()
+	if (request !== displayNoteRequest) return
+	displayNote.value = message
+	displayNoteTimer = setTimeout(() => { displayNote.value = '' }, 3000)
+}
+function setDisplay(key: DisplayKey, value: boolean) {
+	const patch: Partial<Record<DisplayKey, boolean>> = {}
+	patch[key] = value
+	updateDisplay(patch)
+	noteDisplay(t('aronaDisplay.saved'))
+}
+// aria-disabled instead of disabled keeps keyboard focus on the button after restoring.
+function restoreDisplay() {
+	if (displayDefault.value) return
+	resetDisplay()
+	noteDisplay(t('aronaDisplay.restored'))
+}
 onMounted(() => {name.value = custom.value.find(p => p.id === sourceProfile.value)?.name ?? ''; dialog.value?.showModal()})
-onBeforeUnmount(() => {dialog.value?.close(); previousFocus?.focus()})
+onBeforeUnmount(() => {clearTimeout(displayNoteTimer); displayNoteRequest++; dialog.value?.close(); previousFocus?.focus()})
 </script>
 
 <template>
@@ -210,10 +247,17 @@ onBeforeUnmount(() => {dialog.value?.close(); previousFocus?.focus()})
 								>#{{ id }} · {{ t('assistantUI.unavailableProject') }}</label>
 							</div>
 						</fieldset>
+						<div class="option-switch">
+							<label class="checkbox"><input
+								v-model="draft.enable_subagents"
+								type="checkbox"
+								:aria-describedby="`${optionId}-subagents`"
+							>{{ t('assistantUI.subagents') }}<span class="experimental-tag">{{ t('assistantUI.experimental') }}</span></label><small :id="`${optionId}-subagents`">{{ t('assistantUI.subagentsHelp') }}</small>
+						</div>
 					</section>
 					<details class="advanced">
 						<summary>{{ t('assistantUI.advanced') }}</summary><p class="help">
-							{{ t('assistantUI.budgetHelp') }}
+							{{ t('assistantUI.segmentHelp') }}
 						</p><div
 							class="option-grid"
 							@input="edited"
@@ -230,6 +274,13 @@ onBeforeUnmount(() => {dialog.value?.close(); previousFocus?.focus()})
 								:min="field === 'token_budget' ? 0 : 1"
 								:max="{max_rounds: 40, max_operations: 100, timeout_seconds: 600, token_budget: 1000000}[field]"
 							><small>{{ t(`assistantUI.${field}Help`) }}</small></label>
+							<div class="option-switch">
+								<label class="checkbox"><input
+									v-model="draft.stop_at_segment_limit"
+									type="checkbox"
+									:aria-describedby="`${optionId}-segments`"
+								>{{ t('assistantUI.stopAtSegmentLimit') }}</label><small :id="`${optionId}-segments`">{{ t('assistantUI.stopAtSegmentLimitHelp') }}</small>
+							</div>
 						</div>
 					</details>
 					<section class="save-template">
@@ -269,6 +320,42 @@ onBeforeUnmount(() => {dialog.value?.close(); previousFocus?.focus()})
 							{{ t('chat.retry') }}
 						</button>
 					</p>
+					<!-- Outside the option sections so toggling never fires edited() or resets the selected scenario. -->
+					<section
+						class="display-preferences"
+						:aria-label="t('aronaDisplay.title')"
+					>
+						<h3>{{ t('aronaDisplay.title') }}</h3>
+						<p class="help">
+							{{ t('aronaDisplay.help') }}
+						</p>
+						<div class="display-options">
+							<div
+								v-for="f in displayFields"
+								:key="f.key"
+								class="display-option"
+							>
+								<label class="checkbox"><input
+									type="checkbox"
+									:checked="display[f.key]"
+									:aria-describedby="`${displayId}-${f.key}`"
+									@change="setDisplay(f.key, ($event.target as HTMLInputElement).checked)"
+								>{{ t(f.label) }}</label><small :id="`${displayId}-${f.key}`">{{ t(f.hint) }}</small>
+							</div>
+						</div>
+						<div class="display-actions">
+							<button
+								type="button"
+								:aria-disabled="displayDefault"
+								@click="restoreDisplay"
+							>
+								{{ t('aronaDisplay.reset') }}
+							</button><span
+								class="display-status"
+								role="status"
+							>{{ displayNote }}</span>
+						</div>
+					</section>
 				</div>
 				<footer>
 					<RouterLink
@@ -402,7 +489,7 @@ button {
 	font-size: var(--text-md);
 	cursor: pointer;
 
-	&:hover:not(:disabled) {
+	&:hover:not(:disabled, [aria-disabled='true']) {
 		background-image: linear-gradient(var(--surface-hover), var(--surface-hover));
 	}
 
@@ -410,7 +497,8 @@ button {
 		@include focus-ring;
 	}
 
-	&:disabled {
+	&:disabled,
+	&[aria-disabled='true'] {
 		opacity: .45;
 		cursor: not-allowed;
 	}
@@ -478,6 +566,29 @@ button {
 	overflow-y: auto;
 }
 
+.option-switch {
+	grid-column: 1 / -1;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+
+	.checkbox {
+		flex-wrap: wrap;
+	}
+}
+
+.experimental-tag {
+	padding: 0 var(--space-2);
+	border-radius: var(--radius-full);
+	background: var(--tint-warning);
+	color: var(--text-primary);
+	font-size: var(--text-xs);
+	font-weight: var(--weight-medium);
+	line-height: var(--leading-normal);
+	white-space: nowrap;
+}
+
 .advanced {
 	padding-block: var(--space-3);
 	border-block: 1px solid var(--border-subtle);
@@ -502,6 +613,38 @@ summary {
 	small {
 		flex-basis: 100%;
 	}
+}
+
+.display-preferences {
+	padding-block-start: var(--space-5);
+	border-block-start: 1px solid var(--border-subtle);
+
+	.help {
+		margin-block: 0 var(--space-3);
+	}
+}
+
+.display-options,
+.display-option {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+
+.display-options {
+	gap: var(--space-3);
+}
+
+.display-option {
+	gap: var(--space-1);
+}
+
+.display-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2) var(--space-3);
+	margin-block-start: var(--space-4);
 }
 
 [role='alert'] {
@@ -570,6 +713,19 @@ footer {
 
 	footer a {
 		flex-basis: 100%;
+	}
+}
+
+@media (pointer: coarse) {
+	.display-preferences {
+		.checkbox,
+		button {
+			min-block-size: var(--target-min);
+		}
+	}
+
+	.option-switch .checkbox {
+		min-block-size: var(--target-min);
 	}
 }
 </style>

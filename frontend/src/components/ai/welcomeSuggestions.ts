@@ -55,7 +55,7 @@ export function suggestionProfileSwitch(suggestion: WelcomeSuggestion, currentPr
  * Options for switching scenario from a suggestion. The preset supplies mode, approval and
  * budgets, but a suggestion must never widen what the user already narrowed: an explicit
  * write-project restriction (empty means unrestricted), the chosen connection, the project
- * context and the web search choice are carried over.
+ * context, the web search choice and pausing at segment limits are carried over.
  */
 export function suggestionOptions(profile: BuiltinProfileID, current: AssistantOptions): AssistantOptions {
 	return {
@@ -64,5 +64,6 @@ export function suggestionOptions(profile: BuiltinProfileID, current: AssistantO
 		project_id: current.project_id,
 		search_mode: current.search_mode,
 		write_project_ids: [...current.write_project_ids],
+		stop_at_segment_limit: current.stop_at_segment_limit,
 	}
 }

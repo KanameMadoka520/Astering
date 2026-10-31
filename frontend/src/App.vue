@@ -82,7 +82,9 @@ const COLOR_SCHEME_CACHE_KEY = 'vikunja-color-scheme'
 
 const authStore = useAuthStore()
 const baseStore = useBaseStore()
-watch(() => [authStore.session?.id, authStore.session?.type], () => {clearDiagnostics(); clearUploads()})
+// Only an identity change: every auth check stores a fresh session object for the same account, and clearing
+// then would abort uploads and drop a selection's image-format choice midway.
+watch(() => authStore.identityKey, () => {clearDiagnostics(); clearUploads()})
 onBeforeUnmount(installBrowserDiagnostics())
 
 const {isQuickAddMode} = useQuickAddMode()

@@ -466,7 +466,7 @@
 							</p>
 							<LoadError
 								v-else-if="usages.isError.value"
-								:message="t('drive.loadError')"
+								:message="usagesError"
 								:retry="() => usages.refetch()"
 							/>
 							<ul
@@ -486,7 +486,7 @@
 										:to="usage.url || '/drive'"
 										@click="closeDetails"
 									>
-										{{ t(`drive.kinds.${usage.kind}`) }} · {{ usage.title }}
+										{{ usageLabel(usage) }}
 									</RouterLink>
 								</li>
 							</ul>
@@ -606,7 +606,7 @@ import {useI18n} from 'vue-i18n'
 import {refDebounced, useDropZone, useMediaQuery, useStorage} from '@vueuse/core'
 import type {IconProp} from '@fortawesome/fontawesome-svg-core'
 
-import type {DriveChangeWritable} from '@/client/generated'
+import type {DriveChangeWritable, DriveUsage} from '@/client/generated'
 import {
 	driveBlobQuery,
 	driveQuery,
@@ -784,7 +784,20 @@ const usages = useQuery(computed(() => ({
 	staleTime: 0,
 })))
 const usageCount = computed(() => usages.data.value?.length ?? 0)
+// A draft belongs to a readable conversation that has no title yet. A sent chat reference without a title is
+// usually a conversation the server could not read (it stays listed so the file is not released), and rarely one
+// whose title was cleared; the label says both.
+function usageLabel(usage: DriveUsage) {
+	const kind = t(`drive.kinds.${usage.kind}`)
+	const title = usage.title?.trim()
+		|| (usage.kind === 'chat_draft' ? t('chat.untitled') : usage.kind === 'chat' ? t('drive.unreadableChat') : '')
+	return title ? `${kind} · ${title}` : kind
+}
 const usagesReady = computed(() => !usages.isPending.value && !usages.isError.value)
+// A failed scan of encrypted conversations is not a known use: say why the list is missing, the file stays.
+const usagesError = computed(() => (usages.error.value as {detail?: string} | null)?.detail === 'drive_chat_unreadable'
+	? t('drive.errors.drive_chat_unreadable')
+	: t('drive.loadError'))
 const canConfirm = computed(() => {
 	if (!usagesReady.value) return false
 	if (action.value === 'purge') return usageCount.value === 0 && confirmName.value === selected.value?.file?.name

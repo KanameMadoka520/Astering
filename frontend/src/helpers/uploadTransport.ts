@@ -2,14 +2,27 @@ import {assertClientRequestContext, captureClientRequestContext} from '@/client/
 import {ref, shallowRef} from 'vue'
 import {i18n} from '@/i18n'
 
-export type UploadRecord = {id: string; names: string; stage: 'preparing' | 'converting' | 'uploading' | 'processing' | 'done' | 'error' | 'cancelled'; loaded: number; total: number; error?: string; originalBytes: number; sentBytes: number; targetPath: string; bytesPerSecond: number; averageBytesPerSecond: number; elapsedMs: number}
+export type UploadRecord = {id: string; names: string; stage: 'preparing' | 'converting' | 'uploading' | 'processing' | 'done' | 'error' | 'cancelled'; loaded: number; total: number; error?: string; originalBytes: number; sentBytes: number; targetPath: string; bytesPerSecond: number; averageBytesPerSecond: number; elapsedMs: number; scoped?: boolean}
 export type ImageChoice = {mode: 'original' | 'webp'; quality: number; maxSide: number}
 export const uploads = shallowRef<UploadRecord[]>([])
 export const imagePrompt = shallowRef<{files: File[]; resolve: (choice: ImageChoice | null) => void} | null>(null)
 export const uploadsExpanded = ref(true)
+// Client-only headers: the generated client rebuilds the Request (new File objects, a follower signal),
+// but passes headers through unchanged. The transport strips both before anything is sent.
+export const UPLOAD_CHOICE_HEADER = 'X-Tcy-Upload-Choice'
+export const UPLOAD_RECORD_HEADER = 'X-Tcy-Upload-Record'
+const clientHeaders = [UPLOAD_CHOICE_HEADER.toLowerCase(), UPLOAD_RECORD_HEADER.toLowerCase()]
+export type ImageBatch = {choice: ImageChoice | null; headers(recordId?: string): Record<string, string>; release(): void}
 const activeRequests = new Set<() => void>()
+const presets = new Map<string, ImageChoice>()
 let uploadEpoch = 0
-export function clearUploads() { uploadEpoch++; imagePrompt.value?.resolve(null); for (const cancel of activeRequests) cancel(); uploads.value=[] }
+// The shared panel keeps its latest 12 rows; rows with a caller-chosen id belong to that caller's own list
+// (a chat selection of up to 16 files), which removes them itself.
+function capped(rows: UploadRecord[]) {
+	let shared = 0
+	return rows.filter(row => row.scoped || shared++ < 12)
+}
+export function clearUploads() { uploadEpoch++; presets.clear(); imagePrompt.value?.resolve(null); for (const cancel of activeRequests) cancel(); uploads.value=[] }
 let queue = Promise.resolve()
 const {t} = i18n.global
 
@@ -35,6 +48,21 @@ export function chooseImageUpload(files: File[], signal: AbortSignal): Promise<I
 	return ready
 }
 
+/** Asks once for a whole selection; requests carrying `headers()` reuse the answer until `release()`. Cancelled → null. */
+export async function chooseImageBatch(files: File[], signal: AbortSignal): Promise<ImageBatch | null> {
+	const epoch = uploadEpoch
+	const images = files.filter(file => file.type.startsWith('image/'))
+	const choice = images.length ? await chooseImageUpload(images, signal) : null
+	if ((images.length && !choice) || signal.aborted || epoch !== uploadEpoch) return null
+	const token = crypto.randomUUID()
+	if (choice) presets.set(token, choice)
+	return {
+		choice,
+		headers: recordId => ({...(choice ? {[UPLOAD_CHOICE_HEADER]: token} : {}), ...(recordId ? {[UPLOAD_RECORD_HEADER]: recordId} : {})}),
+		release: () => { presets.delete(token) },
+	}
+}
+
 export async function convertImage(file: File, choice: ImageChoice): Promise<File> {
 	if (choice.mode === 'original' || !/^image\/(png|jpe?g|webp|bmp)$/i.test(file.type)) return file
 	const source = await createImageBitmap(file)
@@ -56,21 +84,33 @@ function update(id: string, patch: Partial<UploadRecord>) {
 	uploads.value = uploads.value.map(row => row.id === id ? {...row, ...patch} : row)
 }
 
+function withoutClientHeaders(request: Request) {
+	const headers = new Headers(request.headers)
+	for (const name of clientHeaders) headers.delete(name)
+	return new Request(request, {headers})
+}
+
 /** SDK transport: auth, context fences and normalized API errors remain in the generated client's interceptors. */
 export const uploadAwareFetch: typeof fetch = async (input, init) => {
 	const request = input instanceof Request && !init ? input : new Request(input, init)
-	if (!request.headers.get('Content-Type')?.startsWith('multipart/form-data')) return globalThis.fetch(request)
+	if (!request.headers.get('Content-Type')?.startsWith('multipart/form-data')) {
+		return globalThis.fetch(clientHeaders.some(name => request.headers.has(name)) ? withoutClientHeaders(request) : request)
+	}
+	const preset = presets.get(request.headers.get(UPLOAD_CHOICE_HEADER) ?? '')
+	const recordId = request.headers.get(UPLOAD_RECORD_HEADER) || undefined
 	const context = captureClientRequestContext()
 	const form = await request.clone().formData()
 	const files = Array.from(form.values()).filter((item): item is File => item instanceof File)
 	const images = files.filter(file => file.type.startsWith('image/'))
-	const id = crypto.randomUUID()
-	uploads.value = [{id, names: files.map(file => file.name).join(', '), stage: 'preparing' as const, loaded: 0, total: 0, originalBytes: files.reduce((sum, f) => sum + f.size, 0), sentBytes: 0, targetPath: new URL(request.url).pathname, bytesPerSecond: 0, averageBytesPerSecond: 0, elapsedMs: 0}, ...uploads.value].slice(0, 12)
+	// A caller-chosen id lets a retry replace its earlier row instead of stacking another one.
+	const id = recordId ?? crypto.randomUUID()
+	uploads.value = capped([{id, names: files.map(file => file.name).join(', '), stage: 'preparing' as const, loaded: 0, total: 0, originalBytes: files.reduce((sum, f) => sum + f.size, 0), sentBytes: 0, targetPath: new URL(request.url).pathname, bytesPerSecond: 0, averageBytesPerSecond: 0, elapsedMs: 0, scoped: Boolean(recordId)}, ...uploads.value.filter(row => row.id !== id)])
 	let mode: ImageChoice['mode'] | undefined
 	try {
 		let body = form
 		if (images.length) {
-			const choice = await chooseImageUpload(images, request.signal)
+			// An unknown token (released, or cleared with the account) falls back to asking.
+			const choice = preset ?? await chooseImageUpload(images, request.signal)
 			if (!choice) throw new DOMException('Upload cancelled', 'AbortError')
 			mode = choice.mode
 			update(id, {stage: choice.mode === 'webp' ? 'converting' : 'preparing'})
@@ -90,7 +130,7 @@ export const uploadAwareFetch: typeof fetch = async (input, init) => {
 			xhr.open(request.method, request.url)
 			xhr.withCredentials = request.credentials === 'include'
 			xhr.responseType = 'arraybuffer'
-			for (const [key, value] of request.headers) if (key.toLowerCase() !== 'content-type') xhr.setRequestHeader(key, value)
+			for (const [key, value] of request.headers) if (key.toLowerCase() !== 'content-type' && !clientHeaders.includes(key.toLowerCase())) xhr.setRequestHeader(key, value)
 			if (mode) xhr.setRequestHeader('X-Vikunja-Image-Mode', mode)
 			const abort = () => xhr.abort()
 			request.signal.addEventListener('abort', abort, {once: true})

@@ -61,7 +61,7 @@ func (c Connection) Capabilities() ModelCapabilities {
 
 func (c Connection) validateCapabilities() error {
 	const maxSafeInteger = 9007199254740991
-	if c.ContextWindow < 0 || c.MaxOutputTokens < 0 || c.ContextWindow > maxSafeInteger || c.MaxOutputTokens > maxSafeInteger {
+	if c.AutoCompactTokens < 0 || c.AutoCompactTokens > maxSafeInteger || c.ContextWindow < 0 || c.MaxOutputTokens < 0 || c.ContextWindow > maxSafeInteger || c.MaxOutputTokens > maxSafeInteger {
 		return tcylocale.Error("modelCapacityInvalid")
 	}
 	if c.OutputTokenField != "" && c.OutputTokenField != "max_tokens" && c.OutputTokenField != "max_completion_tokens" {

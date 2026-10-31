@@ -21,18 +21,23 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/color"
 	"image/gif"
 	"image/png"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -43,6 +48,33 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// legacyChatAttachment stores bytes the way chat uploads were kept before the drive:
+// an encrypted per-account file, referenced from the draft. These tests run without a
+// database, so they exercise every path that must keep such files readable. New
+// uploads go to the drive and are covered by pkg/webtests/tcy_ai_attachments_test.go.
+func legacyChatAttachment(t *testing.T, uid int64, cid, name string, data []byte) ChatAttachment {
+	t.Helper()
+	item, err := chatAttachmentFromBytes(name, data)
+	require.NoError(t, err)
+	path, err := attachmentPath(uid, item.ID)
+	require.NoError(t, err)
+	a, err := aead()
+	require.NoError(t, err)
+	nonce := make([]byte, a.NonceSize())
+	_, err = rand.Read(nonce)
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0700))
+	require.NoError(t, os.WriteFile(path, a.Seal(nonce, nonce, data, []byte(fmt.Sprintf("attachment:%d:%s", uid, item.ID))), 0600))
+	conversations.Lock()
+	defer conversations.Unlock()
+	record, err := getConversationLocked(uid, cid)
+	require.NoError(t, err)
+	if !slices.ContainsFunc(record.DraftAttachments, func(d ChatAttachment) bool { return d.ID == item.ID }) {
+		record.DraftAttachments = append(record.DraftAttachments, item)
+	}
+	require.NoError(t, writeConversation(uid, record))
+	return item
+}
 func chatAttachmentFixture(t *testing.T) (Conversation, ChatAttachment, []byte) {
 	t.Helper()
 	path, secret := config.FilesBasePath.GetString(), config.ServiceSecret.GetString()
@@ -55,8 +87,7 @@ func chatAttachmentFixture(t *testing.T) (Conversation, ChatAttachment, []byte) 
 	img.Set(0, 0, color.RGBA{R: 255, A: 255})
 	var b bytes.Buffer
 	require.NoError(t, png.Encode(&b, img))
-	a, err := UploadChatAttachment(1, c.ID, "test image.png", bytes.NewReader(b.Bytes()))
-	require.NoError(t, err)
+	a := legacyChatAttachment(t, 1, c.ID, "test image.png", b.Bytes())
 	return c, a, b.Bytes()
 }
 func TestTCYAttachmentsStorageAndFork(t *testing.T) {
@@ -73,21 +104,23 @@ func TestTCYAttachmentsStorageAndFork(t *testing.T) {
 	require.NoError(t, err)
 	_, _, err = DownloadChatAttachment(1, unrelated.ID, a.ID)
 	require.ErrorIs(t, err, ErrAttachmentMissing)
-	twice, err := UploadChatAttachment(1, c.ID, a.Name, bytes.NewReader(data))
+	// Identical bytes reuse the readable older file: nothing is stored again, and no
+	// database is needed (reaching the drive here would panic in this package).
+	twice, err := UploadChatAttachment(1, c.ID, "renamed.png", bytes.NewReader(data))
 	require.NoError(t, err)
-	assert.Equal(t, a.ID, twice.ID)
+	assert.Equal(t, a, twice)
+	assert.Zero(t, twice.DriveFileID)
 	c, err = GetConversation(1, c.ID)
 	require.NoError(t, err)
+	require.Len(t, c.DraftAttachments, 1)
 	require.Equal(t, 1, c.Storage.AttachmentCount)
 	assert.Equal(t, int64(len(encrypted)), c.Storage.AttachmentBytes)
-	require.NoError(t, os.Remove(p))
-	_, err = UploadChatAttachment(1, c.ID, a.Name, bytes.NewReader(data))
+	assert.Equal(t, int64(len(encrypted)), c.Storage.TotalBytes-c.Storage.RecordBytes)
+	assert.Zero(t, c.Storage.DriveCount)
+	assert.Zero(t, c.Storage.DriveBytes)
+	_, content, err := DownloadChatAttachment(1, c.ID, a.ID)
 	require.NoError(t, err)
-	_, repaired, err := DownloadChatAttachment(1, c.ID, a.ID)
-	require.NoError(t, err)
-	assert.Equal(t, data, repaired)
-	stat, _ := os.Stat(p)
-	assert.Equal(t, os.FileMode(0600), stat.Mode().Perm())
+	assert.Equal(t, data, content)
 	record, err := readConversation(1, c.ID)
 	require.NoError(t, err)
 	turn := ChatTurn{ID: uuid.NewString(), Prompt: "test", Status: "completed", Started: time.Now(), Attachments: []ChatAttachment{a}}
@@ -98,7 +131,7 @@ func TestTCYAttachmentsStorageAndFork(t *testing.T) {
 	fork, err := ForkConversation(1, c.ID, turn.ID)
 	require.NoError(t, err)
 	require.NoError(t, DeleteConversation(1, c.ID))
-	_, content, err := DownloadChatAttachment(1, fork.ID, a.ID)
+	_, content, err = DownloadChatAttachment(1, fork.ID, a.ID)
 	require.NoError(t, err)
 	assert.Equal(t, data, content)
 	require.NoError(t, DeleteConversation(1, fork.ID))
@@ -224,8 +257,8 @@ func TestTCYAttachmentsValidateAndConvertGIF(t *testing.T) {
 	img := image.NewPaletted(image.Rect(0, 0, 2, 2), color.Palette{color.Black, color.White})
 	var data bytes.Buffer
 	require.NoError(t, gif.Encode(&data, img, nil))
-	attachment, err := UploadChatAttachment(1, c.ID, "animation.gif", bytes.NewReader(data.Bytes()))
-	require.NoError(t, err)
+	attachment := legacyChatAttachment(t, 1, c.ID, "animation.gif", data.Bytes())
+	assert.Equal(t, "image/gif", attachment.MIME)
 	messages, err := hydrateMessages(Connection{InputTypes: []string{"text", "image"}}, []Message{{Role: "user", Content: "see", Attachments: []ChatAttachment{attachment}, AttachmentOwner: 1}})
 	require.NoError(t, err)
 	require.Len(t, messages[0].imageData, 1)
@@ -233,4 +266,152 @@ func TestTCYAttachmentsValidateAndConvertGIF(t *testing.T) {
 	_, original, err := DownloadChatAttachment(1, c.ID, attachment.ID)
 	require.NoError(t, err)
 	assert.Equal(t, data.Bytes(), original)
+}
+
+func TestTCYAttachmentsRejectBeforeStoring(t *testing.T) {
+	c, a, data := chatAttachmentFixture(t)
+	// This package has no database: reaching the drive would panic, so every case
+	// below proves the request is rejected before anything is stored or read.
+	for name, body := range map[string][]byte{"empty.txt": {}, "large.bin": make([]byte, MaxChatAttachmentBytes+1)} {
+		_, err := UploadChatAttachment(1, c.ID, name, bytes.NewReader(body))
+		require.ErrorIs(t, err, ErrAttachmentInvalid, name)
+	}
+	_, err := UploadChatAttachment(1, c.ID, "\x00\x01", strings.NewReader("text"))
+	require.ErrorIs(t, err, ErrAttachmentInvalid)
+	_, err = UploadChatAttachment(2, c.ID, "other.txt", strings.NewReader("text"))
+	require.ErrorIs(t, err, ErrConversationMissing)
+	_, err = AttachDriveFileToConversation(2, c.ID, 42)
+	require.ErrorIs(t, err, ErrConversationMissing)
+	_, err = AttachDriveFileToConversation(1, c.ID, 0)
+	require.ErrorIs(t, err, ErrAttachmentMissing)
+	for i := 1; i < maxDraftAttachments; i++ {
+		legacyChatAttachment(t, 1, c.ID, fmt.Sprintf("note-%d.txt", i), []byte(fmt.Sprintf("note %d", i)))
+	}
+	_, err = UploadChatAttachment(1, c.ID, "seventeenth.txt", strings.NewReader("one too many"))
+	require.ErrorIs(t, err, ErrAttachmentInvalid)
+	_, err = AttachDriveFileToConversation(1, c.ID, 42)
+	require.ErrorIs(t, err, ErrAttachmentInvalid)
+	// A full draft still accepts bytes it already holds: that reuses the attachment.
+	again, err := UploadChatAttachment(1, c.ID, "renamed.png", bytes.NewReader(data))
+	require.NoError(t, err)
+	assert.Equal(t, a, again)
+	record, err := readConversation(1, c.ID)
+	require.NoError(t, err)
+	installActivityFixture(t, record)
+	_, err = UploadChatAttachment(1, c.ID, "busy.txt", strings.NewReader("busy"))
+	require.ErrorIs(t, err, ErrConversationBusy)
+	_, err = AttachDriveFileToConversation(1, c.ID, 42)
+	require.ErrorIs(t, err, ErrConversationBusy)
+	require.ErrorIs(t, RemoveChatDraftAttachment(1, c.ID, a.ID), ErrConversationBusy)
+}
+
+func TestTCYAttachmentsDriveReferenceScan(t *testing.T) {
+	c, a, _ := chatAttachmentFixture(t)
+	drive := func(fill string, id int64, mime string) ChatAttachment {
+		return ChatAttachment{ID: strings.Repeat(fill, 64), Name: fill + ".bin", MIME: mime, Size: 1, DriveFileID: id}
+	}
+	draft, sent, saved := drive("b", 12, "text/plain"), drive("c", 123, "image/png"), drive("d", 7, "text/plain")
+	record, err := readConversation(1, c.ID)
+	require.NoError(t, err)
+	record.DraftAttachments = append(record.DraftAttachments, draft)
+	record.Turns = []ChatTurn{{ID: uuid.NewString(), Status: "completed", Started: time.Now(), Attachments: []ChatAttachment{a, sent}, Result: RunResult{Reply: `a reply quoting "drive_file_id":99`}}}
+	record.Contexts = [][]storedMessage{{{Message: Message{Role: "user", Content: "look", Attachments: []ChatAttachment{saved}, AttachmentOwner: 1}}}}
+	record.Compactions = []Compaction{{Through: 1, Summary: `[{"id":"x","drive_file_id":98}]`}}
+	// Serialized text that merely mentions the field never counts as a reference,
+	// and digits are matched whole (12 is not 123).
+	ids, err := recordDriveIDs(record)
+	require.NoError(t, err)
+	assert.Equal(t, []int64{7, 12, 123}, ids)
+	// Only attachments as encoding/json writes them count, wherever they are kept; a
+	// provider payload or tool argument that merely names the field does not.
+	shaped := fmt.Sprintf(`{"id":"%s","name":"a \"b\".txt","mime":"text/plain","size":3,"drive_file_id":5}`, strings.Repeat("f", 64))
+	quoted, err := json.Marshal(shaped)
+	require.NoError(t, err)
+	assert.Equal(t, []int64{5}, jsonDriveIDs([]byte(`{"later":[`+shaped+`],"native":{"input":{"drive_file_id":6}},"note":`+string(quoted)+`}`)))
+	require.NoError(t, writeConversation(1, record))
+
+	conversations.Lock()
+	uses, title, err := conversationDriveUsesLocked(1, c.ID)
+	conversations.Unlock()
+	require.NoError(t, err)
+	assert.Equal(t, record.Title, title)
+	assert.Equal(t, map[int64]driveUse{12: {draft: true}, 123: {sent: true}, 7: {sent: true}}, uses)
+
+	// A live record adds references its run holds in memory; the saved file still counts.
+	live, err := readConversation(1, c.ID)
+	require.NoError(t, err)
+	live.DraftAttachments = []ChatAttachment{drive("e", 55, "text/plain")}
+	installActivityFixture(t, live)
+	conversations.Lock()
+	uses, _, err = conversationDriveUsesLocked(1, c.ID)
+	conversations.Unlock()
+	require.NoError(t, err)
+	assert.Equal(t, driveUse{draft: true}, uses[55])
+	assert.Equal(t, driveUse{draft: true}, uses[12], "saved drafts stay referenced while the live record moved on")
+	conversations.Lock()
+	_, _, err = conversationDriveUsesLocked(1, uuid.NewString())
+	conversations.Unlock()
+	require.ErrorIs(t, err, ErrConversationMissing)
+	// Without the account's conversation directory (an unmounted volume, say) nothing is
+	// proven missing, so no pin would be released.
+	conversations.Lock()
+	_, _, err = conversationDriveUsesLocked(987654, uuid.NewString())
+	conversations.Unlock()
+	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrConversationMissing)
+
+	// The purge safety net: no match needs no database. A conversation that no longer
+	// decrypts has unknown references, so it must block irreversible deletion.
+	used, err := chatDriveBridge{}.Referenced(1, 42)
+	require.NoError(t, err)
+	assert.False(t, used)
+	foreign := filepath.Join(conversationDir(1), uuid.NewString()+".enc")
+	require.NoError(t, os.WriteFile(foreign, []byte("not a conversation of this server"), 0600))
+	used, err = chatDriveBridge{}.Referenced(1, 42)
+	require.Error(t, err)
+	assert.False(t, used)
+	require.NoError(t, os.Remove(foreign))
+	used, err = chatDriveBridge{}.Referenced(1, 42)
+	require.NoError(t, err)
+	assert.False(t, used)
+	used, err = chatDriveBridge{}.Referenced(987654, 42)
+	require.NoError(t, err)
+	assert.False(t, used, "an account without conversations references nothing")
+	// Read errors keep the file too (checked on its own: the directory is clean again).
+	if os.Getuid() > 0 {
+		unreadable := filepath.Join(conversationDir(1), uuid.NewString()+".enc")
+		require.NoError(t, os.WriteFile(unreadable, []byte("x"), 0))
+		_, err = chatDriveBridge{}.Referenced(1, 42)
+		var pathErr *fs.PathError
+		require.ErrorAs(t, err, &pathErr)
+		require.NoError(t, os.Remove(unreadable))
+	}
+}
+
+func TestTCYAttachmentsBranchWithoutDriveFilesNeedsNoDatabase(t *testing.T) {
+	c, a, _ := chatAttachmentFixture(t)
+	record, err := readConversation(1, c.ID)
+	require.NoError(t, err)
+	record.ID = uuid.NewString()
+	record.DraftAttachments = nil
+	record.Turns = []ChatTurn{{ID: uuid.NewString(), Status: "completed", Started: time.Now(), Attachments: []ChatAttachment{a}}}
+	conversations.Lock()
+	err = writeForkWithDrivePins(1, record)
+	conversations.Unlock()
+	require.NoError(t, err)
+	_, content, err := DownloadChatAttachment(1, record.ID, a.ID)
+	require.NoError(t, err)
+	assert.NotEmpty(t, content)
+}
+
+func TestTCYAttachmentsFilenames(t *testing.T) {
+	for in, want := range map[string]string{`C:\Users\sensei\report.pdf`: "report.pdf", "../../etc/passwd": "passwd", "a\x00b\x7f.txt": "ab.txt", "图片 1.png": "图片 1.png"} {
+		got, ok := cleanChatFilename(in)
+		assert.True(t, ok, in)
+		assert.Equal(t, want, got)
+	}
+	for _, bad := range []string{"", ".", "/", "\x01\x02", strings.Repeat("名", 256)} {
+		_, ok := cleanChatFilename(bad)
+		assert.False(t, ok, bad)
+	}
 }

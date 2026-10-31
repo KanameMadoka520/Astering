@@ -93,7 +93,7 @@ func getDefaultBucketID(s *xorm.Session, view *ProjectView) (bucketID int64, err
 	bucket := &Bucket{}
 	_, err = s.
 		Where("project_view_id = ?", view.ID).
-		OrderBy("position asc, id asc").
+		OrderBy("COALESCE(position, 0) asc, id asc").
 		Get(bucket)
 	if err != nil {
 		return 0, err
@@ -132,7 +132,7 @@ func (b *Bucket) ReadAll(s *xorm.Session, auth web.Auth, _ string, _ int, _ int)
 	buckets := []*Bucket{}
 	err = s.
 		Where("project_view_id = ?", b.ProjectViewID).
-		OrderBy("position").
+		OrderBy("COALESCE(position, 0) asc, id asc").
 		Find(&buckets)
 	if err != nil {
 		return
@@ -165,7 +165,7 @@ func GetTasksInBucketsForView(s *xorm.Session, view *ProjectView, projects []*Pr
 	if view.BucketConfigurationMode == BucketConfigurationModeManual {
 		err = s.
 			Where("project_view_id = ?", view.ID).
-			OrderBy("position").
+			OrderBy("COALESCE(position, 0) asc, id asc").
 			Find(&buckets)
 		if err != nil {
 			return
@@ -409,9 +409,21 @@ func (b *Bucket) Delete(s *xorm.Session, a web.Auth) (err error) {
 		}
 	}
 
-	defaultBucketID, err := getDefaultBucketID(s, pv)
-	if err != nil {
-		return err
+	// Select a surviving destination. The leftmost/default bucket may be the
+	// one being deleted; reusing it would leave orphaned task_bucket rows.
+	defaultBucketID := pv.DefaultBucketID
+	if defaultBucketID == 0 || defaultBucketID == b.ID {
+		destination := &Bucket{}
+		var exists bool
+		exists, err = s.Where("project_view_id = ? AND id != ?", pv.ID, b.ID).
+			OrderBy("COALESCE(position, 0) asc, id asc").Get(destination)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return ErrCannotRemoveLastBucket{BucketID: b.ID, ProjectViewID: b.ProjectViewID}
+		}
+		defaultBucketID = destination.ID
 	}
 
 	// Remove all associations of tasks to that bucket

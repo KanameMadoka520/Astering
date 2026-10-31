@@ -10,17 +10,19 @@ const quality = ref(.85)
 const maxSide = ref(2560)
 let restoreFocus: HTMLElement | null = null
 let collapseTimer: ReturnType<typeof setTimeout> | undefined
-watch(() => uploads.value.map(row => `${row.id}:${row.stage}`).join(','), () => {
+// Rows a caller tracks itself (the chat composer's tray) stay out of this panel, which would cover that tray on phones.
+const rows = computed(() => uploads.value.filter(row => !row.scoped))
+watch(() => rows.value.map(row => `${row.id}:${row.stage}`).join(','), () => {
 	clearTimeout(collapseTimer)
-	if (uploads.value.some(row => !['done', 'error', 'cancelled'].includes(row.stage))) {
+	if (rows.value.some(row => !['done', 'error', 'cancelled'].includes(row.stage))) {
 		uploadsExpanded.value = true
-	} else if (uploads.value.length && !uploads.value.some(row => row.stage === 'error')) {
+	} else if (rows.value.length && !rows.value.some(row => row.stage === 'error')) {
 		collapseTimer = setTimeout(() => {uploadsExpanded.value = false}, 2500)
 	}
 })
 onBeforeUnmount(() => clearTimeout(collapseTimer))
 const rowsId = useId()
-const activeCount = () => uploads.value.filter(row => !['done', 'error', 'cancelled'].includes(row.stage)).length
+const activeCount = () => rows.value.filter(row => !['done', 'error', 'cancelled'].includes(row.stage)).length
 // Open modal dialogs sit in the top layer; the panel follows them so task uploads stay visible.
 const portal = ref<string | HTMLElement>('body')
 let dialogObserver: MutationObserver | undefined
@@ -42,8 +44,8 @@ onBeforeUnmount(() => dialogObserver?.disconnect())
 const inDialog = computed(() => portal.value !== 'body')
 // A dialog shows its own result, and its footer actions must stay reachable: once the uploads in it
 // are done and the panel has collapsed, it steps aside until the dialog closes. Failures stay.
-const visible = computed(() => uploads.value.length > 0 && !(inDialog.value && !uploadsExpanded.value
-	&& uploads.value.every(row => row.stage === 'done' || row.stage === 'cancelled')))
+const visible = computed(() => rows.value.length > 0 && !(inDialog.value && !uploadsExpanded.value
+	&& rows.value.every(row => row.stage === 'done' || row.stage === 'cancelled')))
 watch(imagePrompt, async prompt => {
 	if (prompt) { mode.value = 'original'; restoreFocus = document.activeElement as HTMLElement; await nextTick(); dialog.value?.showModal() }
 	else { dialog.value?.close(); restoreFocus?.focus() }
@@ -63,10 +65,16 @@ function size(bytes: number) { return (bytes / 1024 / 1024).toFixed(2) + ' MiB' 
 	>
 		<h2>{{ t('flow.imageChoice') }}</h2>
 		<p>{{ t('flow.imageNote') }}</p>
+		<p
+			v-if="(imagePrompt?.files.length ?? 0) > 1"
+			class="image-batch-note"
+		>
+			{{ t('flow.imageBatchNote', {count: imagePrompt?.files.length}) }}
+		</p>
 		<ul>
 			<li
-				v-for="file in imagePrompt?.files"
-				:key="file.name"
+				v-for="(file, index) in imagePrompt?.files"
+				:key="index"
 			>
 				{{ file.name }} · {{ size(file.size) }}
 			</li>
@@ -137,14 +145,14 @@ function size(bytes: number) { return (bytes / 1024 / 1024).toFixed(2) + ' MiB' 
 				class="upload-rows"
 			>
 				<UploadProgressRow
-					v-for="row in uploads"
+					v-for="row in rows"
 					:key="row.id"
 					:row="row"
 				/>
 				<button
 					type="button"
 					class="clear-uploads"
-					@click="uploads = uploads.filter(row => !['done','error','cancelled'].includes(row.stage))"
+					@click="uploads = uploads.filter(row => row.scoped || !['done','error','cancelled'].includes(row.stage))"
 				>
 					{{ t('flow.clearFinished') }}
 				</button>

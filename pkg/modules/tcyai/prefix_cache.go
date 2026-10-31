@@ -51,7 +51,8 @@ func executionContext(in RunInput, c Connection) string {
 		PageContext        string  `json:"page_context_data"`
 		SearchMode         string  `json:"search_mode"`
 		WebSearchAvailable bool    `json:"web_search_available"`
-	}{time.Now().In(time.FixedZone("Asia/Shanghai", 8*3600)).Format(time.RFC3339), in.ProjectID, in.Mode, in.Mode == "write" && in.AllowDelete, in.Approval, in.WriteProjectIDs, in.PageContext, in.SearchMode, c.WebSearchProtocol != "" && in.SearchMode != "off"})
+		SubagentsEnabled   bool    `json:"subagents_enabled"`
+	}{time.Now().In(time.FixedZone("Asia/Shanghai", 8*3600)).Format(time.RFC3339), in.ProjectID, in.Mode, in.Mode == "write" && in.AllowDelete, in.Approval, in.WriteProjectIDs, in.PageContext, in.SearchMode, c.WebSearchProtocol != "" && in.SearchMode != "off", in.EnableSubagents})
 	if err != nil {
 		return "Execution context encoding failed. Do not infer current permissions or execute changes."
 	}
@@ -169,6 +170,12 @@ func compactToolResult(name string, raw json.RawMessage, data string) string {
 			result["detail_tool"] = "get_project"
 		}
 		output = result
+	case "get_task":
+		item := asObject(value)
+		if item["id"] == nil {
+			return data
+		}
+		output = compactTaskDetails(item)
 	case "list_project_timeline":
 		envelope := asObject(value)
 		summary := selectFields(envelope, "year", "timezone", "today", "first_year", "last_year", "projects", "scheduled_days", "elapsed_days", "dated_tasks", "done_tasks", "overdue_tasks", "excluded_tasks", "invalid_tasks", "total", "page", "total_pages")
@@ -195,7 +202,7 @@ func compactToolResult(name string, raw json.RawMessage, data string) string {
 		for key := range args {
 			keys = append(keys, key)
 		}
-		output = map[string]any{"changed_fields": selectFields(item, keys...), "details_omitted": true}
+		output = map[string]any{"changed_fields": compactChangedFields(selectFields(item, keys...)), "details_omitted": true}
 	case "bulk_update_tasks":
 		items, ok := value.([]any)
 		if !ok {
@@ -213,7 +220,7 @@ func compactToolResult(name string, raw json.RawMessage, data string) string {
 		for _, v := range items {
 			item := asObject(v)
 			keys := append([]string{"id", "title", "project_id", "updated"}, changes[number(item, "id")]...)
-			summaries = append(summaries, selectFields(item, keys...))
+			summaries = append(summaries, compactChangedFields(selectFields(item, keys...)))
 		}
 		output = map[string]any{"changed_tasks": summaries, "details_omitted": true}
 	default:
@@ -242,4 +249,36 @@ func (state *AgentState) modelMessages(mustSearch bool) []Message {
 	}
 
 	return messages
+}
+
+func compactTaskDetails(item map[string]any) map[string]any {
+	summary := selectFields(item, "id", "title", "description", "project_id", "done", "due_date", "start_date", "end_date", "priority", "hex_color", "percent_done", "is_favorite", "repeat_after", "repeat_mode", "routine", "reminders", "cover_image_attachment_id", "updated", "created", "labels")
+	for _, key := range []string{"assignees", "attachments"} {
+		if entries, ok := item[key].([]any); ok {
+			rows := []any{}
+			for _, entry := range entries {
+				row := selectFields(asObject(entry), "id", "username", "name", "created", "task_id")
+				if f, ok := asObject(entry)["file"].(map[string]any); ok {
+					row["file"] = selectFields(f, "id", "name", "mime", "size")
+				}
+				rows = append(rows, row)
+			}
+			summary[key] = rows
+		}
+	}
+	if relations, ok := item["related_tasks"].(map[string]any); ok {
+		short := map[string]any{}
+		for kind, entries := range relations {
+			rows := []any{}
+			if entries, ok := entries.([]any); ok {
+				for _, entry := range entries {
+					rows = append(rows, selectFields(asObject(entry), "id", "title", "project_id", "done", "due_date"))
+				}
+			}
+			short[kind] = rows
+		}
+		summary["related_tasks"] = short
+	}
+	summary["details_omitted"] = true
+	return summary
 }

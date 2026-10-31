@@ -27,6 +27,7 @@ import (
 	"sort"
 
 	"code.vikunja.io/api/pkg/db"
+	"code.vikunja.io/api/pkg/events"
 	"code.vikunja.io/api/pkg/models"
 	"code.vikunja.io/api/pkg/modules/tcyai"
 	"code.vikunja.io/api/pkg/web"
@@ -130,6 +131,12 @@ func isAIProjectMutation(name string) bool {
 }
 
 func (e *aiExecution) prepare(ctx context.Context, name string, raw json.RawMessage) (tcyai.Operation, error) {
+	if tcyai.IsBucketTool(name) {
+		if _, err := serveAITool(ctx, e.api, e.caller, "validate_session", "/user", http.MethodGet, nil, nil); err != nil {
+			return tcyai.Operation{}, err
+		}
+		return e.prepareBucket(ctx, name, raw)
+	}
 	op := tcyai.Operation{Units: 1, ProjectIDs: []int64{}, After: string(raw)}
 	if !tcyai.IsWriteTool(name) {
 		return op, nil
@@ -232,6 +239,12 @@ func (e *aiExecution) prepare(ctx context.Context, name string, raw json.RawMess
 }
 func marshalAI(value any) (string, error) { raw, err := json.Marshal(value); return string(raw), err }
 func (e *aiExecution) execute(ctx context.Context, name string, raw json.RawMessage) (string, error) {
+	if tcyai.IsBucketTool(name) {
+		if _, err := serveAITool(ctx, e.api, e.caller, "validate_session", "/user", http.MethodGet, nil, nil); err != nil {
+			return "", err
+		}
+		return e.executeBucket(ctx, name, raw)
+	}
 	if !tcyai.IsWriteTool(name) {
 		return dispatchAI(ctx, e.api, e.caller, name, raw)
 	}
@@ -265,6 +278,7 @@ func (e *aiExecution) mutateTasks(ctx context.Context, name string, raw json.Raw
 	}
 	s := db.NewSession()
 	defer s.Close()
+	defer events.CleanupPending(s)
 	db.SetSessionContext(ctx, s)
 	tasks, err := e.lockTasks(ctx, s, changes, name, preview)
 	if err != nil {
@@ -322,6 +336,7 @@ func (e *aiExecution) mutateTasks(ctx context.Context, name string, raw json.Raw
 	if err = s.Commit(); err != nil {
 		return "", &tcyai.ToolError{Code: "WRITE_UNCERTAIN", Message: "Database commit failed; check actual task state before retrying.", Uncertain: true}
 	}
+	events.DispatchPending(ctx, s)
 	if op := tcyai.CurrentOperation(ctx); op != nil {
 		op.Verified = true
 	}

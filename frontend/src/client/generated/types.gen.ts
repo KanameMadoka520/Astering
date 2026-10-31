@@ -55,6 +55,10 @@ export type Action = {
      */
     result?: string;
     /**
+     * Account/conversation-scoped reference for paged retrieval of the complete audited result.
+     */
+    result_ref?: string;
+    /**
      * Model round that requested this operation.
      */
     round?: number;
@@ -240,6 +244,10 @@ export type AssistantOptions = {
      */
     connection_id?: string;
     /**
+     * Experimental parallel read-only workers with isolated context; writes stay with the parent.
+     */
+    enable_subagents?: boolean;
+    /**
      * Tool operations per execution segment.
      */
     max_operations?: number;
@@ -259,6 +267,10 @@ export type AssistantOptions = {
      * Per-turn web search policy: auto lets the model choose; off forbids search execution; required forces a search attempt before answering.
      */
     search_mode?: 'auto' | 'off' | 'required';
+    /**
+     * Pause at segment limits instead of automatically continuing. Explicit token budgets always pause.
+     */
+    stop_at_segment_limit?: boolean;
     /**
      * Execution segment deadline in seconds.
      */
@@ -393,6 +405,20 @@ export type AuthorizeResponse = {
     code?: string;
     redirect_uri?: string;
     state?: string;
+};
+
+export type AutoCompaction = {
+    after_tokens?: number;
+    attachment_count?: number;
+    before_tokens?: number;
+    duration_ms?: number;
+    error?: string;
+    id?: string;
+    progress?: CompactProgress;
+    started?: string;
+    status?: 'running' | 'completed' | 'failed';
+    summary?: string;
+    usage?: Usage;
 };
 
 export type BarkDelivery = {
@@ -693,7 +719,11 @@ export type ChatAttachment = {
      */
     readonly $schema?: string;
     /**
-     * Account-scoped content hash. Authorization also requires a reference in this conversation.
+     * Personal drive file holding this attachment; absent for older encrypted chat files. Removing the attachment never deletes the drive file.
+     */
+    readonly drive_file_id?: number;
+    /**
+     * SHA-256 of the original bytes within this account. Authorization also requires a reference in this conversation and, for drive files, ownership.
      */
     id?: string;
     /**
@@ -712,6 +742,17 @@ export type ChatAttachment = {
      * Original content bytes, excluding encryption overhead.
      */
     size?: number;
+};
+
+export type ChatDriveInputBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * A file in your own drive, not in the recycle bin, of at most 32 MiB.
+     */
+    file_id?: number;
 };
 
 export type ChatTurn = {
@@ -1032,6 +1073,10 @@ export type CompassTopics = {
 
 export type Connection = {
     /**
+     * Soft input threshold for automatic compaction; zero derives from declared capacity or uses a 128000-token policy, never a capacity claim.
+     */
+    auto_compact_tokens?: number;
+    /**
      * OpenAI-compatible API base, including /v1 when required.
      */
     base_url?: string;
@@ -1039,6 +1084,10 @@ export type Connection = {
      * Declared model context capacity in tokens; zero uses known provider metadata or remains unknown.
      */
     context_window?: number;
+    /**
+     * Disable automatic context checkpoints for this connection.
+     */
+    disable_auto_compact?: boolean;
     /**
      * Whether a key is saved; the key itself is never returned.
      */
@@ -1115,6 +1164,14 @@ export type ConnectionSettings = {
             [key: string]: RouteDetail;
         };
     };
+};
+
+export type ContextStatus = {
+    context_window?: number;
+    estimated?: boolean;
+    source?: string;
+    threshold_tokens?: number;
+    tokens?: number;
 };
 
 export type Conversation = {
@@ -1209,7 +1266,7 @@ export type ConversationMetadata = {
 
 export type ConversationStorage = {
     /**
-     * Encrypted file bytes, each distinct referenced attachment counted once.
+     * Stored bytes of distinct referenced files: older encrypted chat files plus drive files, each counted once.
      */
     attachment_bytes?: number;
     /**
@@ -1217,7 +1274,15 @@ export type ConversationStorage = {
      */
     attachment_count?: number;
     /**
-     * Referenced files absent from disk.
+     * Part of attachment_bytes kept in the personal drive. Deleting conversations does not free it; manage it in the drive.
+     */
+    drive_attachment_bytes?: number;
+    /**
+     * Distinct available drive files among the attachments.
+     */
+    drive_attachment_count?: number;
+    /**
+     * Referenced files no longer available.
      */
     missing_count?: number;
     /**
@@ -1516,9 +1581,21 @@ export type DriveListBodyBody = {
 };
 
 export type DriveUsage = {
-    kind?: string;
+    /**
+     * attachment, task_cover, project_cover, avatar, chat (sent AI conversation messages) or chat_draft (only unsent AI conversation attachments).
+     */
+    kind?: 'attachment' | 'task_cover' | 'project_cover' | 'avatar' | 'chat' | 'chat_draft';
+    /**
+     * Something the viewer cannot access uses this file.
+     */
     restricted?: boolean;
+    /**
+     * Task, project, account or conversation title; empty when restricted.
+     */
     title?: string;
+    /**
+     * Frontend location; empty when restricted.
+     */
     url?: string;
 };
 
@@ -3489,6 +3566,10 @@ export type RunInput = {
      */
     connection_id?: string;
     /**
+     * Experimental parallel read-only workers with isolated context; writes stay with the parent.
+     */
+    enable_subagents?: boolean;
+    /**
      * Recent conversation; no client-supplied tool results.
      */
     history?: Array<Turn> | null;
@@ -3525,6 +3606,10 @@ export type RunInput = {
      */
     search_mode?: 'auto' | 'off' | 'required';
     /**
+     * Pause at segment limits instead of automatically continuing. Explicit token budgets always pause.
+     */
+    stop_at_segment_limit?: boolean;
+    /**
      * Active execution seconds per segment; zero uses 180.
      */
     timeout_seconds?: number;
@@ -3547,6 +3632,7 @@ export type RunResult = {
      * Operations attempted during this run.
      */
     actions?: Array<Action> | null;
+    auto_compactions?: Array<AutoCompaction> | null;
     /**
      * Limits and observed consumption.
      */
@@ -3559,6 +3645,7 @@ export type RunResult = {
      * Effective server-normalized execution settings for this turn; not an account permission grant.
      */
     readonly configuration?: AssistantOptions;
+    context_status?: ContextStatus;
     /**
      * Elapsed wall-clock milliseconds.
      */
@@ -3615,6 +3702,7 @@ export type RunResult = {
      * Saved connection model ID requested by the user.
      */
     requested_model?: string;
+    segment_count?: number;
     /**
      * Current execution phase.
      */
@@ -3623,6 +3711,7 @@ export type RunResult = {
      * Observed model rounds and provider-returned thinking.
      */
     steps?: Array<ModelStep> | null;
+    subagents?: Array<SubagentTask> | null;
     /**
      * The exact system prompt used for this run.
      */
@@ -3956,6 +4045,22 @@ export type StorageSnapshot = {
      * Last completed storage measurement, refreshed at most once per minute.
      */
     sampled?: string | null;
+};
+
+export type SubagentTask = {
+    actions?: Array<Action> | null;
+    auto_compactions?: Array<AutoCompaction> | null;
+    duration_ms?: number;
+    error?: string;
+    goal?: string;
+    id?: string;
+    model?: string;
+    reply?: string;
+    stage?: string;
+    started?: string;
+    status?: 'running' | 'completed' | 'failed' | 'stopped';
+    steps?: Array<ModelStep> | null;
+    usage?: Usage;
 };
 
 export type Subscription = {
@@ -6047,7 +6152,7 @@ export type CallbackWritable = {
 
 export type ChatAttachmentWritable = {
     /**
-     * Account-scoped content hash. Authorization also requires a reference in this conversation.
+     * SHA-256 of the original bytes within this account. Authorization also requires a reference in this conversation and, for drive files, ownership.
      */
     id?: string;
     /**
@@ -6062,6 +6167,13 @@ export type ChatAttachmentWritable = {
      * Original content bytes, excluding encryption overhead.
      */
     size?: number;
+};
+
+export type ChatDriveInputBodyWritable = {
+    /**
+     * A file in your own drive, not in the recycle bin, of at most 32 MiB.
+     */
+    file_id?: number;
 };
 
 export type ChatTurnWritable = {
@@ -6157,6 +6269,10 @@ export type ConnectionWritable = {
      */
     api_key?: string;
     /**
+     * Soft input threshold for automatic compaction; zero derives from declared capacity or uses a 128000-token policy, never a capacity claim.
+     */
+    auto_compact_tokens?: number;
+    /**
      * OpenAI-compatible API base, including /v1 when required.
      */
     base_url?: string;
@@ -6164,6 +6280,10 @@ export type ConnectionWritable = {
      * Declared model context capacity in tokens; zero uses known provider metadata or remains unknown.
      */
     context_window?: number;
+    /**
+     * Disable automatic context checkpoints for this connection.
+     */
+    disable_auto_compact?: boolean;
     /**
      * Stable connection identifier.
      */
@@ -7279,6 +7399,10 @@ export type RunInputWritable = {
      */
     connection_id?: string;
     /**
+     * Experimental parallel read-only workers with isolated context; writes stay with the parent.
+     */
+    enable_subagents?: boolean;
+    /**
      * Recent conversation; no client-supplied tool results.
      */
     history?: Array<Turn> | null;
@@ -7315,6 +7439,10 @@ export type RunInputWritable = {
      */
     search_mode?: 'auto' | 'off' | 'required';
     /**
+     * Pause at segment limits instead of automatically continuing. Explicit token budgets always pause.
+     */
+    stop_at_segment_limit?: boolean;
+    /**
      * Active execution seconds per segment; zero uses 180.
      */
     timeout_seconds?: number;
@@ -7333,6 +7461,7 @@ export type RunResultWritable = {
      * Operations attempted during this run.
      */
     actions?: Array<Action> | null;
+    auto_compactions?: Array<AutoCompaction> | null;
     /**
      * Limits and observed consumption.
      */
@@ -7341,6 +7470,7 @@ export type RunResultWritable = {
      * Optional clarification choices.
      */
     choices?: Array<string> | null;
+    context_status?: ContextStatus;
     /**
      * Elapsed wall-clock milliseconds.
      */
@@ -7397,6 +7527,7 @@ export type RunResultWritable = {
      * Saved connection model ID requested by the user.
      */
     requested_model?: string;
+    segment_count?: number;
     /**
      * Current execution phase.
      */
@@ -7405,6 +7536,7 @@ export type RunResultWritable = {
      * Observed model rounds and provider-returned thinking.
      */
     steps?: Array<ModelStep> | null;
+    subagents?: Array<SubagentTask> | null;
     /**
      * The exact system prompt used for this run.
      */
@@ -8970,6 +9102,36 @@ export type TcyAiAttachmentsUploadResponses = {
 };
 
 export type TcyAiAttachmentsUploadResponse = TcyAiAttachmentsUploadResponses[keyof TcyAiAttachmentsUploadResponses];
+
+export type TcyAiAttachmentsFromDriveData = {
+    body: ChatDriveInputBodyWritable;
+    path: {
+        /**
+         * Private conversation owned by this human account.
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/ai/conversations/{id}/attachments/from-drive';
+};
+
+export type TcyAiAttachmentsFromDriveErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type TcyAiAttachmentsFromDriveError = TcyAiAttachmentsFromDriveErrors[keyof TcyAiAttachmentsFromDriveErrors];
+
+export type TcyAiAttachmentsFromDriveResponses = {
+    /**
+     * Created
+     */
+    201: ChatAttachment;
+};
+
+export type TcyAiAttachmentsFromDriveResponse = TcyAiAttachmentsFromDriveResponses[keyof TcyAiAttachmentsFromDriveResponses];
 
 export type TcyAiAttachmentsRemoveData = {
     body?: never;

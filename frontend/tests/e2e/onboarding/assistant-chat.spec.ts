@@ -40,7 +40,7 @@ async function chatServer(page: Page, withReview = false, live = false) {
 			c.turns.push({id: crypto.randomUUID(), request_id: body.request_id, prompt: body.message, status: 'completed', result: {
 				configuration: {connection_id: body.connection_id, project_id: body.project_id, mode: body.mode, approval: body.approval, allow_delete: body.allow_delete, write_project_ids: body.write_project_ids, max_rounds: body.max_rounds, max_operations: body.max_operations, timeout_seconds: body.timeout_seconds, token_budget: body.token_budget}, reply: '**Saved answer**', model: 'actual-fixture', requested_model: 'requested', protocol: 'anthropic', endpoint: 'https://fixture.example/v1/messages', system_prompt: 'Actual request prompt', duration_ms: 2000, first_token_ms: 125, first_text_ms: 500,
 				usage: {input: 30, output: 20, reported: true, cached: 5, cache_reported: true},
-				steps: [{round: 1, loaded_tools: ['list_projects', 'find_tools'], tool_schema_bytes: 1200, catalog_schema_bytes: 8000, catalog_tool_count: 20, model: 'actual-fixture', reasoning: 'Provider thinking fixture', text: 'Saved answer', streaming: true, first_token_ms: 125, usage: {reported: true, output: 20}, duration_ms: 2000}],
+				steps: [{round: 1, loaded_tools: ['list_projects', 'find_tools'], tool_schema_bytes: 1200, catalog_schema_bytes: 8000, catalog_tool_count: 20, model: 'actual-fixture', reasoning: 'Provider thinking fixture', text: '**Saved answer**', streaming: true, first_token_ms: 125, usage: {input: 30, output: 20, reported: true, cached: 5, cache_reported: true}, duration_ms: 2000}],
 				actions: [{round: 1, tool: 'list_projects', arguments: '{}', result: '{"items":[]}', success: true, duration_ms: 10}],
 			}})
 		}
@@ -97,16 +97,20 @@ test('chat persists, exposes real run details, compacts and branches without rep
 	await expect(page.getByRole('button', {name: 'Send request', exact: true})).toBeEnabled()
 		await page.getByLabel('Your request').press('Enter')
 	await expect(page.locator('.chat-markdown')).toHaveText('Saved answer')
+	// The round's text is the answer: it is shown once, not again as an interim reply.
+	await expect(page.locator('.step-reply')).toHaveCount(0)
 	await page.evaluate(() => scrollTo(0, 0))
 	expect((await page.locator('.composer').boundingBox())!.y + (await page.locator('.composer').boundingBox())!.height).toBeLessThanOrEqual(900)
-	await expect(page.locator('.run-metrics')).toContainText('0.13 s')
-	await expect(page.locator('.run-metrics')).toContainText('0.50 s')
-	await expect(page.locator('.run-metrics')).toContainText('Total tokens: 50')
-	await page.locator('.execution > summary').click()
+	await page.locator('.run-summary > summary').click()
+	const turnTotal = page.locator('.run-summary [data-scope="turn"]')
+	await expect(turnTotal).toContainText('0.13 s')
+	await expect(turnTotal).toContainText('0.50 s')
+	await expect(turnTotal).toContainText('Input 30')
+	await expect(turnTotal).toContainText('Output 20')
 	await page.locator('.reasoning > summary').click()
 	await expect(page.locator('.reasoning')).toContainText('Provider thinking fixture')
-	await page.locator('.tool-step > summary').click()
-	await expect(page.locator('.tool-step')).toContainText('Actual tool result')
+	await page.locator('.tool-row > summary').click()
+	await expect(page.locator('.tool-row')).toContainText('Actual tool result')
 	await page.locator('.request-details > summary').click()
 	await expect(page.locator('.request-details')).toContainText('Actual request prompt')
 	await expect(page.locator('.request-details')).toContainText('https://fixture.example/v1/messages')
@@ -241,10 +245,11 @@ test('live thinking, real usage and tool drafts remain observable after leaving 
 	await page.getByLabel('Your request').fill('Live run')
 	await page.getByLabel('Your request').press('Enter')
 	await expect(page.locator('.live-run-panel')).toContainText('Receiving model stream')
-	await expect(page.locator('.live-run-panel')).toContainText('30 Input')
-	await page.locator('.execution > summary').click()
+	await expect(page.locator('.live-run-panel [data-scope="request"]')).toContainText('Input 30')
+	// Checked before the fixture completes the run 2.5 s after sending; afterwards it is only a proposed call.
+	await expect(page.locator('.tool-row.is-draft')).toContainText('Receiving proposed tool arguments')
+	await page.locator('.reasoning > summary').click()
 	await expect(page.locator('.reasoning')).toContainText('Checking accessible projects as data arrives')
-	await expect(page.locator('.tool-draft')).toContainText('Receiving proposed tool arguments')
 	const url=page.url()
 	await page.goto('/')
 	await expect.poll(()=>[...server.conversations.values()][0]?.turns[0]?.status).toBe('completed')
@@ -416,7 +421,7 @@ for (const width of [1440, 390, 320]) {
   // The preceding model request and a long tool call must not affect the final response speed.
   c.turns[0].result.duration_ms = 90000
   c.turns[0].result.usage.output = 9999
-  c.turns[0].result.steps = [{round: 1, model: 'tool-model', streaming: true, duration_ms: 20000, first_token_ms: 10000, usage: {reported: true, output: 999}}, {round: 2, model: 'final-model', text: 'Saved answer', streaming: true, duration_ms: 3000, first_token_ms: 1000, usage: {reported: true, output: 101}}]
+  c.turns[0].result.steps = [{round: 1, model: 'tool-model', streaming: true, duration_ms: 20000, first_token_ms: 10000, usage: {reported: true, output: 999}}, {round: 2, model: 'final-model', text: '**Saved answer**', streaming: true, duration_ms: 3000, first_token_ms: 1000, usage: {reported: true, output: 101}}]
   await page.reload()
   await expect(page.locator('.output-speed > summary')).toHaveText('Output speed: 50.0 tokens/s')
   await page.locator('.output-speed > summary').click()
@@ -558,14 +563,14 @@ for (const width of [1440, 390, 320]) {
 		await page.setViewportSize({width, height: 900})
 		await page.goto(`/ai?chat=${id}`)
 		await page.reload()
-		await page.locator('.request-details > summary').click()
-		const total = page.locator('.run-metrics [data-testid="cache-usage"]')
+		await page.locator('.run-summary > summary').click()
+		const total = page.locator('.run-summary .run-cache [data-testid="cache-usage"]')
 		await expect(total).toContainText('54.0%')
 		await expect(total).toContainText('540 / 1,000')
 		await expect(total).toContainText('460')
 		await expect(total).toContainText('2/3')
-		await page.locator('.execution > summary').click()
-		const steps = page.locator('.model-step [data-testid="cache-usage"]')
+		for (const round of [1, 2, 3]) await page.locator(`.timeline-step[data-round="${round}"] .step-meta > summary`).click()
+		const steps = page.locator('.step-meta [data-testid="cache-usage"]')
 		await expect(steps.nth(0)).toContainText('90.0%')
 		await expect(steps.nth(1)).toContainText('50.0%')
 		await expect(steps.nth(2)).toContainText('has not reported')

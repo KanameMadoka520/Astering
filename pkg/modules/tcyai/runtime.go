@@ -57,8 +57,16 @@ type RunBudget struct {
 type Preparer func(context.Context, string, json.RawMessage) (Operation, error)
 
 type AgentState struct {
-	SearchEnabled bool `json:"-"`
-	CacheStable   bool `json:"cache_stable,omitempty"`
+	KnownAttachments  []ChatAttachment `json:"known_attachments,omitempty"`
+	QueuedAttachments []ChatAttachment `json:"queued_attachments,omitempty"`
+	Rebased           bool             `json:"rebased,omitempty"`
+	LastInputTokens   int64            `json:"last_input_tokens,omitempty"`
+	LastInputEstimate int64            `json:"last_input_estimate,omitempty"`
+	SegmentStarted    time.Time        `json:"segment_started,omitempty"`
+	OwnerID           int64            `json:"owner_id,omitempty"`
+	ConversationID    string           `json:"conversation_id,omitempty"`
+	SearchEnabled     bool             `json:"-"`
+	CacheStable       bool             `json:"cache_stable,omitempty"`
 
 	HistoryStart int             `json:"history_start"`
 	Streaming    bool            `json:"-"`
@@ -111,7 +119,7 @@ func ExplainError(ctx context.Context, err error) string {
 	if errors.As(err, &streamError) {
 		return tcylocale.Render(ctx, tcylocale.Error("chatStreamProvider", streamError.Type, streamError.Message, streamError.RequestID))
 	}
-	keys := map[string]string{"SCOPE_DENIED": "agentScopeDenied", "FORBIDDEN": "agentForbidden", "STATE_CONFLICT": "agentConflict", "WRITE_UNCERTAIN": "agentUncertain", "INVALID_DATE_RANGE": "agentDateRange", "MODEL_CHANGED": "agentModelChanged", "TOOL_NOT_ALLOWED": "agentNotAllowed", "TOOL_NOT_LOADED": "agentNotLoaded", "INVALID_ARGUMENTS": "agentArguments", "TIMEOUT": "agentTimeout"}
+	keys := map[string]string{"SCOPE_DENIED": "agentScopeDenied", "FORBIDDEN": "agentForbidden", "STATE_CONFLICT": "agentConflict", "WRITE_UNCERTAIN": "agentUncertain", "INVALID_DATE_RANGE": "agentDateRange", "MODEL_CHANGED": "agentModelChanged", "TOOL_NOT_ALLOWED": "agentNotAllowed", "TOOL_NOT_LOADED": "agentNotLoaded", "INVALID_ARGUMENTS": "agentArguments", "TIMEOUT": "agentTimeout", "NO_PROGRESS": "agentNoProgress", "COMPACTION_NO_SHRINK": "agentCompactionFailed", "COMPACTION_EMPTY": "agentCompactionFailed", "RESULT_NOT_FOUND": "agentResultNotFound"}
 	if errors.Is(err, ErrImageModel) || errors.Is(err, ErrAttachmentMissing) || errors.Is(err, ErrAttachmentInvalid) {
 		return tcylocale.Render(ctx, tcylocale.Error(err.Error()))
 	}
@@ -172,7 +180,7 @@ func NewAgentState(ctx context.Context, c Connection, input RunInput) *AgentStat
 	messages = append(messages, Message{Role: "user", Content: executionContext(in, c)})
 	messages = append(messages, Message{Role: "user", Content: in.Message, Attachments: in.ServerAttachments, AttachmentOwner: in.AttachmentOwner})
 	state := &AgentState{CacheStable: true, HistoryStart: historyStart, Input: in, Messages: []storedMessage{}, Pending: []ToolCall{}, Available: []string{}, Result: RunResult{
-		Configuration: runOptions(in), TraceID: uuid.NewString(), SystemPrompt: system, Actions: []Action{}, Steps: []ModelStep{}, Operations: []Operation{},
+		SegmentCount: 1, Configuration: runOptions(in), TraceID: uuid.NewString(), SystemPrompt: system, Actions: []Action{}, Steps: []ModelStep{}, Operations: []Operation{},
 		Model: c.Model, RequestedModel: c.Model, Protocol: c.EffectiveProtocol(), Endpoint: AgentEndpoint(c),
 		Budget: RunBudget{RoundLimit: in.MaxRounds, OperationLimit: in.MaxOperations, TokenLimit: in.TokenBudget, TimeoutSeconds: in.TimeoutSeconds},
 	}}
@@ -212,6 +220,7 @@ func (state *AgentState) tools() []map[string]any {
 
 func RunAgent(ctx context.Context, c Connection, state *AgentState, execute Executor, prepare Preparer, save func(*AgentState) error) (result RunResult, runErr error) {
 	started := time.Now()
+	state.SegmentStarted = started
 	state.SearchEnabled = c.WebSearchProtocol != "" && state.Input.SearchMode != "off"
 	state.Available = slices.DeleteFunc(state.Available, func(name string) bool { return name == "web_search" })
 	if state.SearchEnabled {
@@ -240,15 +249,47 @@ func RunAgent(ctx context.Context, c Connection, state *AgentState, execute Exec
 	if state.Input.SearchMode == "required" && !state.SearchEnabled {
 		return state.Result, tcylocale.Error("searchRequiredUnavailable")
 	}
+	overflowRetried := false
+	startActions := len(state.Result.Actions)
 	for {
 		if err := ctx.Err(); err != nil {
 			return state.Result, err
 		}
 		if len(state.Pending) == 0 {
+			if state.Input.StopAtSegmentLimit && state.Result.Budget.Rounds >= state.Result.Budget.RoundLimit {
+				state.Result.Stage = "budget"
+				state.Result.Pause = "budget"
+				return state.Result, ErrAgentPaused
+			}
+			if state.Result.Budget.TokenLimit > 0 && state.Result.Usage.Input+state.Result.Usage.Output >= state.Result.Budget.TokenLimit {
+				state.Result.Stage = "budget"
+				state.Result.Pause = "budget"
+				return state.Result, ErrAgentPaused
+			}
+			if repeatedActions(state.Result.Actions[startActions:]) {
+				state.Result.Stage = "model"
+				return state.Result, ToolFailure("NO_PROGRESS", "Eight identical tool operations returned the same result. Execution stopped; review the trace before retrying.")
+			}
+			if err := state.autoCompact(ctx, c, persist, false); err != nil {
+				return state.Result, err
+			}
+			state.deliverQueuedAttachments()
 			done, err := state.modelRound(ctx, c, started, baseDuration, persist)
+			if err != nil && contextOverflow(err) && !overflowRetried && !c.DisableAutoCompact {
+				overflowRetried = true
+				checkpointsBefore := len(state.Result.AutoCompactions)
+				if compactErr := state.autoCompact(ctx, c, persist, true); compactErr != nil {
+					return state.Result, compactErr
+				}
+				if len(state.Result.AutoCompactions) == checkpointsBefore {
+					return state.Result, err
+				}
+				continue
+			}
 			if err != nil || done {
 				return state.Result, err
 			}
+			overflowRetried = false
 		}
 		if err := state.toolStep(ctx, c, execute, prepare, persist); err != nil {
 			return state.Result, err
@@ -259,10 +300,18 @@ func RunAgent(ctx context.Context, c Connection, state *AgentState, execute Exec
 func (state *AgentState) modelRound(ctx context.Context, c Connection, started time.Time, baseDuration int64, persist func() error) (bool, error) {
 	var streamErr error
 	b := &state.Result.Budget
-	if b.Rounds >= b.RoundLimit || (b.TokenLimit > 0 && state.Result.Usage.Input+state.Result.Usage.Output >= b.TokenLimit) {
+	if b.TokenLimit > 0 && state.Result.Usage.Input+state.Result.Usage.Output >= b.TokenLimit {
 		state.Result.Stage = "budget"
 		state.Result.Pause = "budget"
 		return false, ErrAgentPaused
+	}
+	if b.Rounds >= b.RoundLimit || (!state.SegmentStarted.IsZero() && time.Since(state.SegmentStarted) >= time.Duration(state.Input.TimeoutSeconds)*time.Second) {
+		if err := state.nextSegment(persist); err != nil {
+			return false, err
+		}
+	}
+	if state.SegmentStarted.IsZero() {
+		state.SegmentStarted = time.Now()
 	}
 	state.Result.Stage = "model"
 	b.Rounds++
@@ -304,10 +353,16 @@ func (state *AgentState) modelRound(ctx context.Context, c Connection, started t
 	}
 	messages := state.modelMessages(mustSearch)
 
+	inputEstimate := estimateMessages(messages)
 	message, err := Chat(observed, c, messages, loaded)
 	o.step.DurationMS = time.Since(o.start).Milliseconds()
 	state.Result.Steps = append(state.Result.Steps, o.step)
 	state.Result.Usage.Add(o.step.Usage)
+	if o.step.Usage.Input > 0 {
+		state.LastInputTokens = o.step.Usage.Input
+		state.LastInputEstimate = inputEstimate
+	}
+	state.updateContextStatus(c)
 	if o.step.Model != "" {
 		state.Result.Model = o.step.Model
 	}
@@ -328,6 +383,7 @@ func (state *AgentState) modelRound(ctx context.Context, c Connection, started t
 	if streamErr != nil {
 		return false, streamErr
 	}
+	state.QueuedAttachments = nil // The provider successfully consumed this evidence; future compaction may omit its pixels.
 	message.Role = "assistant"
 	state.appendMessage(message)
 	state.Pending = message.ToolCalls
@@ -339,12 +395,14 @@ func (state *AgentState) modelRound(ctx context.Context, c Connection, started t
 		state.Result.Stage = "completed"
 		return true, nil
 	}
+	state.Result.Stage = "validation"
 	if err := persist(); err != nil {
 		return false, err
 	}
 	return false, nil
 }
 
+//nolint:gocyclo // Keep validation, review, durable intent, execution and settlement in one ordered transition.
 func (state *AgentState) toolStep(ctx context.Context, c Connection, execute Executor, prepare Preparer, persist func() error) error {
 	call, decodeErr := resolveInvocation(state.Pending[0])
 	name := call.Function.Name
@@ -372,12 +430,13 @@ func (state *AgentState) toolStep(ctx context.Context, c Connection, execute Exe
 		op.Units = 1
 	}
 	if state.Result.Budget.Operations+op.Units > state.Result.Budget.OperationLimit {
-		if op.Approved {
+		if op.Approved && state.Input.StopAtSegmentLimit {
 			state.Approved = &op
 		}
-		state.Result.Pause = "budget"
-		state.Result.Stage = "budget"
-		return ErrAgentPaused
+		if err := state.nextSegment(persist); err != nil {
+			return err
+		}
+		state.Result.Budget.OperationLimit = max(state.Result.Budget.OperationLimit, state.Result.Budget.Operations+op.Units)
 	}
 	if toolErr == nil && NeedsReview(name, state.Input) && !op.Approved {
 		state.Result.Pending = &op
@@ -411,7 +470,7 @@ func (state *AgentState) toolStep(ctx context.Context, c Connection, execute Exe
 	data := ""
 	var search *WebSearchResult
 	if toolErr == nil {
-		data, search, toolErr = state.executeAgentTool(ctx, c, execute, &op, name, raw)
+		data, search, toolErr = state.executeAgentTool(ctx, c, execute, &op, name, raw, persist)
 	}
 
 	op.Status = "succeeded"
@@ -429,16 +488,17 @@ func (state *AgentState) toolStep(ctx context.Context, c Connection, execute Exe
 		data = string(payload)
 	}
 	state.Result.Operations[operationIndex] = op
-	state.Result.Actions = append(state.Result.Actions, Action{Search: search, Round: state.Result.Budget.Rounds, Tool: name, Arguments: string(raw), Result: data, Success: toolErr == nil, DurationMS: time.Since(toolStarted).Milliseconds()})
+	state.Result.Actions = append(state.Result.Actions, Action{ResultRef: op.ID, Search: search, Round: state.Result.Budget.Rounds, Tool: name, Arguments: string(raw), Result: data, Success: toolErr == nil, DurationMS: time.Since(toolStarted).Milliseconds()})
 	toolContent := data
 	if state.CacheStable && toolErr == nil {
-		toolContent = compactToolResult(name, raw, data)
+		toolContent = modelToolResult(name, raw, data, op.ID)
 	}
 	if op.Approved && op.Arguments != call.Function.Arguments {
-		toolContent = "Human-reviewed arguments (use these instead of the original proposal): " + op.Arguments + "\nActual result: " + data
+		toolContent = "Human-reviewed arguments (use these instead of the original proposal): " + op.Arguments + "\nActual result: " + toolContent
 	}
 	state.appendMessage(Message{Role: "tool", Content: toolContent, ToolCallID: call.ID})
 	state.Pending = state.Pending[1:]
+
 	if err := persist(); err != nil {
 		return err
 	}
@@ -489,11 +549,12 @@ func ReviewAgent(ctx context.Context, state *AgentState, in ReviewInput, prepare
 			r.Budget.RoundLimit = r.Budget.Rounds + 1
 		}
 	case "continue":
-		if r.Pause != "budget" || r.Budget.RoundLimit >= 200 || r.Budget.OperationLimit >= 1000 {
+		if r.Pause != "budget" {
 			return ErrAgentReview
 		}
-		r.Budget.RoundLimit = min(200, r.Budget.RoundLimit+state.Input.MaxRounds)
-		r.Budget.OperationLimit = min(1000, r.Budget.OperationLimit+state.Input.MaxOperations)
+		r.Budget.RoundLimit += state.Input.MaxRounds
+		r.SegmentCount = max(1, r.SegmentCount) + 1
+		r.Budget.OperationLimit += state.Input.MaxOperations
 		if r.Budget.TokenLimit > 0 {
 			r.Budget.TokenLimit += state.Input.TokenBudget
 		}
@@ -559,14 +620,20 @@ func ReviewAgent(ctx context.Context, state *AgentState, in ReviewInput, prepare
 
 func (state *AgentState) catalog() []map[string]any {
 	all := AllTools(state.Input.Mode, state.Input.AllowDelete)
+	if !state.Input.EnableSubagents {
+		all = slices.DeleteFunc(all, func(t map[string]any) bool { return toolName(t) == "delegate_tasks" })
+	}
 	if !state.SearchEnabled {
 		all = slices.DeleteFunc(all, func(t map[string]any) bool { return toolName(t) == "web_search" })
 	}
 	return all
 }
 
-func (state *AgentState) executeAgentTool(ctx context.Context, c Connection, execute Executor, op *Operation, name string, raw json.RawMessage) (string, *WebSearchResult, error) {
+func (state *AgentState) executeAgentTool(ctx context.Context, c Connection, execute Executor, op *Operation, name string, raw json.RawMessage, persist func() error) (string, *WebSearchResult, error) {
 	switch name {
+	case "delegate_tasks":
+		data, err := state.delegateTasks(ctx, c, raw, execute, persist)
+		return data, nil, err
 	case "web_search":
 		if !state.SearchEnabled {
 			return "", nil, tcylocale.Error("searchDisabled")
@@ -587,6 +654,12 @@ func (state *AgentState) executeAgentTool(ctx context.Context, c Connection, exe
 		}
 		encoded, err := json.Marshal(map[string]any{"verified": search.Verified, "query": search.Query, "summary": search.Summary, "sources": search.Sources})
 		return string(encoded), &search, err
+	case "view_attachment":
+		data, err := state.viewAttachment(c, raw)
+		return data, nil, err
+	case "read_tool_result":
+		data, err := state.readToolResult(raw)
+		return data, nil, err
 	case "find_tools":
 		data, err := state.discover(raw)
 		return data, nil, err

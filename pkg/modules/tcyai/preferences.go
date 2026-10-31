@@ -24,17 +24,19 @@ import (
 
 // Profiles contain execution preferences, never messages, credentials or permissions grants.
 type AssistantOptions struct {
-	SearchMode      string  `json:"search_mode,omitempty" enum:"auto,off,required" doc:"Per-turn web search policy: auto lets the model choose; off forbids search execution; required forces a search attempt before answering."`
-	ConnectionID    string  `json:"connection_id" maxLength:"80" doc:"Empty follows the configured assistant connection."`
-	ProjectID       int64   `json:"project_id" minimum:"0" doc:"Context project only, not a permission boundary."`
-	Mode            string  `json:"mode" enum:"read,write" doc:"Read only or execute writes within existing account permissions."`
-	AllowDelete     bool    `json:"allow_delete" doc:"Enable task deletion; destructive actions still require review."`
-	Approval        string  `json:"approval" enum:"smart,review,auto" doc:"Review policy; destructive and notification operations always require review."`
-	WriteProjectIDs []int64 `json:"write_project_ids" maxItems:"50" doc:"Optional additional write restriction, never a permission grant."`
-	MaxRounds       int     `json:"max_rounds" minimum:"1" maximum:"40" doc:"Model requests per execution segment."`
-	MaxOperations   int     `json:"max_operations" minimum:"1" maximum:"100" doc:"Tool operations per execution segment."`
-	TimeoutSeconds  int     `json:"timeout_seconds" minimum:"1" maximum:"600" doc:"Execution segment deadline in seconds."`
-	TokenBudget     int64   `json:"token_budget" minimum:"0" maximum:"1000000" doc:"Provider reported token soft limit; zero disables it."`
+	StopAtSegmentLimit bool    `json:"stop_at_segment_limit,omitempty" doc:"Pause at segment limits instead of automatically continuing. Explicit token budgets always pause."`
+	EnableSubagents    bool    `json:"enable_subagents,omitempty" doc:"Experimental parallel read-only workers with isolated context; writes stay with the parent."`
+	SearchMode         string  `json:"search_mode,omitempty" enum:"auto,off,required" doc:"Per-turn web search policy: auto lets the model choose; off forbids search execution; required forces a search attempt before answering."`
+	ConnectionID       string  `json:"connection_id" maxLength:"80" doc:"Empty follows the configured assistant connection."`
+	ProjectID          int64   `json:"project_id" minimum:"0" doc:"Context project only, not a permission boundary."`
+	Mode               string  `json:"mode" enum:"read,write" doc:"Read only or execute writes within existing account permissions."`
+	AllowDelete        bool    `json:"allow_delete" doc:"Enable task deletion; destructive actions still require review."`
+	Approval           string  `json:"approval" enum:"smart,review,auto" doc:"Review policy; destructive and notification operations always require review."`
+	WriteProjectIDs    []int64 `json:"write_project_ids" maxItems:"50" doc:"Optional additional write restriction, never a permission grant."`
+	MaxRounds          int     `json:"max_rounds" minimum:"1" maximum:"40" doc:"Model requests per execution segment."`
+	MaxOperations      int     `json:"max_operations" minimum:"1" maximum:"100" doc:"Tool operations per execution segment."`
+	TimeoutSeconds     int     `json:"timeout_seconds" minimum:"1" maximum:"600" doc:"Execution segment deadline in seconds."`
+	TokenBudget        int64   `json:"token_budget" minimum:"0" maximum:"1000000" doc:"Provider reported token soft limit; zero disables it."`
 }
 type AssistantProfile struct {
 	ID      string           `json:"id" minLength:"1" maxLength:"80" doc:"Stable custom profile ID, prefixed custom-."`
@@ -92,7 +94,7 @@ func SavePreferences(uid int64, p AssistantPreferences) (AssistantPreferences, e
 
 func runOptions(input RunInput) *AssistantOptions {
 	in := normalizeRun(input)
-	return &AssistantOptions{SearchMode: in.SearchMode, ConnectionID: in.ConnectionID, ProjectID: in.ProjectID, Mode: in.Mode,
+	return &AssistantOptions{StopAtSegmentLimit: in.StopAtSegmentLimit, EnableSubagents: in.EnableSubagents, SearchMode: in.SearchMode, ConnectionID: in.ConnectionID, ProjectID: in.ProjectID, Mode: in.Mode,
 		AllowDelete: in.AllowDelete && in.Mode == "write", Approval: in.Approval,
 		WriteProjectIDs: append([]int64{}, in.WriteProjectIDs...), MaxRounds: in.MaxRounds,
 		MaxOperations: in.MaxOperations, TimeoutSeconds: in.TimeoutSeconds, TokenBudget: in.TokenBudget}

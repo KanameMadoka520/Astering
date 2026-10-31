@@ -11,7 +11,7 @@
 | 可移植导出 | `pkg/modules/tcyai/exports.go` | Markdown、相对附件 ZIP、结构化 JSON |
 | 人设 | `pkg/modules/tcyai/persona.go` | 只影响表达，不授予权限 |
 | HTTP 适配 | `pkg/routes/api/v2/tcy_ai*.go` | 人类账号认证、配置与 Vikunja 执行器 |
-| UI 功能目录 | `frontend/src/components/ai/` | 消息、审核、偏好、调试、`attachments/` 与 `export/` |
+| UI 功能目录 | `frontend/src/components/ai/` | 消息、审核（含看板分组影响预览）、偏好、调试、`timeline/`（执行时间线）、`RunStatus.vue`（用量口径）、`attachments/` 与 `export/` |
 | 悬浮宿主 | `frontend/src/components/ai/FloatingArona.vue` | 延迟加载同一聊天组件、账户隔离、页面上下文和任务弹窗层级；收起不停止任务 |
 | 页面装配 | `frontend/src/views/TcyAssistant.vue` | 路由上下文、输入、会话选择和站点布局 |
 | 客户端适配 | `frontend/src/client/queries/{tcyAi,tcyConversations,conversationEvents,chatAttachments,assistantPreferences}.ts` | 生成客户端、账号上下文防护与缓存 |
@@ -26,6 +26,13 @@
 3. 替换生成客户端和查询适配层。UI 依赖 Vue 3、TanStack Query、i18n、通用按钮/图标与上传中心；保留上传进度、取消和账号切换防护。
 4. 替换站点路由、项目选择器和通知。运行附件隔离/去重/分支回收、四协议、多端导出及原有审核/恢复回归测试。
 5. 遵守仓库 AGPL-3.0 许可证，保留相应声明。此模块不依赖 GitHub Actions。
+
+## 执行时间线、用量口径与显示偏好
+
+- 每轮模型请求的中间回复、服务商实际返回的思考、工具调用（参数摘要、状态、结果）、自动压缩与实验子任务都按轮次留在时间线里，下一轮不会覆盖上一轮；最终回答只在时间线下方出现一次。数据全部来自服务器保存的 `steps/actions/operations/auto_compactions/subagents`，离开重开、刷新、浮窗与完整页面看到的内容一致。纯推导规则在 `frontend/src/helpers/aronaTimeline.ts`。
+- 用量分三种口径，互不混用（`frontend/src/helpers/aronaRunMetrics.ts`）：「本次/最后一次请求」只看一轮模型请求；「当前上下文」取后端 `context_status`（标明服务商报告或估算），旧记录退回最近一次已报告请求的输入，缓存命中的 token 仍占上下文；「本轮累计」以 `RunResult.usage` 为准，它已含联网搜索、自动压缩和子任务，前端只做分项说明，不重复相加，进行中的请求单列为临时值。容量为 0 时不计算百分比，未报告的数字显示为未知。
+- 显示偏好（中间回复、服务商思考、工具详情的默认展开）只保存在本设备，按账户与 API 地址隔离（`arona-display:v1:*`），只影响呈现，不删除服务器上的任何记录。
+- 聊天一次选择多张图片只询问一次原图/WebP（`chooseImageBatch` 的预设经仅客户端请求头传给上传传输层，发送前剥离），逐个上传，单个失败可重试且不再询问；附件也可从网盘选择（`from-drive`，只增加引用，不复制文件）。v32 起新上传的聊天附件与网盘共用同一份文件，存储端不再单独加密；此前的加密附件保持可读，会话记录本身仍加密保存。
 
 ## 存储与计量
 

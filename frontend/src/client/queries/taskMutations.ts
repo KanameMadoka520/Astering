@@ -652,7 +652,7 @@ async function refreshServerTaskMembership(client: QueryClient, scope: ServerCha
 
 // The write itself succeeded; only the board view of it may lag. A failed board keeps the patched
 // cards on screen and is marked stale, so its next mount reloads it instead of trusting the patch.
-async function reconcileServerBoards(client: QueryClient, keys: readonly QueryKey[]) {
+export async function reconcileServerBoards(client: QueryClient, keys: readonly QueryKey[]) {
 	const failed: QueryKey[] = []
 	await Promise.all(keys.map(key => refreshAgentBoards(client, [key]).catch(cause => {
 		// Another account or API: the cache is being replaced anyway.

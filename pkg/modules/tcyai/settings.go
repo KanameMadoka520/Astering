@@ -37,9 +37,11 @@ import (
 )
 
 type Connection struct {
-	WebSearchProtocol string `json:"web_search_protocol,omitempty" enum:",deepseek,openai-responses,openai-chat,anthropic,gemini" doc:"Explicit search adapter; empty disables search. Independent of chat protocol and model name."`
-	WebSearchBaseURL  string `json:"web_search_base_url,omitempty" doc:"Optional search API base on the same origin as this connection. Empty uses the chat base (official DeepSeek uses /v1)."`
-	WebSearchModel    string `json:"web_search_model,omitempty" maxLength:"150" doc:"Optional search model; empty uses this connection model. DeepSeek search does not use a model."`
+	AutoCompactTokens  int64  `json:"auto_compact_tokens,omitempty" minimum:"0" maximum:"9007199254740991" doc:"Soft input threshold for automatic compaction; zero derives from declared capacity or uses a 128000-token policy, never a capacity claim."`
+	DisableAutoCompact bool   `json:"disable_auto_compact,omitempty" doc:"Disable automatic context checkpoints for this connection."`
+	WebSearchProtocol  string `json:"web_search_protocol,omitempty" enum:",deepseek,openai-responses,openai-chat,anthropic,gemini" doc:"Explicit search adapter; empty disables search. Independent of chat protocol and model name."`
+	WebSearchBaseURL   string `json:"web_search_base_url,omitempty" doc:"Optional search API base on the same origin as this connection. Empty uses the chat base (official DeepSeek uses /v1)."`
+	WebSearchModel     string `json:"web_search_model,omitempty" maxLength:"150" doc:"Optional search model; empty uses this connection model. DeepSeek search does not use a model."`
 
 	Persona          string             `json:"-"`
 	ContextWindow    int64              `json:"context_window,omitempty" minimum:"0" maximum:"9007199254740991" doc:"Declared model context capacity in tokens; zero uses known provider metadata or remains unknown."`

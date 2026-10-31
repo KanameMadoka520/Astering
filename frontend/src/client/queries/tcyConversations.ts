@@ -1,10 +1,12 @@
 import {onScopeDispose, ref, shallowReactive, toValue, watch, type MaybeRefOrGetter, type Ref} from 'vue'
 import {
+	hashKey,
 	keepPreviousData,
 	queryOptions,
 	useMutation,
 	useQueryClient,
 	type QueryClient,
+	type QueryKey,
 } from '@tanstack/vue-query'
 import {
 	tasksRead,
@@ -32,7 +34,8 @@ import {assertClientRequestContext, captureClientRequestContext} from '@/client/
 import {PERMISSIONS} from '@/constants/permissions'
 import {contextMutationOptions} from './contextMutation'
 import {commentKeys} from './comments'
-import {kanbanKeys} from './kanban'
+import {bucketKeys, kanbanKeys} from './kanban'
+import {agentBoardKeys} from './kanbanServerRefresh'
 import {projectAnnouncementKeys} from './projectAnnouncements'
 import {taskRoutineKeys} from './taskRoutines'
 import {labelKeys} from './labels'
@@ -49,7 +52,7 @@ import {
 	isStaleTask,
 	mapTaskEverywhere,
 } from './taskCache'
-import {applyServerTaskChanges, type ServerTaskChange} from './taskMutations'
+import {applyServerTaskChanges, reconcileServerBoards, type ServerTaskChange} from './taskMutations'
 import {normalizeTask, taskKeys, type TaskResponse} from './tasks'
 
 export const conversationKeys = {
@@ -188,6 +191,8 @@ export type AgentReceipt = {
 type TaskEntity = Task & {id: number, project_id: number}
 type ProjectEntity = Project & {id: number, title: string}
 type LabelEntity = Label & {id: number}
+// A kanban view; saved filter boards keep their negative pseudo project id.
+type AgentBoard = {project: number, view: number}
 
 type AgentCacheOperation =
 	| {kind: 'task', task: TaskEntity}
@@ -198,6 +203,7 @@ type AgentCacheOperation =
 	| {kind: 'unassign', task: number, user: number}
 	| {kind: 'project', project: ProjectEntity}
 	| {kind: 'createdProject', project: ProjectEntity}
+	| {kind: 'viewBuckets', project: number, view: number, defaultBucket: number, doneBucket: number}
 
 export type AgentRefreshPlan = {
 	operations: AgentCacheOperation[]
@@ -215,6 +221,11 @@ export type AgentRefreshPlan = {
 	// Projects whose announcement changed, and tasks whose routine summary or history changed.
 	announcements: number[]
 	routines: number[]
+	// Boards whose buckets a bucket tool changed, tasks it moved between buckets (other open boards
+	// showing them follow), and buckets renamed or deleted (open task details embedding them reload).
+	boards: AgentBoard[]
+	movedTasks: number[]
+	buckets: number[]
 }
 
 const READ_ONLY_TOOLS = new Set(['find_tools', 'ask_user', 'web_search', 'invoke_tool'])
@@ -222,6 +233,8 @@ const READ_ONLY_TOOLS = new Set(['find_tools', 'ask_user', 'web_search', 'invoke
 const TIMELINE_FIELDS = ['start_date', 'end_date', 'due_date', 'percent_done', 'done', 'project_id']
 // Project fields shown on the timeline and in the lifecycle history.
 const PROJECT_DISPLAY_FIELDS = ['title', 'hex_color']
+// move_task_to_bucket effects that change a task's done state or dates, which the timeline shows.
+const TIMELINE_MOVE_EFFECTS = ['marks_task_done', 'reopens_task', 'repeating_task_advances_dates']
 
 // Mirrors the server's write classification (tcyai.IsWriteTool).
 export function isAgentWriteTool(tool: string): boolean {
@@ -245,6 +258,33 @@ function parseJSON(value?: string): unknown {
 
 function positiveId(value: unknown): number | undefined {
 	return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined
+}
+
+// Bucket tools take a real project or a saved filter (negative id); Favorites (-1) has no editable board.
+function agentBoard(args: Record<string, unknown>): AgentBoard | undefined {
+	const project = args.project_id
+	const view = positiveId(args.view_id)
+	if (typeof project !== 'number' || !Number.isInteger(project) || project === 0 || project === -1) return undefined
+	return view === undefined ? undefined : {project, view}
+}
+
+function bucketRef(value: unknown): value is number {
+	return typeof value === 'number' && Number.isInteger(value) && value >= 0
+}
+
+// The view's default and done bucket as the server stored them after set_view_buckets or delete_bucket.
+function viewBucketsPatch(board: AgentBoard | undefined, result: unknown): AgentCacheOperation | undefined {
+	const view = isRecord(result) && isRecord(result.view) ? result.view : undefined
+	if (!board || !view || (view.id !== undefined && view.id !== board.view)) return undefined
+	const {default_bucket_id: defaultBucket, done_bucket_id: doneBucket} = view
+	if (!bucketRef(defaultBucket) || !bucketRef(doneBucket)) return undefined
+	return {
+		kind: 'viewBuckets',
+		project: board.project,
+		view: board.view,
+		defaultBucket,
+		doneBucket,
+	}
 }
 
 function isTaskEntity(value: unknown): value is TaskEntity {
@@ -387,6 +427,9 @@ function emptyPlan(): AgentRefreshPlan {
 		timeline: false,
 		announcements: [],
 		routines: [],
+		boards: [],
+		movedTasks: [],
+		buckets: [],
 	}
 }
 
@@ -504,6 +547,41 @@ export function planAgentRefresh(receipts: readonly AgentReceipt[]): AgentRefres
 				}
 				break
 			}
+			case 'move_task_to_bucket': {
+				const task = positiveId(args.task_id)
+				const board = agentBoard(args)
+				if (task) {
+					plan.refetchTasks.push(task)
+					plan.movedTasks.push(task)
+				}
+				if (board) plan.boards.push(board)
+				// Entering or leaving the done bucket marks the task done or reopens it: filters may now differ.
+				markLists('active')
+				const effects = isRecord(result) && Array.isArray(result.effects) ? result.effects : undefined
+				plan.timeline ||= !effects
+					|| effects.some((effect: unknown) => typeof effect === 'string' && TIMELINE_MOVE_EFFECTS.includes(effect))
+				break
+			}
+			case 'create_bucket':
+			case 'update_bucket':
+			case 'set_view_buckets':
+			case 'delete_bucket': {
+				const board = agentBoard(args)
+				if (board) plan.boards.push(board)
+				else markLists('none')
+				const bucket = positiveId(args.bucket_id)
+				if (bucket && (tool === 'update_bucket' || tool === 'delete_bucket')) plan.buckets.push(bucket)
+				if (tool === 'set_view_buckets' || tool === 'delete_bucket') {
+					// The view's default and done bucket live in the project caches.
+					const patch = viewBucketsPatch(board, result)
+					if (patch) plan.operations.push(patch)
+					else if (board && board.project > 0) plan.refetchProjects.push(board.project)
+					plan.projectList = true
+				}
+				// The deleted bucket's tasks move without changing their done state.
+				if (tool === 'delete_bucket') markLists('none')
+				break
+			}
 			default: {
 				// Unknown write: the named records and stale lists only, never a refetch of everything.
 				const task = id ?? positiveId(args.task_id)
@@ -523,6 +601,9 @@ export function planAgentRefresh(receipts: readonly AgentReceipt[]): AgentRefres
 	plan.comments = [...new Set(plan.comments)]
 	plan.announcements = [...new Set(plan.announcements)]
 	plan.routines = [...new Set(plan.routines)]
+	plan.boards = [...new Map(plan.boards.map(board => [`${board.project}:${board.view}`, board])).values()]
+	plan.movedTasks = [...new Set(plan.movedTasks)]
+	plan.buckets = [...new Set(plan.buckets)]
 	return plan
 }
 
@@ -574,6 +655,25 @@ function patchAgentChanges(client: QueryClient, plan: AgentRefreshPlan) {
 					? mergeProject(current, operation.project)
 					: current)
 				break
+			case 'viewBuckets': {
+				const {project, view, defaultBucket, doneBucket} = operation
+				const update = (current: ProjectResponse): ProjectResponse => ({
+					...current,
+					views: current.views.map(item => item.id === view
+						? {...item, default_bucket_id: defaultBucket, done_bucket_id: doneBucket}
+						: item),
+				})
+				// Saved filters exist only in the navigation list; they have no detail query.
+				client.setQueryData<ProjectListResult>(projectKeys.list(), current => current
+					? mapProjectNavigationItem(current, project, update)
+					: current)
+				if (project > 0) {
+					client.setQueryData<ProjectResponse>(projectKeys.detail(project), current => current
+						? update(current)
+						: current)
+				}
+				break
+			}
 			case 'createdProject': {
 				// The creating account administrates the new project.
 				const created = normalizeProject({...operation.project, max_permission: PERMISSIONS.ADMIN})
@@ -699,11 +799,30 @@ function embeddedRequests(client: QueryClient, plan: AgentRefreshPlan): Map<numb
 	return requests
 }
 
+// Open boards whose buckets changed, and open boards showing a task moved between buckets.
+function changedBoardKeys(client: QueryClient, plan: AgentRefreshPlan): QueryKey[] {
+	const keys = new Map<string, QueryKey>()
+	const add = (key: QueryKey) => keys.set(hashKey(key), key)
+	plan.boards.forEach(({project, view}) => client.getQueryCache()
+		.findAll({queryKey: kanbanKeys.view(project, view), type: 'active'})
+		.forEach(query => add(query.queryKey)))
+	agentBoardKeys(client, {projectIds: [], taskIds: plan.movedTasks}).forEach(add)
+	return [...keys.values()]
+}
+
+function embedsBucket(task: unknown, buckets: readonly number[]): boolean {
+	return isRecord(task) && Array.isArray(task.buckets) && task.buckets.some((bucket: unknown) =>
+		isRecord(bucket) && typeof bucket.id === 'number' && buckets.includes(bucket.id))
+}
+
 async function settleAgentChanges(client: QueryClient, plan: AgentRefreshPlan) {
 	const changes = taskChanges(plan)
 	const updated = changes.flatMap(change => change.kind === 'updated' ? [change.task.id!] : [])
-	const patchedProjects = plan.operations
-		.flatMap(operation => operation.kind === 'project' ? [operation.project.id] : [])
+	const patchedProjects = plan.operations.flatMap(operation => {
+		if (operation.kind === 'project') return [operation.project.id]
+		return operation.kind === 'viewBuckets' && operation.project > 0 ? [operation.project] : []
+	})
+	const boards = changedBoardKeys(client, plan)
 	// Task changes refresh membership themselves: affected open lists refetch once, affected boards reload their loaded pages.
 	const lists = changes.length ? false : plan.taskLists
 	await Promise.all([
@@ -726,6 +845,23 @@ async function settleAgentChanges(client: QueryClient, plan: AgentRefreshPlan) {
 		plan.timeline ? client.invalidateQueries({queryKey: projectTimelineKeys.all}) : undefined,
 		...plan.announcements.map(id => client.invalidateQueries({queryKey: projectAnnouncementKeys.detail(id)})),
 		...plan.routines.map(id => client.invalidateQueries({queryKey: taskRoutineKeys.task(id)})),
+		...plan.boards.flatMap(({project, view}) => [
+			client.invalidateQueries({queryKey: bucketKeys.list(project, view)}),
+			// A closed board reloads when it opens again; open ones are reconciled below.
+			client.invalidateQueries({
+				queryKey: kanbanKeys.view(project, view),
+				refetchType: 'none',
+				predicate: query => !query.isActive(),
+			}),
+		]),
+		plan.buckets.length
+			? client.invalidateQueries({
+				queryKey: taskKeys.details,
+				predicate: query => embedsBucket(query.state.data, plan.buckets),
+			})
+			: undefined,
+		// Every loaded page of an open board reloads, as after task writes; a plain refetch keeps only the first page.
+		reconcileServerBoards(client, boards),
 	])
 }
 

@@ -19,11 +19,15 @@ import AronaWelcome from '@/components/ai/AronaWelcome.vue'
 import {suggestionOptions, suggestionProfileSwitch, type WelcomeSuggestion} from '@/components/ai/welcomeSuggestions'
 import ChatTurnCard from '@/components/ai/ChatTurnCard.vue'
 import ChatAttachmentCard from '@/components/ai/attachments/ChatAttachmentCard.vue'
+import ChatUploadTray from '@/components/ai/attachments/ChatUploadTray.vue'
+import AttachMenu from '@/components/ai/attachments/AttachMenu.vue'
+import DrivePicker from '@/components/drive/DrivePicker.vue'
 import ConversationExport from '@/components/ai/export/ConversationExport.vue'
-import UploadProgressRow from '@/components/misc/UploadProgressRow.vue'
 import {chatBytes} from '@/components/ai/export/files'
-import {useUploadChatAttachment, useRemoveChatAttachment} from '@/client/queries/chatAttachments'
-import {uploads} from '@/helpers/uploadTransport'
+import {useAttachDriveFileToChat, useRemoveChatAttachment} from '@/client/queries/chatAttachments'
+import type {DriveEntry} from '@/client/queries/drive'
+import {CHAT_UPLOAD_MAX_BYTES, CHAT_UPLOAD_MAX_FILES, useChatAttachmentUploads} from '@/composables/useChatAttachmentUploads'
+import {error, translatedError} from '@/message'
 import BaseButton from '@/components/base/BaseButton.vue'
 import {
 	conversationQuery,
@@ -169,19 +173,19 @@ const assignedModelName = computed(() => settings.data.value?.connections.find(c
 	|| t('chat.defaultModel'))
 const exportOpen = ref(false)
 const fileInput = ref<HTMLInputElement>()
-const uploadFile = useUploadChatAttachment()
 const removeFile = useRemoveChatAttachment()
-const uploadingFiles = ref(false)
-let fileController: AbortController | undefined
+const attachDrive = useAttachDriveFileToChat()
+const driveOpen = ref(false)
+// Set for a whole Drive pick: creating a conversation, opening it and attaching. Between those steps neither
+// mutation is pending, and a second pick in a new chat would create another conversation.
+const drivePicking = ref(false)
+const chatUploads = useChatAttachmentUploads({resolveConversation})
 const draftFiles = computed(() => active.value?.draft_attachments ?? [])
 const imageModel = computed(() => {
 	const model = chatModels.value.find(c => c.id === selectedConnection.value)
 	return (model?.resolved?.input_types ?? model?.input_types ?? []).includes('image')
 })
 const imageMismatch = computed(() => !imageModel.value && draftFiles.value.some(f => /^image\/(png|jpeg|webp|gif)$/.test(f.mime || '')))
-const attachmentProgress = computed(() => uploads.value
-	.filter(u => u.targetPath.endsWith(`/ai/conversations/${chatID.value}/attachments`))
-	.slice(0, 3))
 
 type Notice = {text: string, tone: 'info' | 'error'}
 const notice = ref<Notice>()
@@ -199,31 +203,60 @@ function dismissNotice() {
 }
 onBeforeUnmount(() => clearTimeout(noticeTimer))
 
-async function addFiles(files: File[]) {
-	if (!files.length || busy.value) return
-	if (files.some(f => f.size > 32 * 1024 * 1024) || files.length + draftFiles.value.length > 16) {
-		showNotice(t('chatFiles.limits'))
-		return
-	}
-	uploadingFiles.value = true
-	fileController = new AbortController()
+// Uploads and Drive picks share this: without a conversation, the first file creates one.
+async function resolveConversation(): Promise<string | null> {
+	if (chatID.value) return chatID.value
 	const location = route.fullPath
 	const requestContext = captureClientRequestContext()
+	const created = await create.mutateAsync()
+	if (!stillHere(location) || !isClientRequestContextCurrent(requestContext)) return null
+	const id = created.id!
+	saveOptions(id, currentOptions.value, selectedProfile.value)
+	await navigateConversation(id)
+	return id
+}
+// Oversized files are reported per file in the tray; only the message's file count stops a whole selection.
+function exceedsFileLimit(count: number) {
+	if (count + draftFiles.value.length <= CHAT_UPLOAD_MAX_FILES) return false
+	showNotice(t('chatFiles.limits'))
+	return true
+}
+async function addFiles(files: File[]) {
+	if (!files.length || busy.value || exceedsFileLimit(files.length)) return
+	await chatUploads.start(files)
+}
+function chooseFiles(event: Event) {
+	const input = event.target as HTMLInputElement
+	const files = Array.from(input.files ?? [])
+	// Cleared at once, so choosing the same file again still fires a change.
+	input.value = ''
+	void addFiles(files)
+}
+function retryUploads(key?: string) {
+	const count = key ? 1 : chatUploads.items.value.filter(item => item.retryable && (item.state === 'failed' || item.state === 'cancelled')).length
+	if (busy.value || exceedsFileLimit(count)) return
+	void (key ? chatUploads.retry(key) : chatUploads.retryFailed())
+}
+// Like task attachments: the picker stays open on failure, and the mutation's error toast says why.
+// The returned attachment is not matched against the picked file: picking content that is already in the draft
+// returns the existing entry, whose id is its content hash and whose Drive file may differ.
+async function chooseDriveFile(entry: DriveEntry) {
+	if (drivePicking.value || attachDrive.isPending.value || create.isPending.value) return
+	if ((entry.file?.size ?? 0) > CHAT_UPLOAD_MAX_BYTES || draftFiles.value.length >= CHAT_UPLOAD_MAX_FILES) {
+		// The composer notice sits behind the picker, so this one is a toast.
+		error(translatedError('chatFiles.limits'))
+		return
+	}
+	drivePicking.value = true
 	try {
-		let id = chatID.value
-		if (!id) {
-			const created = await create.mutateAsync()
-			if (!stillHere(location) || !isClientRequestContextCurrent(requestContext)) return
-			id = created.id!
-			saveOptions(id, currentOptions.value, selectedProfile.value)
-			await navigateConversation(id)
-		}
-		for (const file of files) { await uploadFile.mutateAsync({id, file, signal: fileController.signal}) }
-	} catch (e) {
-		if (!isRequestContextAbort(e) && !fileController.signal.aborted) showNotice(t('chatFiles.uploadFailed'))
+		const id = await resolveConversation()
+		if (!id) return
+		await attachDrive.mutateAsync({id, fileId: entry.file_id})
+		driveOpen.value = false
+	} catch {
+		return
 	} finally {
-		uploadingFiles.value = false
-		if (fileInput.value) fileInput.value.value = ''
+		drivePicking.value = false
 	}
 }
 function pasteFiles(event: ClipboardEvent) {
@@ -251,7 +284,24 @@ function dropFiles(event: DragEvent) {
 	void addFiles(Array.from(event.dataTransfer?.files ?? []))
 }
 async function removeDraft(file: string) { try { await removeFile.mutateAsync({id: chatID.value, file}) } catch { return } }
-onBeforeUnmount(() => fileController?.abort())
+// Upload rows belong to the conversation they were chosen in; a run's own new conversation keeps them.
+watch(chatID, (_id, old) => {
+	if (old || !chatUploads.running.value) chatUploads.reset()
+})
+const composerForm = ref<HTMLFormElement>()
+// The tray leaves with its last row. Focus inside it (a removed row's button, or the status line it moved to)
+// goes to the attach button, or to the request field while attaching is unavailable, instead of the page body.
+// Runs before the render, while the tray and its focus are still in the document.
+watch(() => chatUploads.items.value.length > 0, (shown, wasShown) => {
+	if (shown || !wasShown || !document.activeElement?.closest('.chat-upload-tray')) return
+	void nextTick(() => {
+		if (document.activeElement && document.activeElement !== document.body) return
+		const trigger = composerForm.value?.querySelector<HTMLButtonElement>('.attach-menu-trigger:not(:disabled)')
+		if (trigger) trigger.focus()
+		// On touch screens the request field would open the on-screen keyboard.
+		else if (window.matchMedia('(pointer: fine)').matches) composerInput.value?.focus()
+	})
+})
 const historyDialog = ref<{kind: 'rename' | 'delete', conversation: ConversationSummary}>()
 const newTitle = ref('')
 const showSystemPrompt = ref(false)
@@ -269,6 +319,8 @@ const maxRounds = ref(8)
 const maxOperations = ref(20)
 const timeoutSeconds = ref(120)
 const tokenBudget = ref(0)
+const stopAtSegmentLimit = ref(false)
+const enableSubagents = ref(false)
 const preferences = useQuery(assistantPreferencesQuery())
 const preferencesOpen = ref(false)
 const selectedProfile = ref('ask')
@@ -286,6 +338,8 @@ const currentOptions = computed<AssistantOptions>(() => ({
 	max_operations: maxOperations.value,
 	timeout_seconds: timeoutSeconds.value,
 	token_budget: tokenBudget.value,
+	stop_at_segment_limit: stopAtSegmentLimit.value,
+	enable_subagents: enableSubagents.value,
 }))
 const profiles = computed(() => [
 	...builtinProfileIDs.map(id => ({id, name: t(`assistantUI.presets.${id}.name`)})),
@@ -303,6 +357,8 @@ function applyOptions(o: AssistantOptions, profile: string, remember = true) {
 	maxOperations.value = o.max_operations
 	timeoutSeconds.value = o.timeout_seconds
 	tokenBudget.value = o.token_budget
+	stopAtSegmentLimit.value = o.stop_at_segment_limit
+	enableSubagents.value = o.enable_subagents
 	selectedProfile.value = profile
 	if (remember) {
 		saveOptions(chatID.value, o, profile)
@@ -328,7 +384,8 @@ watch([() => preferences.data.value, active, chatID], ([value, conversation, id]
 	let saved: {options: AssistantOptions, profile: string} | undefined
 	try {
 		const candidate = JSON.parse(sessionStorage.getItem(optionsStorageKey(id)) || 'null')
-		if (candidate && validOptions(candidate.options) && ['read', 'write'].includes(candidate.options.mode)) saved = candidate
+		// Normalized so options stored before newer switches existed still restore them as off.
+		if (candidate && validOptions(candidate.options) && ['read', 'write'].includes(candidate.options.mode)) saved = {options: normalizeOptions(candidate.options), profile: candidate.profile}
 	} catch { /* Ignore unavailable or obsolete browser preferences. */ }
 	const last = conversation?.turns?.at(-1)?.result?.configuration
 	const defaultID = value.default_profile || 'ask'
@@ -355,7 +412,9 @@ const recording = ref(false)
 const audioStage = ref('')
 const elapsed = ref(0)
 const editingBusy = computed(() => Boolean(pendingMessage.value)
-	|| uploadingFiles.value
+	|| chatUploads.running.value
+	|| drivePicking.value
+	|| attachDrive.isPending.value
 	|| removeFile.isPending.value
 	|| Boolean(audioStage.value)
 	|| review.isPending.value
@@ -444,6 +503,8 @@ async function submit() {
 		max_operations: maxOperations.value,
 		timeout_seconds: timeoutSeconds.value,
 		token_budget: tokenBudget.value,
+		stop_at_segment_limit: stopAtSegmentLimit.value,
+		enable_subagents: enableSubagents.value,
 		page_context: JSON.stringify({page: route.name, project_id: projectID.value, task_id: contextTaskID.value || undefined}),
 		request_id: crypto.randomUUID(),
 		connection_id: selectedConnection.value,
@@ -559,40 +620,68 @@ function composerKeydown(event: KeyboardEvent) {
 }
 
 let scrollFrame = 0
+// The last position the follow animation set and the last one observed: a position above them is the user's.
+let followTop = 0
+let lastTop = 0
+let interactionAt = -Infinity
 function stopFollowing() {
 	cancelAnimationFrame(scrollFrame)
 	scrollFrame = 0
 }
+function detach() {
+	stopFollowing()
+	stickToBottom.value = false
+}
+function fromBottom(el: HTMLElement) {
+	return el.scrollHeight - el.scrollTop - el.clientHeight
+}
 function trackScroll() {
-	if (!scrollFrame && thread.value) {
-		stickToBottom.value = thread.value.scrollHeight - thread.value.scrollTop - thread.value.clientHeight < 120
-	}
+	const el = thread.value
+	if (!el) return
+	// Wheel, touch, keys and the scrollbar all move up; content that shrinks only clamps at the very bottom.
+	const movedUp = el.scrollTop < (scrollFrame ? followTop : lastTop) - 1 && fromBottom(el) > 2
+	lastTop = el.scrollTop
+	if (movedUp) detach()
+	else if (!scrollFrame) stickToBottom.value = fromBottom(el) < 120
 }
 function userScroll(event: WheelEvent) {
-	if (event.deltaY < 0) {
-		stopFollowing()
-		stickToBottom.value = false
-	}
+	if (event.deltaY < 0) detach()
+}
+function threadKeydown(event: KeyboardEvent) {
+	if (event.defaultPrevented || !['PageUp', 'ArrowUp', 'Home'].includes(event.key)) return
+	if (event.target instanceof HTMLElement && event.target.closest('input, textarea, select, [contenteditable]')) return
+	detach()
+}
+function markInteraction() {
+	interactionAt = performance.now()
 }
 function followOutput() {
-	if (!stickToBottom.value || scrollFrame) return
+	if (!stickToBottom.value || scrollFrame || !thread.value) return
 	const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 	let previous = performance.now()
+	followTop = thread.value.scrollTop
 	const follow = (now: number) => {
 		const el = thread.value
 		if (!el || !stickToBottom.value) {
 			scrollFrame = 0
 			return
 		}
+		if (el.scrollTop < followTop - 1 && fromBottom(el) > 2) {
+			scrollFrame = 0
+			stickToBottom.value = false
+			return
+		}
 		const target = el.scrollHeight - el.clientHeight
 		const distance = target - el.scrollTop
 		if (reducedMotion || Math.abs(distance) < 1 || Math.abs(distance) > el.clientHeight) {
 			el.scrollTop = target
+			followTop = el.scrollTop
 			scrollFrame = 0
 			return
 		}
 		// Time-based easing follows new text without restarting a browser smooth-scroll animation.
 		el.scrollTop += distance * (1 - Math.exp(-Math.max(8, now - previous) / 45))
+		followTop = el.scrollTop
 		previous = now
 		scrollFrame = requestAnimationFrame(follow)
 	}
@@ -603,7 +692,21 @@ function jumpToLatest() {
 	thread.value?.scrollTo({top: thread.value.scrollHeight, behavior: 'instant'})
 }
 watch([visibleTurns, () => active.value?.turns?.at(-1)?.result], followOutput, {flush: 'post'})
-onBeforeUnmount(stopFollowing)
+// Throttled Markdown, decoded images and opened details grow the thread without a data change.
+const threadContent = ref<HTMLElement>()
+let contentObserver: ResizeObserver | undefined
+onMounted(() => {
+	if (!threadContent.value || typeof ResizeObserver === 'undefined') return
+	contentObserver = new ResizeObserver(() => {
+		// Something the user just opened stays where it is instead of scrolling away.
+		if (performance.now() - interactionAt > 300) followOutput()
+	})
+	contentObserver.observe(threadContent.value)
+})
+onBeforeUnmount(() => {
+	stopFollowing()
+	contentObserver?.disconnect()
+})
 
 async function processAudio(file: Blob, filename: string) {
 	if (file.size > 16 * 1024 * 1024) {
@@ -913,6 +1016,9 @@ onBeforeUnmount(() => {
 						<summary>{{ t('chatFiles.storageLine', {bytes: chatBytes(active.storage.total_bytes), count: active.storage.attachment_count}) }}</summary>
 						<p>{{ t('chatFiles.storageDetail', {record: chatBytes(active.storage.record_bytes), files: chatBytes(active.storage.attachment_bytes)}) }}</p>
 						<p>{{ t('chatFiles.storageHint') }}</p>
+						<p v-if="active.storage.drive_attachment_count">
+							{{ t('chatFiles.storageDrive', {count: active.storage.drive_attachment_count, bytes: chatBytes(active.storage.drive_attachment_bytes)}) }}
+						</p>
 						<p v-if="active.storage.missing_count">
 							{{ t('chatFiles.missingCount', {count: active.storage.missing_count}) }}
 						</p>
@@ -985,6 +1091,8 @@ onBeforeUnmount(() => {
 					@wheel.passive="userScroll"
 					@touchstart.passive="stopFollowing"
 					@pointerdown="stopFollowing"
+					@keydown="threadKeydown"
+					@click.capture="markInteraction"
 				>
 					<AronaWelcome
 						v-if="!visibleTurns.length"
@@ -992,22 +1100,28 @@ onBeforeUnmount(() => {
 						:disabled="!optionsReady"
 						@choose="applySuggestion"
 					/>
-					<TransitionGroup
-						name="message-reveal"
-						:css="revealTurns"
+					<!-- Observed for size changes; unstyled, so the turns lay out as before. -->
+					<div
+						ref="threadContent"
+						class="conversation-content"
 					>
-						<ChatTurnCard
-							v-for="turn in visibleTurns"
-							:key="turn.request_id || turn.id"
-							:turn="turn"
-							:sending="turn === pendingMessage?.turn"
-							:conversation-id="chatID"
-							:busy="busy"
-							:review-busy="review.isPending.value || action.isPending.value"
-							@review="reviewOperation"
-							@fork="manage('fork', $event)"
-						/>
-					</TransitionGroup>
+						<TransitionGroup
+							name="message-reveal"
+							:css="revealTurns"
+						>
+							<ChatTurnCard
+								v-for="turn in visibleTurns"
+								:key="turn.request_id || turn.id"
+								:turn="turn"
+								:sending="turn === pendingMessage?.turn"
+								:conversation-id="chatID"
+								:busy="busy"
+								:review-busy="review.isPending.value || action.isPending.value"
+								@review="reviewOperation"
+								@fork="manage('fork', $event)"
+							/>
+						</TransitionGroup>
+					</div>
 				</div>
 				<div
 					v-if="needsSetup && visibleTurns.length"
@@ -1045,6 +1159,7 @@ onBeforeUnmount(() => {
 						</XButton>
 					</p>
 					<form
+						ref="composerForm"
 						class="composer"
 						:class="{'is-drop-target': dragging}"
 						@dragenter="dragEnter"
@@ -1059,7 +1174,7 @@ onBeforeUnmount(() => {
 							type="file"
 							multiple
 							class="hidden-input"
-							@change="addFiles(Array.from(($event.target as HTMLInputElement).files ?? []))"
+							@change="chooseFiles"
 						>
 						<div
 							v-if="draftFiles.length"
@@ -1075,16 +1190,17 @@ onBeforeUnmount(() => {
 								@remove="removeDraft"
 							/>
 						</div>
-						<div
-							v-if="uploadingFiles || attachmentProgress.some(u => ['uploading', 'processing', 'error'].includes(u.stage))"
-							class="attachment-upload-progress"
-						>
-							<UploadProgressRow
-								v-for="row in attachmentProgress"
-								:key="row.id"
-								:row="row"
-							/>
-						</div>
+						<ChatUploadTray
+							v-if="chatUploads.items.value.length"
+							:items="chatUploads.items.value"
+							:running="chatUploads.running.value"
+							:disabled="busy"
+							@retry="retryUploads"
+							@retryFailed="retryUploads()"
+							@cancel="chatUploads.cancel"
+							@dismiss="chatUploads.dismiss"
+							@clearFinished="chatUploads.clearFinished"
+						/>
 						<p
 							v-if="draftFiles.length"
 							class="attachment-input-hint"
@@ -1166,15 +1282,11 @@ onBeforeUnmount(() => {
 							data-tour="ai-voice"
 						>
 							<div class="composer-context">
-								<BaseButton
-									class="toolbar-button"
+								<AttachMenu
 									:disabled="busy"
-									:title="t('chatFiles.attach')"
-									:aria-label="t('chatFiles.attach')"
-									@click="fileInput?.click()"
-								>
-									<Icon icon="paperclip" />
-								</BaseButton>
+									@device="fileInput?.click()"
+									@drive="driveOpen = true"
+								/>
 								<BaseButton
 									class="toolbar-button"
 									:title="recording ? t('tcymc.stopRecording', {seconds: elapsed}) : t('assistantUI.voiceTools')"
@@ -1299,6 +1411,7 @@ onBeforeUnmount(() => {
 							/>
 							<span>{{ t('assistantUI.nextConfiguration') }} {{ mode === 'read' ? t('assistantUI.readStatus') : t(`assistantUI.write_${approval}`) }}</span>
 							<span v-if="nextProjectTitle">· {{ nextProjectTitle }}</span>
+							<span v-if="enableSubagents">· {{ t('assistantUI.subagentsTag') }}</span>
 							<span class="enter-hint">· {{ t('chat.enterHint') }}</span>
 						</p>
 						<div
@@ -1388,6 +1501,12 @@ onBeforeUnmount(() => {
 			</form>
 		</Modal>
 
+		<DrivePicker
+			v-if="driveOpen"
+			:busy="drivePicking || attachDrive.isPending.value || create.isPending.value"
+			@close="driveOpen = false"
+			@select="chooseDriveFile"
+		/>
 		<ConversationExport
 			v-if="exportOpen && active"
 			:conversation="active"
@@ -1979,11 +2098,6 @@ summary {
 .draft-files {
 	max-block-size: 180px;
 	margin-block-end: var(--space-2);
-	overflow: auto;
-}
-
-.attachment-upload-progress {
-	max-block-size: 8rem;
 	overflow: auto;
 }
 

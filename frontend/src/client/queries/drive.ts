@@ -14,12 +14,13 @@ function entry(file: DriveFile): DriveEntry {
 	return {...file, file_id: file.file_id, revision: file.revision, category: file.category ?? '', pinned: file.pinned ?? false}
 }
 export const driveKeys = ['drive'] as const
-function invalidateDrive(client: QueryClient) {
+/** Refreshes Drive lists, totals and usages; cached file bytes and previews are kept. */
+export function invalidateDrive(client: QueryClient) {
 	return client.invalidateQueries({queryKey: driveKeys, predicate: query => query.queryKey[1] !== 'blob' && query.queryKey[1] !== 'preview'})
 }
 function translatedDriveError(cause: unknown): never {
 	const detail = (cause as {detail?: string})?.detail
-	if (detail && ['drive_missing', 'drive_changed', 'drive_trashed', 'drive_in_use', 'drive_confirm', 'drive_purge_retry'].includes(detail)) {
+	if (detail && ['drive_missing', 'drive_changed', 'drive_trashed', 'drive_in_use', 'drive_chat_unreadable', 'drive_confirm', 'drive_purge_retry'].includes(detail)) {
 		throw new Error(i18n.global.t(`drive.errors.${detail}`))
 	}
 	throw cause

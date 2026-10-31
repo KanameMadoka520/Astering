@@ -17,6 +17,7 @@
 package models
 
 import (
+	"strconv"
 	"testing"
 
 	"xorm.io/xorm"
@@ -465,4 +466,34 @@ func TestBucket_CanDelete(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, can)
 	})
+}
+
+func TestBucket_DeleteFallbackPreservesMembership(t *testing.T) {
+	for _, explicit := range []bool{false, true} {
+		t.Run(strconv.FormatBool(explicit), func(t *testing.T) {
+			db.LoadAndAssertFixtures(t)
+			s := db.NewSession()
+			defer s.Close()
+			defaultID := int64(0)
+			if explicit {
+				defaultID = 1
+			}
+			_, err := s.Where("id = ?", 4).Cols("default_bucket_id").Update(&ProjectView{DefaultBucketID: defaultID})
+			require.NoError(t, err)
+			before, err := s.Where("project_view_id = ?", 4).Count(&TaskBucket{})
+			require.NoError(t, err)
+			b := &Bucket{ID: 1, ProjectID: 1, ProjectViewID: 4}
+			require.NoError(t, b.Delete(s, &user.User{ID: 1}))
+			after, err := s.Where("project_view_id = ?", 4).Count(&TaskBucket{})
+			require.NoError(t, err)
+			assert.Equal(t, before, after)
+			orphan, err := s.Where("bucket_id = ?", 1).Count(&TaskBucket{})
+			require.NoError(t, err)
+			assert.Zero(t, orphan)
+			target, err := s.Where("bucket_id = ?", 2).Count(&TaskBucket{})
+			require.NoError(t, err)
+			assert.EqualValues(t, 14, target)
+			require.NoError(t, s.Commit())
+		})
+	}
 }

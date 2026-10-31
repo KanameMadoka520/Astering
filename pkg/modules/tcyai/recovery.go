@@ -21,7 +21,7 @@ import "context"
 // Only a model boundary with fully recorded tool replies is safe to retry.
 // Never turn an uncertain side effect into a second execution.
 func settledModelResult(r RunResult) bool {
-	if r.Stage != "model" || r.Pending != nil || r.Pause != "" || r.ErrorCode == "SAVE_FAILED" {
+	if (r.Stage != "model" && r.Stage != "compacting") || r.Pending != nil || r.Pause != "" || r.ErrorCode == "SAVE_FAILED" {
 		return false
 	}
 	for _, op := range r.Operations {
@@ -93,7 +93,7 @@ func retryableTurn(record *conversationFile, index int) bool {
 
 func retryInput(turn ChatTurn) RunInput {
 	o := turn.Result.Configuration
-	return RunInput{Message: turn.Prompt, RequestID: turn.RequestID, ConnectionID: o.ConnectionID,
+	return RunInput{StopAtSegmentLimit: o.StopAtSegmentLimit, EnableSubagents: o.EnableSubagents, Message: turn.Prompt, RequestID: turn.RequestID, ConnectionID: o.ConnectionID,
 		ProjectID: o.ProjectID, Mode: o.Mode, AllowDelete: o.AllowDelete, Approval: o.Approval,
 		WriteProjectIDs: append([]int64{}, o.WriteProjectIDs...), MaxRounds: o.MaxRounds,
 		MaxOperations: o.MaxOperations, TimeoutSeconds: o.TimeoutSeconds, TokenBudget: o.TokenBudget,

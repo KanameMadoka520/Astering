@@ -61,6 +61,7 @@ describe('suggestionOptions', () => {
 			7,
 			9,
 		],
+		stop_at_segment_limit: true,
 	}
 
 	it('keeps an explicit write restriction instead of the unrestricted preset default', () => {
@@ -77,6 +78,10 @@ describe('suggestionOptions', () => {
 		expect(options.connection_id).toBe('conn-2')
 		expect(options.project_id).toBe(7)
 		expect(options.search_mode).toBe('off')
+	})
+
+	it('keeps pausing at segment limits instead of the auto-continuing preset default', () => {
+		expect(suggestionOptions('plan', restricted).stop_at_segment_limit).toBe(true)
 	})
 
 	it('takes mode, approval and budgets from the preset', () => {

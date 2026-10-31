@@ -184,6 +184,7 @@ function addConnection() {
 		protocol: transcription ? 'openai-transcription' : 'openai-chat',
 		context_window: 0,
 		max_output_tokens: 0,
+		auto_compact_tokens: 0,
 		input_types: [],
 		output_token_field: '',
 		web_search_protocol: '',
@@ -211,6 +212,8 @@ function savePayload(settings: Settings) {
 			non_streaming: c.non_streaming,
 			context_window: c.context_window || 0,
 			max_output_tokens: c.max_output_tokens || 0,
+			auto_compact_tokens: c.auto_compact_tokens || 0,
+			disable_auto_compact: c.disable_auto_compact,
 			input_types: c.input_types,
 			output_token_field: c.output_token_field,
 		})),
@@ -512,6 +515,7 @@ function capabilityChips(c: AIConnection) {
 	if (output) chips.push(t('modelSettings.chipOutput', {tokens: compactNumber.value.format(output)}))
 	if (c.kind === 'chat' && c.web_search_protocol) chips.push(t('webSearch.title'))
 	if (c.non_streaming) chips.push(t('modelSettings.chipNonStreaming'))
+	if (c.kind === 'chat' && c.disable_auto_compact) chips.push(t('modelConfig.autoCompactOff'))
 	return chips
 }
 function usedBy(c: AIConnection) {
@@ -960,6 +964,54 @@ function connectionStatus(c: AIConnection): {tone: Tone, icon: IconProp, text: s
 							>
 								{{ t('modelConfig.saveToResolve') }}
 							</p>
+							<!-- A trigger policy, kept apart from the capacity fields so it is never read as a capacity. -->
+							<fieldset class="compact-policy">
+								<legend>{{ t('modelConfig.autoCompactTitle') }}</legend>
+								<p class="model-options__help">
+									{{ t('modelConfig.autoCompactHelp') }}
+								</p>
+								<div class="fields">
+									<div class="ai-field">
+										<label class="ai-field">
+											<span class="ai-field__label">{{ t('modelConfig.autoCompactTokens') }}</span>
+											<input
+												v-model.number="connection.auto_compact_tokens"
+												:aria-label="t('modelConfig.autoCompactTokens')"
+												:aria-describedby="`${connection.id}-compact-hint`"
+												:disabled="connection.disable_auto_compact"
+												class="input"
+												type="number"
+												min="0"
+												max="9007199254740991"
+												step="1"
+												placeholder="0"
+											>
+										</label>
+										<p
+											:id="`${connection.id}-compact-hint`"
+											class="ai-field__hint"
+										>
+											{{ t('modelConfig.autoCompactTokensHelp') }}
+										</p>
+									</div>
+									<div class="ai-field">
+										<label class="stream-choice compact-choice">
+											<input
+												v-model="connection.disable_auto_compact"
+												type="checkbox"
+												:aria-describedby="`${connection.id}-compact-off-hint`"
+											>
+											<span>{{ t('modelConfig.disableAutoCompact') }}</span>
+										</label>
+										<p
+											:id="`${connection.id}-compact-off-hint`"
+											class="ai-field__hint"
+										>
+											{{ t('modelConfig.disableAutoCompactHelp') }}
+										</p>
+									</div>
+								</div>
+							</fieldset>
 						</details>
 
 						<dl class="endpoint-info">
@@ -1534,6 +1586,28 @@ function connectionStatus(c: AIConnection): {tone: Tone, icon: IconProp, text: s
 .model-resolved {
 	color: var(--text-secondary);
 	font-size: var(--text-sm);
+}
+
+.compact-policy {
+	display: grid;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	margin: 0;
+	padding: 0;
+	border: 0;
+
+	> legend {
+		margin-block-end: var(--space-2);
+		padding: 0;
+		font-size: var(--text-md);
+		font-weight: var(--weight-semibold);
+	}
+}
+
+@media (pointer: coarse) {
+	.compact-choice {
+		min-block-size: var(--target-min);
+	}
 }
 
 .endpoint-info {

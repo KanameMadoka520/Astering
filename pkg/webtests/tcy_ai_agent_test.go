@@ -151,7 +151,7 @@ func TestTCYAIAgentExecution(t *testing.T) {
 		path := "/api/v2/ai/conversations/" + conv.ID
 		prompt, encodeErr := json.Marshal(map[string]any{"tool": tool, "args": args})
 		require.NoError(t, encodeErr)
-		body, encodeErr := json.Marshal(map[string]any{"message": string(prompt), "mode": "write", "approval": policy, "request_id": uuid.NewString(), "write_project_ids": scope, "max_operations": budget, "allow_delete": true})
+		body, encodeErr := json.Marshal(map[string]any{"message": string(prompt), "mode": "write", "approval": policy, "request_id": uuid.NewString(), "write_project_ids": scope, "max_operations": budget, "stop_at_segment_limit": budget > 0, "allow_delete": true})
 		require.NoError(t, encodeErr)
 		rec = humaRequest(t, e, "POST", path+"/messages", string(body), token, "")
 		require.Equal(t, 201, rec.Code, rec.Body.String())

@@ -12,7 +12,7 @@ import {
 	type AgentReceipt,
 } from './tcyConversations'
 import {normalizeTask, taskKeys, type PaginatedTaskResponse, type TaskResponse} from './tasks'
-import {kanbanKeys, normalizeBucket, type BoardData} from './kanban'
+import {bucketKeys, kanbanKeys, normalizeBucket, type BoardData} from './kanban'
 import {labelKeys} from './labels'
 import {commentKeys} from './comments'
 import {normalizeProject, projectKeys, type ProjectListResult, type ProjectResponse} from './projects'
@@ -31,6 +31,7 @@ vi.mock('@/client/generated', () => sdk)
 vi.mock('@/message', () => ({
 	error: vi.fn(),
 	success: vi.fn(),
+	translatedError: (key: string) => new Error(key),
 }))
 
 function action(tool: string, args: object, result: unknown, success = true): Action {
@@ -236,6 +237,63 @@ describe('receipt refresh plan', () => {
 			refetchTasks: [4],
 			refetchProjects: [2],
 			taskLists: 'none',
+		})
+	})
+
+	it('keeps a saved filter board\'s negative project id and refetches the moved task', () => {
+		const plan = planAgentRefresh([receipt('move_task_to_bucket', {
+			project_id: -2,
+			view_id: 9,
+			bucket_id: 31,
+			task_id: 3,
+		}, {
+			task: {id: 3, title: 'Card', done: true, project_id: 1},
+			bucket: {id: 31, title: 'Done'},
+			previous_bucket_id: 30,
+			effects: ['marks_task_done'],
+		})])
+		expect(plan).toMatchObject({
+			boards: [{project: -2, view: 9}],
+			refetchTasks: [3],
+			movedTasks: [3],
+			refetchProjects: [],
+			// Done state changed, so open lists follow the server.
+			taskLists: 'active',
+			timeline: true,
+			projectList: false,
+		})
+	})
+
+	it('patches a view\'s default and done bucket from what the server stored', () => {
+		const plan = planAgentRefresh([
+			receipt('set_view_buckets', {project_id: 1, view_id: 4, done_bucket_id: 9}, {
+				view: {id: 4, title: 'Kanban', default_bucket_id: 8, done_bucket_id: 9},
+			}),
+			receipt('delete_bucket', {project_id: -2, view_id: 6, bucket_id: 12}, {
+				deleted_bucket_id: 12,
+				tasks_moved: 3,
+				tasks_deleted: 0,
+				view: {default_bucket_id: 0, done_bucket_id: 0},
+			}),
+			receipt('update_bucket', {project_id: 1, view_id: 4, bucket_id: 8, title: 'Next'}, {
+				bucket: {id: 8, title: 'Next', limit: 0, order: 1},
+			}),
+		])
+		expect(plan.operations).toEqual([
+			{kind: 'viewBuckets', project: 1, view: 4, defaultBucket: 8, doneBucket: 9},
+			{kind: 'viewBuckets', project: -2, view: 6, defaultBucket: 0, doneBucket: 0},
+		])
+		expect(plan).toMatchObject({
+			boards: [{project: 1, view: 4}, {project: -2, view: 6}],
+			buckets: [12, 8],
+			movedTasks: [],
+			refetchTasks: [],
+			refetchProjects: [],
+			// Deleting moves tasks without changing their done state: lists only go stale.
+			taskLists: 'none',
+			projectList: true,
+			history: false,
+			timeline: false,
 		})
 	})
 
@@ -571,5 +629,142 @@ describe('embedded task data after receipts', () => {
 		sdk.tasksRead.mockResolvedValue({data: {...base, assignees: [kim], updated: '2026-10-31T11:00:00Z'}})
 		await apply([receipt('assign_task', {id: 3, user_id: 2}, {success: true})])
 		expect(detail().assignees).toEqual([])
+	})
+})
+
+describe('bucket receipt cache writes', () => {
+	let client: QueryClient
+	const board = kanbanKeys.board(1, 4)
+	const otherBoard = kanbanKeys.board(1, 5)
+	const boardFetch = vi.fn()
+	const card = normalizeTask({id: 3, project_id: 1, title: 'Card', bucket_id: 8})
+
+	function observe(queryKey: QueryKey) {
+		return new QueryObserver(client, {queryKey, queryFn: boardFetch, staleTime: Infinity}).subscribe(() => {})
+	}
+
+	async function apply(receipts: AgentReceipt[]) {
+		await client.getMutationCache().build(client, agentRefreshMutationOptions()).execute(planAgentRefresh(receipts))
+	}
+
+	beforeEach(() => {
+		vi.clearAllMocks()
+		client = new QueryClient({defaultOptions: {queries: {retry: false}}})
+		boardFetch.mockResolvedValue({buckets: [], pages: {}})
+		client.setQueryData<BoardData>(board, {
+			buckets: [
+				normalizeBucket({id: 8, title: 'To do', count: 1, tasks: [card]}),
+				normalizeBucket({id: 10, title: 'Doing', count: 0, tasks: []}),
+			],
+			pages: {8: 1, 10: 1},
+		})
+		client.setQueryData<BoardData>(otherBoard, {
+			buckets: [normalizeBucket({id: 20, title: 'Ideas', count: 0, tasks: []})],
+			pages: {20: 1},
+		})
+		client.setQueryData(bucketKeys.list(1, 4), [{id: 8, title: 'To do'}, {id: 10, title: 'Doing'}])
+		client.setQueryData(bucketKeys.list(1, 5), [{id: 20, title: 'Ideas'}])
+		observe(board)
+		observe(otherBoard)
+	})
+
+	it('reloads exactly the board whose buckets changed, through its loaded pages', async () => {
+		sdk.projectViewBucketsTasksList.mockResolvedValue({data: {items: [
+			{id: 8, title: 'To do', count: 1, tasks: [card]},
+			{id: 10, title: 'Doing', count: 0, tasks: []},
+			{id: 30, title: 'Review', count: 0, tasks: []},
+		]}})
+		await apply([receipt('create_bucket', {project_id: 1, view_id: 4, title: 'Review'}, {
+			bucket: {id: 30, title: 'Review', limit: 0, order: 3},
+			success: true,
+			verified: true,
+		})])
+		expect(sdk.projectViewBucketsTasksList).toHaveBeenCalledTimes(1)
+		expect(sdk.projectViewBucketsTasksList.mock.calls[0][0]).toMatchObject({path: {project: 1, view: 4}})
+		const reloaded = client.getQueryData<BoardData>(board)!
+		expect(reloaded.buckets.map(bucket => bucket.title)).toEqual(['To do', 'Doing', 'Review'])
+		expect(reloaded.pages).toEqual({8: 1, 10: 1, 30: 1})
+		// Never the generic first-page refetch, and nothing for the other view or task lists.
+		expect(boardFetch).not.toHaveBeenCalled()
+		expect(client.getQueryState(bucketKeys.list(1, 4))?.isInvalidated).toBe(true)
+		expect(client.getQueryState(bucketKeys.list(1, 5))?.isInvalidated).toBe(false)
+		expect(client.getQueryState(otherBoard)?.isInvalidated).toBe(false)
+		expect(client.getQueryData<BoardData>(otherBoard)!.buckets.map(bucket => bucket.id)).toEqual([20])
+	})
+
+	it('follows a move on a saved filter board and every open board showing the task', async () => {
+		const filterBoard = kanbanKeys.board(-2, 9)
+		client.setQueryData<BoardData>(filterBoard, {
+			buckets: [
+				normalizeBucket({id: 30, title: 'Open', count: 1, tasks: [card]}),
+				normalizeBucket({id: 31, title: 'Done', count: 0, tasks: []}),
+			],
+			pages: {30: 1, 31: 1},
+		})
+		client.setQueryData(bucketKeys.list(-2, 9), [{id: 30}, {id: 31}])
+		observe(filterBoard)
+		const done = normalizeTask({...card, done: true})
+		sdk.projectViewBucketsTasksList.mockImplementation(async ({path}: {path: {project: number, view: number}}) => ({
+			data: {items: path.project < 0
+				? [{id: 30, title: 'Open', count: 0, tasks: []}, {id: 31, title: 'Done', count: 1, tasks: [done]}]
+				: [{id: 8, title: 'To do', count: 1, tasks: [done]}, {id: 10, title: 'Doing', count: 0, tasks: []}]},
+		}))
+		await apply([receipt('move_task_to_bucket', {project_id: -2, view_id: 9, bucket_id: 31, task_id: 3}, {
+			task: {id: 3, title: 'Card', done: true, project_id: 1},
+			bucket: {id: 31, title: 'Done'},
+			previous_bucket_id: 30,
+			effects: ['marks_task_done'],
+		})])
+		const paths = sdk.projectViewBucketsTasksList.mock.calls.map(([request]) => request.path)
+		// The saved filter board keeps its negative id; the project board shows the card, the other view does not.
+		expect(paths).toHaveLength(2)
+		expect(paths).toEqual(expect.arrayContaining([{project: -2, view: 9}, {project: 1, view: 4}]))
+		expect(client.getQueryData<BoardData>(filterBoard)!.buckets.map(bucket => bucket.tasks.map(task => task.id)))
+			.toEqual([[], [3]])
+		expect(client.getQueryData<BoardData>(board)!.buckets[0].tasks[0].done).toBe(true)
+		expect(client.getQueryState(bucketKeys.list(-2, 9))?.isInvalidated).toBe(true)
+		expect(boardFetch).not.toHaveBeenCalled()
+	})
+
+	it('patches the view after a delete and reloads only task details showing the deleted bucket', async () => {
+		const project = normalizeProject({
+			id: 1,
+			title: 'Website',
+			views: [{id: 4, title: 'Kanban', view_kind: 'kanban', default_bucket_id: 8, done_bucket_id: 0}],
+		})
+		client.setQueryData<ProjectListResult>(projectKeys.list(), {
+			projects: [project],
+			favoriteProject: null,
+			savedFilterProjects: [],
+		})
+		client.setQueryData<ProjectResponse>(projectKeys.detail(1), project)
+		client.setQueryData<TaskResponse>(taskKeys.detail(3), normalizeTask({...card, buckets: [{id: 8, title: 'To do'}]}))
+		client.setQueryData<TaskResponse>(taskKeys.detail(4), normalizeTask({
+			id: 4,
+			project_id: 1,
+			buckets: [{id: 20, title: 'Ideas'}],
+		}))
+		sdk.projectViewBucketsTasksList.mockResolvedValue({data: {items: [
+			{id: 10, title: 'Doing', count: 1, tasks: [card]},
+		]}})
+		await apply([receipt('delete_bucket', {project_id: 1, view_id: 4, bucket_id: 8}, {
+			deleted_bucket_id: 8,
+			deleted_bucket_title: 'To do',
+			tasks_moved: 1,
+			tasks_deleted: 0,
+			view: {default_bucket_id: 0, done_bucket_id: 0},
+			moved_to_bucket: {id: 10, title: 'Doing'},
+		})])
+		expect(client.getQueryData<ProjectResponse>(projectKeys.detail(1))!.views[0])
+			.toMatchObject({default_bucket_id: 0, done_bucket_id: 0})
+		expect(client.getQueryData<ProjectListResult>(projectKeys.list())!.projects[0].views[0])
+			.toMatchObject({default_bucket_id: 0, done_bucket_id: 0})
+		expect(client.getQueryState(taskKeys.detail(3))?.isInvalidated).toBe(true)
+		expect(client.getQueryState(taskKeys.detail(4))?.isInvalidated).toBe(false)
+		const reloaded = client.getQueryData<BoardData>(board)!
+		expect(reloaded.buckets.map(bucket => [bucket.id, bucket.count])).toEqual([[10, 1]])
+		expect(reloaded.pages).toEqual({10: 1})
+		expect(sdk.projectViewBucketsTasksList).toHaveBeenCalledTimes(1)
+		expect(boardFetch).not.toHaveBeenCalled()
 	})
 })

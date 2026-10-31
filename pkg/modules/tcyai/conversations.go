@@ -109,8 +109,9 @@ type storedMessage struct {
 	Native json.RawMessage `json:"native,omitempty"`
 }
 type conversationFile struct {
-	OwnerID int64         `json:"-"`
-	States  []*AgentState `json:"states,omitempty"`
+	ContextRebased map[string]bool `json:"context_rebased,omitempty"`
+	OwnerID        int64           `json:"-"`
+	States         []*AgentState   `json:"states,omitempty"`
 	Conversation
 	Contexts [][]storedMessage `json:"contexts"`
 	Requests map[string]string `json:"requests,omitempty"`
@@ -177,6 +178,18 @@ func readConversation(uid int64, id string) (*conversationFile, error) {
 	// Pending operations are never automatically replayed after a server restart.
 	for i := range record.Turns {
 		if record.Turns[i].Status == "running" {
+			for j := range record.Turns[i].Result.Subagents {
+				if record.Turns[i].Result.Subagents[j].Status == "running" {
+					record.Turns[i].Result.Subagents[j].Status = "stopped"
+					record.Turns[i].Result.Subagents[j].Error = "INTERRUPTED"
+				}
+			}
+			for j := range record.Turns[i].Result.AutoCompactions {
+				if record.Turns[i].Result.AutoCompactions[j].Status == "running" {
+					record.Turns[i].Result.AutoCompactions[j].Status = "failed"
+					record.Turns[i].Result.AutoCompactions[j].Error = "INTERRUPTED: previous context retained"
+				}
+			}
 			record.Turns[i].Status = "interrupted"
 			record.Turns[i].Result.ErrorCode = "INTERRUPTED"
 			for j := range record.Turns[i].Result.Operations {
@@ -473,6 +486,13 @@ func ForkConversation(uid int64, id, turnID string) (Conversation, error) {
 	record.Created = now
 	record.Updated = now
 	record.Turns = record.Turns[:until]
+	retained := map[string]bool{}
+	for _, turn := range record.Turns {
+		if record.ContextRebased[turn.ID] {
+			retained[turn.ID] = true
+		}
+	}
+	record.ContextRebased = retained
 	record.Contexts = record.Contexts[:until]
 	record.Compactions = []Compaction{}
 	record.States = nil
@@ -483,7 +503,7 @@ func ForkConversation(uid int64, id, turnID string) (Conversation, error) {
 			record.Turns[i].Result.Pending = nil
 		}
 	}
-	if err = writeConversation(uid, record); err != nil {
+	if err = writeForkWithDrivePins(uid, record); err != nil {
 		return Conversation{}, err
 	}
 	return cloneConversation(record), nil
@@ -500,8 +520,13 @@ func conversationHistory(record *conversationFile, c Connection) ([]Message, str
 	}
 	for i := through; i < len(record.Contexts); i++ {
 		turn := record.Turns[i]
-		if turn.Status != "completed" || turn.Result.Protocol != c.EffectiveProtocol() || turn.Result.Endpoint != AgentEndpoint(c) || turn.Result.RequestedModel != c.Model {
-			detail, err := json.Marshal(map[string]any{"actions": turn.Result.Actions, "receipts": turn.Result.Operations, "error_code": turn.Result.ErrorCode})
+		rebased := record.ContextRebased[turn.ID] && turn.Status == "completed"
+		if rebased {
+			history = nil
+			summary = ""
+		}
+		if !rebased && (turn.Status != "completed" || turn.Result.Protocol != c.EffectiveProtocol() || turn.Result.Endpoint != AgentEndpoint(c) || turn.Result.RequestedModel != c.Model) {
+			detail, err := json.Marshal(map[string]any{"actions": compactActions(turn.Result.Actions), "receipts": compactReceipts(turn.Result.Operations), "error_code": turn.Result.ErrorCode})
 			if err != nil {
 				return nil, "", err
 			}
@@ -511,10 +536,17 @@ func conversationHistory(record *conversationFile, c Connection) ([]Message, str
 		for _, stored := range record.Contexts[i] {
 			m := stored.Message
 			m.Native = stored.Native
+			if turn.Result.Protocol != c.EffectiveProtocol() || turn.Result.RequestedModel != c.Model || turn.Result.Endpoint != AgentEndpoint(c) {
+				m.Native = nil
+				m.ReasoningContent = ""
+			}
 			history = append(history, m)
 		}
 	}
-	return history, summary, nil
+	if summary != "" {
+		summary += attachmentManifest(sentAttachments(record.Conversation))
+	}
+	return projectLegacyMessages(history), summary, nil
 }
 
 //nolint:contextcheck // Async jobs deliberately copy language only; inheriting a pooled Echo context is unsafe.
@@ -565,6 +597,8 @@ func StartConversation(ctx context.Context, uid int64, id string, in RunInput, c
 	in.Summary = summary
 	index := len(record.Turns)
 	state := NewAgentState(ctx, c, in)
+	state.OwnerID, state.ConversationID = uid, id
+	state.KnownAttachments = append(sentAttachments(record.Conversation), attached...)
 	// Older conversations predate durable engine state.
 	for len(record.States) < index {
 		record.States = append(record.States, nil)
@@ -612,10 +646,18 @@ func pausedTurn(turn ChatTurn) bool {
 func publicResult(result RunResult) RunResult {
 	out := result
 	out.Context = nil
-	out.Steps = append([]ModelStep{}, result.Steps...)
-	for i := range out.Steps {
-		out.Steps[i].ToolCalls = append([]ToolCall{}, out.Steps[i].ToolCalls...)
+	out.Subagents = append([]SubagentTask{}, result.Subagents...)
+	for i := range out.Subagents {
+		out.Subagents[i].Steps = cloneModelSteps(out.Subagents[i].Steps)
+		out.Subagents[i].AutoCompactions = cloneAutoCompactions(out.Subagents[i].AutoCompactions)
+		out.Subagents[i].Actions = append([]Action{}, out.Subagents[i].Actions...)
 	}
+	if result.ContextStatus != nil {
+		copyStatus := *result.ContextStatus
+		out.ContextStatus = &copyStatus
+	}
+	out.AutoCompactions = cloneAutoCompactions(result.AutoCompactions)
+	out.Steps = cloneModelSteps(result.Steps)
 	out.Actions = append([]Action{}, result.Actions...)
 	out.Choices = append([]string{}, result.Choices...)
 	out.Operations = append([]Operation{}, result.Operations...)
@@ -632,20 +674,35 @@ func publicResult(result RunResult) RunResult {
 
 //nolint:contextcheck // Durable jobs copy only language and cloned HTTP fields, never pooled Echo context.
 func launchConversation(ctx context.Context, uid int64, record *conversationFile, index int, c Connection, execute Executor, prepare Preparer) {
-	state := record.States[index]
-	jobCtx, cancel := context.WithTimeout(tcylocale.WithLanguage(context.Background(), tcylocale.Language(ctx)), time.Duration(state.Input.TimeoutSeconds)*time.Second)
+	state := snapshotAgentState(record.States[index])
+	state.OwnerID, state.ConversationID = uid, record.ID
+	state.Input.ServerAttachments = record.Turns[index].Attachments
+	state.Input.AttachmentOwner = uid
+	baseCtx := tcylocale.WithLanguage(context.Background(), tcylocale.Language(ctx))
+	var jobCtx context.Context
+	var cancel context.CancelFunc
+	if state.Input.StopAtSegmentLimit {
+		jobCtx, cancel = context.WithTimeout(baseCtx, time.Duration(state.Input.TimeoutSeconds)*time.Second)
+	} else {
+		jobCtx, cancel = context.WithCancel(baseCtx)
+	}
 	live := &liveConversation{uid: uid, id: record.ID, record: record, cancel: cancel}
 	conversations.live[uid] = live
 	go func() {
 		defer cancel()
 		result, runErr := RunAgent(jobCtx, c, state, execute, prepare, func(state *AgentState) error {
 			snapshot := publicResult(state.Result)
+			var checkpoint *AgentState
+			if !state.Streaming {
+				checkpoint = snapshotAgentState(state)
+			}
 			conversations.Lock()
 			defer conversations.Unlock()
 			record.Turns[index].Result = snapshot
 			if state.Streaming {
 				return nil
 			}
+			record.States[index] = checkpoint
 			return writeConversation(uid, record)
 		})
 		conversations.Lock()
@@ -679,10 +736,17 @@ func launchConversation(ctx context.Context, uid int64, record *conversationFile
 				turn.Result.Error = ""
 			}
 		}
+		if turn.Status == "completed" && state.Rebased {
+			if record.ContextRebased == nil {
+				record.ContextRebased = map[string]bool{}
+			}
+			record.ContextRebased[turn.ID] = true
+		}
 		record.Contexts[index] = nil
 		for _, m := range result.Context {
 			record.Contexts[index] = append(record.Contexts[index], storedMessage{Message: m, Native: m.Native})
 		}
+		record.States[index] = snapshotAgentState(state)
 		if !pausedTurn(*turn) && (turn.Status != "failed" || !safeModelState(state)) {
 			record.States[index] = nil
 		}
@@ -880,7 +944,7 @@ func summarizeConversation(ctx context.Context, record *conversationFile, c Conn
 	}
 	var history strings.Builder
 	for _, turn := range record.Turns[start:through] {
-		raw, encodeErr := json.Marshal(map[string]any{"user": turn.Prompt, "attachments": turn.Attachments, "answer": turn.Result.Reply, "actions": turn.Result.Actions, "receipts": turn.Result.Operations, "status": turn.Status, "error": turn.Result.Error})
+		raw, encodeErr := json.Marshal(map[string]any{"user": turn.Prompt, "attachments": modelAttachments(turn.Attachments), "answer": turn.Result.Reply, "actions": compactActions(turn.Result.Actions), "receipts": compactReceipts(turn.Result.Operations), "status": turn.Status, "error": turn.Result.Error})
 		if encodeErr != nil {
 			return "", usage, model, encodeErr
 		}

@@ -38,6 +38,26 @@ type DriveFile struct {
 
 func (*DriveFile) TableName() string { return "drive_files" }
 
+// Matches the drive list, which treats pre-1971 values as "not trashed".
+var driveTrashEpoch = time.Date(1971, 1, 1, 0, 0, 0, 0, time.UTC)
+
+// InTrash reports whether the file is in the recycle bin.
+func (d *DriveFile) InTrash() bool { return d.TrashedAt.After(driveTrashEpoch) }
+
+// DriveChatRef pins a drive file while a private AI conversation may reference it.
+// The conversation itself lives in an encrypted file the database cannot read, so
+// rows are a conservative superset: written before the conversation references the
+// file and removed only after the saved conversation is verified not to.
+type DriveChatRef struct {
+	ID             int64     `xorm:"bigint autoincr not null unique pk" json:"-"`
+	OwnerID        int64     `xorm:"bigint not null unique(drive_chat_ref)" json:"-"`
+	ConversationID string    `xorm:"varchar(36) not null unique(drive_chat_ref)" json:"-"`
+	FileID         int64     `xorm:"bigint not null unique(drive_chat_ref) index" json:"-"`
+	Created        time.Time `xorm:"created not null" json:"-"`
+}
+
+func (*DriveChatRef) TableName() string { return "drive_chat_refs" }
+
 // AddToDrive is called only for user uploads, never exports or temporary files.
 // Negative IDs identify link shares, which do not own a personal drive.
 func AddToDrive(s *xorm.Session, f *File) error {

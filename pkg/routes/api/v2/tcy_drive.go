@@ -29,6 +29,7 @@ import (
 	"code.vikunja.io/api/pkg/files"
 	"code.vikunja.io/api/pkg/models"
 	backgroundHandler "code.vikunja.io/api/pkg/modules/background/handler"
+	"code.vikunja.io/api/pkg/modules/humabridge"
 	"code.vikunja.io/api/pkg/user"
 	"code.vikunja.io/api/pkg/web"
 	webfiles "code.vikunja.io/api/pkg/web/files"
@@ -67,7 +68,7 @@ func driveError(err error) error {
 	if errors.Is(err, models.ErrDriveMissing) {
 		return huma.Error404NotFound(err.Error())
 	}
-	if errors.Is(err, models.ErrDriveChanged) || errors.Is(err, models.ErrDriveTrashed) || errors.Is(err, models.ErrDriveInUse) || errors.Is(err, models.ErrDriveConfirm) {
+	if errors.Is(err, models.ErrDriveChanged) || errors.Is(err, models.ErrDriveTrashed) || errors.Is(err, models.ErrDriveInUse) || errors.Is(err, models.ErrDriveChatUnreadable) || errors.Is(err, models.ErrDriveConfirm) {
 		return huma.Error409Conflict(err.Error())
 	}
 	return translateDomainError(err)
@@ -95,7 +96,12 @@ func RegisterDriveRoutes(api huma.API) {
 		if _, err = models.GetDriveItem(s, a, in.ID); err != nil {
 			return nil, driveError(err)
 		}
-		usages, err := models.DriveUsages(s, a, in.ID)
+		list := models.DriveUsages
+		// AI conversations are for human sessions only; tokens see them as restricted.
+		if ec := humabridge.EchoContextFrom(ctx); ec == nil || (*ec).Get("api_token") != nil {
+			list = models.DriveUsagesForAPIToken
+		}
+		usages, err := list(s, a, in.ID)
 		if err != nil {
 			return nil, driveError(err)
 		}
@@ -109,6 +115,8 @@ func RegisterDriveRoutes(api huma.API) {
 		if err != nil {
 			return nil, err
 		}
+		// Before the transaction: a purge may scan AI conversations for a while.
+		models.PrepareDriveChange(a, in.ID, &in.Body)
 		s := db.NewSession()
 		defer s.Close()
 		defer events.CleanupPending(s)
@@ -311,6 +319,10 @@ func driveCover(ctx context.Context, in *struct {
 	}
 	if !d.TrashedAt.IsZero() || d.Purging {
 		return nil, driveError(models.ErrDriveTrashed)
+	}
+	// Chat uploads may exceed files.maxsize; project backgrounds may not.
+	if files.ExceedsUploadLimit(d.File.Size) {
+		return nil, translateDomainError(files.ErrFileIsTooLarge{Size: d.File.Size})
 	}
 	p, err := writableProjectForBackground(s, a, in.Body.ProjectID)
 	if err != nil {

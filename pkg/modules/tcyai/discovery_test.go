@@ -29,7 +29,7 @@ import (
 func TestTCYAIDeferredTools(t *testing.T) {
 	state := NewAgentState(context.Background(), Connection{}, RunInput{Mode: "write", AllowDelete: true})
 	state.CacheStable = false // Legacy persisted runs keep the old deferred-header transport.
-	require.Len(t, state.Available, 5)
+	require.Len(t, state.Available, 6)
 	assert.NotContains(t, state.Available, "update_task")
 	initial, err := json.Marshal(state.tools())
 	require.NoError(t, err)
@@ -63,10 +63,10 @@ func TestTCYAIDeferredTools(t *testing.T) {
 		require.NoError(t, err)
 	}
 	assert.Contains(t, state.Available, "update_task", "must not evict queued calls")
-	assert.LessOrEqual(t, len(state.Available), 14, "5 core + 8 recent + pinned call")
+	assert.LessOrEqual(t, len(state.Available), 15, "6 core + 8 recent + pinned call")
 	state.Pending = nil
 	state.trimTools()
-	assert.LessOrEqual(t, len(state.Available), 13, "release completed call pins before the next model request")
+	assert.LessOrEqual(t, len(state.Available), 14, "release completed call pins before the next model request")
 	read := NewAgentState(context.Background(), Connection{}, RunInput{Mode: "read"})
 	result, err = read.discover(json.RawMessage(`{"query":"delete_task create_task update_task"}`))
 	require.NoError(t, err)

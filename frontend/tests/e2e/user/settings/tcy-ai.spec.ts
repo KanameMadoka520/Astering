@@ -1,7 +1,11 @@
+import type {Locator} from '@playwright/test'
+import type {Connection, Settings} from '../../../../src/client/generated'
 import {test, expect} from '../../../support/fixtures'
 import {apiRootUrl} from '../../../support/apiUrl'
 
 import {UserFactory} from '../../../factories/user'
+
+const api = `${apiRootUrl(process.env.API_URL || 'http://localhost:3456')}/api/v2`
 
 test.use({currentUser: async ({apiContext}, use) => {
 	const [user] = await UserFactory.create(1, {language: 'zh-CN'})
@@ -9,7 +13,6 @@ test.use({currentUser: async ({apiContext}, use) => {
 }})
 
 test.beforeEach(async ({apiContext, userToken}) => {
- const api = `${apiRootUrl(process.env.API_URL || 'http://localhost:3456')}/api/v2`
  const response = await apiContext.post(`${api}/ai/settings`, {headers: {Authorization: `Bearer ${userToken}`}, data: {connections: [], assistant: '', transcription: '', cleanup: ''}})
  expect(response.ok()).toBeTruthy()
 })
@@ -177,4 +180,61 @@ test('connection saves are isolated across tabs and retain other unfinished draf
  await expect(page.locator('form.connection')).toHaveCount(1)
  await expect(page.locator('form.connection').getByLabel('连接名称')).toHaveValue('Unfinished LLM draft')
 
+})
+
+// Real settings API with fake hosts: nothing here fetches models or calls a provider.
+test('automatic compaction settings persist per connection and leave its capacity untouched', async ({authenticatedPage: page, apiContext, userToken}) => {
+	const headers = {Authorization: `Bearer ${userToken}`}
+	const seeded: Connection[] = [
+		{id: 'compact-threshold', name: 'Threshold LLM', kind: 'chat', protocol: 'openai-chat', base_url: 'https://threshold.example/v1', model: 'threshold-model', context_window: 256_000, max_output_tokens: 16_000},
+		{id: 'compact-off', name: 'Quiet LLM', kind: 'chat', protocol: 'anthropic', base_url: 'https://quiet.example/v1', model: 'quiet-model', context_window: 200_000, max_output_tokens: 32_000},
+	]
+	expect((await apiContext.post(`${api}/ai/settings`, {headers, data: {connections: seeded, assistant: '', transcription: '', cleanup: ''}})).ok()).toBeTruthy()
+	await page.goto('/user/settings/ai')
+	// Each connection card is a form named by its heading.
+	const thresholdCard = page.getByRole('form', {name: 'Threshold LLM', exact: true})
+	const quietCard = page.getByRole('form', {name: 'Quiet LLM', exact: true})
+	const threshold = (card: Locator) => card.getByLabel('压缩阈值（tokens，0 表示自动）', {exact: true})
+	const compactionOff = (card: Locator) => card.getByRole('checkbox', {name: '关闭自动压缩', exact: true})
+	// Two chat connections start collapsed; the compaction policy sits in the capacity section.
+	async function openCapacity(card: Locator) {
+		await card.getByRole('button', {name: '编辑', exact: true}).click()
+		await card.locator('summary').filter({hasText: '模型能力与容量'}).click()
+	}
+	async function saveCard(card: Locator) {
+		const saved = page.waitForResponse(r => r.url().endsWith('/ai/settings') && r.request().method() === 'POST')
+		await card.getByRole('button', {name: '保存此连接', exact: true}).click()
+		expect((await saved).ok()).toBeTruthy()
+		await expect(card.getByText('已保存', {exact: true})).toBeVisible()
+	}
+
+	await openCapacity(thresholdCard)
+	await threshold(thresholdCard).fill('90000')
+	await saveCard(thresholdCard)
+	await openCapacity(quietCard)
+	await compactionOff(quietCard).check()
+	await expect(threshold(quietCard)).toBeDisabled()
+	await saveCard(quietCard)
+
+	await page.reload()
+	await expect(quietCard.locator('.connection__chips')).toContainText('自动压缩已关闭')
+	await expect(thresholdCard.locator('.connection__chips')).not.toContainText('自动压缩已关闭')
+	await openCapacity(thresholdCard)
+	await expect(threshold(thresholdCard)).toHaveValue('90000')
+	await expect(compactionOff(thresholdCard)).not.toBeChecked()
+	await expect(thresholdCard.getByLabel('上下文窗口（tokens）', {exact: true})).toHaveValue('256000')
+	await expect(thresholdCard.getByLabel('最大输出（tokens）', {exact: true})).toHaveValue('16000')
+	await openCapacity(quietCard)
+	await expect(compactionOff(quietCard)).toBeChecked()
+	await expect(threshold(quietCard)).toBeDisabled()
+	await expect(quietCard.getByLabel('上下文窗口（tokens）', {exact: true})).toHaveValue('200000')
+	await expect(quietCard.getByLabel('最大输出（tokens）', {exact: true})).toHaveValue('32000')
+
+	// The second save started from the stored first one, so neither change overwrote the other.
+	const stored = (await (await apiContext.get(`${api}/ai/settings`, {headers})).json()) as Settings
+	const connection = (id: string) => stored.connections?.find(c => c.id === id)
+	expect(connection('compact-threshold')).toMatchObject({auto_compact_tokens: 90_000, context_window: 256_000, max_output_tokens: 16_000, model: 'threshold-model', base_url: 'https://threshold.example/v1', protocol: 'openai-chat'})
+	expect(connection('compact-threshold')?.disable_auto_compact ?? false).toBe(false)
+	expect(connection('compact-off')).toMatchObject({disable_auto_compact: true, context_window: 200_000, max_output_tokens: 32_000, model: 'quiet-model', base_url: 'https://quiet.example/v1', protocol: 'anthropic'})
+	expect(connection('compact-off')?.auto_compact_tokens ?? 0).toBe(0)
 })

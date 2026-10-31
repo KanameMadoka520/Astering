@@ -429,9 +429,8 @@ func serveAITool(ctx context.Context, api huma.API, caller *http.Request, name, 
 	rec := httptest.NewRecorder()
 	api.Adapter().ServeHTTP(rec, req)
 	data := strings.TrimSpace(rec.Body.String())
-	if len(data) > 64000 {
-		data = data[:64000] + tcylocale.Text(ctx, "resultTruncated")
-	}
+	// Keep successful results intact for audit and structural projection. Cutting
+	// serialized JSON here prevents the runtime from extracting compact list rows.
 	if rec.Code >= 300 {
 		if rec.Code >= 500 && tcyai.IsWriteTool(name) {
 			return "", &tcyai.ToolError{Code: "WRITE_UNCERTAIN", Message: tcylocale.Render(ctx, tcylocale.Error("e25", rec.Code, data)), Uncertain: true}

@@ -3,6 +3,7 @@ import {computed, ref, watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import type {ChatTurn, ReviewInput} from '@/client/generated'
 import {DESTRUCTIVE_TOOLS, toolLabels} from './toolLabels'
+import BucketImpactPreview from './BucketImpactPreview.vue'
 const props = defineProps<{turn: ChatTurn; busy: boolean}>()
 const emit = defineEmits<{review: [input: ReviewInput]}>()
 const {t} = useI18n({useScope: 'global'})
@@ -15,7 +16,27 @@ const toolName = computed(() => {
 	return toolLabels(t)[tool] || tool
 })
 const destructive = computed(() => DESTRUCTIVE_TOOLS.has(pending.value?.tool ?? ''))
-const canContinue = computed(() => (props.turn.result?.budget?.round_limit ?? 0) < 200 && (props.turn.result?.budget?.operation_limit ?? 0) < 1000)
+// Deleting a bucket removes the bucket only; the generic wording would suggest its tasks go too.
+const destructiveWarning = computed(() => pending.value?.tool === 'delete_bucket'
+	? t('agent.bucketImpact.deleteWarning')
+	: t('agent.destructiveWarning'))
+// Bucket tools put their effect (task destinations, default and done bucket changes) in pending.after.
+const BUCKET_WRITE_TOOLS = new Set([
+	'create_bucket',
+	'update_bucket',
+	'move_task_to_bucket',
+	'set_view_buckets',
+	'delete_bucket',
+])
+const bucketImpact = computed(() => {
+	if (!BUCKET_WRITE_TOOLS.has(pending.value?.tool ?? '')) return false
+	try {
+		const after: unknown = JSON.parse(pending.value?.after ?? '')
+		return typeof after === 'object' && after !== null && !Array.isArray(after)
+	} catch {
+		return false
+	}
+})
 const pause = computed(() => props.turn.result?.pause)
 watch(() => pending.value?.id, () => {
 	args.value = pretty(pending.value?.arguments)
@@ -41,12 +62,16 @@ const FIELD_LABELS: Record<string, Record<string, string>> = {
 }
 // Arguments that name the target or carry a concurrency token rather than a change.
 const NOT_CHANGES = ['id', 'updates', 'task_id']
+const BUCKET_LOCATORS = ['project_id', 'view_id', 'bucket_id', 'task_id']
 const TOOL_NOT_CHANGES: Record<string, string[]> = {
 	update_project_announcement: ['project_id', 'revision'],
 	configure_task_routine: ['revision'],
+	...Object.fromEntries([...BUCKET_WRITE_TOOLS].map((tool): [string, string[]] => [tool, BUCKET_LOCATORS])),
 }
 const rows = computed(() => {
 	const tool = pending.value?.tool ?? ''
+	// The impact preview describes bucket changes; the field table would list locators instead.
+	if (bucketImpact.value) return []
 	try {
 		const before = JSON.parse(pending.value?.before ?? 'null')
 		const proposed = JSON.parse(pending.value?.arguments ?? '{}')
@@ -91,8 +116,12 @@ function decide(decision: ReviewInput['decision']) {
 				v-if="destructive"
 				class="destructive-warning"
 			>
-				<Icon icon="exclamation-circle" />{{ t('agent.destructiveWarning') }}
+				<Icon icon="exclamation-circle" />{{ destructiveWarning }}
 			</p>
+			<BucketImpactPreview
+				v-if="bucketImpact"
+				:operation="pending"
+			/>
 			<div
 				v-if="rows.length"
 				class="change-table"
@@ -112,6 +141,9 @@ function decide(decision: ReviewInput['decision']) {
 				<summary>{{ t('agent.exactArguments') }}</summary><pre>{{ pretty(pending.arguments) }}</pre>
 			</details>
 			<details><summary>{{ t('agent.snapshot') }}</summary><pre>{{ pretty(pending.before) }}</pre></details>
+			<details v-if="bucketImpact">
+				<summary>{{ t('agent.bucketImpact.afterSnapshot') }}</summary><pre>{{ pretty(pending.after) }}</pre>
+			</details>
 			<label v-if="editing">{{ t('agent.editArguments') }}<textarea
 				v-model="args"
 				class="textarea argument-editor"
@@ -185,11 +217,8 @@ function decide(decision: ReviewInput['decision']) {
 		<template v-else-if="pause === 'budget'">
 			<h3>{{ t('agent.budgetPaused') }}</h3><p>{{ t('agent.budgetExplanation') }}</p>
 			<p>{{ t('agent.budgetProgress', {rounds: turn.result?.budget?.rounds, roundLimit: turn.result?.budget?.round_limit, operations: turn.result?.budget?.operations, operationLimit: turn.result?.budget?.operation_limit}) }}</p>
-			<p v-if="!canContinue">
-				{{ t('agent.overallLimit') }}
-			</p>
 			<XButton
-				:disabled="busy || !canContinue"
+				:disabled="busy"
 				@click="decide('continue')"
 			>
 				{{ t('agent.continue') }}

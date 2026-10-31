@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/events"
 	"code.vikunja.io/api/pkg/files"
 	"code.vikunja.io/api/pkg/user"
@@ -33,6 +34,7 @@ var ErrDriveMissing = errors.New("drive_missing")
 var ErrDriveChanged = errors.New("drive_changed")
 var ErrDriveTrashed = errors.New("drive_trashed")
 var ErrDriveInUse = errors.New("drive_in_use")
+var ErrDriveChatUnreadable = errors.New("drive_chat_unreadable")
 var ErrDriveConfirm = errors.New("drive_confirm")
 
 // DriveItem only grants access to the owner, even when a task referencing it is shared.
@@ -105,14 +107,26 @@ func LockDriveItem(s *xorm.Session, a web.Auth, id, revision int64) (*files.Driv
 }
 
 type DriveUsage struct {
-	Kind       string `json:"kind"`
-	Title      string `json:"title"`
-	URL        string `json:"url"`
-	Restricted bool   `json:"restricted"`
+	Kind       string `json:"kind" enum:"attachment,task_cover,project_cover,avatar,chat,chat_draft" doc:"attachment, task_cover, project_cover, avatar, chat (sent AI conversation messages) or chat_draft (only unsent AI conversation attachments)."`
+	Title      string `json:"title" doc:"Task, project, account or conversation title; empty when restricted."`
+	URL        string `json:"url" doc:"Frontend location; empty when restricted."`
+	Restricted bool   `json:"restricted" doc:"Something the viewer cannot access uses this file."`
 }
 
-// DriveUsages never discloses project/task titles after the owner loses access.
+// DriveUsages never discloses project/task titles after the owner loses access, and
+// lists AI conversations only to their owner. With the AI module linked it takes the
+// conversation lock, so it must not be called inside a transaction.
 func DriveUsages(s *xorm.Session, a web.Auth, id int64) ([]DriveUsage, error) {
+	return driveUsages(s, a, id, true)
+}
+
+// DriveUsagesForAPIToken lists usages to an API token, which never reaches AI
+// conversations: they appear only as restricted entries.
+func DriveUsagesForAPIToken(s *xorm.Session, a web.Auth, id int64) ([]DriveUsage, error) {
+	return driveUsages(s, a, id, false)
+}
+
+func driveUsages(s *xorm.Session, a web.Auth, id int64, resolveChats bool) ([]DriveUsage, error) {
 	usages := []DriveUsage{}
 	attachments := []*TaskAttachment{}
 	if err := s.Where("file_id = ?", id).Find(&attachments); err != nil {
@@ -165,7 +179,11 @@ func DriveUsages(s *xorm.Session, a web.Auth, id int64) ([]DriveUsage, error) {
 		}
 		usages = append(usages, usage)
 	}
-	return usages, nil
+	chats, err := driveChatUsages(s, a, id, resolveChats)
+	if err != nil {
+		return nil, err
+	}
+	return append(usages, chats...), nil
 }
 
 type DriveChange struct {
@@ -176,9 +194,40 @@ type DriveChange struct {
 	Pinned      bool   `json:"pinned"`
 	Confirm     bool   `json:"confirm"`
 	ConfirmName string `json:"confirm_name"`
+
+	// Set by PrepareDriveChange.
+	prepared    bool
+	chatScanned bool
+	chatScan    error
+}
+
+// PrepareDriveChange runs what a change needs before its transaction exists. A
+// confirmed purge scans the AI conversations, which reads them for a while and may
+// pin a reference it finds, taking the conversation lock and more pool connections;
+// a transaction waiting meanwhile would hold its own connection (and locks). Requests
+// that cannot purge the file scan nothing.
+func PrepareDriveChange(a web.Auth, id int64, in *DriveChange) {
+	in.prepared = true
+	if in.Action != "purge" || !in.Confirm {
+		return
+	}
+	s := db.NewReadSession()
+	d, err := GetDriveItem(s, a, id)
+	_ = s.Close()
+	if err != nil || d.TrashedAt.IsZero() || d.Purging || in.ConfirmName != d.File.Name {
+		return
+	}
+	in.chatScan, in.chatScanned = chatDriveScanBlocks(a.GetID(), id), true
 }
 
 func ChangeDriveItem(s *xorm.Session, a web.Auth, id int64, in DriveChange) (*files.DriveFile, error) {
+	// The scan never runs here: s already holds a pool connection. Without
+	// PrepareDriveChange a purge fails closed, unless there are no conversations to scan.
+	// A chat reference added after the scan bumps the revision (the CAS below fails) or
+	// is a counted pin.
+	if !in.prepared && chatDriveBridge == nil {
+		in.chatScanned = true
+	}
 	d, err := LockDriveItem(s, a, id, in.Revision)
 	if err != nil {
 		return nil, err
@@ -202,7 +251,7 @@ func ChangeDriveItem(s *xorm.Session, a web.Auth, id int64, in DriveChange) (*fi
 			return nil, err
 		}
 	case "trash":
-		usages, err := DriveUsages(s, a, id)
+		usages, err := driveUsages(s, a, id, false)
 		if err != nil {
 			return nil, err
 		}
@@ -216,12 +265,24 @@ func ChangeDriveItem(s *xorm.Session, a web.Auth, id int64, in DriveChange) (*fi
 		if d.TrashedAt.IsZero() || !in.Confirm || in.ConfirmName != d.File.Name {
 			return nil, ErrDriveConfirm
 		}
-		usages, err := DriveUsages(s, a, id)
+		// A purge that failed half way was already checked and refuses new references;
+		// the blob may be gone, so it is only finished.
+		if d.Purging {
+			return d, nil
+		}
+		usages, err := driveUsages(s, a, id, false)
 		if err != nil {
 			return nil, err
 		}
 		if len(usages) > 0 {
 			return nil, ErrDriveInUse
+		}
+		// The file only became purgeable after PrepareDriveChange looked at it.
+		if !in.chatScanned {
+			return nil, ErrDriveChanged
+		}
+		if in.chatScan != nil {
+			return nil, in.chatScan
 		}
 		if err = d.File.PurgeFromDrive(s); err != nil {
 			return nil, err
@@ -242,6 +303,10 @@ func AttachDriveFile(s *xorm.Session, a web.Auth, id, revision, taskID int64) (*
 	}
 	if !d.TrashedAt.IsZero() || d.Purging {
 		return nil, ErrDriveTrashed
+	}
+	// Chat uploads may exceed files.maxsize; task attachments may not.
+	if files.ExceedsUploadLimit(d.File.Size) {
+		return nil, files.ErrFileIsTooLarge{Size: d.File.Size}
 	}
 	ta := &TaskAttachment{TaskID: taskID, FileID: id, CreatedByID: a.GetID(), File: d.File}
 	can, err := ta.CanCreate(s, a)

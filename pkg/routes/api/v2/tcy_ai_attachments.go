@@ -48,11 +48,22 @@ func chatFileError(ctx context.Context, err error) error {
 	if errors.Is(err, tcyai.ErrAttachmentInvalid) || errors.Is(err, tcyai.ErrImageModel) {
 		return huma.Error422UnprocessableEntity(tcylocale.Render(ctx, tcylocale.Error(err.Error())))
 	}
+	if errors.Is(err, tcyai.ErrAttachmentTrashed) {
+		return huma.Error409Conflict(tcylocale.Render(ctx, tcylocale.Error(err.Error())))
+	}
 	return conversationError(ctx, err)
 }
+
+type chatDriveInput struct {
+	ID   string `path:"id" format:"uuid" doc:"Private conversation owned by this human account."`
+	Body struct {
+		FileID int64 `json:"file_id" minimum:"1" doc:"A file in your own drive, not in the recycle bin, of at most 32 MiB."`
+	}
+}
+
 func RegisterTCYAttachmentRoutes(api huma.API) {
 	op := func(id, method, path, summary string) huma.Operation {
-		return huma.Operation{OperationID: id, Method: method, Path: path, Summary: summary, Description: "Private account-owned conversation attachments. Human sessions only; no API-token, link-share or MCP access. Files are encrypted and reused between branches. Downloads never expose a public URL.", Tags: []string{"tcymc-ai"}, MaxBodyBytes: tcyai.MaxChatAttachmentBytes + 1024*1024, BodyReadTimeout: 2 * time.Minute}
+		return huma.Operation{OperationID: id, Method: method, Path: path, Summary: summary, Description: "Private account-owned conversation attachments. Human sessions only; no API-token, link-share or MCP access to conversations. New files are stored once in your personal drive (where drive API tokens can reach them like any drive file) and conversations, including branches, keep references; older encrypted chat files stay readable. Removing an attachment never deletes a drive file. Downloads never expose a public URL.", Tags: []string{"tcymc-ai"}, MaxBodyBytes: tcyai.MaxChatAttachmentBytes + 1024*1024, BodyReadTimeout: 2 * time.Minute}
 	}
 	Register(api, op("tcy-ai-attachments-upload", "POST", "/ai/conversations/{id}/attachments", "Upload a private conversation attachment"), func(ctx context.Context, in *struct {
 		ID      string `path:"id" format:"uuid"`
@@ -75,6 +86,21 @@ func RegisterTCYAttachmentRoutes(api huma.API) {
 		}
 		return &struct{ Body tcyai.ChatAttachment }{Body: value}, nil
 	})
+	fromDrive := op("tcy-ai-attachments-from-drive", "POST", "/ai/conversations/{id}/attachments/from-drive", "Attach a file from your drive without copying it")
+	fromDrive.Description = "Adds one of your own drive files to the unsent draft as a reference, with the same checks as an upload: at most 32 MiB, at most 16 draft files, media type detected from the bytes and images fully decoded. Choosing a file, or identical bytes, already in the draft returns the existing attachment unchanged: its drive_file_id may then be another drive file, or absent for an older encrypted chat file. Files in the recycle bin are rejected with 409; drive files of other accounts are not found. The drive lists this conversation as a usage until no saved message or draft references the file. Human sessions only."
+	fromDrive.MaxBodyBytes = 4 * 1024
+	fromDrive.BodyReadTimeout = 30 * time.Second
+	Register(api, fromDrive, func(ctx context.Context, in *chatDriveInput) (*struct{ Body tcyai.ChatAttachment }, error) {
+		uid, err := aiUser(ctx)
+		if err != nil {
+			return nil, err
+		}
+		value, err := tcyai.AttachDriveFileToConversation(uid, in.ID, in.Body.FileID)
+		if err != nil {
+			return nil, chatFileError(ctx, err)
+		}
+		return &struct{ Body tcyai.ChatAttachment }{Body: value}, nil
+	})
 	Register(api, op("tcy-ai-attachments-download", "GET", "/ai/conversations/{id}/attachments/{file}", "Download a referenced conversation attachment"), func(ctx context.Context, in *chatFileInput) (*chatBinaryResponse, error) {
 		uid, err := aiUser(ctx)
 		if err != nil {
@@ -86,7 +112,7 @@ func RegisterTCYAttachmentRoutes(api huma.API) {
 		}
 		return &chatBinaryResponse{ContentType: item.MIME, ContentDisposition: mime.FormatMediaType("attachment", map[string]string{"filename": item.Name}), CacheControl: "no-store", NoSniff: "nosniff", Body: data}, nil
 	})
-	Register(api, op("tcy-ai-attachments-remove", "DELETE", "/ai/conversations/{id}/attachments/{file}", "Remove an unsent attachment; preserve files referenced by other turns or branches"), func(ctx context.Context, in *chatFileInput) (*emptyBody, error) {
+	Register(api, op("tcy-ai-attachments-remove", "DELETE", "/ai/conversations/{id}/attachments/{file}", "Remove an unsent attachment; drive files and files referenced elsewhere are kept"), func(ctx context.Context, in *chatFileInput) (*emptyBody, error) {
 		uid, err := aiUser(ctx)
 		if err != nil {
 			return nil, err
