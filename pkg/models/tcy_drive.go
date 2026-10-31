@@ -165,7 +165,11 @@ func DriveUsages(s *xorm.Session, a web.Auth, id int64) ([]DriveUsage, error) {
 		}
 		usages = append(usages, usage)
 	}
-	return usages, nil
+	compass, err := compassDriveUsages(s, a, id)
+	if err != nil {
+		return nil, err
+	}
+	return append(usages, compass...), nil
 }
 
 type DriveChange struct {

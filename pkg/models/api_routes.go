@@ -262,6 +262,12 @@ func CollectRoutesForAPITokenUsage(route echo.RouteInfo, requiresJWT bool) {
 
 	routeGroupName, routeParts := getRouteGroupName(route.Path)
 
+	// Image reads also support an owner's unsaved Drive drafts. Keep this
+	// human-session endpoint out of both CRUD and non-CRUD token discovery.
+	if routeGroupName == "compass_spaces_images" {
+		return
+	}
+
 	if routeGroupName == "token_test" ||
 		routeGroupName == "subscriptions" ||
 		routeGroupName == "tokens" ||

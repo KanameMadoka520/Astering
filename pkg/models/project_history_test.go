@@ -160,3 +160,49 @@ func TestProjectHistoryPagination(t *testing.T) {
 	require.Empty(t, last.Items)
 	require.EqualValues(t, 25, last.Total)
 }
+
+func TestProjectHistoryScopeWithoutMilestones(t *testing.T) {
+	db.LoadAndAssertFixtures(t)
+	s := db.NewSession()
+	defer s.Close()
+	u := &user.User{ID: 1}
+	for _, p := range []*Project{
+		{Title: "History scope active"},
+		{Title: "History scope completed", IsCompleted: true},
+		{Title: "History scope archived", IsArchived: true},
+		{Title: "History scope both", IsCompleted: true, IsArchived: true},
+	} {
+		completed, archived := p.IsCompleted, p.IsArchived
+		require.NoError(t, p.Create(s, u))
+		_, err := s.ID(p.ID).Cols("is_completed", "is_archived").Update(&Project{IsCompleted: completed, IsArchived: archived})
+		require.NoError(t, err)
+	}
+	// Project state counts are independent of events and selected year/kind/page.
+	opts := ProjectHistoryOptions{Year: 2030, Timezone: "UTC", Page: 2, Kind: "reopened", Search: "History scope"}
+	h, err := GetProjectHistory(s, u, opts)
+	require.NoError(t, err)
+	require.Equal(t, &ProjectHistoryScope{Projects: 4, Completed: 2, Archived: 2}, h.Scope)
+	require.Empty(t, h.Items)
+	require.Empty(t, h.Days)
+	require.Zero(t, h.Milestones)
+	opts.Unknown = true
+	h, err = GetProjectHistory(s, u, opts)
+	require.NoError(t, err)
+	require.Equal(t, &ProjectHistoryScope{Projects: 4, Completed: 2, Archived: 2}, h.Scope)
+	opts.Search = "History scope completed"
+	h, err = GetProjectHistory(s, u, opts)
+	require.NoError(t, err)
+	require.Equal(t, &ProjectHistoryScope{Projects: 1, Completed: 1}, h.Scope)
+	opts.ProjectID, opts.Search = 2, ""
+	h, err = GetProjectHistory(s, u, opts)
+	require.NoError(t, err)
+	require.Equal(t, &ProjectHistoryScope{}, h.Scope)
+	opts.ProjectID = 1
+	h, err = GetProjectHistory(s, &LinkSharing{ProjectID: 1, Permission: PermissionRead}, opts)
+	require.NoError(t, err)
+	require.Equal(t, 1, h.Scope.Projects)
+	opts.ProjectID = 9 // User 1 inherits readable team project access in fixtures.
+	h, err = GetProjectHistory(s, u, opts)
+	require.NoError(t, err)
+	require.Equal(t, 1, h.Scope.Projects)
+}

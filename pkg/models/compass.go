@@ -36,21 +36,25 @@ import (
 // Compass spaces are private by default. An explicitly selected team grants its current members access.
 // Instance-admin access to projects never implicitly grants access to these personal writings.
 type CompassSpace struct {
-	ID              int64     `xorm:"bigint autoincr pk" json:"id" readOnly:"true" doc:"Space identifier, assigned by the server."`
-	OwnerID         int64     `xorm:"bigint not null index" json:"owner_id" readOnly:"true" doc:"Creator; owns a personal space, but cannot retain access after leaving a team space."`
-	TeamID          int64     `xorm:"bigint not null default 0 index" json:"team_id" minimum:"0" doc:"0 for private. On creation only, select a team you administer. Immutable thereafter."`
-	Title           string    `xorm:"varchar(80) not null" json:"title" minLength:"1" maxLength:"80" doc:"User-defined name, not a fixed product label."`
-	Motto           string    `xorm:"text" json:"motto" maxLength:"600" doc:"Plain-text guiding sentence."`
-	Introduction    string    `xorm:"longtext" json:"introduction" maxLength:"65536" doc:"Basic rich text without embeds or images, up to 64 KiB."`
-	Theme           string    `xorm:"varchar(16) not null" json:"theme" enum:"aurora,solar,nebula,ink" doc:"Built-in visual atmosphere."`
-	Revision        int64     `xorm:"bigint not null" json:"revision" minimum:"0" doc:"Expected revision on save; stale edits return 409."`
-	Created         time.Time `xorm:"created not null" json:"created" readOnly:"true" doc:"Creation time."`
-	Updated         time.Time `xorm:"updated not null" json:"updated" readOnly:"true" doc:"Settings or entry update time."`
-	MaxPermission   int       `xorm:"-" json:"max_permission" readOnly:"true" doc:"0 read, 1 write entries, 2 manage space and permanently delete entries."`
-	EntryCount      int64     `xorm:"-" json:"entry_count" readOnly:"true" doc:"Entries outside trash, including archived writings."`
-	PinnedCount     int64     `xorm:"-" json:"pinned_count" readOnly:"true" doc:"Pinned active entries."`
-	web.CRUDable    `xorm:"-" json:"-"`
-	web.Permissions `xorm:"-" json:"-"`
+	ID               int64     `xorm:"bigint autoincr pk" json:"id" readOnly:"true" doc:"Space identifier, assigned by the server."`
+	OwnerID          int64     `xorm:"bigint not null index" json:"owner_id" readOnly:"true" doc:"Creator; owns a personal space, but cannot retain access after leaving a team space."`
+	TeamID           int64     `xorm:"bigint not null default 0 index" json:"team_id" minimum:"0" doc:"0 for private. On creation only, select a team you administer. Immutable thereafter."`
+	Title            string    `xorm:"varchar(80) not null" json:"title" minLength:"1" maxLength:"80" doc:"User-defined name, not a fixed product label."`
+	Motto            string    `xorm:"text" json:"motto" maxLength:"600" doc:"Plain-text guiding sentence."`
+	Introduction     string    `xorm:"longtext" json:"introduction" maxLength:"65536" doc:"Basic rich text without embeds or images, up to 64 KiB."`
+	Theme            string    `xorm:"varchar(16) not null" json:"theme" enum:"aurora,solar,nebula,ink" doc:"Built-in visual atmosphere."`
+	BackgroundFileID int64     `xorm:"bigint not null default 0" json:"background_file_id" minimum:"0" doc:"Owned or already space-authorized Drive image; 0 restores the theme sky."`
+	BackgroundFocusX int       `xorm:"int not null default 50" json:"background_focus_x" minimum:"0" maximum:"100" default:"50" doc:"Horizontal crop focus, percent."`
+	BackgroundFocusY int       `xorm:"int not null default 50" json:"background_focus_y" minimum:"0" maximum:"100" default:"50" doc:"Vertical crop focus, percent."`
+	BackgroundScrim  string    `xorm:"varchar(8) not null default 'medium'" json:"background_scrim" enum:"soft,medium,strong" default:"medium" doc:"Readability overlay over the background."`
+	Revision         int64     `xorm:"bigint not null" json:"revision" minimum:"0" doc:"Expected revision on save; stale edits return 409."`
+	Created          time.Time `xorm:"created not null" json:"created" readOnly:"true" doc:"Creation time."`
+	Updated          time.Time `xorm:"updated not null" json:"updated" readOnly:"true" doc:"Settings or entry update time."`
+	MaxPermission    int       `xorm:"-" json:"max_permission" readOnly:"true" doc:"0 read, 1 write entries, 2 manage space and permanently delete entries."`
+	EntryCount       int64     `xorm:"-" json:"entry_count" readOnly:"true" doc:"Entries outside trash, including archived writings."`
+	PinnedCount      int64     `xorm:"-" json:"pinned_count" readOnly:"true" doc:"Pinned active entries."`
+	web.CRUDable     `xorm:"-" json:"-"`
+	web.Permissions  `xorm:"-" json:"-"`
 }
 
 func (*CompassSpace) TableName() string { return "compass_spaces" }
@@ -61,7 +65,7 @@ type CompassEntry struct {
 	Kind            string    `xorm:"varchar(16) not null" json:"kind" enum:"principle,vision,action,memory,note" doc:"Principle, vision, action guidance, memory, or a free-form note."`
 	Title           string    `xorm:"varchar(200) not null" json:"title" minLength:"1" maxLength:"200" doc:"Entry title."`
 	Subtitle        string    `xorm:"text" json:"subtitle" maxLength:"600" doc:"Plain-text short introduction."`
-	Content         string    `xorm:"longtext" json:"content,omitempty" maxLength:"2097152" doc:"Sanitized rich text, up to 2 MiB. Omitted from lists; load the entry to read or edit."`
+	Content         string    `xorm:"longtext" json:"content,omitempty" maxLength:"2097152" doc:"Sanitized rich text with data-compass-image Drive references, up to 2 MiB. Omitted from lists; load the entry to read or edit."`
 	Quote           string    `xorm:"text" json:"quote" maxLength:"1000" doc:"Optional highlighted plain-text passage, explicitly selected by the author."`
 	Category        string    `xorm:"varchar(80)" json:"category" maxLength:"80" doc:"User-defined topic; empty means uncategorized."`
 	Tags            []string  `xorm:"json" json:"tags" maxItems:"24" doc:"Up to 24 unique single-line tags, each at most 40 Unicode characters."`
@@ -75,6 +79,7 @@ type CompassEntry struct {
 	CreatedByID     int64     `xorm:"bigint not null" json:"created_by_id" readOnly:"true" doc:"Creator's user ID."`
 	UpdatedByID     int64     `xorm:"bigint not null" json:"updated_by_id" readOnly:"true" doc:"User who saved this revision."`
 	Excerpt         string    `xorm:"text" json:"excerpt" readOnly:"true" doc:"Server-derived plain-text preview, up to 360 Unicode characters."`
+	ImageCount      int       `xorm:"int not null default 0" json:"image_count" readOnly:"true" doc:"Distinct images in the current body."`
 	ContentBytes    int64     `xorm:"bigint not null" json:"content_bytes" readOnly:"true" doc:"UTF-8 content size of this version, not total database disk usage."`
 	MaxPermission   int       `xorm:"-" json:"max_permission" readOnly:"true" doc:"Permission inherited from the containing space."`
 	FilterKind      string    `xorm:"-" json:"-"`
@@ -112,7 +117,7 @@ type ErrCompass struct {
 func (e ErrCompass) Error() string { return e.Message }
 func (e ErrCompass) HTTPError() web.HTTPError {
 	status := http.StatusBadRequest
-	if e.Code == 20101 {
+	if e.Code == 20101 || e.Code == 20104 {
 		status = http.StatusConflict
 	}
 	if e.Code == 20102 {
@@ -206,6 +211,14 @@ func (c *CompassSpace) validate() error {
 	if c.Title == "" || utf8.RuneCountInString(c.Title) > 80 || utf8.RuneCountInString(c.Motto) > 600 || len(c.Introduction) > 65536 || !compassTheme(c.Theme, false) {
 		return compassInvalid("Invalid space name, introduction or theme.")
 	}
+	if c.BackgroundScrim == "" {
+		c.BackgroundScrim = "medium"
+		c.BackgroundFocusX = 50
+		c.BackgroundFocusY = 50
+	}
+	if c.BackgroundFileID < 0 || c.BackgroundFocusX < 0 || c.BackgroundFocusX > 100 || c.BackgroundFocusY < 0 || c.BackgroundFocusY > 100 || !slices.Contains([]string{"soft", "medium", "strong"}, c.BackgroundScrim) {
+		return compassInvalid("Invalid background settings.")
+	}
 	c.Introduction = announcementHTMLPolicy.Sanitize(c.Introduction)
 	return nil
 }
@@ -229,8 +242,10 @@ func (c *CompassSpace) Create(s *xorm.Session, a web.Auth) error {
 	c.Created = time.Now()
 	c.Updated = c.Created
 	c.MaxPermission = 2
-	_, err = s.Insert(c)
-	return err
+	if _, err = s.Insert(c); err != nil {
+		return err
+	}
+	return ensureCompassImage(s, a, c.ID, c.BackgroundFileID)
 }
 func (c *CompassSpace) Update(s *xorm.Session, a web.Auth) error {
 	old, err := loadCompassSpace(s, c.ID, true)
@@ -254,18 +269,24 @@ func (c *CompassSpace) Update(s *xorm.Session, a web.Auth) error {
 	c.TeamID = old.TeamID
 	c.Created = old.Created
 	c.MaxPermission = p
-	if c.Title == old.Title && c.Motto == old.Motto && c.Introduction == old.Introduction && c.Theme == old.Theme {
+	if c.Title == old.Title && c.Motto == old.Motto && c.Introduction == old.Introduction && c.Theme == old.Theme && c.BackgroundFileID == old.BackgroundFileID && c.BackgroundFocusX == old.BackgroundFocusX && c.BackgroundFocusY == old.BackgroundFocusY && c.BackgroundScrim == old.BackgroundScrim {
 		*c = *old
 		return c.ReadOne(s, a)
 	}
+	if err = ensureCompassImage(s, a, c.ID, c.BackgroundFileID); err != nil {
+		return err
+	}
 	c.Revision++
 	c.Updated = time.Now()
-	affected, err := s.ID(c.ID).Where("revision = ?", old.Revision).Cols("title", "motto", "introduction", "theme", "revision", "updated").Update(c)
+	affected, err := s.ID(c.ID).Where("revision = ?", old.Revision).Cols("title", "motto", "introduction", "theme", "background_file_id", "background_focus_x", "background_focus_y", "background_scrim", "revision", "updated").Update(c)
 	if err != nil {
 		return err
 	}
 	if affected != 1 {
 		return compassConflict()
+	}
+	if err = gcCompassImages(s, c.ID); err != nil {
+		return err
 	}
 	return c.ReadOne(s, a)
 }
@@ -413,7 +434,12 @@ func (e *CompassEntry) validate() error {
 	}
 	e.Tags = tags
 	e.TagsSearch = "\n" + strings.Join(tags, "\n") + "\n"
-	e.Content = announcementHTMLPolicy.Sanitize(e.Content)
+	content, ids, err := sanitizeCompassContent(e.Content)
+	if err != nil {
+		return err
+	}
+	e.Content = content
+	e.ImageCount = len(ids)
 	e.ContentBytes = int64(len(e.Content))
 	plain := strings.Join(strings.Fields(html.UnescapeString(bluemonday.StrictPolicy().Sanitize(e.Content))), " ")
 	runes := []rune(plain)
@@ -474,6 +500,9 @@ func (e *CompassEntry) Create(s *xorm.Session, a web.Auth) error {
 	if _, err = s.Insert(e); err != nil {
 		return err
 	}
+	if err = e.syncImages(s, a); err != nil {
+		return err
+	}
 	if err = e.saveRevision(s); err != nil {
 		return err
 	}
@@ -515,12 +544,15 @@ func (e *CompassEntry) Update(s *xorm.Session, a web.Auth) error {
 	e.Updated = time.Now()
 	e.UpdatedByID = a.GetID()
 	e.MaxPermission = p
-	affected, err := s.ID(e.ID).Where("revision = ?", old.Revision).Cols("kind", "title", "subtitle", "content", "quote", "category", "tags", "tags_search", "theme", "pinned", "state", "revision", "updated", "updated_by_id", "excerpt", "content_bytes").Update(e)
+	affected, err := s.ID(e.ID).Where("revision = ?", old.Revision).Cols("kind", "title", "subtitle", "content", "quote", "category", "tags", "tags_search", "theme", "pinned", "state", "revision", "updated", "updated_by_id", "excerpt", "content_bytes", "image_count").Update(e)
 	if err != nil {
 		return err
 	}
 	if affected != 1 {
 		return compassConflict()
+	}
+	if err = e.syncImages(s, a); err != nil {
+		return err
 	}
 	return e.saveRevision(s)
 }
@@ -558,6 +590,12 @@ func (e *CompassEntry) Delete(s *xorm.Session, a web.Auth) error {
 		return err
 	}
 	if _, err = s.ID(e.ID).Delete(&CompassEntry{}); err != nil {
+		return err
+	}
+	if _, err = s.Where("entry_id = ?", e.ID).Delete(&compassEntryMedia{}); err != nil {
+		return err
+	}
+	if err = gcCompassImages(s, old.SpaceID); err != nil {
 		return err
 	}
 	_, err = s.ID(old.SpaceID).Cols("updated").Update(&CompassSpace{Updated: time.Now()})
@@ -749,6 +787,12 @@ func deleteCompassSpaces(s *xorm.Session, cond builder.Cond) error {
 			}
 		}
 		if _, err := s.Where("space_id = ?", c.ID).Delete(&CompassEntry{}); err != nil {
+			return err
+		}
+		if _, err := s.Where("space_id = ?", c.ID).Delete(&compassEntryMedia{}); err != nil {
+			return err
+		}
+		if _, err := s.Where("space_id = ?", c.ID).Delete(&compassMedia{}); err != nil {
 			return err
 		}
 		if _, err := s.ID(c.ID).Delete(&CompassSpace{}); err != nil {

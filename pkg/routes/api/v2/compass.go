@@ -30,6 +30,11 @@ import (
 )
 
 type compassSpaceBody struct {
+	BackgroundFileID int64  `json:"background_file_id" minimum:"0" doc:"Drive image reference; 0 uses theme sky."`
+	BackgroundFocusX int    `json:"background_focus_x" minimum:"0" maximum:"100" default:"50" doc:"Horizontal crop focal point, percent."`
+	BackgroundFocusY int    `json:"background_focus_y" minimum:"0" maximum:"100" default:"50" doc:"Vertical crop focal point, percent."`
+	BackgroundScrim  string `json:"background_scrim" enum:"soft,medium,strong" default:"medium" doc:"Background readability overlay strength."`
+
 	ID            int64     `json:"id" readOnly:"true" doc:"Space identifier, assigned by the server."`
 	OwnerID       int64     `json:"owner_id" readOnly:"true" doc:"Creator; owns a personal space, but cannot retain access after leaving a team space."`
 	TeamID        int64     `json:"team_id" minimum:"0" doc:"0 for private. On creation only, select a team you administer. Immutable thereafter."`
@@ -46,19 +51,20 @@ type compassSpaceBody struct {
 }
 
 func compassSpaceBodyFrom(m *models.CompassSpace) *compassSpaceBody {
-	return &compassSpaceBody{ID: m.ID, OwnerID: m.OwnerID, TeamID: m.TeamID, Title: m.Title, Motto: m.Motto, Introduction: m.Introduction, Theme: m.Theme, Revision: m.Revision, Created: m.Created, Updated: m.Updated, MaxPermission: m.MaxPermission, EntryCount: m.EntryCount, PinnedCount: m.PinnedCount}
+	return &compassSpaceBody{ID: m.ID, OwnerID: m.OwnerID, TeamID: m.TeamID, Title: m.Title, Motto: m.Motto, Introduction: m.Introduction, Theme: m.Theme, BackgroundFileID: m.BackgroundFileID, BackgroundFocusX: m.BackgroundFocusX, BackgroundFocusY: m.BackgroundFocusY, BackgroundScrim: m.BackgroundScrim, Revision: m.Revision, Created: m.Created, Updated: m.Updated, MaxPermission: m.MaxPermission, EntryCount: m.EntryCount, PinnedCount: m.PinnedCount}
 }
 func (b compassSpaceBody) model() *models.CompassSpace {
-	return &models.CompassSpace{ID: b.ID, OwnerID: b.OwnerID, TeamID: b.TeamID, Title: b.Title, Motto: b.Motto, Introduction: b.Introduction, Theme: b.Theme, Revision: b.Revision, Created: b.Created, Updated: b.Updated, MaxPermission: b.MaxPermission, EntryCount: b.EntryCount, PinnedCount: b.PinnedCount}
+	return &models.CompassSpace{ID: b.ID, OwnerID: b.OwnerID, TeamID: b.TeamID, Title: b.Title, Motto: b.Motto, Introduction: b.Introduction, Theme: b.Theme, BackgroundFileID: b.BackgroundFileID, BackgroundFocusX: b.BackgroundFocusX, BackgroundFocusY: b.BackgroundFocusY, BackgroundScrim: b.BackgroundScrim, Revision: b.Revision, Created: b.Created, Updated: b.Updated, MaxPermission: b.MaxPermission, EntryCount: b.EntryCount, PinnedCount: b.PinnedCount}
 }
 
 type compassEntryBody struct {
+	ImageCount    int       `json:"image_count" readOnly:"true" doc:"Distinct current body images."`
 	ID            int64     `json:"id" readOnly:"true" doc:"Entry identifier."`
 	SpaceID       int64     `json:"space_id" readOnly:"true" doc:"Immutable containing space, taken from creation URL."`
 	Kind          string    `json:"kind" enum:"principle,vision,action,memory,note" doc:"Principle, vision, action guidance, memory, or a free-form note."`
 	Title         string    `json:"title" minLength:"1" maxLength:"200" doc:"Entry title."`
 	Subtitle      string    `json:"subtitle" maxLength:"600" doc:"Plain-text short introduction."`
-	Content       string    `json:"content,omitempty" maxLength:"2097152" doc:"Sanitized rich text, up to 2 MiB. Omitted from lists; load the entry to read or edit."`
+	Content       string    `json:"content,omitempty" maxLength:"2097152" doc:"Sanitized rich text with data-compass-image Drive references, up to 2 MiB. Omitted from lists; load the entry to read or edit."`
 	Quote         string    `json:"quote" maxLength:"1000" doc:"Optional highlighted plain-text passage, explicitly selected by the author."`
 	Category      string    `json:"category" maxLength:"80" doc:"User-defined topic; empty means uncategorized."`
 	Tags          []string  `json:"tags" maxItems:"24" doc:"Up to 24 unique single-line tags, each at most 40 Unicode characters."`
@@ -76,10 +82,10 @@ type compassEntryBody struct {
 }
 
 func compassEntryBodyFrom(m *models.CompassEntry) *compassEntryBody {
-	return &compassEntryBody{ID: m.ID, SpaceID: m.SpaceID, Kind: m.Kind, Title: m.Title, Subtitle: m.Subtitle, Content: m.Content, Quote: m.Quote, Category: m.Category, Tags: m.Tags, Theme: m.Theme, Pinned: m.Pinned, State: m.State, Revision: m.Revision, Created: m.Created, Updated: m.Updated, CreatedByID: m.CreatedByID, UpdatedByID: m.UpdatedByID, Excerpt: m.Excerpt, ContentBytes: m.ContentBytes, MaxPermission: m.MaxPermission}
+	return &compassEntryBody{ID: m.ID, SpaceID: m.SpaceID, Kind: m.Kind, Title: m.Title, Subtitle: m.Subtitle, Content: m.Content, Quote: m.Quote, Category: m.Category, Tags: m.Tags, Theme: m.Theme, Pinned: m.Pinned, State: m.State, Revision: m.Revision, Created: m.Created, Updated: m.Updated, CreatedByID: m.CreatedByID, UpdatedByID: m.UpdatedByID, Excerpt: m.Excerpt, ContentBytes: m.ContentBytes, ImageCount: m.ImageCount, MaxPermission: m.MaxPermission}
 }
 func (b compassEntryBody) model() *models.CompassEntry {
-	return &models.CompassEntry{ID: b.ID, SpaceID: b.SpaceID, Kind: b.Kind, Title: b.Title, Subtitle: b.Subtitle, Content: b.Content, Quote: b.Quote, Category: b.Category, Tags: b.Tags, Theme: b.Theme, Pinned: b.Pinned, State: b.State, Revision: b.Revision, Created: b.Created, Updated: b.Updated, CreatedByID: b.CreatedByID, UpdatedByID: b.UpdatedByID, Excerpt: b.Excerpt, ContentBytes: b.ContentBytes, MaxPermission: b.MaxPermission}
+	return &models.CompassEntry{ID: b.ID, SpaceID: b.SpaceID, Kind: b.Kind, Title: b.Title, Subtitle: b.Subtitle, Content: b.Content, Quote: b.Quote, Category: b.Category, Tags: b.Tags, Theme: b.Theme, Pinned: b.Pinned, State: b.State, Revision: b.Revision, Created: b.Created, Updated: b.Updated, CreatedByID: b.CreatedByID, UpdatedByID: b.UpdatedByID, Excerpt: b.Excerpt, ContentBytes: b.ContentBytes, ImageCount: b.ImageCount, MaxPermission: b.MaxPermission}
 }
 
 func init() { AddRouteRegistrar(RegisterCompassRoutes) }

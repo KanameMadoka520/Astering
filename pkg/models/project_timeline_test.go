@@ -57,11 +57,11 @@ func TestProjectTimelineCoverage(t *testing.T) {
 	opts := ProjectTimelineOptions{Year: 2024, Timezone: "America/New_York", ProjectID: 1, Page: 1}
 	h, err := getProjectTimelineAt(s, &user.User{ID: 1}, opts, now)
 	require.NoError(t, err)
-	require.Equal(t, 2, h.ExcludedTasks)
+	require.Equal(t, 1, h.ExcludedTasks)
 	require.Equal(t, 1, h.InvalidTasks)
-	require.Equal(t, 4, h.DatedTasks)
+	require.Equal(t, 5, h.DatedTasks)
 	require.Equal(t, 1, h.DoneTasks)
-	require.Equal(t, 1, h.OverdueTasks)
+	require.Equal(t, 2, h.OverdueTasks)
 	require.Equal(t, 8, h.ScheduledDays) // Jan 1–4, Mar 9–10, Apr 1–2.
 	require.Equal(t, 5, h.ElapsedDays)   // Jan 1–3, Mar 9–10; future and completed tails excluded.
 	require.Equal(t, 1, h.Days["2024-01-02"].ScheduledProjects)
@@ -71,11 +71,15 @@ func TestProjectTimelineCoverage(t *testing.T) {
 	require.Equal(t, 2023, h.FirstYear)
 	require.Equal(t, 2024, h.LastYear)
 	require.Len(t, h.Items, 1)
-	require.InDelta(t, .4, h.Items[0].Progress, .00001)
-	require.Equal(t, "2024-03-11", h.Items[0].OverdueSince)
+	require.InDelta(t, .32, h.Items[0].Progress, .00001)
+	require.Equal(t, "2024-02-01", h.Items[0].OverdueSince)
 	require.Empty(t, h.Items[0].NextDeadline)
 	require.Len(t, h.Items[0].ScheduledSpans, 3)
 	require.Equal(t, "2023-12-30", h.Items[0].StartDate)
+	opts.Day = "2024-03-11" // A deadline outside its task range must still select the project.
+	h, err = getProjectTimelineAt(s, &user.User{ID: 1}, opts, now)
+	require.NoError(t, err)
+	require.Equal(t, 1, h.Total)
 	opts.Day = "2024-02-10"
 	h, err = getProjectTimelineAt(s, &user.User{ID: 1}, opts, now)
 	require.NoError(t, err)
@@ -160,4 +164,184 @@ func TestProjectTimelineLeapYearAndPaging(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, h.Items, 1)
 	require.Greater(t, h.Items[0].ID, lastID)
+}
+
+func TestProjectTimelineDeadlineNodes(t *testing.T) {
+	db.LoadAndAssertFixtures(t)
+	s := db.NewSession()
+	defer s.Close()
+	_, err := s.Where("project_id = ?", 1).Delete(new(Task))
+	require.NoError(t, err)
+	tasks := []Task{
+		{Title: "Only deadline", ProjectID: 1, DueDate: timelineDate("2024-03-01T01:00:00Z"), Done: true},
+		{Title: "Same deadline", ProjectID: 1, DueDate: timelineDate("2024-03-01T10:00:00Z")},
+		{Title: "Range is in previous year", ProjectID: 1, StartDate: timelineDate("2023-12-20T12:00:00Z"), EndDate: timelineDate("2023-12-25T12:00:00Z"), DueDate: timelineDate("2024-03-02T12:00:00Z")},
+		{Title: "Reversed range with valid deadline", ProjectID: 1, StartDate: timelineDate("2024-04-02T12:00:00Z"), EndDate: timelineDate("2024-04-01T12:00:00Z"), DueDate: timelineDate("2024-03-03T12:00:00Z")},
+		{Title: "Missing all dates", ProjectID: 1},
+		{Title: "Only start", ProjectID: 1, StartDate: timelineDate("2024-02-01T12:00:00Z")},
+		{Title: "Only end", ProjectID: 1, EndDate: timelineDate("2024-02-01T12:00:00Z")},
+	}
+	for i := range tasks {
+		tasks[i].Index = int64(i + 10000)
+	}
+	_, err = s.Insert(&tasks)
+	require.NoError(t, err)
+	opts := ProjectTimelineOptions{Year: 2024, Timezone: "UTC", ProjectID: 1, Page: 1}
+	h, err := getProjectTimelineAt(s, &user.User{ID: 1}, opts, timelineDate("2024-03-10T12:00:00Z"))
+	require.NoError(t, err)
+	require.Equal(t, 4, h.DatedTasks)
+	require.Equal(t, 4, h.DeadlineOnlyTasks)
+	require.Zero(t, h.RangedTasks)
+	require.Zero(t, h.ScheduledDays)
+	require.Zero(t, h.ElapsedDays)
+	require.Equal(t, 1, h.UndatedTasks)
+	require.Equal(t, 2, h.IncompleteTasks)
+	require.Equal(t, 3, h.ExcludedTasks)
+	require.Equal(t, 1, h.InvalidTasks)
+	require.Equal(t, 2023, h.FirstYear)
+	require.Equal(t, 2024, h.LastYear)
+	require.Len(t, h.Items, 1)
+	item := h.Items[0]
+	require.Empty(t, item.StartDate)
+	require.Empty(t, item.EndDate)
+	require.Empty(t, item.ScheduledSpans)
+	require.Len(t, item.DeadlineDays, 3)
+	require.Equal(t, ProjectTimelineDeadline{Date: "2024-03-01", Count: 2, Done: 1, Open: 1}, item.DeadlineDays[0])
+	require.Equal(t, 1, h.Days["2024-03-01"].DeadlineProjects)
+	require.Equal(t, 2, h.Days["2024-03-01"].Deadlines)
+	require.Equal(t, 3, h.OverdueTasks)
+	require.InDelta(t, .25, item.Progress, .00001)
+	opts.Day = "2024-03-03"
+	h, err = GetProjectTimeline(s, &user.User{ID: 1}, opts)
+	require.NoError(t, err)
+	require.Equal(t, 1, h.Total)
+	require.Equal(t, 4, h.DatedTasks)
+	opts.Day = "2024-04-01" // An invalid range is never coverage.
+	h, err = GetProjectTimeline(s, &user.User{ID: 1}, opts)
+	require.NoError(t, err)
+	require.Zero(t, h.Total)
+	opts.Day = ""
+	opts.Year = 2023
+	h, err = GetProjectTimeline(s, &user.User{ID: 1}, opts)
+	require.NoError(t, err)
+	require.Equal(t, 1, h.DatedTasks)
+	require.Equal(t, 1, h.RangedTasks)
+	require.Zero(t, h.DeadlineOnlyTasks)
+	require.Equal(t, 6, h.ScheduledDays)
+	require.Empty(t, h.Items[0].DeadlineDays)
+}
+
+func TestProjectTimelineDeadlineOrderingAndScope(t *testing.T) {
+	db.LoadAndAssertFixtures(t)
+	s := db.NewSession()
+	defer s.Close()
+	u := &user.User{ID: 1}
+	var projects []*Project
+	for _, title := range []string{"Timeline nodes later", "Timeline nodes earlier", "Timeline nodes tied"} {
+		p := &Project{Title: title}
+		require.NoError(t, p.Create(s, u))
+		projects = append(projects, p)
+	}
+	for i, day := range []string{"2024-03-02T12:00:00Z", "2024-03-01T12:00:00Z", "2024-03-02T12:00:00Z"} {
+		_, err := s.Insert(&Task{Title: "Deadline", ProjectID: projects[i].ID, DueDate: timelineDate(day)})
+		require.NoError(t, err)
+	}
+	_, err := s.ID(projects[0].ID).Cols("is_archived").Update(&Project{IsArchived: true})
+	require.NoError(t, err)
+	_, err = s.ID(projects[1].ID).Cols("is_completed").Update(&Project{IsCompleted: true})
+	require.NoError(t, err)
+	_, err = s.Insert(&Task{Title: "Private future node", ProjectID: 2, DueDate: timelineDate("2099-01-01T12:00:00Z")})
+	require.NoError(t, err)
+	opts := ProjectTimelineOptions{Year: 2024, Timezone: "UTC", Search: "Timeline nodes", Page: 1}
+	h, err := GetProjectTimeline(s, u, opts)
+	require.NoError(t, err)
+	require.Len(t, h.Items, 3)
+	require.Equal(t, projects[1].ID, h.Items[0].ID)
+	require.Equal(t, projects[0].ID, h.Items[1].ID)
+	require.Equal(t, projects[2].ID, h.Items[2].ID)
+	require.Equal(t, 2, h.Days["2024-03-02"].DeadlineProjects)
+	require.Equal(t, 3, h.DeadlineOnlyTasks)
+	for _, status := range []string{"active", "completed", "archived"} {
+		opts.Status = status
+		h, err = GetProjectTimeline(s, u, opts)
+		require.NoError(t, err)
+		require.Equal(t, 1, h.Projects)
+		require.Equal(t, 1, h.DatedTasks)
+	}
+	opts.Status, opts.Search, opts.ProjectID = "all", "", 2
+	h, err = GetProjectTimeline(s, u, opts)
+	require.NoError(t, err)
+	require.Zero(t, h.FirstYear)
+	require.Zero(t, h.LastYear)
+	require.Zero(t, h.DeadlineOnlyTasks)
+	require.Zero(t, h.UndatedTasks)
+	require.Empty(t, h.Items)
+	opts.ProjectID = projects[0].ID
+	h, err = GetProjectTimeline(s, &LinkSharing{ProjectID: projects[0].ID, Permission: PermissionRead}, opts)
+	require.NoError(t, err)
+	require.Equal(t, 1, h.Projects)
+	require.Equal(t, 1, h.DeadlineOnlyTasks)
+}
+
+func TestProjectTimelineProductionDateShape(t *testing.T) {
+	db.LoadAndAssertFixtures(t)
+	s := db.NewSession()
+	defer s.Close()
+	_, err := s.Where("project_id = ?", 1).Delete(new(Task))
+	require.NoError(t, err)
+	tasks := make([]Task, 130)
+	for i := range tasks {
+		tasks[i] = Task{Title: "Date shape regression", ProjectID: 1, Index: int64(i + 10000)}
+		switch {
+		case i < 9:
+			tasks[i].StartDate = timelineDate("2026-10-26T12:00:00Z")
+			tasks[i].EndDate = timelineDate("2026-10-29T12:00:00Z")
+			tasks[i].Done = i < 8
+		case i < 26:
+			tasks[i].DueDate = timelineDate("2026-11-06T12:00:00Z")
+		}
+	}
+	_, err = s.Insert(&tasks)
+	require.NoError(t, err)
+	h, err := GetProjectTimeline(s, &user.User{ID: 1}, ProjectTimelineOptions{Year: 2026, Timezone: "Asia/Shanghai", ProjectID: 1, Page: 1})
+	require.NoError(t, err)
+	require.Equal(t, 26, h.DatedTasks)
+	require.Equal(t, 9, h.RangedTasks)
+	require.Equal(t, 17, h.DeadlineOnlyTasks)
+	require.Equal(t, 104, h.UndatedTasks)
+	require.Equal(t, 104, h.ExcludedTasks)
+	require.Equal(t, 8, h.DoneTasks)
+	require.Equal(t, 4, h.ScheduledDays)
+	require.Equal(t, 17, h.Days["2026-11-06"].Deadlines)
+}
+
+func TestProjectTimelineDateFactsIndependent(t *testing.T) {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	require.NoError(t, err)
+	for _, tc := range []struct {
+		name     string
+		task     timelineTask
+		ranged   bool
+		validDue bool
+		invalid  int
+	}{
+		{name: "deadline local year", task: timelineTask{DueDate: timelineDate("2023-12-31T16:00:00Z")}, validDue: true},
+		{name: "range survives unsupported deadline", task: timelineTask{StartDate: timelineDate("2024-01-01T12:00:00Z"), EndDate: timelineDate("2024-01-03T12:00:00Z"), DueDate: timelineDate("1960-01-01T12:00:00Z")}, ranged: true, invalid: 1},
+		{name: "deadline survives unsupported range", task: timelineTask{StartDate: timelineDate("1960-01-01T12:00:00Z"), EndDate: timelineDate("2024-01-03T12:00:00Z"), DueDate: timelineDate("2024-02-01T12:00:00Z")}, validDue: true, invalid: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result := &ProjectTimeline{}
+			start, end, ranged, validDue, eligible := timelineDates(&tc.task, result, 2024, loc)
+			require.True(t, eligible)
+			require.Equal(t, tc.ranged, ranged)
+			require.Equal(t, tc.validDue, validDue)
+			require.Equal(t, tc.invalid, result.InvalidTasks)
+			require.Equal(t, 2024, result.FirstYear)
+			require.Equal(t, 2024, result.LastYear)
+			if !ranged {
+				require.True(t, start.IsZero())
+				require.True(t, end.IsZero())
+			}
+		})
+	}
 }

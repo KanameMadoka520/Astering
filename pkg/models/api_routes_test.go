@@ -635,3 +635,27 @@ func TestCompassAPITokenRoutes(t *testing.T) {
 	require.Equal(t, "/api/v2/compass/entries/:entry/revisions/:revision", apiTokenRoutesV2["compass_entries_revisions"]["read_one"].Path)
 	require.Equal(t, "DELETE", apiTokenRoutesV2["compass_entries"]["delete"].Method)
 }
+
+func TestCompassImagesExcludedFromAPITokens(t *testing.T) {
+	resetAPITokenRoutes(t)
+	const imagePath = "/api/v2/compass/spaces/:space/images/:file"
+	CollectRoutesForAPITokenUsage(echo.RouteInfo{Method: http.MethodGet, Path: imagePath}, true)
+	CollectRoutesForAPITokenUsage(echo.RouteInfo{Method: http.MethodGet, Path: "/api/v2/compass/spaces/:space"}, true)
+	CollectRoutesForAPITokenUsage(echo.RouteInfo{Method: http.MethodGet, Path: "/api/v2/compass/entries/:entry"}, true)
+	for _, routes := range GetAPITokenRoutes() {
+		for _, detail := range routes {
+			require.NotEqual(t, imagePath, detail.Path)
+		}
+	}
+	// Even a forged/stale permissions row cannot authorize the unregistered image route.
+	token := &APIToken{APIPermissions: APIPermissions{
+		"compass":               {"spaces_images"},
+		"compass_spaces_images": {"read_one"},
+		"compass_spaces":        {"read_one"},
+		"compass_entries":       {"read_one"},
+	}}
+	require.False(t, token.CanUseRoute(imagePath, http.MethodGet))
+	require.True(t, token.CanUseRoute("/api/v2/compass/spaces/:space", http.MethodGet))
+	require.True(t, token.CanUseRoute("/api/v2/compass/entries/:entry", http.MethodGet))
+	require.Error(t, PermissionsAreValid(APIPermissions{"compass": {"spaces_images"}}))
+}

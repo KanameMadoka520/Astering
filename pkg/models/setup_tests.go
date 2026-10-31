@@ -55,6 +55,8 @@ func SetupTests() {
 		"compass_spaces",
 		"compass_entries",
 		"compass_revisions",
+		"compass_media",
+		"compass_entry_media",
 		"task_routines",
 		"task_routine_checkins",
 		"label_tasks",
