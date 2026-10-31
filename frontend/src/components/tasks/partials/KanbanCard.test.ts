@@ -3,6 +3,7 @@ import {shallowMount, flushPromises} from '@vue/test-utils'
 import {createPinia, setActivePinia} from 'pinia'
 import {createRouter, createMemoryHistory} from 'vue-router'
 import {QueryClient, VueQueryPlugin} from '@tanstack/vue-query'
+import {createI18n} from 'vue-i18n'
 
 import {normalizeTask, type TaskResponse} from '@/client/queries/tasks'
 import {ApiError} from '@/client/problem'
@@ -84,6 +85,8 @@ function mountCard(task: TaskResponse) {
 		global: {
 			plugins: [
 				createPinia(),
+				// Routine check-in reads its messages through the global composer.
+				createI18n({legacy: false, locale: 'en', missingWarn: false, fallbackWarn: false}),
 				router,
 				[VueQueryPlugin, {queryClient: new QueryClient({defaultOptions: {queries: {retry: false}}})}],
 			],

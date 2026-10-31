@@ -159,15 +159,11 @@ import {ApiError} from '@/client/problem'
 
 import {formatDateLong, formatDisplayDate, formatISO} from '@/helpers/time/formatDate'
 import {colorIsDark} from '@/helpers/color/colorIsDark'
-import {useUpdateTaskMutation} from '@/client/queries/taskMutations'
 import AssigneeList from '@/components/tasks/partials/AssigneeList.vue'
-import {playPopSound} from '@/helpers/playPop'
 import {isEditorContentEmpty} from '@/helpers/editorContentEmpty'
 import {useProjects} from '@/composables/useProjects'
 import {useDelayedLoading} from '@/composables/useDelayedLoading'
-import {TASK_REPEAT_MODES} from '@/types/IRepeatMode'
-import {useRoutineCheckIn} from '@/composables/useRoutineCheckIn'
-import {routineOf, routineStatus} from '@/helpers/taskRoutine'
+import {useTaskDoneToggle} from '@/composables/useTaskDoneToggle'
 
 const props = defineProps<{
 	task: TaskResponse,
@@ -179,7 +175,6 @@ const emit = defineEmits<{
 }>()
 
 const router = useRouter()
-const updateTask = useUpdateTaskMutation()
 
 const loadingInternal = ref(false)
 const showLoading = useDelayedLoading(loadingInternal)
@@ -209,40 +204,14 @@ const isOverdue = computed(() => (
 	new Date(props.task.due_date ?? 0).getTime() <= now.value.getTime()
 ))
 
-const routineCheckIn = useRoutineCheckIn()
-const isRoutine = computed(() => routineOf(props.task)?.enabled === true)
+const doneToggle = useTaskDoneToggle()
+const isRoutine = computed(() => doneToggle.isRoutine(props.task))
 
+// Ctrl/Cmd-click on a routine checks it in for today (or undoes that); its done flag never changes.
 async function toggleTaskDone(task: TaskResponse) {
-	// Ctrl/Cmd-click on a routine checks it in for today (or undoes that); its done flag never changes.
-	if (isRoutine.value) {
-		const checkedIn = routineStatus(routineOf(task), now.value) === 'done'
-		loadingInternal.value = true
-		try {
-			await routineCheckIn.setCheckedIn(task, !checkedIn)
-		} finally {
-			loadingInternal.value = false
-		}
-		return
-	}
-
-	const isRecurringTask = task.repeat_after > 0 || task.repeat_mode === TASK_REPEAT_MODES.REPEAT_MODE_MONTH
-	const wasBeingMarkedDone = !task.done
-	
 	loadingInternal.value = true
 	try {
-		const updatedTask = await updateTask.mutateAsync({
-			...task,
-			done: !task.done,
-		})
-
-		if (updatedTask.done) {
-			playPopSound()
-		}
-		
-		// Emit event if this was a recurring task being marked as done
-		if (isRecurringTask && wasBeingMarkedDone && updatedTask.done) {
-			emit('taskCompletedRecurring', updatedTask)
-		}
+		await doneToggle.toggle(task, updatedTask => emit('taskCompletedRecurring', updatedTask))
 	} finally {
 		loadingInternal.value = false
 	}
