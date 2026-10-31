@@ -2,6 +2,7 @@
 	<!-- Only prepareCompassHtml() output reaches v-html: sanitized, with our own heading ids and figures. -->
 	<!-- eslint-disable vue/no-v-html -->
 	<div
+		v-bind="$attrs"
 		ref="root"
 		class="compass-prose"
 		:class="[`compass-prose--${font}`, `compass-prose--${size}`]"
@@ -38,6 +39,9 @@ const props = withDefaults(defineProps<{
 	font: 'serif',
 	size: 'medium',
 })
+
+// The lightbox is a second root; keep reader/history layout attributes on the prose itself.
+defineOptions({inheritAttrs: false})
 
 const root = useTemplateRef<HTMLElement>('root')
 useCompassImageHydration(root, () => props.spaceId, () => props.prepared.html)
