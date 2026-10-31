@@ -1,6 +1,7 @@
 import type {Page} from '@playwright/test'
 
 import {test, expect} from '../../support/fixtures'
+import {apiRootUrl} from '../../support/apiUrl'
 import {ProjectFactory} from '../../factories/project'
 import {TaskFactory} from '../../factories/task'
 import {createDefaultViews} from './prepareProjects'
@@ -64,11 +65,11 @@ test.describe('Project timeline', () => {
 		const website = lane(page, 'Website relaunch')
 		await expect(website.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50')
 		await expect(website).toContainText('50% average progress')
-		await expect(website).toContainText(`0 of 1 scheduled tasks in ${YEAR} done`)
+		await expect(website).toContainText(`0 of 1 dated tasks in ${YEAR} done`)
 		await expect(website.locator('.lane-span.is-elapsed')).toHaveCount(1)
 		await expect(lane(page, 'Tax return')).toContainText('Archived')
-		await expect(page.locator('.timeline-missing')).toContainText('1 task is not on the timeline')
-		await expect(page.locator('.timeline-stat').filter({hasText: 'Projects with scheduled work'})).toContainText('2')
+		await expect(page.locator('.timeline-missing')).toContainText('1 task has no dates at all, so it is not on the timeline.')
+		await expect(page.locator('.timeline-stat').filter({hasText: 'Projects with dates'})).toContainText('2')
 		expect(await motionViolations(page)).toEqual([])
 
 		const status = page.getByRole('group', {name: 'Project status'})
@@ -100,7 +101,7 @@ test.describe('Project timeline', () => {
 		// Zooming to a month keeps every row but draws only that month.
 		await page.getByRole('button', {name: 'Zoom to March', exact: false}).first().click()
 		await expect(page).toHaveURL(/month=3/)
-		await expect(lane(page, 'Tax return')).toContainText('Nothing scheduled in March')
+		await expect(lane(page, 'Tax return')).toContainText('Nothing scheduled or due in March')
 
 		await page.getByRole('combobox', {name: 'Year'}).selectOption('2024')
 		await expect(page).toHaveURL(/year=2024/)
@@ -111,7 +112,7 @@ test.describe('Project timeline', () => {
 		await expect(page.locator('.lane')).toHaveCount(1)
 
 		await page.getByRole('combobox', {name: 'Year'}).selectOption(String(YEAR - 5))
-		await expect(page.getByText(`No scheduled work in ${YEAR - 5}.`)).toBeVisible()
+		await expect(page.getByText(`No dated tasks in ${YEAR - 5}.`)).toBeVisible()
 		await page.getByRole('button', {name: 'Go to 2024'}).click()
 		await expect(page).toHaveURL(/year=2024/)
 		await expect(lane(page, 'Thesis writing')).toBeVisible()
@@ -134,8 +135,74 @@ test.describe('Project timeline', () => {
 
 		await expect(page).toHaveURL(/\/projects\/history/)
 		await expect(lane(page, 'Website relaunch')).toContainText('100% average progress')
-		await expect(lane(page, 'Website relaunch')).toContainText(`1 of 1 scheduled tasks in ${YEAR} done`)
+		await expect(lane(page, 'Website relaunch')).toContainText(`1 of 1 dated tasks in ${YEAR} done`)
 		expect(await page.evaluate(() => (window as unknown as {timelineMarker?: number}).timelineMarker)).toBe(1)
+	})
+
+	test('deadline-only tasks appear without invented spans and empty lifecycle explains the current scope', async ({
+		authenticatedPage: page, apiContext, userToken, currentUser,
+	}) => {
+		const deadline = `${YEAR}-06-15`
+		await ProjectFactory.create(1, {id: 1, owner_id: currentUser.id, title: 'Deadline without a start'})
+		await ProjectFactory.create(1, {id: 2, owner_id: currentUser.id, title: 'Undated research'}, false)
+		await createDefaultViews(1, 1)
+		await createDefaultViews(2, 5)
+		await TaskFactory.create(1, {
+			id: 1, project_id: 1, created_by_id: currentUser.id,
+			title: 'Send the proposal', due_date: at(deadline),
+		})
+		const api = `${apiRootUrl(process.env.API_URL || 'http://localhost:3456')}/api/v2`
+		const headers = {Authorization: `Bearer ${userToken}`}
+		const timelineResponse = await apiContext.get(`${api}/projects/timeline`, {
+			headers, params: {year: YEAR, timezone: 'UTC'},
+		})
+		expect(timelineResponse.ok(), await timelineResponse.text()).toBe(true)
+		const timeline = await timelineResponse.json()
+		expect(timeline.items).toHaveLength(1)
+		expect(timeline.items[0]).toMatchObject({
+			id: 1, start_date: '', end_date: '', scheduled_days: 0, elapsed_days: 0,
+			ranged_tasks: 0, deadline_only_tasks: 1,
+			deadline_days: [{date: deadline, count: 1, done: 0, open: 1}],
+		})
+		expect(timeline.items[0].scheduled_spans ?? []).toEqual([])
+		expect(timeline.items[0].elapsed_spans ?? []).toEqual([])
+		expect(timeline.days[deadline]).toMatchObject({scheduled_projects: 0, deadlines: 1, deadline_projects: 1})
+		await page.setViewportSize({width: 1280, height: 900})
+		await page.goto(`/projects/history?year=${YEAR}`)
+		const dueLane = lane(page, 'Deadline without a start')
+		await expect(dueLane).toBeVisible()
+		await expect(dueLane).toContainText(`Only deadlines in ${YEAR}, no start–end range`)
+		await expect(dueLane.locator('.lane-deadline')).toHaveCount(1)
+		await expect(dueLane.locator('.lane-span')).toHaveCount(0)
+		await expect(page.locator('.timeline-stat').filter({hasText: 'Scheduled days'}).locator('dd')).toHaveText('0 days')
+		// The calendar's deadline cell is interactive; the lane's marker is its visual counterpart.
+		const cell = page.locator(`[data-grid="year"] [data-date="${deadline}"]`)
+		await expect(cell).toHaveAttribute('aria-label', /1 deadline/)
+		await cell.click()
+		await expect(page).toHaveURL(new RegExp(`day=${deadline}`))
+		await expect(cell).toHaveAttribute('aria-selected', 'true')
+		await expect(dueLane).toBeVisible()
+		await page.getByRole('button', {name: 'Show only Deadline without a start', exact: true}).click()
+		await expect(page).toHaveURL(/project=1/)
+		await expect(page.locator('.lane')).toHaveCount(1)
+		await expect(dueLane.locator('.lane-span')).toHaveCount(0)
+		// Clear the project/day scope before switching, so both accessible projects must be counted.
+		await page.goto(`/projects/history?year=${YEAR}`)
+		await page.getByRole('tab', {name: 'Status changes', exact: true}).click()
+		await expect(page).toHaveURL(/tab=lifecycle/)
+		await expect(page.getByRole('heading', {name: `No project-level status changes in ${YEAR}`, exact: true})).toBeVisible()
+		const scope = page.locator('.history-scope')
+		await expect(scope).toHaveAttribute('aria-label', 'Projects in view right now')
+		for (const [label, value] of [['Projects', '2'], ['Marked complete', '0'], ['Archived', '0']]) {
+			await expect(scope.locator('div').filter({has: page.locator('dt', {hasText: new RegExp(`^${label}$`)})}).locator('dd')).toHaveText(value)
+		}
+		await expect(page.locator('.history-state')).toContainText('Checking off a project’s tasks never marks the project itself complete')
+		await expect(page.locator('.history-state')).toContainText('Nothing is completed automatically, and no past dates are filled in.')
+		const historyResponse = await apiContext.get(`${api}/projects/history`, {
+			headers, params: {year: YEAR, timezone: 'UTC'},
+		})
+		expect(historyResponse.ok(), await historyResponse.text()).toBe(true)
+		expect((await historyResponse.json()).scope).toEqual({projects: 2, completed: 0, archived: 0})
 	})
 
 	test('lifecycle records stay available in their own tab', async ({authenticatedPage: page}) => {
