@@ -23,6 +23,8 @@ import {
 	faArrowUpFromBracket,
 	faArrowUpRightFromSquare,
 	faArrowUpShortWide,
+	faArrowRightArrowLeft,
+	faCrosshairs,
 	faBold,
 	faItalic,
 	faStrikethrough,
@@ -276,6 +278,8 @@ library.add(faArrowUpRightFromSquare)
 export default FontAwesomeIcon as unknown as FontAwesomeIconFixedTypes
 
 library.add(faCompress)
+library.add(faArrowRightArrowLeft)
+library.add(faCrosshairs)
 library.add(faArrowUp)
 library.add(faEnvelope)
 library.add(faKey)

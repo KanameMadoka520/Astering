@@ -6,6 +6,14 @@
 		:view-id
 	>
 		<template #header>
+			<KanbanDisplaySwitch
+				:mode="displayMode"
+				:any-collapsed="anyGroupCollapsed"
+				:can-collapse="groupKeys.length > 0"
+				@update:mode="setDisplayMode"
+				@collapseAll="setGroupsCollapsed(groupKeys, true)"
+				@expandAll="setGroupsCollapsed([...collapsedGroups], false)"
+			/>
 			<div class="filter-container">
 				<FilterPopup
 					v-if="!isSavedFilterProject(project)"
@@ -18,7 +26,21 @@
 		</template>
 
 		<template #default>
-			<div class="kanban-view">
+			<div
+				class="kanban-view"
+				@keydown.esc="exitFocusByKey"
+			>
+				<KanbanFocusBar
+					v-if="grouped && focusId !== null"
+					:index="hierarchy"
+					:focus-id="focusId"
+					:shown="focusShown"
+					:loaded="loadedCount"
+					:can-load-more="anyBucketHasMore"
+					:loading="loadingEverywhere"
+					@exit="exitFocus"
+					@loadMore="loadMoreEverywhere"
+				/>
 				<div
 					ref="boardRef"
 					:class="{ 'is-loading': showInitialLoading, 'is-dragging': drag || dragBucket }"
@@ -27,6 +49,7 @@
 				>
 					<BucketDraggable
 						v-bind="dragOptions"
+						:handle="grouped ? '.bucket-header' : undefined"
 						:model-value="buckets"
 						group="buckets"
 						:disabled="!canWrite || newTaskInputFocused"
@@ -196,13 +219,14 @@
 									</Dropdown>
 								</div>
 
+								<!-- Groups reuse the column's scroller, paging and footer, but nothing in them is draggable. -->
 								<TaskDraggable
 									v-bind="dragOptions"
 									:handle="taskDragHandle"
 									:delay="isTouchDevice ? 300 : 1000"
-									:model-value="bucket.tasks"
-									:group="{name: 'tasks', put: shouldAcceptDrop(bucket) && !dragBucket}"
-									:disabled="!canWrite"
+									:model-value="grouped ? [] : bucket.tasks"
+									:group="{name: 'tasks', put: !grouped && shouldAcceptDrop(bucket) && !dragBucket}"
+									:disabled="!canWrite || grouped"
 									:data-bucket-index="bucketIndex"
 									tag="ul"
 									:item-key="(task: TaskResponse) => `bucket${bucket.id}-task${task.id}`"
@@ -211,6 +235,26 @@
 									@start="handleTaskDragStart"
 									@end="updateTaskPosition"
 								>
+									<template
+										v-if="grouped"
+										#header
+									>
+										<li
+											key="kanban-tree"
+											class="kanban-tree-host"
+										>
+											<KanbanColumnTree
+												:bucket-id="bucket.id"
+												:nodes="columnTrees.get(bucket.id)?.nodes ?? []"
+												:hidden="columnTrees.get(bucket.id)?.hidden ?? 0"
+												:focused="focusId !== null"
+												:loaded="bucket.tasks.length"
+												:count="bucket.count"
+												:loading="loadingBucket === bucket.id"
+												@loadMore="loadMoreInBucket(bucket.id)"
+											/>
+										</li>
+									</template>
 									<template #footer>
 										<li
 											v-if="canCreateTasks"
@@ -377,6 +421,10 @@ import ProjectWrapper from '@/components/project/ProjectWrapper.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
 import FilterPopup from '@/components/project/partials/FilterPopup.vue'
 import KanbanCard from '@/components/tasks/partials/KanbanCard.vue'
+import KanbanColumnTree from '@/components/project/views/kanban/KanbanColumnTree.vue'
+import KanbanDisplaySwitch from '@/components/project/views/kanban/KanbanDisplaySwitch.vue'
+import KanbanFocusBar from '@/components/project/views/kanban/KanbanFocusBar.vue'
+import {useKanbanGrouping} from '@/components/project/views/kanban/useKanbanGrouping'
 import Dropdown from '@/components/misc/Dropdown.vue'
 import DropdownItem from '@/components/misc/DropdownItem.vue'
 
@@ -387,14 +435,15 @@ import {
 } from '@/helpers/saveCollapsedBucketState'
 import {calculateItemPosition} from '@/helpers/calculateItemPosition'
 import {isRoutineTask} from '@/helpers/taskRoutine'
-import {error, translatedError} from '@/message'
+import {error, success, translatedError} from '@/message'
 
 import {getSavedFilterIdFromProjectId, isSavedFilterProject} from '@/client/queries/projects'
 import {savedFilterQuery} from '@/client/queries/savedFilters'
 import {useCurrentProject} from '@/composables/useCurrentProject'
+import {useProjects} from '@/composables/useProjects'
 import {useTaskDragToProject} from '@/composables/useTaskDragToProject'
 import type {TaskFilterParams, TaskResponse} from '@/client/queries/tasks'
-import type {ProjectView} from '@/client/generated'
+import type {ProjectView, Task} from '@/client/generated'
 import {createProjectViewUpdate, useUpdateProjectViewMutation} from '@/client/queries/projectViews'
 
 const props = defineProps<{
@@ -541,6 +590,13 @@ const canWrite = computed(() =>
 	view.value?.bucket_configuration_mode === 'manual',
 )
 const canCreateTasks = computed(() => canWrite.value && projectId.value > 0)
+// Completing is a task edit: it does not depend on the columns being manual. Favorites and saved filters
+// are pseudo projects whose own permission says nothing about each task's source project.
+const projectList = useProjects()
+function canEditTask(task: Task) {
+	const source = projectId.value > 0 ? project.value : projectList.projects[task.project_id ?? 0]
+	return typeof source?.max_permission === 'number' && source.max_permission > Permissions.READ
+}
 
 const isTouchDevice = ref(false)
 if (typeof window !== 'undefined') {
@@ -586,6 +642,37 @@ const saveBucketTitleMutation = useUpdateBucketMutation(t('project.kanban.bucket
 const saveBucketLimitMutation = useUpdateBucketMutation(t('project.kanban.bucketLimitSavedSuccess'))
 const bucketPageMutation = useLoadBucketPageMutation()
 const getBucketById = (id: number) => buckets.value.find(bucket => bucket.id === id)
+
+const {
+	displayMode,
+	setDisplayMode,
+	grouped,
+	collapsedGroups,
+	setGroupsCollapsed,
+	groupKeys,
+	anyGroupCollapsed,
+	focusId,
+	hierarchy,
+	columnTrees,
+	loadedCount,
+	focusShown,
+	exitFocus,
+	exitFocusByKey,
+} = useKanbanGrouping({
+	project: projectId,
+	view: () => props.viewId,
+	buckets,
+	filterSignature: () => params.value.filter || params.value.q
+		? JSON.stringify([params.value.filter, params.value.q])
+		: null,
+	canMove: canWrite,
+	canComplete: canEditTask,
+	doneBucketId: computed(() => view.value?.done_bucket_id || undefined),
+	board: boardRef,
+	move: moveTaskToColumn,
+	recurringDone: handleRecurringTaskCompletion,
+})
+const anyBucketHasMore = computed(() => board.data.value?.buckets.some(bucketHasMore) ?? false)
 
 type BucketPatch = {id: number} & Partial<Pick<BucketResponse, 'title' | 'limit' | 'position'>>
 
@@ -642,6 +729,69 @@ function handleTaskContainerScroll(id: number, el: HTMLElement) {
 		bucket: id!,
 		page: (board.data.value?.pages[id!] ?? 1) + 1,
 	})
+}
+
+function loadNextBucketPage(id: number) {
+	const bucket = board.data.value?.buckets.find(item => item.id === id)
+	if (!bucket || !bucketHasMore(bucket)) return Promise.resolve()
+	return bucketPageMutation.mutateAsync({
+		project: projectId.value,
+		view: props.viewId,
+		params: boardParams.value,
+		bucket: id,
+		page: (board.data.value?.pages[id] ?? 1) + 1,
+	})
+}
+
+// Groups can be collapsed below the scroll threshold, so paging there is also an explicit action.
+const loadingBucket = ref<number | null>(null)
+async function loadMoreInBucket(id: number) {
+	if (loadingBucket.value !== null) return
+	loadingBucket.value = id
+	try {
+		await loadNextBucketPage(id)
+	} catch { /* The mutation reports the error. */ } finally {
+		loadingBucket.value = null
+	}
+}
+
+// One more page per column and click: a family can spread over every column, but the work stays bounded.
+const loadingEverywhere = ref(false)
+async function loadMoreEverywhere() {
+	if (loadingEverywhere.value) return
+	loadingEverywhere.value = true
+	try {
+		const ids = (board.data.value?.buckets ?? []).filter(bucketHasMore).map(bucket => bucket.id)
+		for (const id of ids) await loadNextBucketPage(id)
+	} catch { /* The mutation reports the error. */ } finally {
+		loadingEverywhere.value = false
+	}
+}
+
+// The explicit counterpart of a drag in Groups mode. It keeps the stored position, which Cards mode reorders.
+async function moveTaskToColumn(task: TaskResponse, from: number, to: number) {
+	const target = getBucketById(to)
+	if (!canWrite.value || !target || from === to) return
+	if (isDoneBucket(target) && isRoutineTask(task)) {
+		error(translatedError('task.routine.doneBucketBlocked'))
+		return
+	}
+	if (isBucketFull(target)) {
+		error(translatedError('project.kanban.bucketLimitReached'))
+		return
+	}
+	const project = projectId.value
+	const view = props.viewId
+	try {
+		const result = await moveMutation.mutateAsync({project, view, bucket: to, task})
+		const landed = getBucketById(result.bucket_id ?? to) ?? target
+		success({message: t('project.kanban.hierarchy.moved', {title: task.title, bucket: landed.title})})
+		if (project !== projectId.value || view !== props.viewId) return
+		await nextTick()
+		boardRef.value
+			?.querySelector<HTMLElement>(`[data-tree-task="${task.id}"][data-tree-bucket="${landed.id}"] .kanban-tree-row__title`)
+			?.focus()
+	} catch { /* The mutation reports the error. */ }
 }
 
 function updateTasks(bucketId: number, tasks: BucketResponse['tasks']) {
