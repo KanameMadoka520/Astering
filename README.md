@@ -9,9 +9,13 @@
 基于 [Vikunja 官方 v2.7.1](https://github.com/go-vikunja/vikunja/releases/tag/v2.7.1) 的个人任务管理扩展，由 **KanameMadoka520** 维护。保留上游项目、任务、甘特图、看板、提醒、CalDAV 和 MCP，增加可配置模型的 AI 助手、语音输入和独立公开主页。
 
 - 源码与问题反馈：[KanameMadoka520/vikunja-x](https://github.com/KanameMadoka520/vikunja-x)
-- 版本：`v2.7.1-tcymc.32`
+- 版本：`v2.7.1-tcymc.33`
 - 许可证：AGPL-3.0-or-later；上游版权和许可证继续适用，参见 [LICENSE](LICENSE) 与 [上游 README](README.upstream.md)。本项目是独立二次开发版。
 
+
+## 角色品牌形象（tcymc.33）
+
+以维护者指定的角色参考重新绘制绿发、深色角、眨眼与爱心形象。详细捧心头像用于登录页及品牌展示，简化头像统一导航字标、浏览器标签与手机桌面；单色通知图标采用对应的角与发型轮廓。保留真正透明背景，浅色与深色主题共用同一形象，图标链接更新缓存版本。角色来源、素材边界及生成提示词见 [品牌说明](docs/brand-identity.md)。
 
 ## 阿罗娜长程运行、附件复用与栏目操作（tcymc.32）
 
@@ -23,7 +27,7 @@
 
 阿罗娜可以查询视图与栏目、分页读取栏目任务、新建/改名/排序栏目、设置任务上限、移动任务、设置默认与完成列、删除栏目。工具按需发现，遵守账户和本轮项目权限；删除始终审核任务去向且不删除任务。同步修复删除默认栏目时任务可能失去看板归属的问题。
 
-品牌图标更新为简洁的淡紫色芽耳小生物，提供原生 SVG、小尺寸和单色版本，统一导航、favicon 与手机桌面。运行时设计及限制见 [阿罗娜运行时说明](docs/arona-runtime-design.md)。
+这一版的芽耳图标已由 tcymc.33 的角色形象替换。运行时设计及限制见 [阿罗娜运行时说明](docs/arona-runtime-design.md)。
 
 ## 星图图文记录与完整日期回顾（tcymc.32）
 
@@ -49,7 +53,7 @@
 
 站点统一命名为 **vikunja-x**，原「tcymc二次开发版」标识改为「-x 版」。新的蓝色 X 标识用于导航、浏览器图标和手机桌面；原创蓝白头像用于品牌展示及登录页。阿罗娜保留自己的名称与角色头像，账户的个人头像不受影响。版本编号继续沿用 `tcymc` 序列以保证升级识别兼容。
 
-<p align="center"><img src="frontend/public/images/brand/avatar.png" alt="vikunja-x 原创品牌头像" width="240"></p>
+<p align="center"><img src="frontend/public/images/brand/avatar.png" alt="vikunja-x 角色品牌头像" width="240"></p>
 
 [品牌素材与生成说明](docs/brand-identity.md)包含原图、尺寸再生成命令、设计提示词和可下载文件。GitHub 链接及上游版权、许可证和致谢继续保留。
 
