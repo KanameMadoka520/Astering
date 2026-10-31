@@ -197,6 +197,30 @@ describe('Modal.vue — open race condition (#2590)', () => {
 	})
 })
 
+describe('Modal.vue — close requests', () => {
+	it('ignores Escape while its close transition is still running', async () => {
+		const wrapper = mount(Modal, {
+			...globalMocks,
+			attachTo: document.body,
+			props: {enabled: true},
+			slots: {default: '<p class="test-body">hi</p>'},
+		})
+		await flushPromises()
+		const dialog = document.querySelector('dialog.modal-dialog') as HTMLDialogElement
+
+		dialog.dispatchEvent(new Event('cancel', {cancelable: true}))
+		expect(wrapper.emitted('close')).toHaveLength(1)
+
+		await wrapper.setProps({enabled: false})
+		await nextTick()
+		expect(dialog.dataset.closing).toBe('')
+		dialog.dispatchEvent(new Event('cancel', {cancelable: true}))
+		expect(wrapper.emitted('close')).toHaveLength(1)
+
+		wrapper.unmount()
+	})
+})
+
 describe('Modal.vue — accessible name derivation', () => {
 	it('labels the dialog via the rendered header slot when no default slot or aria-label is given', async () => {
 		const wrapper = mount(Modal, {

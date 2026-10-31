@@ -14,11 +14,11 @@
 			:aria-labelledby="headerLabelId"
 			:aria-label="sheetLabel"
 			v-bind="attrs"
-			@cancel.prevent="!loading && $emit('close')"
+			@cancel.prevent="requestClose"
 		>
 			<div
 				class="modal-container"
-				@mousedown.self.prevent.stop="!loading && $emit('close')"
+				@mousedown.self.prevent.stop="requestClose"
 			>
 				<div
 					v-if="isSheet"
@@ -40,7 +40,7 @@
 						:aria-label="$t('misc.closeDialog')"
 						:disabled="loading"
 						class="close d-print-none"
-						@click="!loading && $emit('close')"
+						@click="requestClose"
 					>
 						<Icon icon="times" />
 					</BaseButton>
@@ -66,7 +66,7 @@
 									variant="secondary"
 									:shadow="false"
 									:disabled="loading"
-									@click="!loading && $emit('close')"
+									@click="requestClose"
 								>
 									{{ $t('misc.cancel') }}
 								</XButton>
@@ -117,7 +117,13 @@ const props = withDefaults(defineProps<{
 	danger: false,
 })
 
-defineEmits(['close', 'submit'])
+const emit = defineEmits(['close', 'submit'])
+
+// While the close transition runs the <dialog> is still modal and receives keys: a second Escape there would close
+// the caller's view again, and a route modal would step back in history and reopen the task.
+function requestClose() {
+	if (!props.loading && props.enabled) emit('close')
+}
 
 defineOptions({
 	inheritAttrs: false,
