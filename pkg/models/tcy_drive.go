@@ -107,7 +107,7 @@ func LockDriveItem(s *xorm.Session, a web.Auth, id, revision int64) (*files.Driv
 }
 
 type DriveUsage struct {
-	Kind       string `json:"kind" enum:"attachment,task_cover,project_cover,avatar,chat,chat_draft" doc:"attachment, task_cover, project_cover, avatar, chat (sent AI conversation messages) or chat_draft (only unsent AI conversation attachments)."`
+	Kind       string `json:"kind" enum:"attachment,task_cover,project_cover,avatar,chat,chat_draft,compass_entry,compass_trash,compass_history,compass_background" doc:"attachment, task_cover, project_cover, avatar, chat (sent AI conversation messages) chat_draft (only unsent AI conversation attachments), or a Compass entry, trash, revision or space background reference."`
 	Title      string `json:"title" doc:"Task, project, account or conversation title; empty when restricted."`
 	URL        string `json:"url" doc:"Frontend location; empty when restricted."`
 	Restricted bool   `json:"restricted" doc:"Something the viewer cannot access uses this file."`
@@ -179,6 +179,11 @@ func driveUsages(s *xorm.Session, a web.Auth, id int64, resolveChats bool) ([]Dr
 		}
 		usages = append(usages, usage)
 	}
+	compass, err := compassDriveUsages(s, a, id)
+	if err != nil {
+		return nil, err
+	}
+	usages = append(usages, compass...)
 	chats, err := driveChatUsages(s, a, id, resolveChats)
 	if err != nil {
 		return nil, err

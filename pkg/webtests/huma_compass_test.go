@@ -17,11 +17,16 @@
 package webtests
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/png"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"code.vikunja.io/api/pkg/files"
 
 	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/models"
@@ -173,4 +178,47 @@ func TestCompassConcurrentHTTP(t *testing.T) {
 	r = humaRequest(t, e, "GET", path+"/revisions", "", token, "")
 	require.Equal(t, 200, r.Code, r.Body.String())
 	require.Contains(t, r.Body.String(), `"total":2`)
+}
+
+func TestCompassImagesHTTP(t *testing.T) {
+	e, err := setupTestEnv()
+	require.NoError(t, err)
+	files.InitTestFileFixtures(t)
+	token := humaTokenFor(t, &testuser1)
+	other := humaTokenFor(t, &testuser2)
+	s := db.NewSession()
+	var b bytes.Buffer
+	require.NoError(t, png.Encode(&b, image.NewRGBA(image.Rect(0, 0, 3, 2))))
+	f, err := files.CreateWithSession(s, bytes.NewReader(b.Bytes()), "photo.png", 0, &testuser1)
+	require.NoError(t, err)
+	require.NoError(t, files.AddToDrive(s, f))
+	space := &models.CompassSpace{Title: "Images", Theme: "aurora"}
+	require.NoError(t, space.Create(s, &testuser1))
+	require.NoError(t, s.Commit())
+	require.NoError(t, s.Close())
+	path := fmt.Sprintf("/api/v2/compass/spaces/%d/images/%d", space.ID, f.ID)
+	response := humaRequest(t, e, "GET", path, "", token, "")
+	require.Equal(t, 200, response.Code, response.Body.String())
+	require.Equal(t, b.Bytes(), response.Body.Bytes())
+	require.Equal(t, "image/png", response.Header().Get("Content-Type"))
+	require.Equal(t, "nosniff", response.Header().Get("X-Content-Type-Options"))
+	require.Equal(t, "private, no-cache", response.Header().Get("Cache-Control"))
+	require.Contains(t, response.Header().Get("Content-Disposition"), "inline")
+	req := httptest.NewRequest("GET", path, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("If-None-Match", response.Header().Get("ETag"))
+	cached := httptest.NewRecorder()
+	e.ServeHTTP(cached, req)
+	require.Equal(t, 304, cached.Code)
+	req.Header.Set("Authorization", "Bearer "+other)
+	denied := httptest.NewRecorder()
+	e.ServeHTTP(denied, req)
+	require.Equal(t, 404, denied.Code)
+	require.Equal(t, 401, humaRequest(t, e, "GET", path, "", "", "").Code)
+	payload, err := json.Marshal(map[string]any{"title": "Illustrated", "kind": "note", "theme": "inherit", "state": "active", "content": fmt.Sprintf(`<p>Caption</p><img data-compass-image="%d" src="https://example.invalid/tracker">`, f.ID)})
+	require.NoError(t, err)
+	created := humaRequest(t, e, "POST", fmt.Sprintf("/api/v2/compass/spaces/%d/entries", space.ID), string(payload), token, "")
+	require.Equal(t, 201, created.Code, created.Body.String())
+	require.Contains(t, created.Body.String(), `"image_count":1`)
+	require.NotContains(t, created.Body.String(), "tracker")
 }

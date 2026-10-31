@@ -92,7 +92,14 @@ type ProjectHistoryItem struct {
 	IsCompleted           bool      `json:"is_completed"`
 }
 
+type ProjectHistoryScope struct {
+	Projects  int `json:"projects" doc:"Current accessible projects matching project and search filters, including archived."`
+	Completed int `json:"completed" doc:"Projects in this scope currently marked completed."`
+	Archived  int `json:"archived" doc:"Projects in this scope currently archived; may also be completed."`
+}
+
 type ProjectHistory struct {
+	Scope      *ProjectHistoryScope  `json:"scope" doc:"Current project states, independent of year, event kind, day and pagination."`
 	Days       map[string]int        `json:"days" doc:"Number of project milestones per local YYYY-MM-DD; never task counts."`
 	Years      []int                 `json:"years"`
 	Unknown    int                   `json:"unknown" doc:"Matching legacy milestones without an original date."`
@@ -119,7 +126,7 @@ type ProjectHistoryOptions struct {
 // GetProjectHistory applies the shared inherited/team/link-share ACL before all
 // statistics and pagination. Reopening never erases earlier completion events.
 func GetProjectHistory(s *xorm.Session, a web.Auth, opts ProjectHistoryOptions) (*ProjectHistory, error) {
-	if opts.Year < 1970 || opts.Year > 9998 || opts.Page < 1 || opts.ProjectID < 0 {
+	if opts.Year < 1970 || opts.Year > 9998 || opts.Page < 1 || opts.Page > 10000000 || opts.ProjectID < 0 {
 		return nil, InvalidFieldErrorWithMessage([]string{"year", "page", "project"}, "Invalid project history range")
 	}
 	loc, err := time.LoadLocation(opts.Timezone)
@@ -138,7 +145,14 @@ func GetProjectHistory(s *xorm.Session, a web.Auth, opts ProjectHistoryOptions) 
 	if err != nil {
 		return nil, err
 	}
-	cond := builder.And(access)
+	scopeCond := builder.And(access)
+	if opts.ProjectID > 0 {
+		scopeCond = scopeCond.And(builder.Eq{"projects.id": opts.ProjectID})
+	}
+	if opts.Search != "" {
+		scopeCond = scopeCond.And(db.ILIKE("projects.title", opts.Search))
+	}
+	cond := builder.And(scopeCond)
 	switch opts.Kind {
 	case "", "milestones":
 		cond = cond.And(builder.In("e.kind", []string{"completed", "archived"}))
@@ -148,13 +162,11 @@ func GetProjectHistory(s *xorm.Session, a web.Auth, opts ProjectHistoryOptions) 
 	default:
 		return nil, InvalidFieldErrorWithMessage([]string{"kind"}, "Invalid project event kind")
 	}
-	if opts.ProjectID > 0 {
-		cond = cond.And(builder.Eq{"projects.id": opts.ProjectID})
+	scope, err := projectHistoryScope(s, scopeCond)
+	if err != nil {
+		return nil, err
 	}
-	if opts.Search != "" {
-		cond = cond.And(db.ILIKE("projects.title", opts.Search))
-	}
-	result := &ProjectHistory{Days: map[string]int{}, Years: []int{}, Items: []*ProjectHistoryItem{}, Page: opts.Page}
+	result := &ProjectHistory{Scope: scope, Days: map[string]int{}, Years: []int{}, Items: []*ProjectHistoryItem{}, Page: opts.Page}
 	years := map[int]bool{}
 	projects := map[int64]bool{}
 	err = s.Table("project_lifecycle_events").Alias("e").Join("INNER", "projects", "projects.id = e.project_id").Select("e.occurred_at, e.project_id").Where(cond).Iterate(new(ProjectLifecycleEvent), func(_ int, bean interface{}) error {
@@ -198,4 +210,22 @@ func GetProjectHistory(s *xorm.Session, a web.Auth, opts ProjectHistoryOptions) 
 	result.TotalPages = int((result.Total + pageSize - 1) / pageSize)
 	err = s.Table("project_lifecycle_events").Alias("e").Select("e.*, projects.title, projects.created, projects.is_archived, projects.is_completed").Join("INNER", "projects", "projects.id = e.project_id").Where(cond).OrderBy("e.occurred_at DESC, e.id DESC").Limit(pageSize, (opts.Page-1)*pageSize).Find(&result.Items)
 	return result, err
+}
+
+// The scope intentionally does not join events: active projects with no event
+// must still explain an empty lifecycle view. Iterate only short state columns.
+func projectHistoryScope(s *xorm.Session, cond builder.Cond) (*ProjectHistoryScope, error) {
+	scope := &ProjectHistoryScope{}
+	err := s.Table("projects").Select("is_completed, is_archived").Where(cond).Iterate(new(Project), func(_ int, bean interface{}) error {
+		project := bean.(*Project)
+		scope.Projects++
+		if project.IsCompleted {
+			scope.Completed++
+		}
+		if project.IsArchived {
+			scope.Archived++
+		}
+		return nil
+	})
+	return scope, err
 }

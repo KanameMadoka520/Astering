@@ -882,7 +882,7 @@ export type CompassEntryBody = {
      */
     category?: string;
     /**
-     * Sanitized rich text, up to 2 MiB. Omitted from lists; load the entry to read or edit.
+     * Sanitized rich text with data-compass-image Drive references, up to 2 MiB. Omitted from lists; load the entry to read or edit.
      */
     content?: string;
     /**
@@ -905,6 +905,10 @@ export type CompassEntryBody = {
      * Entry identifier.
      */
     readonly id?: number;
+    /**
+     * Distinct current body images.
+     */
+    readonly image_count?: number;
     /**
      * Principle, vision, action guidance, memory, or a free-form note.
      */
@@ -1003,6 +1007,22 @@ export type CompassSpaceBody = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    /**
+     * Drive image reference; 0 uses theme sky.
+     */
+    background_file_id?: number;
+    /**
+     * Horizontal crop focal point, percent.
+     */
+    background_focus_x?: number;
+    /**
+     * Vertical crop focal point, percent.
+     */
+    background_focus_y?: number;
+    /**
+     * Background readability overlay strength.
+     */
+    background_scrim?: 'soft' | 'medium' | 'strong';
     /**
      * Creation time.
      */
@@ -1582,9 +1602,9 @@ export type DriveListBodyBody = {
 
 export type DriveUsage = {
     /**
-     * attachment, task_cover, project_cover, avatar, chat (sent AI conversation messages) or chat_draft (only unsent AI conversation attachments).
+     * attachment, task_cover, project_cover, avatar, chat (sent AI conversation messages) chat_draft (only unsent AI conversation attachments), or a Compass entry, trash, revision or space background reference.
      */
-    kind?: 'attachment' | 'task_cover' | 'project_cover' | 'avatar' | 'chat' | 'chat_draft';
+    kind?: 'attachment' | 'task_cover' | 'project_cover' | 'avatar' | 'chat' | 'chat_draft' | 'compass_entry' | 'compass_trash' | 'compass_history' | 'compass_background';
     /**
      * Something the viewer cannot access uses this file.
      */
@@ -2982,6 +3002,10 @@ export type ProjectHistory = {
      * Distinct projects with a matching milestone in the selected year.
      */
     projects?: number;
+    /**
+     * Current project states, independent of year, event kind, day and pagination.
+     */
+    scope?: ProjectHistoryScope;
     total?: number;
     total_pages?: number;
     /**
@@ -3009,6 +3033,21 @@ export type ProjectHistoryItem = {
     occurred_at?: string;
     project_id?: number;
     title?: string;
+};
+
+export type ProjectHistoryScope = {
+    /**
+     * Projects in this scope currently archived; may also be completed.
+     */
+    archived?: number;
+    /**
+     * Projects in this scope currently marked completed.
+     */
+    completed?: number;
+    /**
+     * Current accessible projects matching project and search filters, including archived.
+     */
+    projects?: number;
 };
 
 export type ProjectReadBody = {
@@ -3114,6 +3153,9 @@ export type ProjectTimeline = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    /**
+     * Union of ranged and due-node tasks in the selected year, counted once.
+     */
     dated_tasks?: number;
     /**
      * Year-wide coverage, independent of day selection and pagination.
@@ -3121,31 +3163,37 @@ export type ProjectTimeline = {
     days?: {
         [key: string]: ProjectTimelineDay;
     };
+    deadline_only_tasks?: number;
     done_tasks?: number;
     elapsed_days?: number;
     /**
-     * Scope-wide tasks missing start or end/due. They cannot be assigned to a year and never enter the chart.
+     * Undated plus incomplete tasks across the filtered scope; never assigned invented dates.
      */
     excluded_tasks?: number;
     /**
-     * Earliest eligible schedule year in the accessible filtered scope; 0 when none.
+     * Earliest valid range or due-date year in the accessible filtered scope; 0 when none.
      */
     first_year?: number;
     /**
-     * Scope-wide reversed or unsupported date ranges; excluded from coverage.
+     * Scope-wide tasks with only a start or end and no usable range or due date.
+     */
+    incomplete_tasks?: number;
+    /**
+     * Scope-wide tasks with a reversed/unsupported range or unsupported due date. A separate valid due node or range remains visible; this warning can overlap dated_tasks.
      */
     invalid_tasks?: number;
     items?: Array<ProjectTimelineItem> | null;
     /**
-     * Latest eligible schedule year in the accessible filtered scope; 0 when none.
+     * Latest valid range or due-date year in the accessible filtered scope; 0 when none.
      */
     last_year?: number;
     overdue_tasks?: number;
     page?: number;
     /**
-     * Projects with eligible tasks overlapping the year, before day selection.
+     * Projects with valid ranges or due-date nodes in the year, before day selection.
      */
     projects?: number;
+    ranged_tasks?: number;
     /**
      * Union of covered days across projects, not their sum.
      */
@@ -3160,12 +3208,20 @@ export type ProjectTimeline = {
      */
     total?: number;
     total_pages?: number;
+    /**
+     * Scope-wide tasks with no start, end or due date.
+     */
+    undated_tasks?: number;
     year?: number;
 };
 
 export type ProjectTimelineDay = {
     /**
-     * Task due dates on this day among eligible tasks; not inferred from end_date.
+     * Distinct accessible projects with a due-date node on this day.
+     */
+    deadline_projects?: number;
+    /**
+     * Task due dates on this day, including deadline-only tasks; not inferred from end_date.
      */
     deadlines?: number;
     /**
@@ -3178,7 +3234,25 @@ export type ProjectTimelineDay = {
     scheduled_projects?: number;
 };
 
+export type ProjectTimelineDeadline = {
+    count?: number;
+    /**
+     * Local calendar due date.
+     */
+    date?: string;
+    done?: number;
+    open?: number;
+};
+
 export type ProjectTimelineItem = {
+    /**
+     * Explicit due-date nodes in the selected year, ascending.
+     */
+    deadline_days?: Array<ProjectTimelineDeadline> | null;
+    /**
+     * Tasks with a due node but no valid range overlapping the selected year.
+     */
+    deadline_only_tasks?: number;
     done_tasks?: number;
     /**
      * Covered days through today, capped at known task completion dates.
@@ -3186,7 +3260,7 @@ export type ProjectTimelineItem = {
     elapsed_days?: number;
     elapsed_spans?: Array<ProjectTimelineSpan> | null;
     /**
-     * Latest explicit task end (or due date when no end is set); may be outside the year.
+     * Latest end (or due date when no end is set) among valid ranges overlapping the year; empty when none.
      */
     end_date?: string;
     hex_color?: string;
@@ -3217,16 +3291,20 @@ export type ProjectTimelineItem = {
      */
     progress?: number;
     /**
+     * Tasks with a valid range overlapping the selected year.
+     */
+    ranged_tasks?: number;
+    /**
      * Unique covered calendar days in the selected year, not the gap-filled bounding span.
      */
     scheduled_days?: number;
     scheduled_spans?: Array<ProjectTimelineSpan> | null;
     /**
-     * Earliest explicit task start among eligible tasks overlapping the year; may be outside the year.
+     * Earliest explicit start among valid ranges overlapping the year; empty when only due-date nodes exist.
      */
     start_date?: string;
     /**
-     * Eligible tasks overlapping the selected year.
+     * Union of tasks with a valid range overlapping the year or a due date in it, counted once.
      */
     task_count?: number;
     title?: string;
@@ -6190,7 +6268,7 @@ export type CompassEntryBodyWritable = {
      */
     category?: string;
     /**
-     * Sanitized rich text, up to 2 MiB. Omitted from lists; load the entry to read or edit.
+     * Sanitized rich text with data-compass-image Drive references, up to 2 MiB. Omitted from lists; load the entry to read or edit.
      */
     content?: string;
     /**
@@ -6232,6 +6310,22 @@ export type CompassEntryBodyWritable = {
 };
 
 export type CompassSpaceBodyWritable = {
+    /**
+     * Drive image reference; 0 uses theme sky.
+     */
+    background_file_id?: number;
+    /**
+     * Horizontal crop focal point, percent.
+     */
+    background_focus_x?: number;
+    /**
+     * Vertical crop focal point, percent.
+     */
+    background_focus_y?: number;
+    /**
+     * Background readability overlay strength.
+     */
+    background_scrim?: 'soft' | 'medium' | 'strong';
     /**
      * Basic rich text without embeds or images, up to 64 KiB.
      */
@@ -7147,6 +7241,10 @@ export type ProjectHistoryWritable = {
      * Distinct projects with a matching milestone in the selected year.
      */
     projects?: number;
+    /**
+     * Current project states, independent of year, event kind, day and pagination.
+     */
+    scope?: ProjectHistoryScope;
     total?: number;
     total_pages?: number;
     /**
@@ -7192,6 +7290,9 @@ export type ProjectReadBodyWritable = {
 };
 
 export type ProjectTimelineWritable = {
+    /**
+     * Union of ranged and due-node tasks in the selected year, counted once.
+     */
     dated_tasks?: number;
     /**
      * Year-wide coverage, independent of day selection and pagination.
@@ -7199,31 +7300,37 @@ export type ProjectTimelineWritable = {
     days?: {
         [key: string]: ProjectTimelineDay;
     };
+    deadline_only_tasks?: number;
     done_tasks?: number;
     elapsed_days?: number;
     /**
-     * Scope-wide tasks missing start or end/due. They cannot be assigned to a year and never enter the chart.
+     * Undated plus incomplete tasks across the filtered scope; never assigned invented dates.
      */
     excluded_tasks?: number;
     /**
-     * Earliest eligible schedule year in the accessible filtered scope; 0 when none.
+     * Earliest valid range or due-date year in the accessible filtered scope; 0 when none.
      */
     first_year?: number;
     /**
-     * Scope-wide reversed or unsupported date ranges; excluded from coverage.
+     * Scope-wide tasks with only a start or end and no usable range or due date.
+     */
+    incomplete_tasks?: number;
+    /**
+     * Scope-wide tasks with a reversed/unsupported range or unsupported due date. A separate valid due node or range remains visible; this warning can overlap dated_tasks.
      */
     invalid_tasks?: number;
     items?: Array<ProjectTimelineItem> | null;
     /**
-     * Latest eligible schedule year in the accessible filtered scope; 0 when none.
+     * Latest valid range or due-date year in the accessible filtered scope; 0 when none.
      */
     last_year?: number;
     overdue_tasks?: number;
     page?: number;
     /**
-     * Projects with eligible tasks overlapping the year, before day selection.
+     * Projects with valid ranges or due-date nodes in the year, before day selection.
      */
     projects?: number;
+    ranged_tasks?: number;
     /**
      * Union of covered days across projects, not their sum.
      */
@@ -7238,6 +7345,10 @@ export type ProjectTimelineWritable = {
      */
     total?: number;
     total_pages?: number;
+    /**
+     * Scope-wide tasks with no start, end or due date.
+     */
+    undated_tasks?: number;
     year?: number;
 };
 
@@ -10328,6 +10439,34 @@ export type CompassEntriesCreateResponses = {
 
 export type CompassEntriesCreateResponse = CompassEntriesCreateResponses[keyof CompassEntriesCreateResponses];
 
+export type CompassImagesReadData = {
+    body?: never;
+    path: {
+        space: number;
+        file: number;
+    };
+    query?: never;
+    url: '/compass/spaces/{space}/images/{file}';
+};
+
+export type CompassImagesReadErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type CompassImagesReadError = CompassImagesReadErrors[keyof CompassImagesReadErrors];
+
+export type CompassImagesReadResponses = {
+    /**
+     * Raster image
+     */
+    200: Blob | File;
+};
+
+export type CompassImagesReadResponse = CompassImagesReadResponses[keyof CompassImagesReadResponses];
+
 export type CompassTopicsListData = {
     body?: never;
     path: {
@@ -11995,7 +12134,7 @@ export type ProjectTimelineData = {
          */
         q?: string;
         /**
-         * Filter project rows by a covered date in the selected year; statistics remain year-wide.
+         * Filter project rows by a covered date or due-date node in the selected year; statistics remain year-wide.
          */
         day?: string;
         page?: number;

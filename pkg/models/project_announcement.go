@@ -32,7 +32,9 @@ import (
 )
 
 // Notices accept basic rich text and links, not embeds, forms, images or scripts.
-var announcementHTMLPolicy = func() *bluemonday.Policy {
+var announcementHTMLPolicy = newAnnouncementHTMLPolicy()
+
+func newAnnouncementHTMLPolicy() *bluemonday.Policy {
 	p := bluemonday.NewPolicy()
 	p.AllowElements("p", "br", "strong", "em", "b", "i", "u", "s", "del", "blockquote", "ul", "ol", "li", "h1", "h2", "h3", "h4", "h5", "h6", "pre", "code", "a", "hr", "sub", "sup", "mark", "table", "thead", "tbody", "tr", "th", "td")
 	p.AllowAttrs("href").OnElements("a")
@@ -40,7 +42,7 @@ var announcementHTMLPolicy = func() *bluemonday.Policy {
 	p.AllowStandardURLs()
 	p.RequireNoFollowOnLinks(true)
 	return p
-}()
+}
 
 // ProjectAnnouncement is a separate shared notice, never part of a project's description.
 type ProjectAnnouncement struct {

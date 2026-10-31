@@ -37,6 +37,8 @@ func TestProjectTimelineHTTP(t *testing.T) {
 		_, err = s.Insert(&models.Task{Title: "Timeline HTTP", ProjectID: id, StartDate: time.Date(2024, 2, 28, 12, 0, 0, 0, time.UTC), DueDate: time.Date(2024, 3, 1, 12, 0, 0, 0, time.UTC)})
 		require.NoError(t, err)
 	}
+	_, err = s.Insert(&models.Task{Title: "Deadline-only HTTP", ProjectID: 1, Index: 10001, DueDate: time.Date(2024, 4, 1, 12, 0, 0, 0, time.UTC)})
+	require.NoError(t, err)
 	require.NoError(t, s.Commit())
 	path := "/api/v2/projects/timeline?year=2024&project=1&timezone=UTC"
 	rec := humaRequest(t, e, http.MethodGet, path, "", token, "")
@@ -45,6 +47,13 @@ func TestProjectTimelineHTTP(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &result))
 	require.Equal(t, 1, result.Projects)
 	require.Equal(t, 1, result.Days["2024-02-29"].ScheduledProjects)
+	require.Equal(t, 1, result.DeadlineOnlyTasks)
+	require.Equal(t, 1, result.Days["2024-04-01"].DeadlineProjects)
+	require.Zero(t, result.Days["2024-04-01"].ScheduledProjects)
+	rec = humaRequest(t, e, http.MethodGet, path+"&day=2024-04-01", "", token, "")
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &result))
+	require.Equal(t, 1, result.Total)
 	rec = humaRequest(t, e, http.MethodGet, "/api/v2/projects/timeline?year=2024&project=2", "", token, "")
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &result))

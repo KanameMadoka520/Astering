@@ -27,7 +27,7 @@ import (
 
 func init() { AddRouteRegistrar(RegisterProjectHistoryRoutes) }
 func RegisterProjectHistoryRoutes(api huma.API) {
-	Register(api, huma.Operation{OperationID: "project-history", Summary: "Browse yearly project milestones", Description: "Project-level completion and archive history, including archived projects, restricted to currently accessible projects. Statistics use the requested timezone. Reopening preserves previous milestones. Legacy archives have an unknown date. Detail records are paginated, 24 per page.", Method: http.MethodGet, Path: "/projects/history", Tags: []string{"projects"}}, projectHistory)
+	Register(api, huma.Operation{OperationID: "project-history", Summary: "Browse yearly project milestones", Description: "Project-level completion and archive history, including archived projects, restricted to currently accessible projects. Statistics use the requested timezone. Reopening preserves previous milestones. Legacy archives have an unknown date. Detail records are paginated, 24 per page. Scope counts describe the current accessible projects matching project/search filters, independently of year, event kind and pagination. Task completion does not implicitly complete a project.", Method: http.MethodGet, Path: "/projects/history", Tags: []string{"projects"}}, projectHistory)
 	Register(api, huma.Operation{OperationID: "project-completion", Summary: "Complete or reopen a project", Description: "Requires project administration. Sets project completion independently from archive state, tasks and child projects. Records an immutable milestone in the same transaction. Repeating the same state is idempotent.", Method: http.MethodPost, Path: "/projects/{project}/completion", Tags: []string{"projects"}}, projectCompletion)
 }
 
