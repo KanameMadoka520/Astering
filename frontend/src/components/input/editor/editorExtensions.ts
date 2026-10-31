@@ -2,7 +2,7 @@ import {nextTick, toValue, type MaybeRefOrGetter, type Ref} from 'vue'
 
 import StarterKit from '@tiptap/starter-kit'
 import {createNodeFromContent, Extension, mergeAttributes, type Editor, type Extensions} from '@tiptap/core'
-import {Plugin, PluginKey} from '@tiptap/pm/state'
+import {Plugin, PluginKey, TextSelection} from '@tiptap/pm/state'
 import {Fragment} from '@tiptap/pm/model'
 import {marked} from 'marked'
 
@@ -32,7 +32,7 @@ import {EmojiExtension} from './emoji/emojiExtension'
 
 import {common, createLowlight} from 'lowlight'
 
-import type {UploadCallback} from './types'
+import type {EditorImageSource, UploadCallback} from './types'
 import type {Task as ITask} from '@/client/generated'
 import type {TaskAttachment as IAttachment} from '@/client/generated'
 import {fetchAttachmentUrl, releaseAttachmentUrl} from '@/helpers/attachments'
@@ -80,6 +80,8 @@ allowTaskLists?: boolean
 	getEditor: () => Editor | undefined
 	uploadCallback: MaybeRefOrGetter<UploadCallback | undefined>
 	uploadAndInsertFiles: (files: File[] | FileList) => void
+	// Replaces the attachment image node and receives pasted and dropped image files (Compass).
+	imageSource?: EditorImageSource
 }
 
 // the value lands in a style attribute, anything beyond a plain color allows CSS injection
@@ -251,16 +253,15 @@ export function createEditorExtensions(deps: EditorExtensionDeps): Extensions {
 						handlePaste: (view, event) => {
 
 							// Handle images pasted from clipboard
-							if (typeof toValue(uploadCallback) !== 'undefined' && event.clipboardData?.items?.length) {
-
-								for (const item of event.clipboardData.items) {
-									if (item.kind === 'file' && item.type.startsWith('image/')) {
-										const file = item.getAsFile()
-										if (file) {
-											uploadAndInsertFiles([file])
-											return true
-										}
-									}
+							if ((typeof toValue(uploadCallback) !== 'undefined' || deps.imageSource) && event.clipboardData?.items?.length) {
+								const files = Array.from(event.clipboardData.items)
+									.filter(item => item.kind === 'file' && item.type.startsWith('image/'))
+									.map(item => item.getAsFile())
+									.filter((file): file is File => file !== null)
+								if (files.length > 0) {
+									// An image source takes the whole selection; attachments keep their one-file paste.
+									uploadAndInsertFiles(deps.imageSource ? files : [files[0]])
+									return true
 								}
 							}
 
@@ -291,6 +292,21 @@ export function createEditorExtensions(deps: EditorExtensionDeps): Extensions {
 							})
 
 							this.editor.commands.insertContent(fillRequiredContent(Fragment.from(parsed)))
+							return true
+						},
+
+						// Files dropped on an editor with an image source upload there, at the drop point; a moved
+						// node is ProseMirror's own drag and stays its business.
+						handleDrop: (view, event, _slice, moved) => {
+							if (moved || !deps.imageSource) return false
+							const files = Array.from(event.dataTransfer?.files ?? [])
+							if (files.length === 0) return false
+							event.preventDefault()
+							const drop = view.posAtCoords({left: event.clientX, top: event.clientY})
+							if (drop) {
+								view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(drop.pos))))
+							}
+							uploadAndInsertFiles(files)
 							return true
 						},
 					},
@@ -363,7 +379,7 @@ export function createEditorExtensions(deps: EditorExtensionDeps): Extensions {
 		// Custom TableCell with backgroundColor attribute
 		CustomTableCell,
 
-		CustomImage,
+		deps.imageSource?.extension ?? CustomImage,
 
 		TaskList,
 		TaskItemWithId.configure({

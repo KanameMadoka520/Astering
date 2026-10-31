@@ -1,5 +1,9 @@
 <template>
-	<CompassSkyHeader class="compass-hero">
+	<CompassSkyHeader
+		class="compass-hero"
+		:space-id="space.id"
+		:background="space"
+	>
 		<div class="compass-hero__layout">
 			<div class="compass-hero__identity">
 				<p class="compass-hero__eyebrow">

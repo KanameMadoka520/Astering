@@ -56,10 +56,12 @@ export function driveBlobQuery(id: number) {
 		meta: {handlesError: true},
 	})
 }
+// `headers` carries the client-only batch headers from chooseImageBatch; `quiet` leaves the error to the caller's own list.
 export function useUploadDriveMutation() {
 	return useMutation(contextMutationOptions({
-		mutationFn: async ({file, signal}: {file: File, signal?: AbortSignal}) => (await driveUpload({body: {file}, signal})).data,
+		mutationFn: async ({file, signal, headers}: {file: File, signal?: AbortSignal, headers?: Record<string, string>, quiet?: boolean}) => (await driveUpload({body: {file}, signal, headers})).data,
 		onSettled: (_file, client) => invalidateDrive(client),
+		toastError: ({quiet}) => !quiet,
 	}))
 }
 export function useChangeDriveMutation() {

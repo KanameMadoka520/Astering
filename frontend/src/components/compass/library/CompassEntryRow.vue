@@ -32,6 +32,16 @@
 				</span>
 				<CompassStateBadge :state="entry.state" />
 				<span
+					v-if="entry.image_count > 0"
+					class="compass-entry-row__images"
+				>
+					<Icon
+						icon="image"
+						aria-hidden="true"
+					/>
+					{{ t('compass.row.images', {n: entry.image_count}, entry.image_count) }}
+				</span>
+				<span
 					v-if="date"
 					class="compass-entry-row__date"
 				>
@@ -111,6 +121,7 @@ import CompassGlyph from '@/components/compass/base/CompassGlyph.vue'
 import CompassKindLabel from '@/components/compass/base/CompassKindLabel.vue'
 import CompassStateBadge from '@/components/compass/base/CompassStateBadge.vue'
 import XButton from '@/components/input/Button.vue'
+import Icon from '@/components/misc/Icon'
 import CompassHighlight from './CompassHighlight.vue'
 import {
 	canAdminCompass,
@@ -206,6 +217,19 @@ function requestRestore() {
 
 .compass-entry-row__dot {
 	color: var(--compass-ink-faint);
+}
+
+.compass-entry-row__images {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	color: var(--compass-ink-soft);
+	font-variant-numeric: tabular-nums;
+
+	svg {
+		inline-size: .85em;
+		color: var(--compass-ink-faint);
+	}
 }
 
 .compass-entry-row__category {

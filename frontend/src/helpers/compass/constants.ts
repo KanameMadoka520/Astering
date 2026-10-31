@@ -19,6 +19,10 @@ export type CompassSort = typeof COMPASS_SORTS[number]
 
 export const COMPASS_DEFAULT_THEME: CompassTheme = 'aurora'
 
+// How strongly a space's background photo is veiled so the title stays readable.
+export const COMPASS_BACKGROUND_SCRIMS = ['soft', 'medium', 'strong'] as const
+export type CompassBackgroundScrim = typeof COMPASS_BACKGROUND_SCRIMS[number]
+
 // Server limits (v31 contract); counted in characters (runes) except content, which is bytes.
 export const COMPASS_LIMITS = {
 	spaceTitle: 80,
@@ -37,6 +41,13 @@ export const COMPASS_ERROR_CODES = {
 	revisionConflict: 20101,
 	missing: 20102,
 	invalidState: 20103,
+	// A referenced image is not usable in this space (409): not mounted here and not an active image of
+	// the saver's own drive.
+	imageUnavailable: 20104,
+	// More than 100 distinct images in one body.
+	imageLimit: 20105,
+	// Not JPEG, PNG, GIF or WebP, too large, or not decodable.
+	imageUnsupported: 20106,
 } as const
 
 export function isCompassKind(value: unknown): value is CompassKind {

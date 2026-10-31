@@ -2,13 +2,23 @@
 	<component
 		:is="tag"
 		class="compass-sky-header"
+		:class="{'has-photo': photo === 'ready'}"
 	>
 		<!-- Only the sky is clipped: the space switcher's menu must be able to open past the header. -->
 		<span
 			class="compass-sky-header__sky"
 			aria-hidden="true"
 		>
-			<CompassSky />
+			<CompassSky v-if="photo !== 'ready'" />
+			<CompassBackdrop
+				v-if="background && spaceId > 0 && background.background_file_id > 0"
+				:space-id="spaceId"
+				:file-id="background.background_file_id"
+				:focus-x="background.background_focus_x"
+				:focus-y="background.background_focus_y"
+				:scrim="background.background_scrim"
+				@state="photo = $event"
+			/>
 		</span>
 		<div class="compass-sky-header__content">
 			<slot />
@@ -17,13 +27,24 @@
 </template>
 
 <script setup lang="ts">
+import {ref} from 'vue'
+import type {CompassSpaceBackground} from '@/client/queries/compass'
+import CompassBackdrop from '@/components/compass/base/CompassBackdrop.vue'
 import CompassSky from '@/components/compass/base/CompassSky.vue'
+import type {CompassImageUrlState} from '@/components/compass/base/useCompassImageUrl'
 
 withDefaults(defineProps<{
 	tag?: string
+	// The space's own photo instead of the theme's sky, when it has one.
+	spaceId?: number
+	background?: CompassSpaceBackground
 }>(), {
 	tag: 'header',
+	spaceId: 0,
+	background: undefined,
 })
+
+const photo = ref<CompassImageUrlState>('none')
 </script>
 
 <style lang="scss" scoped>
@@ -70,6 +91,11 @@ withDefaults(defineProps<{
 	// On a phone the astrolabe sits behind the text; quieter lines keep the title legible.
 	@media screen and (max-width: $tablet - 1px) {
 		opacity: .55;
+	}
+
+	// The photo carries its own veil.
+	.has-photo > & {
+		opacity: 1;
 	}
 }
 

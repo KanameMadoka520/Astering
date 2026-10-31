@@ -1327,6 +1327,10 @@
       "bulletListTooltip": "Create a simple bullet list.",
       "orderedList": "Ordered list",
       "orderedListTooltip": "Create a list with numbering.",
+      "caption": "Caption",
+      "captionPlaceholder": "Caption shown under the image",
+      "replaceImage": "Replace image",
+      "removeImage": "Remove image",
       "link": "Link",
       "urlPlaceholder": "URL",
       "image": "Image",
@@ -2141,7 +2145,10 @@
     "14204": "Could not reach a Planka API at the given URL. Check the URL and that vikunja-x can reach the instance.",
     "20001": "The announcement was changed by someone else. Your draft is kept; load the latest version and save again.",
     "20002": "The routine changed or a new day started. Its state was read again; please try once more.",
-    "20003": "This routine cannot be checked in right now (paused, disabled, completed, or still set to repeat)."
+    "20003": "This routine cannot be checked in right now (paused, disabled, completed, or still set to repeat).",
+    "20104": "An image can’t be used in this space: it was removed, is in the recycle bin, or is not yours to add. Remove or replace it, then save again.",
+    "20105": "A text can hold at most 100 different images.",
+    "20106": "An image is not a supported picture (JPEG, PNG, GIF or WebP) or is too large."
   },
   "about": {
     "title": "About",
@@ -2914,7 +2921,11 @@
       "attachment": "Task attachment / description image",
       "task_cover": "Task cover",
       "project_cover": "Project cover",
-      "avatar": "Avatar"
+      "avatar": "Avatar",
+      "compass_entry": "Compass text",
+      "compass_trash": "Compass entry in the trash",
+      "compass_history": "Compass history version",
+      "compass_background": "Compass space background"
     },
     "presetNames": {
       "aurora": "Aurora · Waves",
@@ -3143,6 +3154,18 @@
     "reopenHelp": "Return this project to active work. Previous completion records are kept for future review. Its archive state stays as it is.",
     "archiveHelp": "Completion and archiving are separate. Completion marks a conclusion; archiving removes the project and its children from everyday navigation and makes them read-only. To put a completed project away, use “Archive” in its menu.",
     "viewHistory": "View project history",
+    "emptyYear": "No project-level status changes in {year}",
+    "emptyWhat": "This page records only status changes of whole projects: marking a project complete, reopening, archiving and unarchiving it. Checking off a project’s tasks never marks the project itself complete, so it does not show up here.",
+    "scope": {
+      "label": "Projects in view right now",
+      "projects": "Projects",
+      "completed": "Marked complete",
+      "archived": "Archived"
+    },
+    "emptyOtherYears": "Projects that are already complete or archived changed status in another year, or before history was recorded. Try another year.",
+    "emptyHow": "To record a change, open a project and choose “Mark project complete” or “Archive” in its menu. Nothing is completed automatically, and no past dates are filled in.",
+    "goToProjects": "Go to projects",
+    "goToTimeline": "See task dates on the timeline",
     "kinds": {
       "milestones": "Completed & archived",
       "completed": "Completed",
@@ -3220,17 +3243,21 @@
     },
     "stats": {
       "label": "Year summary",
-      "projects": "Projects with scheduled work",
+      "projects": "Projects with dates",
       "scheduledDays": "Scheduled days",
+      "scheduledDaysNote": "Start–end ranges only; deadlines add none",
       "elapsedDays": "Counted as passed (until done or today)",
-      "tasksDone": "Scheduled tasks done",
-      "overdue": "Overdue scheduled tasks",
+      "tasksDone": "Dated tasks done",
+      "deadlineOnly": "Tasks with only a deadline",
+      "overdue": "Overdue tasks",
       "daysValue": "{n} day | {n} days",
       "doneValue": "{done} of {total}"
     },
     "missing": {
-      "excluded": "{n} task is not on the timeline: it needs a start date and an end or due date. | {n} tasks are not on the timeline: each needs a start date and an end or due date.",
-      "invalid": "{n} task is left out: its end or due date is before its start, or a date is outside 1970–9998. | {n} tasks are left out: the end or due date is before the start, or a date is outside 1970–9998.",
+      "excluded": "{n} task is not on the timeline: it needs a start and an end date, or a due date. | {n} tasks are not on the timeline: each needs a start and an end date, or a due date.",
+      "undated": "{n} task has no dates at all, so it is not on the timeline. Give it a start and an end date to show a span, or only a due date to show a deadline. | {n} tasks have no dates at all, so they are not on the timeline. Give a task a start and an end date to show a span, or only a due date to show a deadline.",
+      "incomplete": "{n} task has only a start or only an end date. Add the missing one, or a due date, to show it. | {n} tasks have only a start or only an end date. Add the missing one, or a due date, to show them.",
+      "invalid": "{n} task has a date range that cannot be drawn: the end is before the start, or a date is outside 1970–9998. A valid due date of it still shows as a deadline. | {n} tasks have a date range that cannot be drawn: the end is before the start, or a date is outside 1970–9998. Their valid due dates still show as deadlines.",
       "scope": "Counted across all years for the current filters."
     },
     "occupancy": {
@@ -3250,27 +3277,29 @@
       "elapsed": "already passed",
       "planned": "still ahead",
       "deadlines": "{n} deadline | {n} deadlines",
+      "deadlinesIn": "{deadlines} ({projects})",
+      "deadlineProjects": "{n} project | {n} projects",
       "today": "today",
       "unelapsed": "scheduled but not counted as passed (not started yet, or finished before its planned end)"
     },
     "legend": {
       "elapsed": "Already passed",
       "planned": "Still ahead",
-      "deadline": "Deadline",
+      "deadline": "Deadline (a date, not scheduled time)",
       "overdue": "Earliest overdue deadline",
       "today": "Today",
-      "progress": "Progress = average current progress of the project's scheduled tasks in the selected year (done tasks count as 100%), not time passed",
-      "note": "Shading counts projects with scheduled work that day. It shows calendar coverage, not hours worked.",
+      "progress": "Progress = average current progress of the project's dated tasks in the selected year (done tasks count as 100%), not time passed",
+      "note": "Shading counts projects with scheduled work that day. It shows calendar coverage, not hours worked. A dot marks deadlines; a deadline alone does not shade a day.",
       "unelapsed": "Scheduled, not counted as passed"
     },
     "lanes": {
-      "heading": "Projects with scheduled work in {year}",
-      "dayHeading": "Projects scheduled on {date}",
+      "heading": "Projects with dates in {year}",
+      "dayHeading": "Projects scheduled or due on {date}",
       "clearDay": "Show all days",
       "count": "{n} project | {n} projects",
       "progress": "{percent}% average progress",
       "progressName": "Average current progress of {title}",
-      "tasks": "{done} of {total} scheduled tasks in {year} done",
+      "tasks": "{done} of {total} dated tasks in {year} done",
       "overdue": "{n} overdue",
       "nextDeadline": "Next due {date}",
       "overdueSince": "Overdue since {date}",
@@ -3278,27 +3307,37 @@
       "range": "{start} – {end}",
       "days": "{elapsed} of {scheduled} scheduled days in {year} counted as passed",
       "spanTitle": "Scheduled {range}",
-      "outside": "Nothing scheduled in {month}",
+      "outside": "Nothing scheduled or due in {month}",
       "focus": "Show only {title}",
-      "legendDeadline": "Next or last deadline"
+      "legendOpen": "Deadline with open tasks",
+      "legendDone": "Deadline, all tasks done",
+      "legendOverdue": "Overdue deadline",
+      "deadlinesOnly": "Only deadlines in {year}, no start–end range",
+      "deadlineOnlyTasks": "{n} task with only a deadline | {n} tasks with only a deadline",
+      "node": {
+        "open": "Due {date}: {done} of {count} task done | Due {date}: {done} of {count} tasks done",
+        "done": "Due {date}: the task is done | Due {date}: all {count} tasks done",
+        "overdue": "Due {date}: {open} of {count} task still open, overdue | Due {date}: {open} of {count} tasks still open, overdue"
+      }
     },
     "empty": {
-      "year": "No scheduled work in {year}.",
-      "otherYears": "Scheduled tasks exist between {first} and {last}.",
+      "year": "No dated tasks in {year}.",
+      "otherYears": "Tasks with dates exist between {first} and {last}.",
       "goTo": "Go to {year}",
-      "none": "No scheduled tasks yet.",
-      "noneHelp": "Give a task a start date and an end or due date; its project then appears here as a span.",
-      "day": "No project is scheduled on this day.",
+      "none": "No tasks with dates yet.",
+      "noneHelp": "Give a task a start and an end date to show its project as a span, or only a due date to show a deadline.",
+      "day": "No project is scheduled or due on this day.",
       "filters": "No projects match these filters in {year}.",
       "clearFilters": "Clear filters",
-      "otherYear": "Scheduled tasks exist only in {year}."
+      "otherYear": "Tasks with dates exist only in {year}."
     },
     "loadError": "Could not load the timeline.",
     "loading": "Loading the timeline…",
     "pagination": "Timeline pages",
     "pageOf": "Page {page} of {total}",
     "explanation": "How is this calculated?",
-    "explanationSpans": "A task counts when it has a start date and an end date (or, without an end date, a due date). Its project is shown across those days; separate tasks with a gap between them stay separate spans. Tasks in sub-projects belong to their own project, not the parent.",
+    "explanationSpans": "A task with a start date and an end date (or, without an end date, a due date) is scheduled: its project is shown across those days, and separate tasks with a gap between them stay separate spans. Tasks in sub-projects belong to their own project, not the parent.",
+    "explanationDeadlines": "A task with only a due date appears as a deadline on that day. It counts toward the project’s tasks, progress and overdue tasks, but never adds scheduled or passed days. A task whose range lies in another year shows only its deadline in this one. Tasks without any dates are counted separately and never get dates assigned.",
     "explanationElapsed": "“Counted as passed” covers scheduled days up to today, or up to the day a task was marked done; days after an early completion are not counted. It is not a record of hours worked.",
     "explanationProgress": "Progress is the current average completion of the project's scheduled tasks in this year (done tasks count as 100%). It is not a history of past progress."
   },
@@ -3481,7 +3520,8 @@
         "invalidState": "The entry's state no longer allows editing — it may have been moved to the trash. Restore it from the entry page, then save again. Your text is still here.",
         "network": "Couldn't reach the server. Your changes are kept on this device; save again when you're back online.",
         "other": "Couldn't save. Your text is still here.",
-        "conflictUnloaded": "Someone saved a newer version, but it couldn't be loaded. Your text is still here; try saving again."
+        "conflictUnloaded": "Someone saved a newer version, but it couldn't be loaded. Your text is still here; try saving again.",
+        "image": "An image in this text can’t be saved here. Your text is still here; remove or replace the marked image and save again."
       },
       "loading": "Opening the writing desk…",
       "loadFailedTitle": "The writing desk couldn't open",
@@ -3576,7 +3616,7 @@
     "export": {
       "button": "Export",
       "title": "Export this space",
-      "explain": "Exports every entry in the library and the archive as one Markdown file, together with the space’s title, motto, preface and a table of contents. Entries in the trash are not included.",
+      "explain": "Exports every entry in the library and the archive, together with the space’s title, motto, preface and a table of contents: as one Markdown file, or with its images as a ZIP archive. Entries in the trash are not included.",
       "local": "The file is put together in your browser and saved to this device. Nothing is uploaded.",
       "start": "Start export",
       "again": "Export again",
@@ -3588,7 +3628,71 @@
       "offline": "The server could not be reached, so nothing was saved. Check your connection and try again.",
       "lost": "This space is no longer available to you, so nothing was saved.",
       "exportedFrom": "Exported from Compass on {date}",
-      "contents": "Contents"
+      "contents": "Contents",
+      "includeImages": "Include images",
+      "includeImagesHint": "Saves a ZIP archive: the Markdown file plus an images folder it links to.",
+      "referencesHint": "Saves only the Markdown file. Images stay as references and are not included.",
+      "imagesMissing": "{n} image could not be read; the file names it in its place. | {n} images could not be read; the file names them in their place.",
+      "imagesProgress": "Reading image {done} of {total}…",
+      "doneImages": "Saved “{file}” with {n} entry and {images} images. | Saved “{file}” with {n} entries and {images} images.",
+      "tooLarge": "The images are too large to put into one archive in the browser. Export without images instead.",
+      "referencesNote": "Images are not included in this file. They appear as compass-image: references; export with images to get them as files.",
+      "imageMissingNamed": "Image unavailable: {alt}",
+      "imageMissing": "Image unavailable"
+    },
+    "images": {
+      "groupLabel": "Images",
+      "add": "Add images",
+      "fromDrive": "From Drive",
+      "upload": "Upload",
+      "count": "{n} of {limit} images",
+      "loading": "Loading image…",
+      "unavailable": "Image unavailable. It may have been removed, or you no longer have access to it.",
+      "unavailableNamed": "Image unavailable: {alt}",
+      "unavailableEditor": "This image can’t be used here. Remove or replace it.",
+      "unnamed": "Image",
+      "uploadFailed": "The image could not be uploaded.",
+      "unsupported": "“{name}” is not a JPEG, PNG, GIF or WebP image.",
+      "unsupportedUploaded": "“{name}” was saved to your Drive, but only JPEG, PNG, GIF and WebP images can go into a text.",
+      "limitUploaded": "The image was saved to your Drive, but this text already has {limit} images.",
+      "notPlaced": "The image is in your Drive, but its place in the text is gone. Insert it again with “From Drive”.",
+      "notImages": "{n} file is not an image and was skipped. | {n} files are not images and were skipped.",
+      "limit": "A text can hold at most {limit} images.",
+      "limitPartial": "A text can hold at most {limit} images; {n} image was left out. | A text can hold at most {limit} images; {n} images were left out.",
+      "driveUnavailable": "“{name}” can’t be used. It may be in the recycle bin, or it is not available to this space.",
+      "trayLabel": "Image uploads",
+      "cancelRemaining": "Cancel the rest",
+      "retryFile": "Retry {name}",
+      "dismissFile": "Dismiss {name}",
+      "dismiss": "Dismiss",
+      "queued": "Waiting",
+      "remaining": "{n} image still uploading… | {n} images still uploading…",
+      "unsent": "{n} image was not added | {n} images were not added",
+      "added": "Images added",
+      "unavailableInBody": "{n} image in the text can’t be used here. | {n} images in the text can’t be used here.",
+      "removeUnavailable": "Remove the unusable image | Remove the {n} unusable images",
+      "replaceTitle": "Replace image",
+      "replaceText": "Upload a new picture or choose one from your Drive. Its description and caption stay."
+    },
+    "background": {
+      "label": "Background image",
+      "hintSky": "No image: the band shows the theme’s sky. Add one of your pictures to make the space your own.",
+      "hintPhoto": "Click or drag on the picture to choose the point that always stays visible; arrow keys move it too.",
+      "unavailable": "The background image can’t be shown. It may have been removed; choose another one or clear it.",
+      "scrim": "Veil over the image",
+      "scrimHint": "A stronger veil keeps the title and motto readable on busy pictures. Printing never includes the image.",
+      "scrims": {
+        "soft": "Light",
+        "medium": "Medium",
+        "strong": "Strong"
+      },
+      "replaceUpload": "Upload another",
+      "clear": "Back to the theme sky",
+      "focusLabel": "Focal point: {x}% across, {y}% down",
+      "focusHint": "Arrow keys move the point, Home centres it.",
+      "saveFailed": "The background could not be saved: {reason}",
+      "conflictPhoto": "Image, {scrim} veil",
+      "conflictSky": "Theme sky, no image"
     },
     "lights": {
       "title": "Guiding lights",
@@ -3674,7 +3778,8 @@
       "restore": "Restore",
       "restoreLabel": "Restore “{title}”",
       "deleteLabel": "Delete permanently: {title}",
-      "moreTags": "+{n} more"
+      "moreTags": "+{n} more",
+      "images": "{n} image | {n} images"
     },
     "topics": {
       "summary": "Categories and tags",
@@ -3728,7 +3833,14 @@
       "deletePermanently": "Delete permanently",
       "trashConfirmTitle": "Move to the trash?",
       "trashConfirmText": "You can restore it from the trash.",
-      "trashConfirmPinned": "You can restore it from the trash. It will no longer be pinned."
+      "trashConfirmPinned": "You can restore it from the trash. It will no longer be pinned.",
+      "downloadWithImages": "Download with images (.zip)",
+      "downloadMarkdownOnly": "Download Markdown only",
+      "exportingImages": "Reading images {done}/{total}…",
+      "exported": "Saved “{file}”.",
+      "printPreparing": "Loading images for printing…",
+      "printPending": "{n} image is still loading, so printing waits rather than leave a blank frame. | {n} images are still loading, so printing waits rather than leave blank frames.",
+      "printRetry": "Try again"
     },
     "readingPrefs": {
       "title": "Reading settings",

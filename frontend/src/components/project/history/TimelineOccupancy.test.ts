@@ -16,7 +16,8 @@ function mountGrid(props: Partial<InstanceType<typeof TimelineOccupancy>['$props
 			selectedDay: '',
 			month: null,
 			days: {
-				'2026-03-02': {scheduled_projects: 2, elapsed_projects: 2, deadlines: 1},
+				'2026-03-02': {scheduled_projects: 2, elapsed_projects: 2, deadlines: 1, deadline_projects: 1},
+				'2026-03-05': {scheduled_projects: 0, elapsed_projects: 0, deadlines: 3, deadline_projects: 2},
 				'2026-03-03': {scheduled_projects: 1, elapsed_projects: 0, deadlines: 0},
 				'2026-03-20': {scheduled_projects: 1, elapsed_projects: 0, deadlines: 0},
 			},
@@ -36,11 +37,21 @@ describe('TimelineOccupancy', () => {
 	it('labels each day with what the shading means, not with work done', () => {
 		const wrapper = mountGrid()
 		expect(cell(wrapper, 'year', '2026-03-02').attributes('aria-label'))
-			.toBe('Mon, Mar 2: 2 projects scheduled, already passed, 1 deadline')
+			.toBe('Mon, Mar 2: 2 projects scheduled, already passed, 1 deadline (1 project)')
 		expect(cell(wrapper, 'year', '2026-03-03').attributes('data-state')).toBe('unelapsed')
 		expect(cell(wrapper, 'year', '2026-03-20').attributes('data-state')).toBe('planned')
 		expect(cell(wrapper, 'year', '2026-03-21').attributes('aria-label')).toContain('nothing scheduled')
 		expect(cell(wrapper, 'year', '2026-03-10').attributes('data-today')).toBeDefined()
+		wrapper.unmount()
+	})
+
+	it('marks a day with only deadlines without shading it as scheduled', () => {
+		const wrapper = mountGrid()
+		const day = cell(wrapper, 'year', '2026-03-05')
+		expect(day.attributes('data-state')).toBe('none')
+		expect(day.attributes('data-level')).toBe('0')
+		expect(day.find('.deadline-dot').exists()).toBe(true)
+		expect(day.attributes('aria-label')).toBe('Thu, Mar 5: nothing scheduled, 3 deadlines (2 projects)')
 		wrapper.unmount()
 	})
 

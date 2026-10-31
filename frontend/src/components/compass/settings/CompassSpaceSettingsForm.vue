@@ -64,6 +64,11 @@
 					</p>
 				</div>
 
+				<CompassBackgroundField
+					v-model="background"
+					:space-id="space.id"
+				/>
+
 				<div
 					class="compass-settings-form__group"
 					role="group"
@@ -242,6 +247,8 @@
 					:theme="theme"
 					:sharing="space.team_id > 0 ? 'team' : 'personal'"
 					:team-name="teamName"
+					:space-id="space.id"
+					:background="background"
 				/>
 			</div>
 		</div>
@@ -304,13 +311,16 @@ import Message from '@/components/misc/Message.vue'
 import Modal from '@/components/misc/Modal.vue'
 import CompassThemePicker from '@/components/compass/base/CompassThemePicker.vue'
 import CompassThemeScope from '@/components/compass/base/CompassThemeScope.vue'
+import CompassBackgroundField from './CompassBackgroundField.vue'
 import CompassSharingSummary from './CompassSharingSummary.vue'
 import CompassSpacePreview from './CompassSpacePreview.vue'
 
 import {
+	normalizeCompassBackground,
 	normalizeCompassSpace,
 	useUpdateCompassSpaceMutation,
 	type CompassSpace,
+	type CompassSpaceBackground,
 	type CompassSpaceText,
 	type RawCompassSpace,
 } from '@/client/queries/compass'
@@ -328,7 +338,10 @@ import {isEditorContentEmpty} from '@/helpers/editorContentEmpty'
 import {getHumanSize} from '@/helpers/getHumanSize'
 import {getErrorText} from '@/message'
 
-type SpaceVersion = CompassSpaceText & {
+// Everything this form edits: the words, the theme and the band's photo.
+type SpaceDraft = CompassSpaceText & CompassSpaceBackground
+
+type SpaceVersion = SpaceDraft & {
 	revision: number
 }
 
@@ -364,27 +377,40 @@ function versionOf(space: CompassSpace): SpaceVersion {
 		motto: space.motto,
 		introduction: space.introduction,
 		theme: space.theme,
+		...normalizeCompassBackground(space),
 		revision: space.revision,
 	}
 }
 
 // The editor answers an emptied document with `<p></p>`; that is no preface.
-function comparable(text: CompassSpaceText): CompassSpaceText {
+function comparable(text: SpaceDraft): SpaceDraft {
 	return {
 		title: text.title.trim(),
 		motto: text.motto.trim(),
 		introduction: isEditorContentEmpty(text.introduction) ? '' : text.introduction,
 		theme: text.theme,
+		background_file_id: text.background_file_id,
+		background_focus_x: text.background_focus_x,
+		background_focus_y: text.background_focus_y,
+		background_scrim: text.background_scrim,
 	}
 }
 
-function sameText(a: CompassSpaceText, b: CompassSpaceText): boolean {
+function sameBackground(a: CompassSpaceBackground, b: CompassSpaceBackground): boolean {
+	return a.background_file_id === b.background_file_id &&
+		a.background_focus_x === b.background_focus_x &&
+		a.background_focus_y === b.background_focus_y &&
+		a.background_scrim === b.background_scrim
+}
+
+function sameText(a: SpaceDraft, b: SpaceDraft): boolean {
 	const left = comparable(a)
 	const right = comparable(b)
 	return left.title === right.title &&
 		left.motto === right.motto &&
 		left.introduction === right.introduction &&
-		left.theme === right.theme
+		left.theme === right.theme &&
+		sameBackground(left, right)
 }
 
 /* eslint-disable vue/no-setup-props-reactivity-loss -- keyed form: one snapshot, never replaced by a refetch */
@@ -394,13 +420,15 @@ const title = ref(props.space.title)
 const motto = ref(props.space.motto)
 const introduction = ref(props.space.introduction)
 const theme = ref<CompassTheme>(props.space.theme)
+const background = ref<CompassSpaceBackground>(normalizeCompassBackground(props.space))
 /* eslint-enable vue/no-setup-props-reactivity-loss */
 
-const draft = computed<CompassSpaceText>(() => comparable({
+const draft = computed<SpaceDraft>(() => comparable({
 	title: title.value,
 	motto: motto.value,
 	introduction: introduction.value,
 	theme: theme.value,
+	...background.value,
 }))
 
 const dirty = computed(() => !sameText(draft.value, base.value))
@@ -497,6 +525,7 @@ function adopt(version: SpaceVersion) {
 	motto.value = version.motto
 	introduction.value = version.introduction
 	theme.value = version.theme
+	background.value = normalizeCompassBackground(version)
 }
 
 // Saved elsewhere while nothing here is unsaved: follow along instead of keeping a stale base.
@@ -513,6 +542,8 @@ function failureText(failure: CompassFailure, cause: unknown): string {
 			return t('compass.settings.error.missing')
 		case 'network':
 			return t('compass.settings.error.network')
+		case 'image':
+			return t('compass.background.saveFailed', {reason: getErrorText(cause)})
 		default:
 			return t('compass.settings.error.failed', {reason: getErrorText(cause)})
 	}
@@ -558,6 +589,7 @@ async function save() {
 		motto: next.motto,
 		introduction: next.introduction,
 		theme: next.theme,
+		...normalizeCompassBackground(next),
 		revision: next.revision > 0 ? next.revision : base.value.revision,
 	}
 	// Words typed while the request ran stay as unsaved changes on top of the new base.
@@ -648,6 +680,15 @@ const conflictRows = computed<ConflictRow[]>(() => {
 			label: t('compass.settings.field.theme'),
 			value: t(`compass.theme.${theirs.theme}`),
 			differs: theirs.theme !== mine.theme,
+			serif: false,
+		},
+		{
+			key: 'background',
+			label: t('compass.background.label'),
+			value: theirs.background_file_id > 0
+				? t('compass.background.conflictPhoto', {scrim: t(`compass.background.scrims.${theirs.background_scrim}`)})
+				: t('compass.background.conflictSky'),
+			differs: !sameBackground(theirs, mine),
 			serif: false,
 		},
 		{

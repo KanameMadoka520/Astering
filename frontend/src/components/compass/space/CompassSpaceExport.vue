@@ -27,6 +27,22 @@
 					{{ t('compass.export.local') }}
 				</p>
 
+				<label class="compass-export__option">
+					<input
+						v-model="includeImages"
+						type="checkbox"
+						:disabled="phase === 'running'"
+						:aria-describedby="imagesHintId"
+					>
+					<span>{{ t('compass.export.includeImages') }}</span>
+				</label>
+				<p
+					:id="imagesHintId"
+					class="compass-export__aside"
+				>
+					{{ includeImages ? t('compass.export.includeImagesHint') : t('compass.export.referencesHint') }}
+				</p>
+
 				<div class="compass-export__progress">
 					<p
 						class="compass-export__status"
@@ -44,6 +60,13 @@
 					/>
 				</div>
 
+				<p
+					v-if="phase === 'done' && saved.missing > 0"
+					class="compass-export__error"
+					role="alert"
+				>
+					{{ t('compass.export.imagesMissing', {n: saved.missing}, saved.missing) }}
+				</p>
 				<p
 					v-if="errorText"
 					class="compass-export__error"
@@ -75,7 +98,7 @@
 </template>
 
 <script setup lang="ts">
-import {computed, onBeforeUnmount, ref} from 'vue'
+import {computed, onBeforeUnmount, ref, useId} from 'vue'
 import {useI18n} from 'vue-i18n'
 import XButton from '@/components/input/Button.vue'
 import Card from '@/components/misc/Card.vue'
@@ -86,12 +109,17 @@ import {
 	type CompassSpace,
 } from '@/client/queries/compass'
 import {classifyCompassFailure} from '@/helpers/compass/errors'
+import {buildCompassBundle, compassBodiesImageIds} from '@/helpers/compass/exportBundle'
 import {
-	compassMarkdownFilename,
+	compassExportBaseName,
 	compassSpaceToMarkdown,
+	downloadCompassFile,
 	downloadCompassMarkdown,
+	type CompassExportLabels,
 } from '@/helpers/compass/exportMarkdown'
+import type {CompassImageRef} from '@/helpers/compass/images'
 import {formatDateLong} from '@/helpers/time/formatDate'
+import {ZipTooLargeError} from '@/helpers/zipStore'
 
 const props = defineProps<{
 	space: CompassSpace
@@ -103,14 +131,20 @@ type ExportPhase = 'idle' | 'running' | 'done' | 'cancelled' | 'failed'
 
 const isOpen = ref(false)
 const phase = ref<ExportPhase>('idle')
+// Pictures go into a ZIP next to the Markdown; without them the text keeps their references.
+const includeImages = ref(true)
+const imagesHintId = useId()
 // total is -1 until the list of entries has been read.
 const progress = ref({
+	step: 'entries' as 'entries' | 'images',
 	done: 0,
 	total: -1,
 })
 const saved = ref({
 	file: '',
 	count: 0,
+	images: 0,
+	missing: 0,
 })
 const errorText = ref('')
 
@@ -121,17 +155,27 @@ let run = 0
 const statusText = computed(() => {
 	switch (phase.value) {
 		case 'running':
-			return progress.value.total < 0
-				? t('compass.export.preparing')
+			if (progress.value.total < 0) return t('compass.export.preparing')
+			return progress.value.step === 'images'
+				? t('compass.export.imagesProgress', {
+					done: progress.value.done,
+					total: progress.value.total,
+				})
 				: t('compass.export.progress', {
 					done: progress.value.done,
 					total: progress.value.total,
 				})
 		case 'done':
-			return t('compass.export.done', {
-				file: saved.value.file,
-				n: saved.value.count,
-			}, saved.value.count)
+			return saved.value.images > 0
+				? t('compass.export.doneImages', {
+					file: saved.value.file,
+					n: saved.value.count,
+					images: saved.value.images,
+				}, saved.value.count)
+				: t('compass.export.done', {
+					file: saved.value.file,
+					n: saved.value.count,
+				}, saved.value.count)
 		case 'cancelled':
 			return t('compass.export.cancelled')
 		default:
@@ -140,6 +184,7 @@ const statusText = computed(() => {
 })
 
 function failureText(cause: unknown): string {
+	if (cause instanceof ZipTooLargeError) return t('compass.export.tooLarge')
 	switch (classifyCompassFailure(cause)) {
 		case 'network':
 			return t('compass.export.offline')
@@ -160,20 +205,68 @@ async function start() {
 	const space = props.space
 	phase.value = 'running'
 	progress.value = {
+		step: 'entries',
 		done: 0,
 		total: -1,
 	}
 	errorText.value = ''
+	const withImages = includeImages.value
+
+	const labels: CompassExportLabels = {
+		kind: entry => t(`compass.kind.${entry.kind}`),
+		exportedFrom: t('compass.export.exportedFrom', {date: formatDateLong(new Date())}),
+		contents: t('compass.export.contents'),
+	}
+	const baseName = compassExportBaseName(space.title, t('compass.home.defaultTitle'))
 
 	let entries: CompassEntry[]
 	try {
 		entries = await fetchCompassEntriesForExport(space.id, (done, total) => {
 			if (current !== run) return
 			progress.value = {
+				step: 'entries',
 				done,
 				total,
 			}
 		}, abort.signal)
+		if (current !== run) return
+		const imageIds = compassBodiesImageIds(entries.map(entry => entry.content))
+		if (imageIds.length > 0 && withImages) {
+			const bundle = await buildCompassBundle({
+				spaceId: space.id,
+				baseName,
+				imageIds,
+				markdown: images => compassSpaceToMarkdown(space, entries, labels, images),
+				missing: missingImageText,
+				signal: abort.signal,
+				onProgress: (done, total) => {
+					if (current !== run) return
+					progress.value = {
+						step: 'images',
+						done,
+						total,
+					}
+				},
+			})
+			if (current !== run) return
+			downloadCompassFile(bundle.blob, bundle.filename)
+			saved.value = {
+				file: bundle.filename,
+				count: entries.length,
+				images: bundle.images,
+				missing: bundle.missing,
+			}
+		} else {
+			if (imageIds.length > 0) labels.imagesNote = t('compass.export.referencesNote')
+			const file = `${baseName}.md`
+			downloadCompassMarkdown(compassSpaceToMarkdown(space, entries, labels), file)
+			saved.value = {
+				file,
+				count: entries.length,
+				images: 0,
+				missing: 0,
+			}
+		}
 	} catch (cause) {
 		if (current !== run || abort.signal.aborted) return
 		if (classifyCompassFailure(cause) === 'aborted') {
@@ -187,19 +280,13 @@ async function start() {
 		if (controller === abort) controller = null
 	}
 	if (current !== run) return
-
-	const markdown = compassSpaceToMarkdown(space, entries, {
-		kind: entry => t(`compass.kind.${entry.kind}`),
-		exportedFrom: t('compass.export.exportedFrom', {date: formatDateLong(new Date())}),
-		contents: t('compass.export.contents'),
-	})
-	const file = compassMarkdownFilename(space.title, t('compass.home.defaultTitle'))
-	downloadCompassMarkdown(markdown, file)
-	saved.value = {
-		file,
-		count: entries.length,
-	}
 	phase.value = 'done'
+}
+
+function missingImageText(image: CompassImageRef): string {
+	return image.alt
+		? t('compass.export.imageMissingNamed', {alt: image.alt})
+		: t('compass.export.imageMissing')
 }
 
 function cancel() {
@@ -217,6 +304,7 @@ function close() {
 	isOpen.value = false
 	phase.value = 'idle'
 	progress.value = {
+		step: 'entries',
 		done: 0,
 		total: -1,
 	}
@@ -242,6 +330,23 @@ onBeforeUnmount(() => {
 .compass-export__aside {
 	color: var(--text-secondary);
 	font-size: var(--text-sm);
+}
+
+.compass-export__option {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-block-size: var(--target-min);
+	font-weight: var(--weight-medium);
+	cursor: pointer;
+
+	input {
+		flex: none;
+		inline-size: 1.125rem;
+		block-size: 1.125rem;
+		margin: 0;
+		accent-color: var(--primary);
+	}
 }
 
 .compass-export__progress {

@@ -3,12 +3,15 @@ import {
 	projectTimeline,
 	type ProjectTimeline,
 	type ProjectTimelineData,
+	type ProjectTimelineDeadline,
 	type ProjectTimelineItem,
 } from '@/client/generated'
 
 export type ProjectTimelineQuery = ProjectTimelineData['query']
 
-export type ProjectTimelineRow = ProjectTimelineItem
+export type ProjectTimelineRow = ProjectTimelineItem & {
+	deadline_days: ProjectTimelineDeadline[]
+}
 
 export type ProjectTimelineResponse = Omit<ProjectTimeline, 'items' | 'days'> & {
 	days: NonNullable<ProjectTimeline['days']>
@@ -38,6 +41,7 @@ export function normalizeProjectTimeline(data: ProjectTimeline): ProjectTimeline
 			...item,
 			scheduled_spans: item.scheduled_spans ?? [],
 			elapsed_spans: item.elapsed_spans ?? [],
+			deadline_days: item.deadline_days ?? [],
 		})),
 	}
 }

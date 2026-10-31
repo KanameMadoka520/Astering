@@ -13,6 +13,7 @@ const sdk = vi.hoisted(() => ({
 	compassEntriesList: vi.fn(),
 	compassEntriesRead: vi.fn(),
 	compassEntriesUpdate: vi.fn(),
+	compassImagesRead: vi.fn(),
 	compassRevisionsList: vi.fn(),
 	compassRevisionsRead: vi.fn(),
 	compassRevisionsRestore: vi.fn(),
@@ -36,6 +37,7 @@ vi.mock('@/helpers/auth', () => ({
 import {
 	canAdminCompass,
 	canWriteCompass,
+	COMPASS_DEFAULT_BACKGROUND,
 	compassEntriesQuery,
 	compassEntryQuery,
 	compassEntryText,
@@ -48,6 +50,7 @@ import {
 	createCompassSpaceMutationOptions,
 	deleteCompassEntryMutationOptions,
 	fetchCompassEntriesForExport,
+	fetchCompassImage,
 	normalizeCompassEntry,
 	normalizeCompassEntrySummary,
 	normalizeCompassRevision,
@@ -198,6 +201,37 @@ describe('normalizers', () => {
 			entry_count: 0,
 			pinned_count: 0,
 		})
+	})
+
+	it('reads the background with safe defaults: the theme sky, a centred focus and a medium veil', () => {
+		expect(cachedSpace).toMatchObject({
+			background_file_id: 0,
+			background_focus_x: 50,
+			background_focus_y: 50,
+			background_scrim: 'medium',
+		})
+		expect(normalizeCompassSpace({
+			...rawSpace,
+			background_file_id: 12,
+			background_focus_x: 140,
+			background_focus_y: -3.6,
+			background_scrim: 'strong',
+		})).toMatchObject({
+			background_file_id: 12,
+			background_focus_x: 100,
+			background_focus_y: 0,
+			background_scrim: 'strong',
+		})
+		expect(normalizeCompassSpace({...rawSpace, background_file_id: -4, background_scrim: 'opaque'})).toMatchObject({
+			background_file_id: 0,
+			background_scrim: 'medium',
+		})
+	})
+
+	it('counts the images of an entry, zero when the server leaves it out', () => {
+		expect(cachedEntry.image_count).toBe(0)
+		expect(normalizeCompassEntry({...rawEntry, image_count: 3}).image_count).toBe(3)
+		expect(toCompassEntrySummary(normalizeCompassEntry({...rawEntry, image_count: 3}))).toMatchObject({image_count: 3})
 	})
 
 	it('dedupes tags exactly like the server: trimmed, case kept', () => {
@@ -430,6 +464,62 @@ describe('reads', () => {
 	})
 })
 
+describe('fetchCompassImage', () => {
+	function image(type = 'image/webp') {
+		return new Blob([new Uint8Array([1, 2, 3])], {type})
+	}
+
+	it('reads through the space as a blob and refuses types that are not safe raster images', async () => {
+		sdk.compassImagesRead.mockResolvedValueOnce({data: image()})
+		await expect(fetchCompassImage(3, 12)).resolves.toBeInstanceOf(Blob)
+		expect(sdk.compassImagesRead).toHaveBeenCalledWith(expect.objectContaining({
+			path: {space: 3, file: 12},
+			parseAs: 'blob',
+		}))
+
+		sdk.compassImagesRead.mockResolvedValueOnce({data: image('image/svg+xml')})
+		await expect(fetchCompassImage(3, 13)).rejects.toThrow('unsupported type')
+	})
+
+	it('reads four images at a time and lets a cancelled read leave the queue', async () => {
+		const pending: (() => void)[] = []
+		sdk.compassImagesRead.mockImplementation(() => new Promise(resolve => {
+			pending.push(() => resolve({data: image()}))
+		}))
+		const running = [1, 2, 3, 4].map(id => fetchCompassImage(3, id))
+		const cancelled = new AbortController()
+		const queued = fetchCompassImage(3, 5, cancelled.signal)
+		const next = fetchCompassImage(3, 6)
+		await vi.waitFor(() => expect(sdk.compassImagesRead).toHaveBeenCalledTimes(4))
+
+		cancelled.abort()
+		await expect(queued).rejects.toSatisfy(isRequestContextAbort)
+		pending.shift()!()
+		await running[0]
+		await vi.waitFor(() => expect(sdk.compassImagesRead).toHaveBeenCalledTimes(5))
+		expect(sdk.compassImagesRead.mock.lastCall?.[0].path).toEqual({space: 3, file: 6})
+
+		pending.splice(0).forEach(resolve => resolve())
+		await Promise.all([...running, next])
+	})
+
+	it('never starts or returns a queued read under another session', async () => {
+		const pending: (() => void)[] = []
+		sdk.compassImagesRead.mockImplementation(() => new Promise(resolve => {
+			pending.push(() => resolve({data: image()}))
+		}))
+		const running = [1, 2, 3, 4].map(id => fetchCompassImage(3, id))
+		const queued = fetchCompassImage(3, 5)
+		await vi.waitFor(() => expect(sdk.compassImagesRead).toHaveBeenCalledTimes(4))
+		session.epoch = 2
+
+		pending.splice(0).forEach(resolve => resolve())
+		await Promise.all(running.map(read => expect(read).rejects.toSatisfy(isRequestContextAbort)))
+		await expect(queued).rejects.toSatisfy(isRequestContextAbort)
+		expect(sdk.compassImagesRead).toHaveBeenCalledTimes(4)
+	})
+})
+
 describe('fetchCompassEntriesForExport', () => {
 	it('lists active and archived entries on every page, then reads each body and reports progress', async () => {
 		const controller = new AbortController()
@@ -495,6 +585,10 @@ describe('space mutations', () => {
 			introduction: '',
 			theme: 'aurora',
 			team_id: 0,
+			background_file_id: 0,
+			background_focus_x: 50,
+			background_focus_y: 50,
+			background_scrim: 'medium',
 		}})
 		expect(client.getQueryData(compassKeys.space(4))).toEqual(normalizeCompassSpace(created))
 		expect(client.getQueryData(compassKeys.spaces)).toEqual([existing, normalizeCompassSpace(created)])
@@ -531,6 +625,10 @@ describe('space mutations', () => {
 			title: 'South',
 			introduction: '<p>New</p>',
 			theme: 'ink',
+			background_file_id: 9,
+			background_focus_x: 30,
+			background_focus_y: 70,
+			background_scrim: 'strong',
 			revision: 3,
 			created: '2026-09-01T08:00:00Z',
 			updated: '2026-10-31T08:00:00Z',
@@ -542,6 +640,10 @@ describe('space mutations', () => {
 			motto: '',
 			introduction: '<p>New</p>',
 			theme: 'ink',
+			background_file_id: 9,
+			background_focus_x: 30,
+			background_focus_y: 70,
+			background_scrim: 'strong',
 			revision: 2,
 		})
 
@@ -552,6 +654,10 @@ describe('space mutations', () => {
 				motto: '',
 				introduction: '<p>New</p>',
 				theme: 'ink',
+				background_file_id: 9,
+				background_focus_x: 30,
+				background_focus_y: 70,
+				background_scrim: 'strong',
 				revision: 2,
 			},
 		})
@@ -561,6 +667,10 @@ describe('space mutations', () => {
 			motto: '',
 			introduction: '<p>New</p>',
 			theme: 'ink',
+			background_file_id: 9,
+			background_focus_x: 30,
+			background_focus_y: 70,
+			background_scrim: 'strong',
 			revision: 3,
 			updated: '2026-10-31T08:00:00Z',
 		}
@@ -582,6 +692,7 @@ describe('space mutations', () => {
 			motto: '',
 			introduction: '',
 			theme: 'ink',
+			...COMPASS_DEFAULT_BACKGROUND,
 			revision: 1,
 		})).rejects.toBe(conflict)
 

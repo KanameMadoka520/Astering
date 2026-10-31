@@ -188,6 +188,23 @@ const recordsCount = computed(() => {
 	return t('projectHistory.recordsCount', {n: total}, total)
 })
 
+// Nothing recorded for the whole year: explain what this page records instead of only saying it is empty.
+const explainEmpty = computed(() => !day.value && !unknown.value && (kind.value === 'milestones' || kind.value === 'all'))
+const scope = computed(() => ({
+	projects: history.value?.scope?.projects ?? 0,
+	completed: history.value?.scope?.completed ?? 0,
+	archived: history.value?.scope?.archived ?? 0,
+}))
+// The timeline counts tasks by their dates; it keeps this page's year, project and search.
+const timelineLink = computed(() => ({
+	name: 'projects.history',
+	query: {
+		year: route.query.year,
+		project: route.query.project,
+		q: route.query.q,
+	},
+}))
+
 const records = computed(() => (history.value?.items || []).map(item => {
 	const eventKind = parseHistoryEventKind(item.kind)
 	return {
@@ -476,8 +493,56 @@ watch(() => query.data.value?.total_pages, total => {
 					icon="calendar"
 					class="history-state-icon"
 				/>
-				<h3>{{ t('projectHistory.empty') }}</h3>
-				<p>{{ t('projectHistory.emptyHelp') }}</p>
+				<template v-if="explainEmpty">
+					<h3>{{ t('projectHistory.emptyYear', {year}) }}</h3>
+					<p class="history-state-text">
+						{{ t('projectHistory.emptyWhat') }}
+					</p>
+					<dl
+						class="history-scope"
+						:aria-label="t('projectHistory.scope.label')"
+					>
+						<div>
+							<dt>{{ t('projectHistory.scope.projects') }}</dt>
+							<dd>{{ scope.projects }}</dd>
+						</div>
+						<div>
+							<dt>{{ t('projectHistory.scope.completed') }}</dt>
+							<dd>{{ scope.completed }}</dd>
+						</div>
+						<div>
+							<dt>{{ t('projectHistory.scope.archived') }}</dt>
+							<dd>{{ scope.archived }}</dd>
+						</div>
+					</dl>
+					<p
+						v-if="scope.completed || scope.archived"
+						class="history-state-text"
+					>
+						{{ t('projectHistory.emptyOtherYears') }}
+					</p>
+					<p class="history-state-text">
+						{{ t('projectHistory.emptyHow') }}
+					</p>
+					<div class="history-state-links">
+						<RouterLink
+							class="history-button"
+							:to="{name: 'projects.index'}"
+						>
+							{{ t('projectHistory.goToProjects') }}
+						</RouterLink>
+						<RouterLink
+							class="history-button"
+							:to="timelineLink"
+						>
+							{{ t('projectHistory.goToTimeline') }}
+						</RouterLink>
+					</div>
+				</template>
+				<template v-else>
+					<h3>{{ t('projectHistory.empty') }}</h3>
+					<p>{{ t('projectHistory.emptyHelp') }}</p>
+				</template>
 			</div>
 			<ol
 				v-else
@@ -1029,6 +1094,51 @@ h2 {
 		color: var(--text);
 		font-size: 1rem;
 		font-weight: 600;
+	}
+}
+
+.history-state-text {
+	max-inline-size: 60ch;
+	margin: 0;
+	line-height: var(--leading-normal);
+}
+
+// The current state of the projects in view; it does not depend on the year.
+.history-scope {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: var(--space-2) var(--space-5);
+	margin: var(--space-1) 0;
+
+	div {
+		display: flex;
+		flex-direction: column-reverse;
+		align-items: center;
+	}
+
+	dt {
+		font-size: var(--text-xs);
+	}
+
+	dd {
+		margin: 0;
+		color: var(--text-primary);
+		font-size: var(--text-xl);
+		font-weight: var(--weight-semibold);
+		font-variant-numeric: tabular-nums;
+	}
+}
+
+.history-state-links {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: var(--space-2);
+	margin-block-start: var(--space-2);
+
+	.history-button {
+		text-decoration: none;
 	}
 }
 

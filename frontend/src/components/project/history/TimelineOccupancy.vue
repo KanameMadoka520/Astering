@@ -34,7 +34,7 @@ const shownMonth = computed(() => {
 	if (props.month !== null) return props.month
 	if (props.selectedDay) return Number(props.selectedDay.slice(5, 7)) - 1
 	if (currentMonthIndex.value !== null) return currentMonthIndex.value
-	const first = Object.keys(props.days).filter(d => props.days[d].scheduled_projects).sort()[0]
+	const first = Object.keys(props.days).filter(d => props.days[d].scheduled_projects || props.days[d].deadlines).sort()[0]
 	return first ? Number(first.slice(5, 7)) - 1 : 0
 })
 
@@ -76,7 +76,16 @@ function cellInfo(date: string) {
 		details.push(t('projectTimeline.day.projects', {n: projects}, projects))
 		details.push(t(`projectTimeline.day.${state}`))
 	}
-	if (deadlines) details.push(t('projectTimeline.day.deadlines', {n: deadlines}, deadlines))
+	if (deadlines) {
+		const projectsDue = day?.deadline_projects ?? 0
+		const text = t('projectTimeline.day.deadlines', {n: deadlines}, deadlines)
+		details.push(projectsDue
+			? t('projectTimeline.day.deadlinesIn', {
+				deadlines: text,
+				projects: t('projectTimeline.day.deadlineProjects', {n: projectsDue}, projectsDue),
+			})
+			: text)
+	}
 	if (date === props.today) details.push(t('projectTimeline.day.today'))
 	return {
 		state,

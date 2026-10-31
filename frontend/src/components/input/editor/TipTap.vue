@@ -101,6 +101,27 @@
 					>
 						{{ $t('input.editor.altText') }}
 					</BaseButton>
+					<template v-if="imageSource">
+						<BaseButton
+							class="editor-bubble__button editor-bubble__button--text"
+							@click="setImageCaption"
+						>
+							{{ $t('input.editor.caption') }}
+						</BaseButton>
+						<BaseButton
+							v-if="imageSource.replace"
+							class="editor-bubble__button editor-bubble__button--text"
+							@click="replaceImage"
+						>
+							{{ $t('input.editor.replaceImage') }}
+						</BaseButton>
+						<BaseButton
+							class="editor-bubble__button editor-bubble__button--text"
+							@click="removeImage"
+						>
+							{{ $t('input.editor.removeImage') }}
+						</BaseButton>
+					</template>
 				</div>
 			</BubbleMenu>
 
@@ -135,6 +156,8 @@
 			ref="uploadInputRef"
 			type="file"
 			class="is-hidden"
+			:accept="imageSource?.accept"
+			:multiple="imageSource !== undefined"
 			@change="addImage"
 		>
 
@@ -234,7 +257,7 @@ import mentionSuggestionSetup from './mention/mentionSuggestion'
 import MentionUser from './mention/MentionUser.vue'
 import ImageLightbox from '@/components/misc/ImageLightbox.vue'
 
-import type {BottomAction, UploadCallback} from './types'
+import type {BottomAction, EditorImageSource, UploadCallback} from './types'
 import BaseButton from '@/components/base/BaseButton.vue'
 import XButton from '@/components/input/Button.vue'
 
@@ -262,6 +285,8 @@ allowTaskLists?: boolean,
 	storageKey?: string,
 	// A writing surface that never falls back to preview (Compass editor); saving is the parent's job.
 	alwaysEditing?: boolean,
+	// Images that are not task attachments (Compass): their node, picker and uploads.
+	imageSource?: EditorImageSource,
 }>(), {
 	uploadCallback: undefined,
 	allowImages: true,
@@ -277,6 +302,7 @@ allowTaskLists?: boolean,
 	projectId: 0,
 	storageKey: '',
 	alwaysEditing: false,
+	imageSource: undefined,
 })
 
 const emit = defineEmits(['save'])
@@ -342,6 +368,7 @@ const extensions: Extensions = createEditorExtensions({
 	uploadAndInsertFiles,
 	allowImages: props.allowImages,
 	allowTaskLists: props.allowTaskLists,
+	imageSource: props.imageSource,
 })
 
 // Add mention extension if enabled
@@ -530,6 +557,11 @@ async function insertDriveImage(file: DriveEntry) {
 const uploadInputRef = ref<HTMLInputElement | null>(null)
 
 function uploadAndInsertFiles(files: File[] | FileList) {
+	const instance = liveEditor()
+	if (props.imageSource) {
+		if (instance) props.imageSource.insertFiles(instance, Array.from(files))
+		return
+	}
 	if (typeof props.uploadCallback === 'undefined') {
 		throw new Error('Can\'t add files here')
 	}
@@ -572,7 +604,7 @@ function uploadAndInsertFiles(files: File[] | FileList) {
 
 function triggerImageInput(event: Event) {
 	if (!props.allowImages) return
-	if (typeof props.uploadCallback !== 'undefined') {
+	if (typeof props.uploadCallback !== 'undefined' || props.imageSource) {
 		uploadInputRef.value?.click()
 		return
 	}
@@ -582,6 +614,15 @@ function triggerImageInput(event: Event) {
 
 async function addImage(event: Event) {
 	if (!props.allowImages) return
+
+	if (props.imageSource) {
+		const input = uploadInputRef.value
+		const files = Array.from(input?.files ?? [])
+		// Picking the same file again must fire another change.
+		if (input) input.value = ''
+		if (files.length > 0) uploadAndInsertFiles(files)
+		return
+	}
 
 	if (typeof props.uploadCallback !== 'undefined') {
 		const files = uploadInputRef.value?.files
@@ -651,6 +692,25 @@ async function setImageAlt(event: MouseEvent) {
 	const target = event.target as HTMLElement
 	const previousAlt = editor.value?.getAttributes('image').alt || ''
 	await promptAndApplyImageAlt(target.getBoundingClientRect(), previousAlt)
+}
+
+async function setImageCaption(event: MouseEvent) {
+	const target = event.target as HTMLElement
+	const previous = editor.value?.getAttributes('image').title || ''
+	const title = await inputPrompt(target.getBoundingClientRect(), t('input.editor.captionPlaceholder'), previous, editor.value ?? undefined)
+	if (title === null) return
+	liveEditor()?.chain().focus().updateAttributes('image', {title: title.trim() || null}).run()
+	bubbleNow()
+}
+
+function replaceImage() {
+	const instance = liveEditor()
+	if (instance && props.imageSource?.replace) props.imageSource.replace(instance)
+}
+
+function removeImage() {
+	liveEditor()?.chain().focus().deleteSelection().run()
+	bubbleNow()
 }
 
 // Cancelling leaves the image without alt text.

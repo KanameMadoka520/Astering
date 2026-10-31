@@ -47,6 +47,7 @@ function entry(overrides: Partial<CompassEntry>): CompassEntry {
 		updated_by_id: 1,
 		excerpt: '',
 		content_bytes: 0,
+		image_count: 0,
 		max_permission: 2,
 		...overrides,
 	}
@@ -66,6 +67,10 @@ const space: CompassSpace = {
 	max_permission: 2,
 	entry_count: 2,
 	pinned_count: 1,
+	background_file_id: 0,
+	background_focus_x: 50,
+	background_focus_y: 50,
+	background_scrim: 'medium',
 }
 
 describe('compassEntryToMarkdown', () => {

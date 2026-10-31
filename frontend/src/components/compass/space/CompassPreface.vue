@@ -85,7 +85,7 @@ const {t} = useI18n({useScope: 'global'})
 const {prefs} = useCompassReadingPrefs()
 const bodyId = useId()
 
-const prepared = computed(() => prepareCompassHtml(props.space.introduction, 'compass-preface'))
+const prepared = computed(() => prepareCompassHtml(props.space.introduction, 'compass-preface', {images: false}))
 const hasPreface = computed(() => compassPlainText(props.space.introduction).trim() !== '')
 const canAdmin = computed(() => canAdminCompass(props.space))
 

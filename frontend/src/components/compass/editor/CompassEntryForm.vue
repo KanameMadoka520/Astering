@@ -157,6 +157,15 @@
 							</p>
 							<div class="compass-desk__notice-actions">
 								<XButton
+									v-if="failure.kind === 'image' && unavailableInBody.length > 0"
+									variant="secondary"
+									:shadow="false"
+									icon="trash-alt"
+									@click="removeUnavailableImages"
+								>
+									{{ t('compass.images.removeUnavailable', {n: unavailableInBody.length}, unavailableInBody.length) }}
+								</XButton>
+								<XButton
 									v-if="failure.kind === 'missing'"
 									variant="secondary"
 									:shadow="false"
@@ -284,10 +293,85 @@
 						<Editor
 							v-model="fields.content"
 							always-editing
-							:allow-images="false"
+							:image-source="images.source"
 							:allow-task-lists="false"
 							:placeholder="t('compass.editor.bodyPlaceholder')"
 							@save="save()"
+						/>
+						<div
+							class="compass-desk__media"
+							role="group"
+							:aria-label="t('compass.images.groupLabel')"
+						>
+							<XButton
+								variant="tertiary"
+								:shadow="false"
+								class="is-small"
+								icon="image"
+								@click="imageInput?.click()"
+							>
+								{{ t('compass.images.add') }}
+							</XButton>
+							<XButton
+								variant="tertiary"
+								:shadow="false"
+								class="is-small"
+								icon="folder"
+								@click="images.openDrive()"
+							>
+								{{ t('compass.images.fromDrive') }}
+							</XButton>
+							<span
+								v-if="bodyImageIds.length > 0"
+								class="compass-desk__media-count"
+								:class="{'is-full': bodyImageIds.length >= COMPASS_IMAGE_LIMITS.perEntry}"
+							>
+								{{ t('compass.images.count', {n: bodyImageIds.length, limit: COMPASS_IMAGE_LIMITS.perEntry}) }}
+							</span>
+							<input
+								ref="imageInput"
+								type="file"
+								class="is-hidden"
+								:accept="COMPASS_IMAGE_ACCEPT"
+								multiple
+								@change="onImageInput"
+							>
+						</div>
+						<p
+							v-if="images.notice.value"
+							class="compass-desk__media-notice"
+							role="alert"
+						>
+							<span>{{ images.notice.value }}</span>
+							<button
+								type="button"
+								class="compass-desk__media-link"
+								@click="images.clearNotice()"
+							>
+								{{ t('compass.editor.dismiss') }}
+							</button>
+						</p>
+						<p
+							v-if="unavailableInBody.length > 0"
+							class="compass-desk__media-notice is-warning"
+						>
+							<span>{{ t('compass.images.unavailableInBody', {n: unavailableInBody.length}, unavailableInBody.length) }}</span>
+							<button
+								type="button"
+								class="compass-desk__media-link"
+								@click="removeUnavailableImages"
+							>
+								{{ t('compass.images.removeUnavailable', {n: unavailableInBody.length}, unavailableInBody.length) }}
+							</button>
+						</p>
+						<CompassImageTray
+							v-if="images.items.value.length > 0"
+							:items="images.items.value"
+							:running="images.running.value"
+							@retry="images.retry"
+							@cancel="images.cancel()"
+							@dismiss="images.dismiss"
+							@clearFinished="images.clearFinished()"
 						/>
 						<p
 							v-if="contentNoteShown"
@@ -445,6 +529,59 @@
 			</Card>
 		</Modal>
 
+		<DrivePicker
+			v-if="images.driveOpen.value"
+			images
+			:busy="images.driveBusy.value"
+			@close="images.closeDrive()"
+			@select="images.pickFromDrive"
+		/>
+
+		<Modal
+			v-if="images.replacing.value"
+			:aria-label="t('compass.images.replaceTitle')"
+			@close="images.closeReplace()"
+		>
+			<Card
+				:title="t('compass.images.replaceTitle')"
+				:shadow="false"
+				:padding="false"
+				:show-close="true"
+				class="compass-desk__dialog has-text-start"
+				@close="images.closeReplace()"
+			>
+				<p class="compass-desk__dialog-text">
+					{{ t('compass.images.replaceText') }}
+				</p>
+				<template #footer>
+					<XButton
+						variant="secondary"
+						:shadow="false"
+						icon="folder"
+						@click="images.openDrive(true)"
+					>
+						{{ t('compass.images.fromDrive') }}
+					</XButton>
+					<XButton
+						variant="primary"
+						:shadow="false"
+						icon="cloud-upload-alt"
+						autofocus
+						@click="replaceInput?.click()"
+					>
+						{{ t('compass.images.upload') }}
+					</XButton>
+				</template>
+			</Card>
+		</Modal>
+		<input
+			ref="replaceInput"
+			type="file"
+			class="is-hidden"
+			:accept="COMPASS_IMAGE_ACCEPT"
+			@change="onReplaceInput"
+		>
+
 		<CompassLeaveDialog
 			v-if="leaving"
 			:store-failed="storeFailed"
@@ -483,6 +620,7 @@ import CompassGlyph from '@/components/compass/base/CompassGlyph.vue'
 import CompassKindLabel from '@/components/compass/base/CompassKindLabel.vue'
 import CompassStateBadge from '@/components/compass/base/CompassStateBadge.vue'
 import CompassThemePicker from '@/components/compass/base/CompassThemePicker.vue'
+import DrivePicker from '@/components/drive/DrivePicker.vue'
 import Editor from '@/components/input/AsyncEditor'
 import XButton from '@/components/input/Button.vue'
 import Card from '@/components/misc/Card.vue'
@@ -491,11 +629,14 @@ import Message from '@/components/misc/Message.vue'
 import Modal from '@/components/misc/Modal.vue'
 import CompassConflictPanel from './CompassConflictPanel.vue'
 import CompassFieldNote from './CompassFieldNote.vue'
+import CompassImageTray from './CompassImageTray.vue'
 import CompassKindPicker from './CompassKindPicker.vue'
 import CompassLeaveDialog from './CompassLeaveDialog.vue'
 import CompassSaveStatus, {type CompassSaveState} from './CompassSaveStatus.vue'
 import CompassTagInput from './CompassTagInput.vue'
+import {COMPASS_IMAGE_ACCEPT, useCompassImageEditing} from './useCompassImageEditing'
 
+import {ApiError} from '@/client/problem'
 import {
 	normalizeCompassEntry,
 	useCreateCompassEntryMutation,
@@ -514,6 +655,7 @@ import {
 	type CompassStoredDraft,
 } from '@/composables/useCompassEntryDraft'
 import {
+	COMPASS_ERROR_CODES,
 	COMPASS_LIMITS,
 	utf8Bytes,
 	type CompassEntryTheme,
@@ -525,6 +667,7 @@ import {
 	type CompassDraftFields,
 } from '@/helpers/compass/drafts'
 import {classifyCompassFailure} from '@/helpers/compass/errors'
+import {COMPASS_IMAGE_LIMITS, compassImageIds} from '@/helpers/compass/images'
 import {getHumanSize} from '@/helpers/getHumanSize'
 import {formatDateShort} from '@/helpers/time/formatDate'
 import {getErrorText} from '@/message'
@@ -650,6 +793,48 @@ const restoredText = computed(() => {
 		? t('compass.draft.restoredNoTime')
 		: t('compass.draft.restored', {time})
 })
+
+// ---------------------------------------------------------------------------
+// Images
+// ---------------------------------------------------------------------------
+
+const images = useCompassImageEditing(spaceId)
+const imageInput = ref<HTMLInputElement | null>(null)
+const replaceInput = ref<HTMLInputElement | null>(null)
+const bodyImageIds = computed(() => compassImageIds(fields.value.content))
+// Pictures the editor could not show here, e.g. copied from another space or removed from the drive.
+const unavailableInBody = computed(() => bodyImageIds.value.filter(id => images.unavailable.value.has(id)))
+
+function takeFiles(event: Event): File[] {
+	const input = event.target as HTMLInputElement
+	const files = Array.from(input.files ?? [])
+	// Picking the same file again must fire another change.
+	input.value = ''
+	return files
+}
+
+function onImageInput(event: Event) {
+	images.addFromButton(takeFiles(event))
+}
+
+function onReplaceInput(event: Event) {
+	images.replaceWithFiles(takeFiles(event))
+}
+
+// A refused image is named in the message ("Image 12 is not available…"); when that id is in the body, the
+// desk points it out. The count limit names no image, only the number 100.
+function flagRefusedImage(cause: unknown) {
+	if (!(cause instanceof ApiError) || cause.code === COMPASS_ERROR_CODES.imageLimit) return
+	for (const match of cause.detail.matchAll(/\bImage (\d{1,19})\b/g)) {
+		const id = Number(match[1])
+		if (bodyImageIds.value.includes(id)) images.markUnavailable(id)
+	}
+}
+
+function removeUnavailableImages() {
+	images.removeUnavailable()
+	if (failure.value?.kind === 'image') failure.value = null
+}
 
 const topics = useCompassTopics(spaceId)
 const categorySuggestions = computed(() => topics.categories.value.map(category => category.name))
@@ -903,7 +1088,9 @@ async function handleFailure(cause: unknown, creating: boolean) {
 		await showLatest()
 		return
 	}
-	await showFailure(compassDeskFailure(kind, creating), kind === 'other' ? getErrorText(cause) : '')
+	if (kind === 'image') flagRefusedImage(cause)
+	// The server names the image that cannot be used; that is the detail worth reading.
+	await showFailure(compassDeskFailure(kind, creating), kind === 'other' || kind === 'image' ? getErrorText(cause) : '')
 }
 
 async function showFailure(kind: CompassDeskFailure, detail: string) {
@@ -1546,6 +1733,139 @@ defineExpose({focusTitle})
 
 	:deep(.ProseMirror blockquote) {
 		border-inline-start-color: var(--compass-accent);
+	}
+}
+
+.compass-desk__media {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-1) var(--space-2);
+	margin-block-start: var(--space-2);
+
+	@media print {
+		display: none;
+	}
+}
+
+.compass-desk__media-count {
+	margin-inline-start: auto;
+	color: var(--compass-ink-soft);
+	font-size: var(--text-xs);
+	font-variant-numeric: tabular-nums;
+
+	&.is-full {
+		color: var(--danger-text);
+		font-weight: var(--weight-medium);
+	}
+}
+
+.compass-desk__media-notice {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: var(--space-1) var(--space-3);
+	margin: var(--space-2) 0 0;
+	padding: var(--space-2) var(--space-3);
+	border: 1px solid var(--compass-rule);
+	border-inline-start: 3px solid var(--danger);
+	border-radius: var(--radius-sm);
+	background: var(--tint-danger);
+	color: var(--text-primary);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+
+	&.is-warning {
+		border-inline-start-color: var(--warning);
+		background: var(--tint-warning);
+	}
+
+	> span {
+		flex: 1 1 14rem;
+		min-inline-size: 0;
+		overflow-wrap: anywhere;
+	}
+
+	@media print {
+		display: none;
+	}
+}
+
+.compass-desk__media-link {
+	min-block-size: var(--target-min);
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: var(--compass-accent);
+	font: inherit;
+	font-weight: var(--weight-medium);
+	cursor: pointer;
+
+	&:hover {
+		text-decoration: underline;
+	}
+
+	&:focus-visible {
+		@include focus-ring;
+	}
+}
+
+// The editor draws images from the space, at their own size and never wider than the sheet.
+.compass-desk__body :deep(.compass-editor-image) {
+	position: relative;
+	margin: 1.2em 0;
+	border-radius: var(--radius-md);
+	cursor: grab;
+
+	img {
+		display: block;
+		max-inline-size: 100%;
+		block-size: auto;
+		margin-inline: auto;
+		border-radius: var(--radius-md);
+		background: var(--surface-sunken);
+	}
+
+	&[data-state='loading'] img:not([width]),
+	&[data-state='failed'] img {
+		display: none;
+	}
+
+	&.is-selected img,
+	&.is-selected .compass-editor-image__note {
+		outline: 2px solid var(--focus-ring-color);
+		outline-offset: 2px;
+	}
+}
+
+.compass-desk__body :deep(.compass-editor-image__note) {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-block-size: 6rem;
+	padding: var(--space-4);
+	border: 1px dashed var(--compass-rule-strong);
+	border-radius: var(--radius-md);
+	color: var(--compass-ink-faint);
+	font-family: var(--compass-sans);
+	font-size: var(--text-sm);
+	text-align: center;
+
+	&[hidden] {
+		display: none;
+	}
+}
+
+.compass-desk__body :deep(.compass-editor-image__caption) {
+	margin-block-start: .5em;
+	color: var(--compass-ink-soft);
+	font-family: var(--compass-sans);
+	font-size: .85em;
+	line-height: 1.55;
+	text-align: center;
+
+	&[hidden] {
+		display: none;
 	}
 }
 

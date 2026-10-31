@@ -4,6 +4,7 @@ import {
 	type CompassEntryTheme,
 	type CompassKind,
 } from './constants'
+import {COMPASS_IMAGE_ATTRIBUTE} from './images'
 import {
 	compassStorageKey,
 	readCompassJson,
@@ -121,9 +122,12 @@ function sameTags(a: readonly string[], b: readonly string[]): boolean {
 }
 
 // The editor answers an emptied document with markup such as `<p></p>`. Cheap on purpose: this runs on
-// every keystroke and bodies can be megabytes, so only short markup is inspected.
+// every keystroke and bodies can be megabytes, so only short markup is inspected. An image is content
+// even without a word around it.
 export function isBlankCompassHtml(html: string): boolean {
-	return html.length < 256 && html.replace(/<[^>]*>/g, '').replace(/&nbsp;|\s/g, '') === ''
+	return html.length < 256 &&
+		!html.includes(COMPASS_IMAGE_ATTRIBUTE) &&
+		html.replace(/<[^>]*>/g, '').replace(/&nbsp;|\s/g, '') === ''
 }
 
 /** Fields whose values differ, in display order. Text is compared trimmed at the edges only. */

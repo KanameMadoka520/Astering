@@ -28,9 +28,9 @@
 | `/compass` | 读取空间：没有空间时显示欢迎页（一键创建私人星图，或自定义 / 团队共享）；有空间时打开上次打开的空间（本机按账户与服务器记忆），否则第一个私人空间。 |
 | `/compass/new` | 新建空间，带实时天色预览。 |
 | `/compass/spaces/:id` | 空间首页：天色带（标题、座右铭、可见范围）、指引、序言、书库（搜索、类型、状态、排序、分类与标签、分页）。筛选全部写在地址栏，后退可还原。 |
-| `/compass/spaces/:id/settings` | 空间设置（仅空间管理权限可改）。 |
+| `/compass/spaces/:id/settings` | 空间设置（仅空间管理权限可改）：标题、座右铭、序言、主题和背景图片（焦点、遮罩）。 |
 | `/compass/spaces/:id/write` | 写新条目（`?kind=` 预选类型）。 |
-| `/compass/entries/:id` | 阅读：题记、正文、目录、阅读进度、阅读设置（衬线/无衬线、字号）、导出 Markdown、打印。 |
+| `/compass/entries/:id` | 阅读：题记、正文（含图片，点击放大）、目录、阅读进度、阅读设置（衬线/无衬线、字号）、导出 Markdown 或连同图片的 ZIP、打印。 |
 | `/compass/entries/:id/edit` | 编辑。 |
 | `/compass/entries/:id/history` | 版本历史与恢复（`?revision=`）。 |
 
@@ -47,13 +47,34 @@
 - 版本冲突（别人或另一个标签页先保存了）：保留你的文字，展示最新版本的作者、时间、差异字段和内容预览，可选择“保留我的版本”（再次保存即有意覆盖）或“使用最新版本”。
 - 置顶、归档、回收站不属于编辑草稿；在阅读页改这些不会抹掉草稿，只会让草稿的基准变旧，下次保存走冲突流程。
 - 条目被永久删除后仍可把编辑器里的文字“另存为新条目”；进入回收站的条目需先恢复再编辑。
-- 编辑器支持标题、列表、引用、代码、表格、链接等文字格式；不支持图片和任务清单。所有正文按严格白名单渲染（无图片、无脚本、无样式），链接在新窗口打开并带 `noopener noreferrer`。
+- 编辑器支持标题、列表、引用、代码、表格、链接等文字格式和图片；不支持任务清单。所有正文按严格白名单渲染（无脚本、无样式），链接在新窗口打开并带 `noopener noreferrer`。
+
+## 正文图片
+
+存储、权限和网盘引用见 [星图图片与空间背景](compass-media-storage.md)，这里只说明前端行为。
+
+- 正文里的图片只保存 `<img data-compass-image="网盘文件编号" alt title width height>`，没有 `src`。阅读页、历史预览、冲突面板和编辑器各自通过 `GET /compass/spaces/{space}/images/{file}` 读取字节（全站同时最多 4 个），生成自己的 `blob:` 地址，并在重新渲染、离开页面时释放；地址栏和正文里都不会出现令牌。只接受 JPEG、PNG、GIF、WebP，SVG 等类型即使读到也不显示。
+- 加入图片：写作台「添加图片」（可多选，手机可调用相机）、编辑器工具栏或 `/` 菜单、粘贴、拖放，或「从网盘选择」。一次选择只询问一次“原图 / 转为 WebP”（与网盘上传共用同一流程和上传中心），每个文件单独显示进度，可重试、取消其余；完成的图片按选择顺序插到选择时的位置，正在写的光标不会被移动。从网盘选择前会先经空间读取一次，回收站中的文件不能使用。
+- 每篇最多 100 张不同图片，写作台显示当前张数，超出部分不会插入并给出提示。
+- 选中图片后的气泡菜单：替代文本、图注（显示在图片下方）、替换（保留替代文本和图注）、删除。
+- 保存时服务端才把图片挂到空间。图片不可用（20104）、超过数量（20105）或格式/尺寸不支持（20106）时保存失败，正文和本机草稿都保留；被拒绝的图片在编辑器里标出，可一键移除后重新保存，也可以手动替换。只有图片的正文不算空白。
+- 阅读时有图注的图片放进 `figure`，加载前按宽高占位，读取失败显示“图片不可用”的说明（有替代文本时一并显示），点击已加载的图片可放大查看。
+- 书库列表的条目行显示图片张数；网盘的“使用位置”区分星图正文、回收站中的条目、历史版本和空间背景。
+
+## 空间背景
+
+- 空间设置里可以上传一张图片（同样只问一次原图 / WebP，有进度、可取消）或从网盘选择；预览里点击、拖动或用方向键设置焦点（裁切时保持可见的位置，Home 回到中心），并选择浅 / 中 / 深三档遮罩，遮罩用主题天色叠在图片上，保证标题和座右铭的对比度。窄屏上遮罩覆盖整条天色带。
+- 背景与其他设置一起保存，并参与同一个 revision 冲突检查；「恢复主题天空」清除图片但保留焦点和遮罩设置。新建空间总是从主题天空开始。
+- 图片加载完成前和读取失败时显示主题天空；有图片时不再绘制星盘细线。打印不包含背景。
 
 ## 导出与打印
 
 - 单篇：阅读页「导出 → 下载 Markdown」。文件带 YAML front matter（title、kind、category、tags、pinned、state、created、updated、revision），随后是标题、副标题、题记（引用块）和正文。下划线、高亮、上下标以内联 HTML 保留。
-- 整个空间：空间首页「导出」，逐篇读取书库与归档（不含回收站），生成一个带目录的 Markdown 文件；可取消。
-- 打印：阅读页「打印」只打印文章本身：白底黑字衬线、保留题记、链接后附网址、标题不与下一段分页，使用完整日期，长代码自动换行。
+- 有图片的条目另有「连同图片下载（.zip）」：压缩包里是 Markdown 文件和 `images/{文件编号}.{扩展名}`，正文用相对路径引用，图注写在图片下一行。工具栏显示读取进度，可取消。读不到的图片在原位置写“图片不可用：替代文本”，完成时提示数量。
+- 「只下载 Markdown」时图片保留为 `compass-image:{文件编号}` 引用，文件开头注明未包含图片；不会把图片以 data URI 塞进 Markdown。
+- 整个空间：空间首页「导出」，逐篇读取书库与归档（不含回收站），生成一个带目录的 Markdown 文件；勾选「包含图片」（默认）时改为 ZIP，每张图片只读取一次。可取消。
+- ZIP 由前端 `helpers/zipStore.ts` 以不压缩（store）方式生成，UTF-8 文件名，不支持 ZIP64。图片累计超过 512 MiB 时提前停止并建议不含图片导出，避免浏览器一次分配过大内存。
+- 打印：阅读页「打印」只打印文章本身：白底黑字衬线、保留题记、链接后附网址、标题不与下一段分页，使用完整日期，长代码自动换行。图片不跨页、限制在页高内。打印前先等待正文图片加载（最多 15 秒）；仍有图片在加载时不打印，而是说明数量并提供「重试」，避免纸上出现空白框；读取失败的图片打印为“图片不可用”的说明。
 
 ## 设计语言（维护时请保持）
 
@@ -71,8 +92,11 @@
 | `client/queries/compass.ts` | 键、normalize、查询与全部写入（`contextMutationOptions`）。置顶/归档/回收站/恢复先读取最新详情，再以完整字段 PUT，只改元数据。 |
 | `composables/useCompass.ts` | 只读查询封装、账户命名空间、成员显示名。 |
 | `composables/useCompassReadingPrefs.ts`、`useCompassEntryDraft.ts` | 阅读偏好、草稿生命周期。 |
-| `helpers/compass/` | 常量与限制、草稿与本地存储、书库地址栏状态、错误分类、正文准备（清洗 + 目录锚点 + 阅读时长）、HTML→Markdown、导出。 |
-| `components/compass/base/` | 主题作用域、符号、星盘、正文排版、类型/状态徽章、主题选择、永久删除确认。 |
+| `helpers/compass/` | 常量与限制、草稿与本地存储、书库地址栏状态、错误分类、正文准备（清洗 + 目录锚点 + 阅读时长）、HTML→Markdown、导出。图片：`images.ts`（规范属性、类型与数量限制）、`sanitizeCompass.ts`（星图专用 DOMPurify 实例，与项目公告分开）、`imageUrls.ts`（blob 地址、尺寸测量、打印前等待）、`exportBundle.ts`（ZIP 导出）。 |
+| `helpers/zipStore.ts` | 不压缩的最小 ZIP 写入器（CRC-32、UTF-8 文件名、名称校验）。 |
+| `components/compass/base/` | 主题作用域、符号、星盘、正文排版（`useCompassImageHydration` 补全正文图片）、空间背景 `CompassBackdrop`、类型/状态徽章、主题选择、永久删除确认。 |
+| `components/compass/editor/compassImageExtension.ts`、`useCompassImageEditing.ts`、`CompassImageTray.vue` | 编辑器图片节点（NodeView 显示 blob 地址，`getHTML()` 只输出规范属性）、上传 / 网盘选择 / 替换 / 移除、逐文件进度。通过 `TipTap` 的 `imageSource` 接入，任务描述编辑器仍使用附件图片。 |
+| `components/compass/settings/CompassBackgroundField.vue`、`CompassFocusPicker.vue` | 空间背景设置与焦点选择。 |
 | `components/compass/{space,library,reader,history,editor,settings}/`、`views/compass/` | 各页面。 |
 
 缓存：列表按空间与筛选分页缓存，同一空间内翻页保留旧数据；写入后精确修补详情与列表行，再失效该空间的列表、话题、空间计数和历史。正文只在打开条目时读取，列表不含正文。
@@ -91,10 +115,13 @@
 | `GET /compass/entries/{entry}/revisions[/{revision}]` | 版本列表（无正文）/ 某版完整快照 |
 | `POST /compass/entries/{entry}/revisions/{revision}/restore` | `{expected_revision}`，以该版内容创建新版本，保留置顶与状态 |
 | `GET /compass/spaces/{space}/topics` | 分类与标签计数（不含回收站） |
+| `GET /compass/spaces/{space}/images/{file}` | `compass-images-read`：经空间权限读取正文或背景图片的字节（需登录；写作者可预览本人尚未保存的网盘图片） |
 
-错误码：409 / 20101 版本冲突，404 / 20102 不存在或不可见，400 / 20103 状态不允许该操作。
+空间的读写字段包含 `background_file_id`（0 = 主题天空）、`background_focus_x/y`（0–100，默认 50）、`background_scrim`（`soft`/`medium`/`strong`，默认 `medium`）；条目带只读的 `image_count`。
+
+错误码：409 / 20101 版本冲突，404 / 20102 不存在或不可见，400 / 20103 状态不允许该操作，20104 图片在该空间不可用（409，不是版本冲突），20105 图片数量超过 100，20106 图片类型或尺寸不支持。
 
 ## 测试
 
-- 单元：`helpers/compass/*.test.ts`、`client/queries/compass.test.ts`（`pnpm vitest run <file>`）。
+- 单元：`helpers/compass/*.test.ts`、`helpers/zipStore.test.ts`、`client/queries/compass.test.ts`、`components/input/editor/editorExtensions.test.ts`（`pnpm vitest run <file>`）。
 - E2E：`tests/e2e/compass/*.spec.ts`，通过 `mage test:e2e` 运行；数据经真实 API 创建，断言在重新加载后通过 API 读取存储结果。

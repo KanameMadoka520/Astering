@@ -44,6 +44,7 @@
 				<CompassProse
 					v-if="prepared"
 					:prepared="prepared"
+					:space-id="space.id"
 					size="small"
 					class="compass-conflict__prose"
 				/>

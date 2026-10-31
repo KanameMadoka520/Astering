@@ -3,6 +3,7 @@ import {
 	escapeBlockStart,
 	escapeInline,
 	htmlToMarkdown,
+	type MarkdownImageOptions,
 } from './htmlToMarkdown'
 
 export type CompassExportLabels = {
@@ -10,6 +11,8 @@ export type CompassExportLabels = {
 	// "Exported from …" line under the space title; already translated.
 	exportedFrom: string
 	contents: string
+	// Said once at the top when the file refers to images it does not contain.
+	imagesNote?: string
 }
 
 type YamlValue = string | number | boolean | string[]
@@ -49,18 +52,25 @@ function quoteBlock(text: string): string {
 		.join('\n')
 }
 
-function entryBody(entry: CompassEntry, headingLevel: number): string {
+function entryBody(entry: CompassEntry, headingLevel: number, images?: MarkdownImageOptions): string {
 	const parts = [`${'#'.repeat(headingLevel)} ${plain(entry.title)}`]
 	if (entry.subtitle.trim() !== '') parts.push(`*${plain(entry.subtitle)}*`)
 	if (entry.quote.trim() !== '') parts.push(quoteBlock(entry.quote.trim()))
-	const body = htmlToMarkdown(entry.content).trim()
+	const body = htmlToMarkdown(entry.content, images).trim()
 	if (body !== '') parts.push(body)
 	return parts.join('\n\n')
 }
 
-/** One entry as a standalone Markdown file with YAML front matter. */
-export function compassEntryToMarkdown(entry: CompassEntry): string {
-	return `${frontMatter(entry)}\n\n${entryBody(entry, 1)}\n`
+function note(text: string | undefined): string[] {
+	return text ? [quoteBlock(text)] : []
+}
+
+/**
+ * One entry as a standalone Markdown file with YAML front matter. With `images`, pictures point at the files
+ * saved next to it; without, they keep their `compass-image:{id}` reference and `imagesNote` says so.
+ */
+export function compassEntryToMarkdown(entry: CompassEntry, images?: MarkdownImageOptions, imagesNote?: string): string {
+	return [frontMatter(entry), ...note(imagesNote), entryBody(entry, 1, images)].join('\n\n') + '\n'
 }
 
 function anchorFor(index: number): string {
@@ -68,10 +78,11 @@ function anchorFor(index: number): string {
 }
 
 /** A whole space as one file: title, motto, contents, then every entry under its own heading. */
-export function compassSpaceToMarkdown(space: CompassSpace, entries: CompassEntry[], labels: CompassExportLabels): string {
+export function compassSpaceToMarkdown(space: CompassSpace, entries: CompassEntry[], labels: CompassExportLabels, images?: MarkdownImageOptions): string {
 	const parts = [`# ${plain(space.title)}`]
 	if (space.motto.trim() !== '') parts.push(quoteBlock(space.motto.trim()))
 	parts.push(`*${plain(labels.exportedFrom)}*`)
+	parts.push(...note(labels.imagesNote))
 	const introduction = htmlToMarkdown(space.introduction).trim()
 	if (introduction !== '') parts.push(introduction)
 	if (entries.length > 0) {
@@ -88,7 +99,7 @@ export function compassSpaceToMarkdown(space: CompassSpace, entries: CompassEntr
 		].filter(part => part.trim() !== '').map(plain).join(' · ')
 		parts.push('---')
 		parts.push(`<a id="${anchorFor(index)}"></a>`)
-		parts.push(entryBody(entry, 2))
+		parts.push(entryBody(entry, 2, images))
 		if (meta !== '') parts.push(`<sub>${meta}</sub>`)
 	})
 	return `${parts.join('\n\n')}\n`
@@ -101,8 +112,8 @@ function isControl(character: string): boolean {
 	return code < 32 || code === 127
 }
 
-/** A file name that keeps CJK and spaces but nothing a file system rejects. */
-export function compassMarkdownFilename(title: string, fallback = 'compass'): string {
+/** A file name without extension that keeps CJK and spaces but nothing a file system rejects. */
+export function compassExportBaseName(title: string, fallback = 'compass'): string {
 	const cleaned = Array.from(title.replace(UNSAFE_FILENAME, ' '))
 		.map(character => isControl(character) ? ' ' : character)
 		.join('')
@@ -110,11 +121,18 @@ export function compassMarkdownFilename(title: string, fallback = 'compass'): st
 		.trim()
 		.replace(/^\.+/, '')
 	const short = Array.from(cleaned).slice(0, 80).join('').trim()
-	return `${short || fallback}.md`
+	return short || fallback
+}
+
+export function compassMarkdownFilename(title: string, fallback = 'compass'): string {
+	return `${compassExportBaseName(title, fallback)}.md`
 }
 
 export function downloadCompassMarkdown(markdown: string, filename: string) {
-	const blob = new Blob([markdown], {type: 'text/markdown;charset=utf-8'})
+	downloadCompassFile(new Blob([markdown], {type: 'text/markdown;charset=utf-8'}), filename)
+}
+
+export function downloadCompassFile(blob: Blob, filename: string) {
 	const url = URL.createObjectURL(blob)
 	const link = document.createElement('a')
 	link.href = url

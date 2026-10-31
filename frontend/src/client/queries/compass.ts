@@ -9,6 +9,7 @@ import {
 	compassEntriesList,
 	compassEntriesRead,
 	compassEntriesUpdate,
+	compassImagesRead,
 	compassRevisionsList,
 	compassRevisionsRead,
 	compassRevisionsRestore,
@@ -18,22 +19,26 @@ import {
 	compassSpacesUpdate,
 	compassTopicsList,
 } from '@/client/generated'
-import {assertClientRequestContext} from '@/client/requestContext'
+import {assertClientRequestContext, captureClientRequestContext} from '@/client/requestContext'
 import {PERMISSIONS} from '@/constants/permissions'
 import {
+	COMPASS_BACKGROUND_SCRIMS,
 	COMPASS_DEFAULT_THEME,
 	isCompassEntryState,
 	isCompassEntryTheme,
 	isCompassKind,
 	isCompassTheme,
 	type CompassEntryState,
+	type CompassBackgroundScrim,
 	type CompassEntryTheme,
 	type CompassKind,
 	type CompassSort,
 	type CompassStateFilter,
 	type CompassTheme,
 } from '@/helpers/compass/constants'
+import {isCompassImageType} from '@/helpers/compass/images'
 import {i18n} from '@/i18n'
+import {expectBlob} from './blobResponse'
 import {contextMutationOptions} from './contextMutation'
 import {fetchAllPages} from './fetchAllPages'
 import {
@@ -60,6 +65,10 @@ export type RawCompassSpace = {
 	motto?: string | null
 	introduction?: string | null
 	theme?: string | null
+	background_file_id?: number | null
+	background_focus_x?: number | null
+	background_focus_y?: number | null
+	background_scrim?: string | null
 	revision?: number | null
 	created?: string | null
 	updated?: string | null
@@ -68,7 +77,25 @@ export type RawCompassSpace = {
 	pinned_count?: number | null
 }
 
-export type CompassSpace = {
+/** The space's sky band can show a photo instead of the theme's sky; the theme still colors everything else. */
+export type CompassSpaceBackground = {
+	// Drive file id; 0 shows the theme's sky.
+	background_file_id: number
+	// Crop focal point in percent, kept while no image is set.
+	background_focus_x: number
+	background_focus_y: number
+	// Strength of the readability layer over the photo.
+	background_scrim: CompassBackgroundScrim
+}
+
+export const COMPASS_DEFAULT_BACKGROUND: CompassSpaceBackground = {
+	background_file_id: 0,
+	background_focus_x: 50,
+	background_focus_y: 50,
+	background_scrim: 'medium',
+}
+
+export type CompassSpace = CompassSpaceBackground & {
 	id: number
 	owner_id: number
 	// 0 for a personal space.
@@ -105,6 +132,7 @@ export type RawCompassEntry = {
 	updated_by_id?: number | null
 	excerpt?: string | null
 	content_bytes?: number | null
+	image_count?: number | null
 	max_permission?: number | null
 }
 
@@ -128,6 +156,8 @@ export type CompassEntrySummary = {
 	updated_by_id: number
 	excerpt: string
 	content_bytes: number
+	// Distinct images in the current body.
+	image_count: number
 	max_permission: number
 }
 
@@ -225,6 +255,7 @@ export const compassKeys = {
 	revisionList: (entryId: number, page: number) => ['compass', 'revisions', entryId, 'list', page] as const,
 	revision: (entryId: number, revision: number) => ['compass', 'revisions', entryId, 'detail', revision] as const,
 	topics: (spaceId: number) => ['compass', 'topics', spaceId] as const,
+	image: (spaceId: number, fileId: number) => ['compass', 'image', spaceId, fileId] as const,
 }
 
 const ZERO_TIME = /^0001-01-01/
@@ -251,8 +282,26 @@ export function normalizeCompassTags(tags: readonly string[] | null | undefined)
 	return result
 }
 
+function percent(value: number | null | undefined): number {
+	return typeof value === 'number' && Number.isFinite(value) ? Math.min(100, Math.max(0, Math.round(value))) : 50
+}
+
+export function normalizeCompassBackground(raw: RawCompassSpace | null | undefined): CompassSpaceBackground {
+	const fileId = raw?.background_file_id ?? 0
+	const scrim = raw?.background_scrim
+	return {
+		background_file_id: Number.isSafeInteger(fileId) && fileId > 0 ? fileId : 0,
+		background_focus_x: percent(raw?.background_focus_x),
+		background_focus_y: percent(raw?.background_focus_y),
+		background_scrim: (COMPASS_BACKGROUND_SCRIMS as readonly unknown[]).includes(scrim)
+			? scrim as CompassBackgroundScrim
+			: COMPASS_DEFAULT_BACKGROUND.background_scrim,
+	}
+}
+
 export function normalizeCompassSpace(raw: RawCompassSpace | null | undefined): CompassSpace {
 	return {
+		...normalizeCompassBackground(raw),
 		id: raw?.id ?? 0,
 		owner_id: raw?.owner_id ?? 0,
 		team_id: raw?.team_id ?? 0,
@@ -289,6 +338,7 @@ export function normalizeCompassEntrySummary(raw: RawCompassEntry | null | undef
 		updated_by_id: raw?.updated_by_id ?? 0,
 		excerpt: raw?.excerpt ?? '',
 		content_bytes: raw?.content_bytes ?? 0,
+		image_count: raw?.image_count ?? 0,
 		max_permission: permission(raw?.max_permission),
 	}
 }
@@ -489,6 +539,86 @@ export function compassRevisionQuery(entryId: number, revision: number) {
 	})
 }
 
+// ---------------------------------------------------------------------------
+// Images
+// ---------------------------------------------------------------------------
+
+// A long body can hold 100 images; four at a time keeps the rest of the page responsive.
+const IMAGE_CONCURRENCY = 4
+let freeImageSlots = IMAGE_CONCURRENCY
+const imageQueue: (() => void)[] = []
+
+// A read cancelled while it waits leaves the queue at once instead of holding a place in it.
+function takeImageSlot(signal?: AbortSignal): Promise<void> {
+	signal?.throwIfAborted()
+	if (freeImageSlots > 0) {
+		freeImageSlots--
+		return Promise.resolve()
+	}
+	return new Promise((resolve, reject) => {
+		const abort = () => {
+			const index = imageQueue.indexOf(waiter)
+			if (index >= 0) imageQueue.splice(index, 1)
+			reject(signal?.reason)
+		}
+		const waiter = () => {
+			signal?.removeEventListener('abort', abort)
+			resolve()
+		}
+		imageQueue.push(waiter)
+		signal?.addEventListener('abort', abort, {once: true})
+	})
+}
+
+// Hands the slot straight to the next waiter, so no new caller can slip in between.
+function giveImageSlot() {
+	const next = imageQueue.shift()
+	if (next) next()
+	else freeImageSlots++
+}
+
+/**
+ * The bytes of a body or background image, read through the space: current members see every image the
+ * space uses, and a writer also sees their own drive images before the first save. Never a public URL.
+ */
+export async function fetchCompassImage(spaceId: number, fileId: number, signal?: AbortSignal): Promise<Blob> {
+	// Taken before the wait: a read queued under one account must neither start nor finish under another.
+	const context = captureClientRequestContext()
+	await takeImageSlot(signal)
+	try {
+		signal?.throwIfAborted()
+		assertClientRequestContext(context)
+		const blob = expectBlob((await compassImagesRead({
+			path: {
+				space: spaceId,
+				file: fileId,
+			},
+			parseAs: 'blob',
+			signal,
+		})).data, 'Compass image')
+		assertClientRequestContext(context)
+		// Same-origin blob: urls are only made for raster types; an SVG one could run script.
+		if (!isCompassImageType(blob.type)) throw new Error('Compass image has an unsupported type')
+		return blob
+	} finally {
+		giveImageSlot()
+	}
+}
+
+/** Shared by the reader, the editor and the background; each caller makes and revokes its own blob: url. */
+export function compassImageQuery(spaceId: number, fileId: number) {
+	return queryOptions({
+		queryKey: compassKeys.image(spaceId, fileId),
+		queryFn: ({signal}) => fetchCompassImage(spaceId, fileId, signal),
+		// Access is checked on every request; a minute-old answer is fine to draw again, not to keep forever.
+		staleTime: 60_000,
+		gcTime: 5 * 60_000,
+		retry: false,
+		// Every caller shows its own "image unavailable" state.
+		meta: {handlesError: true},
+	})
+}
+
 /**
  * Reads every active and archived entry of a space with its body, one request per entry, for the
  * Markdown export. Bypasses the cache on purpose: a whole library of bodies must not stay in memory.
@@ -594,6 +724,8 @@ export function createCompassSpaceMutationOptions() {
 				introduction: input.introduction,
 				theme: input.theme,
 				team_id: input.team_id,
+				// A new space starts with its theme's sky; a photo is chosen in the settings.
+				...COMPASS_DEFAULT_BACKGROUND,
 			},
 		})).data),
 		onSuccess: (space, _input, client) => {
@@ -609,7 +741,7 @@ export function useCreateCompassSpaceMutation() {
 	return useMutation(createCompassSpaceMutationOptions())
 }
 
-export type UpdateCompassSpaceInput = CompassSpaceText & {
+export type UpdateCompassSpaceInput = CompassSpaceText & CompassSpaceBackground & {
 	spaceId: number
 	// The revision the form started from; the server answers 409 when someone saved in between.
 	revision: number
@@ -625,6 +757,11 @@ export function updateCompassSpaceMutationOptions() {
 				motto: input.motto,
 				introduction: input.introduction,
 				theme: input.theme,
+				// Clearing the photo (0) keeps the focus and veil, so choosing one again starts from them.
+				background_file_id: input.background_file_id,
+				background_focus_x: input.background_focus_x,
+				background_focus_y: input.background_focus_y,
+				background_scrim: input.background_scrim,
 				revision: input.revision,
 			},
 		})).data,
