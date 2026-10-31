@@ -30,7 +30,12 @@ import (
 func TestDriveMigrationPreservesIndexesAndOwnership(t *testing.T) {
 	x, err := db.CreateTestEngine()
 	require.NoError(t, err)
-	require.NoError(t, x.Sync2(&files.File{}, &models.TaskAttachment{}, &models.Project{}, &user.User{}))
+	tables := []interface{}{&files.DriveFile{}, &files.File{}, &models.TaskAttachment{}, &models.Project{}, &user.User{}}
+	require.NoError(t, x.DropTables(tables...))
+	t.Cleanup(func() {
+		require.NoError(t, x.DropTables(tables...))
+	})
+	require.NoError(t, x.Sync2(tables[1:]...))
 	_, err = x.Exec("CREATE UNIQUE INDEX drive_migration_unique_file_name ON files (name)")
 	require.NoError(t, err)
 	_, err = x.Insert(&user.User{ID: 901, Username: "drive-migration", Email: "drive@example.test"})

@@ -29,7 +29,7 @@ func TestCompassMediaMigrationPreservesWritingSchema(t *testing.T) {
 	require.NoError(t, err)
 	tables := []interface{}{&compassspace20261101011920{}, &compassentry20261101011920{}, &compassrevision20261101011920{}, &compassMedia20261101170000{}, &compassEntryMedia20261101170000{}}
 	require.NoError(t, x.DropTables(tables...))
-	t.Cleanup(func() { require.NoError(t, x.DropTables(tables...)); require.NoError(t, x.Close()) })
+	t.Cleanup(func() { require.NoError(t, x.DropTables(tables...)) })
 	require.NoError(t, x.Sync2(tables[:3]...))
 	c := &compassspace20261101011920{OwnerID: 1, Title: "Preserve writing", Theme: "aurora", Revision: 7}
 	_, err = x.Insert(c)
