@@ -189,7 +189,7 @@ const recordsCount = computed(() => {
 })
 
 // Nothing recorded for the whole year: explain what this page records instead of only saying it is empty.
-const explainEmpty = computed(() => !day.value && !unknown.value && (kind.value === 'milestones' || kind.value === 'all'))
+const explainEmpty = computed(() => !search.value.trim() && !day.value && !unknown.value && (kind.value === 'milestones' || kind.value === 'all'))
 const scope = computed(() => ({
 	projects: history.value?.scope?.projects ?? 0,
 	completed: history.value?.scope?.completed ?? 0,
