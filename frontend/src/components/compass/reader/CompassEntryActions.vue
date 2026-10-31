@@ -49,6 +49,7 @@
 					ref="exportTrigger"
 					class="compass-tool"
 					:aria-expanded="open"
+					:aria-busy="exporting !== null || undefined"
 					@click="toggleOpen"
 				>
 					<Icon
@@ -59,7 +60,23 @@
 				</BaseButton>
 			</template>
 			<template #default="{close}">
+				<template v-if="imageIds.length > 0">
+					<DropdownItem
+						icon="download"
+						:aria-disabled="exporting !== null"
+						@click="downloadBundle(close)"
+					>
+						{{ t('compass.actions.downloadWithImages') }}
+					</DropdownItem>
+					<DropdownItem
+						icon="download"
+						@click="downloadMarkdown(close)"
+					>
+						{{ t('compass.actions.downloadMarkdownOnly') }}
+					</DropdownItem>
+				</template>
 				<DropdownItem
+					v-else
 					icon="download"
 					@click="downloadMarkdown(close)"
 				>
@@ -73,6 +90,41 @@
 				</DropdownItem>
 			</template>
 		</Dropdown>
+		<span
+			v-if="exporting"
+			class="compass-actions__status"
+		>
+			<span role="status">{{ exportLabel }}</span>
+			<button
+				type="button"
+				class="compass-actions__link"
+				@click="cancelExport"
+			>
+				{{ t('misc.cancel') }}
+			</button>
+		</span>
+		<span
+			v-if="printing !== 'idle'"
+			class="compass-actions__status"
+		>
+			<span role="status">{{ printLabel }}</span>
+			<template v-if="printing === 'pending'">
+				<button
+					type="button"
+					class="compass-actions__link"
+					@click="preparePrint"
+				>
+					{{ t('compass.actions.printRetry') }}
+				</button>
+				<button
+					type="button"
+					class="compass-actions__link"
+					@click="printing = 'idle'"
+				>
+					{{ t('misc.cancel') }}
+				</button>
+			</template>
+		</span>
 
 		<CompassReadingSettings
 			:prefs="prefs"
@@ -170,7 +222,7 @@
 </template>
 
 <script setup lang="ts">
-import {computed, nextTick, useTemplateRef} from 'vue'
+import {computed, nextTick, onBeforeUnmount, ref, useTemplateRef} from 'vue'
 import {useI18n} from 'vue-i18n'
 import BaseButton from '@/components/base/BaseButton.vue'
 import CompassPermanentDeleteDialog from '@/components/compass/base/CompassPermanentDeleteDialog.vue'
@@ -179,11 +231,19 @@ import DropdownItem from '@/components/misc/DropdownItem.vue'
 import Icon from '@/components/misc/Icon'
 import Modal from '@/components/misc/Modal.vue'
 import type {CompassEntry} from '@/client/queries/compass'
+import {buildCompassBundle} from '@/helpers/compass/exportBundle'
 import {
 	compassEntryToMarkdown,
+	compassExportBaseName,
 	compassMarkdownFilename,
+	downloadCompassFile,
 	downloadCompassMarkdown,
 } from '@/helpers/compass/exportMarkdown'
+import {compassImageIds} from '@/helpers/compass/images'
+import {pendingCompassImages, waitForCompassImages} from '@/helpers/compass/imageUrls'
+import {isRequestContextAbort} from '@/client/requestContext'
+import {ZipTooLargeError} from '@/helpers/zipStore'
+import {error, success} from '@/message'
 import type {CompassReadingPrefs} from '@/helpers/compass/storage'
 import CompassReadingSettings from './CompassReadingSettings.vue'
 import {useCompassEntryCommands} from './useCompassEntryCommands'
@@ -235,20 +295,109 @@ function fromMenu(close: () => void, action: () => unknown) {
 	action()
 }
 
+const imageIds = computed(() => compassImageIds(props.entry.content))
+const exporting = ref<{done: number, total: number} | null>(null)
+let exportController: AbortController | null = null
+
+const exportLabel = computed(() => exporting.value
+	? t('compass.actions.exportingImages', {done: exporting.value.done, total: exporting.value.total})
+	: '')
+
 // The hidden menu would take focus with it; it goes back to the menu button.
 function downloadMarkdown(close: () => void) {
 	close()
 	exportTrigger.value?.focus()
-	downloadCompassMarkdown(compassEntryToMarkdown(props.entry), compassMarkdownFilename(props.entry.title))
+	// Without the files, pictures keep their references and the file says so at the top.
+	const note = imageIds.value.length > 0 ? t('compass.export.referencesNote') : undefined
+	downloadCompassMarkdown(compassEntryToMarkdown(props.entry, undefined, note), compassMarkdownFilename(props.entry.title))
 }
 
-async function printEntry(close: () => void) {
+/** The entry's Markdown and its pictures as one ZIP. */
+async function downloadBundle(close: () => void) {
 	close()
 	exportTrigger.value?.focus()
+	if (exporting.value !== null) return
+	const entry = props.entry
+	const controller = new AbortController()
+	exportController = controller
+	exporting.value = {done: 0, total: imageIds.value.length}
+	try {
+		const bundle = await buildCompassBundle({
+			spaceId: entry.space_id,
+			baseName: compassExportBaseName(entry.title),
+			imageIds: compassImageIds(entry.content),
+			markdown: images => compassEntryToMarkdown(entry, images),
+			missing: image => image.alt
+				? t('compass.export.imageMissingNamed', {alt: image.alt})
+				: t('compass.export.imageMissing'),
+			signal: controller.signal,
+			onProgress: (done, total) => {
+				if (exportController === controller) exporting.value = {done, total}
+			},
+		})
+		if (controller.signal.aborted) return
+		downloadCompassFile(bundle.blob, bundle.filename)
+		if (bundle.missing > 0) {
+			error(new Error(t('compass.export.imagesMissing', {n: bundle.missing}, bundle.missing)))
+		} else {
+			success(new Error(t('compass.actions.exported', {file: bundle.filename})))
+		}
+	} catch (cause) {
+		if (controller.signal.aborted || isRequestContextAbort(cause)) return
+		error(cause instanceof ZipTooLargeError ? new Error(t('compass.export.tooLarge')) : cause)
+	} finally {
+		if (exportController === controller) {
+			exportController = null
+			exporting.value = null
+		}
+	}
+}
+
+function cancelExport() {
+	exportController?.abort()
+	exportController = null
+	exporting.value = null
+}
+
+// Printing waits for the pictures; when some are still loading after the wait it says so and lets the
+// reader try again, rather than putting empty frames on paper. Failed pictures print as their notice.
+const printing = ref<'idle' | 'waiting' | 'pending'>('idle')
+const printPending = ref(0)
+let unmounted = false
+
+const printLabel = computed(() => printing.value === 'pending'
+	? t('compass.actions.printPending', {n: printPending.value}, printPending.value)
+	: t('compass.actions.printPreparing'))
+
+async function preparePrint() {
+	if (printing.value === 'waiting') return
 	// The menu must be gone before the print snapshot is taken.
+	await nextTick()
+	if (pendingCompassImages(document) > 0) {
+		printing.value = 'waiting'
+		const ready = await waitForCompassImages(document)
+		if (unmounted) return
+		if (!ready) {
+			printPending.value = pendingCompassImages(document)
+			printing.value = 'pending'
+			return
+		}
+	}
+	printing.value = 'idle'
 	await nextTick()
 	window.print()
 }
+
+function printEntry(close: () => void) {
+	close()
+	exportTrigger.value?.focus()
+	void preparePrint()
+}
+
+onBeforeUnmount(() => {
+	unmounted = true
+	exportController?.abort()
+})
 </script>
 
 <style lang="scss" scoped>
@@ -340,6 +489,34 @@ async function printEntry(close: () => void) {
 			clip-path: inset(50%);
 			white-space: nowrap;
 		}
+	}
+}
+
+.compass-actions__status {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0 var(--space-2);
+	color: var(--compass-ink-soft);
+	font-size: var(--text-xs);
+	font-variant-numeric: tabular-nums;
+}
+
+.compass-actions__link {
+	min-block-size: var(--target-min);
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: var(--compass-accent);
+	font: inherit;
+	cursor: pointer;
+
+	&:hover {
+		text-decoration: underline;
+	}
+
+	&:focus-visible {
+		@include focus-ring;
 	}
 }
 

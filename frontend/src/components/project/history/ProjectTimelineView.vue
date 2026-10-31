@@ -143,6 +143,7 @@ const stats = computed(() => {
 		{
 			key: 'scheduledDays',
 			value: t('projectTimeline.stats.daysValue', {n: data.scheduled_days ?? 0}, data.scheduled_days ?? 0),
+			note: t('projectTimeline.stats.scheduledDaysNote'),
 		},
 		{
 			key: 'elapsedDays',
@@ -156,11 +157,31 @@ const stats = computed(() => {
 			}),
 		},
 		{
+			key: 'deadlineOnly',
+			value: String(data.deadline_only_tasks ?? 0),
+		},
+		{
 			key: 'overdue',
 			value: String(data.overdue_tasks ?? 0),
 			alert: (data.overdue_tasks ?? 0) > 0,
 		},
 	]
+})
+
+// Why tasks are missing, one reason per line, each with the date that would bring them in.
+const missing = computed(() => {
+	const data = timeline.value
+	if (!data) return []
+	const lines: {key: string, n: number}[] = []
+	const undated = data.undated_tasks ?? 0
+	const incomplete = data.incomplete_tasks ?? 0
+	if (undated) lines.push({key: 'undated', n: undated})
+	if (incomplete) lines.push({key: 'incomplete', n: incomplete})
+	// An older server only sends the total.
+	const rest = (data.excluded_tasks ?? 0) - undated - incomplete
+	if (rest > 0) lines.push({key: 'excluded', n: rest})
+	if (data.invalid_tasks) lines.push({key: 'invalid', n: data.invalid_tasks})
+	return lines
 })
 
 const otherYears = computed(() => {
@@ -320,22 +341,28 @@ const announcement = computed(() => {
 						class="timeline-stat"
 						:class="{'is-alert': stat.alert}"
 					>
-						<dt>{{ t(`projectTimeline.stats.${stat.key}`) }}</dt>
+						<dt>
+							{{ t(`projectTimeline.stats.${stat.key}`) }}
+							<span
+								v-if="stat.note"
+								class="timeline-stat-note"
+							>{{ stat.note }}</span>
+						</dt>
 						<dd>{{ stat.value }}</dd>
 					</div>
 				</dl>
 			</div>
 
 			<Message
-				v-if="timeline.excluded_tasks || timeline.invalid_tasks"
+				v-if="missing.length"
 				variant="info"
 				class="timeline-missing"
 			>
-				<p v-if="timeline.excluded_tasks">
-					{{ t('projectTimeline.missing.excluded', {n: timeline.excluded_tasks}, timeline.excluded_tasks) }}
-				</p>
-				<p v-if="timeline.invalid_tasks">
-					{{ t('projectTimeline.missing.invalid', {n: timeline.invalid_tasks}, timeline.invalid_tasks) }}
+				<p
+					v-for="line in missing"
+					:key="line.key"
+				>
+					{{ t(`projectTimeline.missing.${line.key}`, {n: line.n}, line.n) }}
 				</p>
 				<p class="timeline-missing-scope">
 					{{ t('projectTimeline.missing.scope') }}
@@ -484,6 +511,7 @@ const announcement = computed(() => {
 			<details class="timeline-explanation">
 				<summary>{{ t('projectTimeline.explanation') }}</summary>
 				<p>{{ t('projectTimeline.explanationSpans') }}</p>
+				<p>{{ t('projectTimeline.explanationDeadlines') }}</p>
 				<p>{{ t('projectTimeline.explanationElapsed') }}</p>
 				<p>{{ t('projectTimeline.explanationProgress') }}</p>
 				<p>{{ t('projectTimeline.legend.note') }}</p>
@@ -562,8 +590,7 @@ const announcement = computed(() => {
 	container: timeline-stats / inline-size;
 }
 
-// Two columns (the odd last stat spans both) until all five fit in one row: an auto-fit grid
-// left empty divider-coloured cells at three or four columns.
+// Two, three or six columns: six stats always fill whole rows, so no divider-coloured cell is left empty.
 .timeline-stats {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -575,17 +602,15 @@ const announcement = computed(() => {
 	background: var(--border-subtle);
 }
 
-.timeline-stat:last-child:nth-child(odd) {
-	grid-column: 1 / -1;
+@container timeline-stats (min-width: 32rem) {
+	.timeline-stats {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
 }
 
-@container timeline-stats (min-width: 46rem) {
+@container timeline-stats (min-width: 60rem) {
 	.timeline-stats {
-		grid-template-columns: repeat(5, minmax(0, 1fr));
-	}
-
-	.timeline-stat:last-child:nth-child(odd) {
-		grid-column: auto;
+		grid-template-columns: repeat(6, minmax(0, 1fr));
 	}
 }
 
@@ -613,6 +638,12 @@ const announcement = computed(() => {
 	&.is-alert dd {
 		color: var(--danger-text);
 	}
+}
+
+.timeline-stat-note {
+	display: block;
+	color: var(--text-tertiary);
+	font-size: var(--text-2xs);
 }
 
 .timeline-missing {

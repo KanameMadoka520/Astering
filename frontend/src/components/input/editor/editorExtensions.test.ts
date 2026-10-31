@@ -2,6 +2,8 @@ import {describe, it, expect, afterEach, beforeEach, vi} from 'vitest'
 import {createPinia, setActivePinia} from 'pinia'
 import {nextTick, ref} from 'vue'
 import {Editor} from '@tiptap/core'
+import Image from '@tiptap/extension-image'
+import {Slice} from '@tiptap/pm/model'
 import {createEditorExtensions, type EditorExtensionDeps} from './editorExtensions'
 import {queryClient} from '@/client/queryClient'
 import {attachmentKeys} from '@/client/queries/attachments'
@@ -15,13 +17,14 @@ window.API_URL = API_URL
 
 const ATTACHMENT_URL = `${API_URL}/api/v2/tasks/5/attachments/9`
 
-function createEditor(content: string, capabilities: Pick<EditorExtensionDeps, 'allowImages' | 'allowTaskLists'> = {}) {
+type EditorOverrides = Partial<Pick<EditorExtensionDeps, 'allowImages' | 'allowTaskLists' | 'imageSource' | 'uploadCallback' | 'uploadAndInsertFiles'>>
+
+function createEditor(content: string, capabilities: EditorOverrides = {}) {
 	const holder = document.createElement('div')
 	document.body.appendChild(holder)
 
 	let editor: Editor
 	const deps: EditorExtensionDeps = {
-...capabilities,
 		t: key => key,
 		isEditing: ref(true),
 		isEditEnabled: () => true,
@@ -31,6 +34,7 @@ function createEditor(content: string, capabilities: Pick<EditorExtensionDeps, '
 		getEditor: () => editor,
 		uploadCallback: undefined,
 		uploadAndInsertFiles: () => {},
+		...capabilities,
 	}
 
 	editor = new Editor({
@@ -219,4 +223,58 @@ describe('announcement editor capabilities', () => {
   expect(editor.getText()).toContain('Read this')
   editor.destroy()
  })
+})
+
+describe('image sources', () => {
+	function paste(editor: Editor, files: File[]) {
+		const event = {
+			clipboardData: {
+				items: files.map(file => ({kind: 'file', type: file.type, getAsFile: () => file})),
+				getData: () => '',
+			},
+			preventDefault: () => {},
+		} as unknown as ClipboardEvent
+		return editor.view.someProp('handlePaste', handler => handler(editor.view, event, Slice.empty))
+	}
+
+	const files = [
+		new File(['a'], 'a.png', {type: 'image/png'}),
+		new File(['b'], 'b.webp', {type: 'image/webp'}),
+	]
+
+	it('keeps the task editor on attachment images with its one-file paste', () => {
+		const uploadAndInsertFiles = vi.fn()
+		const {editor} = createEditor('<p>x</p>', {uploadCallback: async () => [], uploadAndInsertFiles})
+		expect(paste(editor, files)).toBe(true)
+		expect(uploadAndInsertFiles).toHaveBeenCalledWith([files[0]])
+		editor.commands.setContent(`<p><img src="${ATTACHMENT_URL}" alt="a"></p>`)
+		expect(editor.getHTML()).toContain(`src="${ATTACHMENT_URL}"`)
+		editor.destroy()
+	})
+
+	it('does not take pasted images without an upload target', () => {
+		const uploadAndInsertFiles = vi.fn()
+		const {editor} = createEditor('<p>x</p>', {uploadAndInsertFiles})
+		expect(paste(editor, files)).toBeFalsy()
+		expect(uploadAndInsertFiles).not.toHaveBeenCalled()
+		editor.destroy()
+	})
+
+	it('hands every pasted image to an image source, whose node replaces the attachment image', () => {
+		const uploadAndInsertFiles = vi.fn()
+		const extension = Image.extend({
+			parseHTML: () => [{tag: 'img[data-own]'}],
+			renderHTML: () => ['img', {'data-own': 'yes'}],
+		})
+		const {editor} = createEditor('<p>x</p>', {
+			uploadAndInsertFiles,
+			imageSource: {extension, accept: 'image/*', insertFiles: () => {}},
+		})
+		expect(paste(editor, files)).toBe(true)
+		expect(uploadAndInsertFiles).toHaveBeenCalledWith(files)
+		editor.commands.setContent(`<img src="${ATTACHMENT_URL}"><img data-own="1">`)
+		expect(editor.getHTML()).not.toContain(ATTACHMENT_URL)
+		expect(editor.getHTML()).toContain('data-own="yes"')
+		editor.destroy()
+	})
 })

@@ -52,6 +52,31 @@ describe('prepareCompassHtml', () => {
 			'<p><a href="https://example.com/" target="_blank" rel="noopener noreferrer nofollow">site</a></p>',
 		)
 	})
+
+	it('puts body images into figures with their caption and lists each image once', () => {
+		const prepared = prepareCompassHtml(
+			'<img data-compass-image="4" alt="Map" title="The route" width="800" height="600" src="https://x.example/a.png">' +
+			'<p>See <img data-compass-image="5" alt="icon"> here</p><img data-compass-image="4" alt="Again">',
+		)
+
+		expect(prepared.html).toBe(
+			'<figure class="compass-figure"><img data-compass-image="4" alt="Map" title="The route" width="800" height="600">' +
+			'<figcaption class="compass-figure__caption">The route</figcaption></figure>' +
+			'<p>See <span class="compass-figure"><img data-compass-image="5" alt="icon"></span> here</p>' +
+			'<figure class="compass-figure"><img data-compass-image="4" alt="Again"></figure>',
+		)
+		expect(prepared.images).toEqual([
+			{fileId: 4, alt: 'Map', title: 'The route', width: 800, height: 600},
+			{fileId: 5, alt: 'icon', title: '', width: 0, height: 0},
+		])
+	})
+
+	it('keeps the preface without images', () => {
+		const prepared = prepareCompassHtml('<p>a</p><img data-compass-image="4">', 'compass-preface', {images: false})
+
+		expect(prepared.html).toBe('<p>a</p>')
+		expect(prepared.images).toEqual([])
+	})
 })
 
 describe('compassPlainText', () => {

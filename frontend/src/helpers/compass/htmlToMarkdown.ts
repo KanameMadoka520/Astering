@@ -1,16 +1,62 @@
-import {sanitizeAnnouncement} from '@/helpers/sanitizeAnnouncement'
+import {readCompassImage, type CompassImageRef} from './images'
+import {sanitizeCompassFragment} from './sanitizeCompass'
+
+/** How body images are written; without it an image keeps its reference as `compass-image:{id}`. */
+export type MarkdownImageOptions = {
+	// Path of the image file relative to the Markdown, or null when it could not be included.
+	src: (fileId: number) => string | null
+	// The text standing in for an image that is not included.
+	missing: (image: CompassImageRef) => string
+}
+
+export const COMPASS_IMAGE_SCHEME = 'compass-image:'
+
+// Set for the duration of one synchronous conversion.
+let imageOptions: MarkdownImageOptions | undefined
 
 /**
  * Converts an entry body to CommonMark (plus GFM tables and strikethrough). Works on the sanitized
  * markup, so it only has to know the tags the reader can show; anything else keeps its text.
  * Formatting Markdown cannot express (underline, highlight, sub/superscript) stays as inline HTML,
- * which common Markdown readers render.
+ * which common Markdown readers render. Images become `![alt](src)`, with the caption underneath.
  */
-export function htmlToMarkdown(html: string): string {
+export function htmlToMarkdown(html: string, images?: MarkdownImageOptions): string {
 	if (html.trim() === '') return ''
 	const template = document.createElement('template')
-	template.innerHTML = sanitizeAnnouncement(html)
-	return finish(blocks(template.content))
+	template.content.appendChild(sanitizeCompassFragment(html))
+	imageOptions = images
+	try {
+		return finish(blocks(template.content))
+	} finally {
+		imageOptions = undefined
+	}
+}
+
+function imageSource(image: CompassImageRef): string | null {
+	return imageOptions ? imageOptions.src(image.fileId) : `${COMPASS_IMAGE_SCHEME}${image.fileId}`
+}
+
+function imageTitle(title: string): string {
+	return title === '' ? '' : ` "${title.replace(/["\\]/g, '\\$&')}"`
+}
+
+// An image standing on its own line; its caption follows as an italic line Markdown readers do show.
+function imageBlock(element: Element): string {
+	const image = readCompassImage(element)
+	if (image === null) return ''
+	const src = imageSource(image)
+	if (src === null) return `*${escapeInline(imageOptions?.missing(image) ?? image.alt)}*`
+	const picture = `![${escapeInline(image.alt)}](${src})`
+	return image.title === '' ? picture : `${picture}\n\n*${escapeInline(image.title)}*`
+}
+
+// Inside a line of text the caption travels as the image's title.
+function imageInline(element: Element): string {
+	const image = readCompassImage(element)
+	if (image === null) return ''
+	const src = imageSource(image)
+	if (src === null) return `*${escapeInline(imageOptions?.missing(image) ?? image.alt)}*`
+	return `![${escapeInline(image.alt)}](${src}${imageTitle(image.title)})`
 }
 
 // Block builders already insert their own separators. Do not normalize the assembled text:
@@ -43,6 +89,10 @@ function blocks(container: Node): string {
 		if (isBlock(child)) {
 			flushInline()
 			const block = blockToMarkdown(child as Element)
+			if (block !== '') out.push(block)
+		} else if (child.nodeName === 'IMG') {
+			flushInline()
+			const block = imageBlock(child as Element)
 			if (block !== '') out.push(block)
 		} else {
 			inlineRun.push(child)
@@ -223,6 +273,8 @@ function inline(node: Node): string {
 			return inlineCode(element.textContent ?? '')
 		case 'A':
 			return link(element, children())
+		case 'IMG':
+			return imageInline(element)
 		default:
 			return isBlock(element) ? `\n${blocks(element)}\n` : children()
 	}

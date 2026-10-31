@@ -1,27 +1,59 @@
 <template>
-	<!-- Only prepareCompassHtml() output reaches v-html: sanitized, with our own heading ids. -->
+	<!-- Only prepareCompassHtml() output reaches v-html: sanitized, with our own heading ids and figures. -->
 	<!-- eslint-disable vue/no-v-html -->
 	<div
+		ref="root"
 		class="compass-prose"
 		:class="[`compass-prose--${font}`, `compass-prose--${size}`]"
 		data-user-content
+		@click="enlarge"
 		v-html="prepared.html"
 	/>
 	<!-- eslint-enable vue/no-v-html -->
+	<ImageLightbox
+		v-if="lightbox"
+		:key="lightbox.url"
+		:blob-url="lightbox.url"
+		:alt="lightbox.alt"
+		@close="lightbox = null"
+	/>
 </template>
 
 <script setup lang="ts">
+import {ref, useTemplateRef} from 'vue'
+import ImageLightbox from '@/components/misc/ImageLightbox.vue'
+import {COMPASS_IMAGE_ATTRIBUTE} from '@/helpers/compass/images'
 import type {CompassPreparedHtml} from '@/helpers/compass/readerHtml'
 import type {CompassReadingFont, CompassReadingSize} from '@/helpers/compass/storage'
+import {useCompassImageHydration} from './useCompassImageHydration'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
 	prepared: CompassPreparedHtml
+	// The space the body belongs to; its images are read through it. 0 for text without images.
+	spaceId?: number
 	font?: CompassReadingFont
 	size?: CompassReadingSize
 }>(), {
+	spaceId: 0,
 	font: 'serif',
 	size: 'medium',
 })
+
+const root = useTemplateRef<HTMLElement>('root')
+useCompassImageHydration(root, () => props.spaceId, () => props.prepared.html)
+
+// The lightbox borrows the image's own blob: url; the body releases it.
+const lightbox = ref<{url: string, alt: string} | null>(null)
+
+function enlarge(event: MouseEvent) {
+	const target = event.target
+	if (!(target instanceof HTMLImageElement) || !target.hasAttribute(COMPASS_IMAGE_ATTRIBUTE)) return
+	if (!target.currentSrc.startsWith('blob:')) return
+	lightbox.value = {
+		url: target.currentSrc,
+		alt: target.alt,
+	}
+}
 </script>
 
 <style lang="scss" scoped>
@@ -201,6 +233,66 @@ withDefaults(defineProps<{
 		font-weight: var(--weight-semibold);
 	}
 
+	// Pictures sit in the text column at their own size, never wider; the frame keeps the space while
+	// the bytes arrive, so the text below does not jump.
+	:deep(figure.compass-figure) {
+		margin: 1.6em 0;
+	}
+
+	:deep(span.compass-figure) {
+		display: block;
+		margin-block: .6em;
+	}
+
+	:deep(.compass-figure img) {
+		display: block;
+		max-inline-size: 100%;
+		block-size: auto;
+		margin-inline: auto;
+		border-radius: var(--radius-md);
+		background: var(--surface-sunken);
+		cursor: zoom-in;
+	}
+
+	// Width and height attributes size the frame before loading; without them it is a plain placeholder.
+	:deep(.compass-figure img:not([src])) {
+		cursor: default;
+	}
+
+	:deep(.compass-figure img:not([src], [width])) {
+		inline-size: min(100%, 32rem);
+		min-block-size: 6rem;
+	}
+
+	:deep(.compass-figure img[data-compass-state='failed']) {
+		display: none;
+	}
+
+	:deep(.compass-figure__caption) {
+		display: block;
+		margin-block-start: .6em;
+		color: var(--compass-ink-soft);
+		font-family: var(--compass-sans);
+		font-size: .85em;
+		line-height: 1.55;
+		text-align: center;
+	}
+
+	:deep(.compass-figure__missing) {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		min-block-size: 6rem;
+		padding: var(--space-4);
+		border: 1px dashed var(--compass-rule-strong);
+		border-radius: var(--radius-md);
+		color: var(--compass-ink-faint);
+		font-family: var(--compass-sans);
+		font-size: .85em;
+		text-align: center;
+		overflow-wrap: anywhere;
+	}
+
 	> :deep(:last-child) {
 		margin-block-end: 0;
 	}
@@ -244,8 +336,13 @@ withDefaults(defineProps<{
 			break-after: avoid;
 		}
 
-		:deep(:where(blockquote, pre, tr, li)) {
+		:deep(:where(blockquote, pre, tr, li, .compass-figure)) {
 			break-inside: avoid;
+		}
+
+		:deep(.compass-figure img) {
+			max-block-size: 90vh;
+			object-fit: contain;
 		}
 
 		:deep(table) {

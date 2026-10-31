@@ -128,6 +128,7 @@
 						v-if="hasBody"
 						class="compass-snapshot__body"
 						:prepared="prepared"
+						:space-id="entry.space_id"
 						:font="prefs.font"
 						:size="prefs.size"
 					/>
@@ -246,7 +247,8 @@ const snapshotTheme = computed(() => resolveCompassTheme(snapshot.value?.theme, 
 
 const content = computed(() => snapshot.value?.content ?? '')
 const prepared = computed(() => prepareCompassHtml(content.value, 'compass-version'))
-const hasBody = computed(() => compassPlainText(content.value).trim() !== '')
+// A version that only holds pictures still has a body; its images stay readable through the space.
+const hasBody = computed(() => prepared.value.images.length > 0 || compassPlainText(content.value).trim() !== '')
 const quote = computed(() => snapshot.value?.quote.trim() ?? '')
 
 function comparable(source: CompassEntryText): CompassDraftFields {

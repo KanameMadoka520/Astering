@@ -168,6 +168,11 @@ describe('isBlankCompassHtml', () => {
 	it('does not inspect long markup', () => {
 		expect(isBlankCompassHtml('<p></p>'.repeat(40))).toBe(false)
 	})
+
+	it('sees a body with only an image as content', () => {
+		expect(isBlankCompassHtml('<img data-compass-image="3">')).toBe(false)
+		expect(isBlankCompassHtml('<p></p><img data-compass-image="3" alt=""><p></p>')).toBe(false)
+	})
 })
 
 describe('changedCompassDraftFields', () => {

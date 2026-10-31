@@ -63,6 +63,7 @@ describe('project timeline query', () => {
 		expect(data.days).toEqual({})
 		expect(data.items[0].scheduled_spans).toEqual([])
 		expect(data.items[0].elapsed_spans).toEqual([])
+		expect(data.items[0].deadline_days).toEqual([])
 		expect(normalizeProjectTimeline({year: 2026}).items).toEqual([])
 	})
 

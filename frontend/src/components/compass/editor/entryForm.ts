@@ -78,6 +78,9 @@ export type CompassDeskFailure =
 	| 'spaceGone'
 	| 'forbidden'
 	| 'invalidState'
+	// An image cannot be used here (not available in this space, too many, or an unsupported file). The
+	// server names the image; the writer removes or replaces it in the editor and saves again.
+	| 'image'
 	| 'network'
 	| 'other'
 	// A newer version exists but could not be read.

@@ -174,6 +174,7 @@
 							v-if="hasBody"
 							class="compass-reader__body"
 							:prepared="prepared"
+							:space-id="entry.space_id"
 							:font="prefs.font"
 							:size="prefs.size"
 						/>
@@ -419,7 +420,8 @@ function retry() {
 const content = computed(() => entry.value?.content ?? '')
 const prepared = computed(() => prepareCompassHtml(content.value))
 const plainText = computed(() => compassPlainText(content.value))
-const hasBody = computed(() => plainText.value.trim() !== '')
+// An entry of pictures alone still has a body to show.
+const hasBody = computed(() => prepared.value.images.length > 0 || plainText.value.trim() !== '')
 const readingMinutes = computed(() => estimateCompassReadingMinutes(plainText.value))
 const quote = computed(() => entry.value?.quote.trim() ?? '')
 

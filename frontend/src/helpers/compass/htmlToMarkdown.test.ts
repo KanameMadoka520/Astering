@@ -128,6 +128,22 @@ describe('htmlToMarkdown', () => {
 			'<p onclick="steal()">still</p><style>p{}</style>',
 		)).toBe('safe\n\nstill\n')
 	})
+
+	it('keeps an image as a reference when its file is not exported', () => {
+		expect(htmlToMarkdown('<p>a</p><img data-compass-image="7" alt="Map [old]" title="Route"><p>b</p>'))
+			.toBe('a\n\n![Map \\[old\\]](compass-image:7)\n\n*Route*\n\nb\n')
+	})
+
+	it('links exported image files and carries an inline caption as the title', () => {
+		const images = {
+			src: (id: number) => id === 7 ? 'images/7.webp' : null,
+			missing: (image: {alt: string}) => `Image unavailable: ${image.alt}`,
+		}
+		expect(htmlToMarkdown('<img data-compass-image="7" alt="Map">', images)).toBe('![Map](images/7.webp)\n')
+		expect(htmlToMarkdown('<p>See <img data-compass-image="7" alt="it" title="Say &quot;hi&quot;"> now</p>', images))
+			.toBe('See ![it](images/7.webp "Say \\"hi\\"") now\n')
+		expect(htmlToMarkdown('<img data-compass-image="8" alt="Lost">', images)).toBe('*Image unavailable: Lost*\n')
+	})
 })
 
 // A fence can share its first line with a list marker; preserve the text inside it.

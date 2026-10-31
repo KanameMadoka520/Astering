@@ -1323,6 +1323,10 @@
 			"bulletListTooltip": "创建一个简单的符号列表。",
 			"orderedList": "有序列表",
 			"orderedListTooltip": "创建带编号的列表。",
+			"caption": "图片说明",
+			"captionPlaceholder": "显示在图片下方的说明",
+			"replaceImage": "替换图片",
+			"removeImage": "移除图片",
 			"link": "链接",
 			"image": "图片",
 			"imageTooltip": "从您的计算机上传图片",
@@ -2139,7 +2143,10 @@
 		"14204": "无法访问此地址的 Planka API，请检查地址，以及 vikunja-x 服务器是否能够连接该实例。",
 		"20001": "公告已被他人修改。你的草稿已保留，请载入最新版本后再保存。",
 		"20002": "日常设置已变化或已进入新的一天，状态已重新读取，请再操作一次。",
-		"20003": "该日常任务当前无法打卡（已暂停、已停用、任务已完成，或仍设置了普通重复）。"
+		"20003": "该日常任务当前无法打卡（已暂停、已停用、任务已完成，或仍设置了普通重复）。",
+		"20104": "有图片无法在这个空间使用：它已被移除、在回收站中，或不属于你。请移除或替换后再保存。",
+		"20105": "一篇正文最多包含 100 张不同的图片。",
+		"20106": "有图片不是受支持的格式（JPEG、PNG、GIF 或 WebP），或者文件太大。"
 	},
 	"about": {
 		"title": "关于",
@@ -3005,7 +3012,11 @@
 			"project_cover": "项目封面",
 			"avatar": "头像",
 			"chat": "会话附件",
-			"chat_draft": "会话草稿"
+			"chat_draft": "会话草稿",
+			"compass_entry": "星图正文",
+			"compass_trash": "星图回收站中的条目",
+			"compass_history": "星图历史版本",
+			"compass_background": "星图空间背景"
 		},
 		"presetNames": {
 			"aurora": "极光 · 波浪",
@@ -3243,6 +3254,18 @@
     "reopenHelp": "将项目恢复为进行中。过去的完成记录会保留，方便以后回顾。归档状态保持原样。",
     "archiveHelp": "“完成”与“归档”独立：完成表示告一段落；归档将项目和子项目从日常导航收起并设为只读。想收起已完成项目，可继续使用项目菜单中的“归档”。",
     "viewHistory": "查看项目历程",
+    "emptyYear": "{year} 年还没有项目级状态记录",
+    "emptyWhat": "这里只记录整个项目的状态变化：标记完成、重新打开、归档和取消归档。勾选任务完成不会把项目标为完成，也不会出现在这里。",
+    "scope": {
+      "label": "当前范围内的项目",
+      "projects": "项目",
+      "completed": "已标记完成",
+      "archived": "已归档"
+    },
+    "emptyOtherYears": "已完成或已归档的项目，其状态变化发生在其他年份，或早于开始记录历史之前。可以换一个年份查看。",
+    "emptyHow": "如需记录，请打开项目，在项目菜单中选择“标记项目已完成”或“归档”。系统不会自动完成任何项目，也不会补记过去的日期。",
+    "goToProjects": "前往项目列表",
+    "goToTimeline": "查看按任务日期统计的时间线",
     "kinds": {
       "milestones": "完成与归档",
       "completed": "完成",
@@ -3320,17 +3343,21 @@
     },
     "stats": {
       "label": "全年概况",
-      "projects": "有排期的项目",
+      "projects": "有日期的项目",
       "scheduledDays": "排期天数",
+      "scheduledDaysNote": "只按开始–结束区间计，截止日期不计",
       "elapsedDays": "计为已经过（截至完成或今天）",
-      "tasksDone": "有排期的任务已完成",
-      "overdue": "逾期的排期任务",
+      "tasksDone": "有日期的任务已完成",
+      "deadlineOnly": "只有截止日期的任务",
+      "overdue": "逾期任务",
       "daysValue": "{n} 天",
       "doneValue": "{done}/{total}"
     },
     "missing": {
-      "excluded": "{n} 个任务未显示在时间线上：需要同时有开始日期和结束（或截止）日期。",
-      "invalid": "{n} 个任务已排除：结束（或截止）日期早于开始日期，或日期超出 1970–9998 年。",
+      "excluded": "{n} 个任务未显示在时间线上：需要同时有开始和结束日期，或者有截止日期。",
+      "undated": "{n} 个任务没有任何日期，因此不在时间线上。设置开始和结束日期会显示为时间段；只设置截止日期会显示为截止节点。",
+      "incomplete": "{n} 个任务只有开始日期或只有结束日期。补上缺少的日期，或设置截止日期，即可显示。",
+      "invalid": "{n} 个任务的日期区间无法绘制：结束早于开始，或日期超出 1970–9998 年。其中有效的截止日期仍会显示为截止节点。",
       "scope": "按当前筛选条件统计所有年份。"
     },
     "occupancy": {
@@ -3350,27 +3377,29 @@
       "elapsed": "已经过",
       "planned": "尚未到来",
       "deadlines": "{n} 个截止日期",
+      "deadlinesIn": "{deadlines}（{projects}）",
+      "deadlineProjects": "{n} 个项目",
       "today": "今天",
       "unelapsed": "有排期，但未计为已经过（尚未开始，或在计划结束前已完成）"
     },
     "legend": {
       "elapsed": "已经过",
       "planned": "尚未到来",
-      "deadline": "截止日期",
+      "deadline": "截止日期（只标记日期，不计工期）",
       "overdue": "最早逾期的截止日期",
       "today": "今天",
-      "progress": "进度 = 所选年份内该项目有排期任务的当前平均进度（已完成任务按 100% 计），不是时间进度",
-      "note": "颜色深浅表示当天有排期的项目数量，只代表日历覆盖，不代表实际工时。",
+      "progress": "进度 = 所选年份内该项目有日期任务的当前平均进度（已完成任务按 100% 计），不是时间进度",
+      "note": "颜色深浅表示当天有排期的项目数量，只代表日历覆盖，不代表实际工时。圆点表示截止日期；只有截止日期的日子不会着色。",
       "unelapsed": "有排期，未计为已经过"
     },
     "lanes": {
-      "heading": "{year} 年有排期的项目",
-      "dayHeading": "{date} 有排期的项目",
+      "heading": "{year} 年有日期的项目",
+      "dayHeading": "{date} 有排期或截止的项目",
       "clearDay": "查看所有日期",
       "count": "{n} 个项目",
       "progress": "平均进度 {percent}%",
       "progressName": "{title} 的当前平均进度",
-      "tasks": "{year} 年有排期的任务已完成 {done}/{total}",
+      "tasks": "{year} 年有日期的任务已完成 {done}/{total}",
       "overdue": "{n} 个逾期",
       "nextDeadline": "下个截止 {date}",
       "overdueSince": "自 {date} 起逾期",
@@ -3378,27 +3407,37 @@
       "range": "{start} 至 {end}",
       "days": "{year} 年计为已经过 {elapsed}/{scheduled} 个排期日",
       "spanTitle": "排期 {range}",
-      "outside": "{month}没有排期",
+      "outside": "{month}没有排期或截止日期",
       "focus": "只看 {title}",
-      "legendDeadline": "下一个或最后的截止日期"
+      "legendOpen": "截止日期（有未完成任务）",
+      "legendDone": "截止日期（任务均已完成）",
+      "legendOverdue": "已逾期的截止日期",
+      "deadlinesOnly": "{year} 年只有截止节点，未设置开始–结束区间",
+      "deadlineOnlyTasks": "{n} 个任务只有截止日期",
+      "node": {
+        "open": "{date} 截止：已完成 {done}/{count} 个任务",
+        "done": "{date} 截止：{count} 个任务均已完成",
+        "overdue": "{date} 截止：{open}/{count} 个任务未完成，已逾期"
+      }
     },
     "empty": {
-      "year": "{year} 年没有排期的工作。",
-      "otherYears": "有排期的任务分布在 {first} 至 {last} 年。",
+      "year": "{year} 年没有带日期的任务。",
+      "otherYears": "带日期的任务分布在 {first} 至 {last} 年。",
       "goTo": "前往 {year} 年",
-      "none": "还没有排期的任务。",
-      "noneHelp": "为任务设置开始日期和结束（或截止）日期后，所属项目会以时间段显示在这里。",
-      "day": "这一天没有项目排期。",
+      "none": "还没有带日期的任务。",
+      "noneHelp": "为任务设置开始和结束日期，会显示为时间段；只设置截止日期，会显示为截止节点。",
+      "day": "这一天没有项目排期或截止。",
       "filters": "{year} 年没有符合筛选条件的项目。",
       "clearFilters": "清除筛选",
-      "otherYear": "有排期的任务都在 {year} 年。"
+      "otherYear": "带日期的任务都在 {year} 年。"
     },
     "loadError": "时间线加载失败。",
     "loading": "正在加载时间线…",
     "pagination": "时间线分页",
     "pageOf": "第 {page}/{total} 页",
     "explanation": "这些数据如何计算？",
-    "explanationSpans": "任务需要有开始日期和结束日期（没有结束日期时使用截止日期）才会计入。项目在这些日期上显示为时间段，中间有空档的任务保持分开。子项目的任务只计入子项目本身，不并入上级项目。",
+    "explanationSpans": "有开始日期和结束日期（没有结束日期时使用截止日期）的任务计为排期：项目在这些日期上显示为时间段，中间有空档的任务保持分开。子项目的任务只计入子项目本身，不并入上级项目。",
+    "explanationDeadlines": "只有截止日期的任务在当天显示为截止节点。它计入项目的任务数、进度和逾期数，但不会增加排期天数或已经过天数。区间在其他年份的任务，在本年只显示截止节点。没有任何日期的任务单独计数，不会被补上日期。",
     "explanationElapsed": "“计为已经过”统计到今天（或任务标记完成的那天）为止的排期日；提前完成后剩余的排期日不计入。不代表实际工作时长。",
     "explanationProgress": "进度是本年度内该项目有排期任务的当前平均完成度（已完成的任务按 100% 计），不是历史进度记录。"
   },
@@ -3581,7 +3620,8 @@
         "invalidState": "这篇条目现在的状态不允许编辑——它可能已被移入回收站。请先在条目页恢复，再保存一次。你写的内容仍在这里。",
         "network": "无法连接服务器。更改已保留在本机，恢复联网后再保存一次即可。",
         "other": "保存失败。你写的内容仍在这里。",
-        "conflictUnloaded": "有人保存了更新的版本，但暂时无法读取。你写的内容仍在这里，请再保存一次。"
+        "conflictUnloaded": "有人保存了更新的版本，但暂时无法读取。你写的内容仍在这里，请再保存一次。",
+        "image": "正文中有图片无法在这里保存。你的文字仍然保留；请移除或替换标出的图片后再保存。"
       },
       "loading": "正在打开写作台…",
       "loadFailedTitle": "写作台没能打开",
@@ -3676,7 +3716,7 @@
     "export": {
       "button": "导出",
       "title": "导出这个空间",
-      "explain": "把书库和归档中的每一篇条目导出为一个 Markdown 文件，连同空间的标题、座右铭、序言和目录。回收站中的条目不会导出。",
+      "explain": "导出书库和归档中的每一篇条目，连同空间的标题、座右铭、序言和目录：可以是一个 Markdown 文件，也可以连同图片打包为 ZIP 压缩包。回收站中的条目不会导出。",
       "local": "文件在你的浏览器里生成，保存到这台设备上，不会上传到任何地方。",
       "start": "开始导出",
       "again": "重新导出",
@@ -3688,7 +3728,71 @@
       "offline": "无法连接服务器，没有保存任何文件。请检查网络后再试。",
       "lost": "你已无法访问这个空间，没有保存任何文件。",
       "exportedFrom": "导出自星图，{date}",
-      "contents": "目录"
+      "contents": "目录",
+      "includeImages": "包含图片",
+      "includeImagesHint": "保存为 ZIP 压缩包：其中包含 Markdown 文件和它所引用的 images 文件夹。",
+      "referencesHint": "只保存 Markdown 文件。图片保留为引用，不包含在文件中。",
+      "imagesMissing": "有 {n} 张图片无法读取，文件中已在相应位置注明。",
+      "imagesProgress": "正在读取第 {done} 张图片，共 {total} 张…",
+      "doneImages": "已保存“{file}”，共 {n} 篇、{images} 张图片。",
+      "tooLarge": "图片太大，无法在浏览器中打包成一个压缩包。请改为不含图片导出。",
+      "referencesNote": "此文件不包含图片，图片以 compass-image: 引用表示；如需图片文件，请选择包含图片导出。",
+      "imageMissingNamed": "图片不可用：{alt}",
+      "imageMissing": "图片不可用"
+    },
+    "images": {
+      "groupLabel": "图片",
+      "add": "添加图片",
+      "fromDrive": "从网盘选择",
+      "upload": "上传",
+      "count": "{n}/{limit} 张图片",
+      "loading": "正在加载图片…",
+      "unavailable": "图片不可用：可能已被移除，或你已失去访问权限。",
+      "unavailableNamed": "图片不可用：{alt}",
+      "unavailableEditor": "这张图片无法在这里使用，请移除或替换。",
+      "unnamed": "图片",
+      "uploadFailed": "图片上传失败。",
+      "unsupported": "“{name}”不是 JPEG、PNG、GIF 或 WebP 图片。",
+      "unsupportedUploaded": "“{name}”已保存到你的网盘，但正文只能使用 JPEG、PNG、GIF 和 WebP 图片。",
+      "limitUploaded": "图片已保存到你的网盘，但这篇正文已有 {limit} 张图片。",
+      "notPlaced": "图片已在你的网盘中，但它在正文中的位置已不存在。请用“从网盘选择”重新插入。",
+      "notImages": "{n} 个文件不是图片，已跳过。",
+      "limit": "一篇正文最多包含 {limit} 张图片。",
+      "limitPartial": "一篇正文最多包含 {limit} 张图片，有 {n} 张未加入。",
+      "driveUnavailable": "“{name}”无法使用：可能在回收站中，或这个空间无法使用它。",
+      "trayLabel": "图片上传",
+      "cancelRemaining": "取消其余",
+      "retryFile": "重试 {name}",
+      "dismissFile": "关闭 {name}",
+      "dismiss": "关闭",
+      "queued": "等待中",
+      "remaining": "还有 {n} 张图片正在上传…",
+      "unsent": "{n} 张图片未加入",
+      "added": "图片已加入",
+      "unavailableInBody": "正文中有 {n} 张图片无法在这里使用。",
+      "removeUnavailable": "移除无法使用的图片",
+      "replaceTitle": "替换图片",
+      "replaceText": "上传新图片或从网盘选择，替代文本和图片说明会保留。"
+    },
+    "background": {
+      "label": "背景图片",
+      "hintSky": "未设置图片时显示主题天空。添加一张自己的图片，让这个空间更有个人特色。",
+      "hintPhoto": "在图片上点击或拖动，选择始终可见的焦点；也可以用方向键移动。",
+      "unavailable": "无法显示背景图片，可能已被移除。请另选一张或清除背景。",
+      "scrim": "图片遮罩",
+      "scrimHint": "图片较杂乱时，较强的遮罩能让标题和座右铭保持清晰。打印时不会包含背景图片。",
+      "scrims": {
+        "soft": "浅",
+        "medium": "中",
+        "strong": "深"
+      },
+      "replaceUpload": "上传其他图片",
+      "clear": "恢复主题天空",
+      "focusLabel": "焦点：水平 {x}%，垂直 {y}%",
+      "focusHint": "方向键移动焦点，Home 键回到中心。",
+      "saveFailed": "背景未能保存：{reason}",
+      "conflictPhoto": "图片，{scrim}遮罩",
+      "conflictSky": "主题天空，无图片"
     },
     "lights": {
       "title": "指引",
@@ -3774,7 +3878,8 @@
       "restore": "恢复",
       "restoreLabel": "恢复“{title}”",
       "deleteLabel": "永久删除：{title}",
-      "moreTags": "另有 {n} 个"
+      "moreTags": "另有 {n} 个",
+      "images": "{n} 张图片"
     },
     "topics": {
       "summary": "分类与标签",
@@ -3828,7 +3933,14 @@
       "deletePermanently": "永久删除",
       "trashConfirmTitle": "移入回收站？",
       "trashConfirmText": "之后仍可以从回收站恢复。",
-      "trashConfirmPinned": "之后仍可以从回收站恢复。它将不再作为指引置顶。"
+      "trashConfirmPinned": "之后仍可以从回收站恢复。它将不再作为指引置顶。",
+      "downloadWithImages": "连同图片下载（.zip）",
+      "downloadMarkdownOnly": "只下载 Markdown",
+      "exportingImages": "正在读取图片 {done}/{total}…",
+      "exported": "已保存“{file}”。",
+      "printPreparing": "正在加载要打印的图片…",
+      "printPending": "还有 {n} 张图片正在加载，为避免打印出空白，暂不打印。",
+      "printRetry": "重试"
     },
     "readingPrefs": {
       "title": "阅读设置",

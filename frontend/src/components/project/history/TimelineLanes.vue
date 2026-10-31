@@ -3,6 +3,7 @@ import {computed} from 'vue'
 import {useI18n} from 'vue-i18n'
 
 import ProjectStatusBadges from '@/components/project/partials/ProjectStatusBadges.vue'
+import type {ProjectTimelineDeadline} from '@/client/generated'
 import type {ProjectTimelineRow} from '@/client/queries/projectTimeline'
 import {colorFromHex} from '@/helpers/color/colorFromHex'
 import {calendarDayFormatter, formatCalendarMonth} from '@/helpers/projectHistoryFormat'
@@ -71,23 +72,32 @@ function laneColor(hex: string | undefined) {
 	return /^[0-9a-f]{6}$/i.test(color) ? `#${color}` : undefined
 }
 
-function deadlineMarks(item: ProjectTimelineRow) {
-	const marks: {kind: 'overdue' | 'next' | 'last', date: string, left: number, label: string}[] = []
-	const add = (kind: 'overdue' | 'next' | 'last', date: string | undefined, key: string) => {
-		if (!date || marks.some(mark => mark.date === date)) return
-		const left = placeDay(date, props.domain)
-		if (left === null) return
-		marks.push({
-			kind,
-			date,
+type DeadlineState = 'done' | 'open' | 'overdue'
+
+function deadlineState(node: ProjectTimelineDeadline): DeadlineState {
+	if (!node.open) return 'done'
+	return props.today && node.date! < props.today ? 'overdue' : 'open'
+}
+
+// Every due date of the year as its own node: a date, never scheduled time.
+function deadlineNodes(item: ProjectTimelineRow) {
+	return item.deadline_days.flatMap(node => {
+		const left = placeDay(node.date, props.domain)
+		if (left === null || !node.date) return []
+		const state = deadlineState(node)
+		const count = node.count ?? 0
+		return [{
+			date: node.date,
 			left,
-			label: t(key, {date: formatDay(date)}),
-		})
-	}
-	add('overdue', item.overdue_since, 'projectTimeline.lanes.overdueSince')
-	add('next', item.next_deadline, 'projectTimeline.lanes.nextDeadline')
-	add('last', item.last_deadline, 'projectTimeline.lanes.lastDeadline')
-	return marks
+			state,
+			title: t(`projectTimeline.lanes.node.${state}`, {
+				date: formatDay(node.date),
+				count,
+				done: node.done ?? 0,
+				open: node.open ?? 0,
+			}, count),
+		}]
+	})
 }
 
 const lanes = computed(() => props.items.map(item => {
@@ -95,6 +105,7 @@ const lanes = computed(() => props.items.map(item => {
 		...box,
 		title: t('projectTimeline.lanes.spanTitle', {range: formatRange(box.start, box.end)}),
 	}))
+	const deadlines = deadlineNodes(item)
 	const percent = progressPercent(item.progress)
 	return {
 		item,
@@ -102,8 +113,10 @@ const lanes = computed(() => props.items.map(item => {
 		scheduled,
 		elapsed: placeSpans(item.elapsed_spans ?? [], props.domain),
 		planned: placeSpans(futureSpans(item.scheduled_spans ?? [], props.today), props.domain),
-		deadlines: deadlineMarks(item),
-		outside: scheduled.length === 0,
+		deadlines,
+		outside: scheduled.length === 0 && deadlines.length === 0,
+		// Only due dates this year (or a range that lies in another year): no span to describe.
+		deadlinesOnly: !item.ranged_tasks && item.deadline_days.length > 0,
 		percent,
 		range: formatRange(item.start_date, item.end_date),
 		days: t('projectTimeline.lanes.days', {
@@ -134,10 +147,13 @@ const outsideLabel = computed(() => props.domain.length > 31
 				<i class="legend-mark is-unelapsed" />{{ t('projectTimeline.legend.unelapsed') }}
 			</li>
 			<li>
-				<i class="legend-mark is-deadline" />{{ t('projectTimeline.lanes.legendDeadline') }}
+				<i class="legend-mark is-deadline is-open" />{{ t('projectTimeline.lanes.legendOpen') }}
 			</li>
 			<li>
-				<i class="legend-mark is-deadline is-overdue" />{{ t('projectTimeline.legend.overdue') }}
+				<i class="legend-mark is-deadline is-done" />{{ t('projectTimeline.lanes.legendDone') }}
+			</li>
+			<li>
+				<i class="legend-mark is-deadline is-overdue" />{{ t('projectTimeline.lanes.legendOverdue') }}
 			</li>
 			<li>
 				<i class="legend-mark is-today" />{{ t('projectTimeline.legend.today') }}
@@ -225,8 +241,17 @@ const outsideLabel = computed(() => props.domain.length > 31
 						>{{ t('projectTimeline.lanes.overdue', {n: lane.item.overdue_tasks}) }}</span>
 					</div>
 					<p class="lane-facts">
-						<span class="lane-fact">{{ lane.range }}</span>
-						<span class="lane-fact">{{ lane.days }}</span>
+						<template v-if="lane.deadlinesOnly">
+							<span class="lane-fact">{{ t('projectTimeline.lanes.deadlinesOnly', {year}) }}</span>
+						</template>
+						<template v-else>
+							<span class="lane-fact">{{ lane.range }}</span>
+							<span class="lane-fact">{{ lane.days }}</span>
+							<span
+								v-if="lane.item.deadline_only_tasks"
+								class="lane-fact"
+							>{{ t('projectTimeline.lanes.deadlineOnlyTasks', {n: lane.item.deadline_only_tasks}, lane.item.deadline_only_tasks) }}</span>
+						</template>
 						<span
 							v-if="lane.item.overdue_since"
 							class="lane-fact is-overdue"
@@ -267,12 +292,12 @@ const outsideLabel = computed(() => props.domain.length > 31
 						:style="{insetInlineStart: `${box.left}%`, inlineSize: `${box.width}%`}"
 					/>
 					<i
-						v-for="mark in lane.deadlines"
-						:key="mark.kind"
+						v-for="node in lane.deadlines"
+						:key="node.date"
 						class="lane-deadline"
-						:class="`is-${mark.kind}`"
-						:style="{insetInlineStart: `${mark.left}%`}"
-						:title="mark.label"
+						:class="`is-${node.state}`"
+						:style="{insetInlineStart: `${node.left}%`}"
+						:title="node.title"
 					/>
 					<i
 						v-if="todayAt !== null"
@@ -353,7 +378,13 @@ const outsideLabel = computed(() => props.domain.length > 31
 		margin-inline: .125rem;
 		border: 1.5px solid var(--text-primary);
 		border-radius: 0;
+		background: var(--text-primary);
 		transform: rotate(45deg);
+
+		&.is-done {
+			border-color: var(--success);
+			background: var(--surface);
+		}
 
 		&.is-overdue {
 			border-color: var(--danger-text);
@@ -617,13 +648,16 @@ const outsideLabel = computed(() => props.domain.length > 31
 	}
 }
 
+// Open: solid. Overdue: solid red. All done: hollow, in the success colour.
 .lane-deadline {
 	position: absolute;
 	inset-block-start: 50%;
-	inline-size: .5rem;
-	block-size: .5rem;
-	border: 1.5px solid var(--text-primary);
-	background: var(--surface);
+	z-index: 1;
+	inline-size: .5625rem;
+	block-size: .5625rem;
+	border: 1.5px solid var(--surface);
+	background: var(--text-primary);
+	box-shadow: 0 0 0 1px var(--text-primary);
 	transform: translate(-50%, -50%) rotate(45deg);
 
 	&:dir(rtl) {
@@ -631,12 +665,14 @@ const outsideLabel = computed(() => props.domain.length > 31
 	}
 
 	&.is-overdue {
-		border-color: var(--danger-text);
 		background: var(--danger-text);
+		box-shadow: 0 0 0 1px var(--danger-text);
 	}
 
-	&.is-last {
-		border-style: dotted;
+	&.is-done {
+		border-color: var(--success);
+		background: var(--surface);
+		box-shadow: none;
 	}
 }
 

@@ -9,7 +9,20 @@
 			<span>{{ t('compass.create.previewLabel') }}</span>
 		</figcaption>
 		<div class="compass-space-preview__sky">
-			<CompassSky class="compass-space-preview__astrolabe" />
+			<CompassSky
+				v-if="photo !== 'ready'"
+				class="compass-space-preview__astrolabe"
+			/>
+			<CompassBackdrop
+				v-if="background && spaceId > 0 && background.background_file_id > 0"
+				class="compass-space-preview__photo"
+				:space-id="spaceId"
+				:file-id="background.background_file_id"
+				:focus-x="background.background_focus_x"
+				:focus-y="background.background_focus_y"
+				:scrim="background.background_scrim"
+				@state="photo = $event"
+			/>
 			<div class="compass-space-preview__text">
 				<p class="compass-space-preview__eyebrow">
 					<Icon
@@ -42,11 +55,14 @@
 </template>
 
 <script setup lang="ts">
-import {computed} from 'vue'
+import {computed, ref} from 'vue'
 import {useI18n} from 'vue-i18n'
 import Icon from '@/components/misc/Icon'
+import type {CompassSpaceBackground} from '@/client/queries/compass'
+import CompassBackdrop from '@/components/compass/base/CompassBackdrop.vue'
 import CompassGlyph from '@/components/compass/base/CompassGlyph.vue'
 import CompassSky from '@/components/compass/base/CompassSky.vue'
+import type {CompassImageUrlState} from '@/components/compass/base/useCompassImageUrl'
 import CompassThemeScope from '@/components/compass/base/CompassThemeScope.vue'
 import type {CompassTheme} from '@/helpers/compass/constants'
 import type {CompassSharing} from './sharing'
@@ -57,9 +73,16 @@ const props = withDefaults(defineProps<{
 	theme: CompassTheme
 	sharing: CompassSharing
 	teamName?: string
+	// Only an existing space can show a photo: its images are read through the space.
+	spaceId?: number
+	background?: CompassSpaceBackground
 }>(), {
 	teamName: '',
+	spaceId: 0,
+	background: undefined,
 })
+
+const photo = ref<CompassImageUrlState>('none')
 
 const {t} = useI18n({useScope: 'global'})
 
@@ -110,7 +133,8 @@ const sharingLabel = computed(() => props.sharing === 'team'
 	color: var(--compass-ink);
 }
 
-.compass-space-preview__astrolabe {
+.compass-space-preview__astrolabe,
+.compass-space-preview__photo {
 	z-index: -1;
 }
 
