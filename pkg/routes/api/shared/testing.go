@@ -29,7 +29,7 @@ import (
 // would persist and pollute subsequent tests that reuse the same
 // auto-increment IDs.
 var dependentTestingTables = map[string][]string{
-	"users":    {"notifications"},
+	"users":    {"notifications", "compass_revisions", "compass_entries", "compass_spaces"},
 	"projects": {"project_announcements"},
 	"tasks":    {"task_routines", "task_routine_checkins"},
 }

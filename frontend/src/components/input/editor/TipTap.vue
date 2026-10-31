@@ -260,6 +260,8 @@ allowTaskLists?: boolean,
 	enableMentions?: boolean,
 	projectId?: number,
 	storageKey?: string,
+	// A writing surface that never falls back to preview (Compass editor); saving is the parent's job.
+	alwaysEditing?: boolean,
 }>(), {
 	uploadCallback: undefined,
 	allowImages: true,
@@ -274,6 +276,7 @@ allowTaskLists?: boolean,
 	enableMentions: false,
 	projectId: 0,
 	storageKey: '',
+	alwaysEditing: false,
 })
 
 const emit = defineEmits(['save'])
@@ -295,7 +298,7 @@ const defaultSetContentOptions: SetContentOptions = {
 type Mode = 'edit' | 'preview'
 
 const internalMode = ref<Mode>('preview')
-const isEditing = computed(() => internalMode.value === 'edit' && props.isEditEnabled)
+const isEditing = computed(() => (props.alwaysEditing || internalMode.value === 'edit') && props.isEditEnabled)
 // Editors with bottom actions (comments) render their Save inside that list instead.
 const hasSaveButton = computed(() => props.showSave && props.bottomActions.length === 0)
 const contentHasChanged = ref<boolean>(false)

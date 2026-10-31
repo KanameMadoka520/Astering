@@ -188,6 +188,8 @@ onClickOutside(dropdown, (e) => {
 }
 
 .dropdown-menu::before {
+  // The decorative gap must not cover controls inside the menu.
+  pointer-events: none;
   content: "";
   position: absolute;
   inset: calc(var(--hover-offset) * -1);

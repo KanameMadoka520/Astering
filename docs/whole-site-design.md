@@ -9,7 +9,8 @@ is recorded separately in the delivery notes.
 
 1. **Density with air.** Rows 32–36px on fine pointers, ≥44px targets on coarse pointers. Content max widths
    per page type instead of large empty margins. No marketing chrome: no hero banners, no large gradients,
-   no glass, no oversized illustrations.
+   no glass, no oversized illustrations. The one deliberate exception is the Compass space header (a bounded, static
+   sky with a decorative astrolabe; reading, editing and history pages stay plain) — see `docs/compass.md`.
 2. **One accent.** `--primary` marks the primary action, the current location and selection. Status colours
    (danger, warning, success) only carry status, always with a second cue (icon or text).
 3. **Surfaces, not shadows.** Page < surface (cards, panels) < raised (menus, popovers, dialogs). Separation

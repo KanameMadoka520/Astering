@@ -5,7 +5,7 @@
 		style="height: 0;width: 0;"
 	/>
 	<div
-		v-if="!online"
+		v-if="!online && !(preserveContentOffline && baseStore.ready)"
 		class="app offline"
 	>
 		<div class="offline-message">
@@ -77,6 +77,11 @@ import {ERROR_NO_API_URL} from '@/helpers/checkAndSetApiUrl'
 
 import {useOnline} from '@/composables/useOnline'
 import {ERROR_RATE_LIMITED, useBaseStore} from '@/stores/base'
+
+withDefaults(defineProps<{
+	// Writing surfaces with local drafts must not be unmounted on a network change.
+	preserveContentOffline?: boolean
+}>(), {preserveContentOffline: false})
 
 const online = useOnline()
 const baseStore = useBaseStore()

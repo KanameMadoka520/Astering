@@ -1,7 +1,11 @@
 import {library} from '@fortawesome/fontawesome-svg-core'
 import {
 	faAlignLeft,
+	faBookOpen,
 	faCompass,
+	faFeather,
+	faPrint,
+	faThumbtack,
 	faHouse,
 	faCodeBranch,
 	faCompress,
@@ -141,6 +145,10 @@ library.add(faChevronRight)
 library.add(faBold)
 library.add(faCodeBranch)
 library.add(faCompass)
+library.add(faBookOpen)
+library.add(faFeather)
+library.add(faPrint)
+library.add(faThumbtack)
 library.add(faArrowDown)
 library.add(faHouse)
 library.add(faRobot)

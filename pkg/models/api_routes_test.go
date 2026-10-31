@@ -610,3 +610,28 @@ func TestCollectRoutes_CoreKeyCollisionPanics(t *testing.T) {
 		CollectRoutesForAPITokenUsage(echo.RouteInfo{Method: "GET", Path: "/api/v1/projects/background/:project"}, true)
 	})
 }
+
+func TestCompassAPITokenRoutes(t *testing.T) {
+	resetAPITokenRoutes(t)
+	for _, r := range []echo.RouteInfo{
+		{Method: "GET", Path: "/api/v2/compass/spaces"},
+		{Method: "GET", Path: "/api/v2/compass/spaces/:space"},
+		{Method: "POST", Path: "/api/v2/compass/spaces"},
+		{Method: "PUT", Path: "/api/v2/compass/spaces/:space"},
+		{Method: "GET", Path: "/api/v2/compass/spaces/:space/entries"},
+		{Method: "POST", Path: "/api/v2/compass/spaces/:space/entries"},
+		{Method: "GET", Path: "/api/v2/compass/entries/:entry"},
+		{Method: "PUT", Path: "/api/v2/compass/entries/:entry"},
+		{Method: "DELETE", Path: "/api/v2/compass/entries/:entry"},
+		{Method: "GET", Path: "/api/v2/compass/entries/:entry/revisions"},
+		{Method: "GET", Path: "/api/v2/compass/entries/:entry/revisions/:revision"},
+		{Method: "POST", Path: "/api/v2/compass/entries/:entry/revisions/:revision/restore"},
+		{Method: "GET", Path: "/api/v2/compass/spaces/:space/topics"},
+	} {
+		CollectRoutesForAPITokenUsage(r, true)
+	}
+	require.Equal(t, "/api/v2/compass/spaces", apiTokenRoutesV2["compass_spaces"]["read_all"].Path)
+	require.Equal(t, "/api/v2/compass/spaces/:space", apiTokenRoutesV2["compass_spaces"]["read_one"].Path)
+	require.Equal(t, "/api/v2/compass/entries/:entry/revisions/:revision", apiTokenRoutesV2["compass_entries_revisions"]["read_one"].Path)
+	require.Equal(t, "DELETE", apiTokenRoutesV2["compass_entries"]["delete"].Method)
+}

@@ -823,6 +823,213 @@ export type Compaction = {
     usage?: Usage;
 };
 
+export type CompassRevisionsRestoreRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    expected_revision: number;
+};
+
+export type CompassEntryBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * User-defined topic; empty means uncategorized.
+     */
+    category?: string;
+    /**
+     * Sanitized rich text, up to 2 MiB. Omitted from lists; load the entry to read or edit.
+     */
+    content?: string;
+    /**
+     * UTF-8 content size of this version, not total database disk usage.
+     */
+    readonly content_bytes?: number;
+    /**
+     * Original creation time.
+     */
+    readonly created?: string;
+    /**
+     * Creator's user ID.
+     */
+    readonly created_by_id?: number;
+    /**
+     * Server-derived plain-text preview, up to 360 Unicode characters.
+     */
+    readonly excerpt?: string;
+    /**
+     * Entry identifier.
+     */
+    readonly id?: number;
+    /**
+     * Principle, vision, action guidance, memory, or a free-form note.
+     */
+    kind?: 'principle' | 'vision' | 'action' | 'memory' | 'note';
+    /**
+     * Permission inherited from the containing space.
+     */
+    readonly max_permission?: number;
+    /**
+     * Shown before other entries; trash removes pinning.
+     */
+    pinned?: boolean;
+    /**
+     * Optional highlighted plain-text passage, explicitly selected by the author.
+     */
+    quote?: string;
+    /**
+     * Expected revision on save; current version in responses.
+     */
+    revision?: number;
+    /**
+     * Immutable containing space, taken from creation URL.
+     */
+    readonly space_id?: number;
+    /**
+     * Trash retains content and history until an explicit permanent delete.
+     */
+    state?: 'active' | 'archived' | 'trashed';
+    /**
+     * Plain-text short introduction.
+     */
+    subtitle?: string;
+    /**
+     * Up to 24 unique single-line tags, each at most 40 Unicode characters.
+     */
+    tags?: Array<string> | null;
+    /**
+     * Inherit space atmosphere or select an entry atmosphere.
+     */
+    theme?: 'inherit' | 'aurora' | 'solar' | 'nebula' | 'ink';
+    /**
+     * Entry title.
+     */
+    title?: string;
+    /**
+     * Last real change; unchanged saves create no new revision.
+     */
+    readonly updated?: string;
+    /**
+     * User who saved this revision.
+     */
+    readonly updated_by_id?: number;
+};
+
+export type CompassRevision = {
+    /**
+     * Content bytes of this saved version.
+     */
+    readonly content_bytes?: number;
+    /**
+     * When this version was recorded.
+     */
+    readonly created?: string;
+    /**
+     * Containing entry.
+     */
+    readonly entry_id?: number;
+    /**
+     * Revision record ID.
+     */
+    readonly id?: number;
+    /**
+     * Entry kind at save time.
+     */
+    readonly kind?: string;
+    /**
+     * Monotonically increasing saved version.
+     */
+    readonly revision?: number;
+    /**
+     * Entry state at save time.
+     */
+    readonly state?: string;
+    /**
+     * Title at save time.
+     */
+    readonly title?: string;
+    /**
+     * Author of the saved version.
+     */
+    readonly updated_by_id?: number;
+};
+
+export type CompassSpaceBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Creation time.
+     */
+    readonly created?: string;
+    /**
+     * Entries outside trash, including archived writings.
+     */
+    readonly entry_count?: number;
+    /**
+     * Space identifier, assigned by the server.
+     */
+    readonly id?: number;
+    /**
+     * Basic rich text without embeds or images, up to 64 KiB.
+     */
+    introduction?: string;
+    /**
+     * 0 read, 1 write entries, 2 manage space and permanently delete entries.
+     */
+    readonly max_permission?: number;
+    /**
+     * Plain-text guiding sentence.
+     */
+    motto?: string;
+    /**
+     * Creator; owns a personal space, but cannot retain access after leaving a team space.
+     */
+    readonly owner_id?: number;
+    /**
+     * Pinned active entries.
+     */
+    readonly pinned_count?: number;
+    /**
+     * Expected revision on save; stale edits return 409.
+     */
+    revision?: number;
+    /**
+     * 0 for private. On creation only, select a team you administer. Immutable thereafter.
+     */
+    team_id?: number;
+    /**
+     * Built-in visual atmosphere.
+     */
+    theme?: 'aurora' | 'solar' | 'nebula' | 'ink';
+    /**
+     * User-defined name, not a fixed product label.
+     */
+    title?: string;
+    /**
+     * Settings or entry update time.
+     */
+    readonly updated?: string;
+};
+
+export type CompassTopic = {
+    count?: number;
+    name?: string;
+};
+
+export type CompassTopics = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    items?: Array<CompassTopic> | null;
+    tags?: Array<CompassTopic> | null;
+};
+
 export type Connection = {
     /**
      * OpenAI-compatible API base, including /v1 when required.
@@ -2189,6 +2396,42 @@ export type PaginatedBucket = {
      */
     readonly $schema?: string;
     items?: Array<Bucket> | null;
+    page?: number;
+    per_page?: number;
+    total?: number;
+    total_pages?: number;
+};
+
+export type PaginatedCompassEntryBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    items?: Array<CompassEntryBody> | null;
+    page?: number;
+    per_page?: number;
+    total?: number;
+    total_pages?: number;
+};
+
+export type PaginatedCompassRevision = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    items?: Array<CompassRevision> | null;
+    page?: number;
+    per_page?: number;
+    total?: number;
+    total_pages?: number;
+};
+
+export type PaginatedCompassSpaceBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    items?: Array<CompassSpaceBody> | null;
     page?: number;
     per_page?: number;
     total?: number;
@@ -5825,6 +6068,89 @@ export type ChatTurnWritable = {
     [key: string]: never;
 };
 
+export type CompassRevisionsRestoreRequestWritable = {
+    expected_revision: number;
+};
+
+export type CompassEntryBodyWritable = {
+    /**
+     * User-defined topic; empty means uncategorized.
+     */
+    category?: string;
+    /**
+     * Sanitized rich text, up to 2 MiB. Omitted from lists; load the entry to read or edit.
+     */
+    content?: string;
+    /**
+     * Principle, vision, action guidance, memory, or a free-form note.
+     */
+    kind?: 'principle' | 'vision' | 'action' | 'memory' | 'note';
+    /**
+     * Shown before other entries; trash removes pinning.
+     */
+    pinned?: boolean;
+    /**
+     * Optional highlighted plain-text passage, explicitly selected by the author.
+     */
+    quote?: string;
+    /**
+     * Expected revision on save; current version in responses.
+     */
+    revision?: number;
+    /**
+     * Trash retains content and history until an explicit permanent delete.
+     */
+    state?: 'active' | 'archived' | 'trashed';
+    /**
+     * Plain-text short introduction.
+     */
+    subtitle?: string;
+    /**
+     * Up to 24 unique single-line tags, each at most 40 Unicode characters.
+     */
+    tags?: Array<string> | null;
+    /**
+     * Inherit space atmosphere or select an entry atmosphere.
+     */
+    theme?: 'inherit' | 'aurora' | 'solar' | 'nebula' | 'ink';
+    /**
+     * Entry title.
+     */
+    title?: string;
+};
+
+export type CompassSpaceBodyWritable = {
+    /**
+     * Basic rich text without embeds or images, up to 64 KiB.
+     */
+    introduction?: string;
+    /**
+     * Plain-text guiding sentence.
+     */
+    motto?: string;
+    /**
+     * Expected revision on save; stale edits return 409.
+     */
+    revision?: number;
+    /**
+     * 0 for private. On creation only, select a team you administer. Immutable thereafter.
+     */
+    team_id?: number;
+    /**
+     * Built-in visual atmosphere.
+     */
+    theme?: 'aurora' | 'solar' | 'nebula' | 'ink';
+    /**
+     * User-defined name, not a fixed product label.
+     */
+    title?: string;
+};
+
+export type CompassTopicsWritable = {
+    items?: Array<CompassTopic> | null;
+    tags?: Array<CompassTopic> | null;
+};
+
 export type ConnectionWritable = {
     /**
      * Write-only key. Empty preserves the saved key when the endpoint is unchanged.
@@ -6394,6 +6720,30 @@ export type PaginatedBotUserWritable = {
 
 export type PaginatedBucketWritable = {
     items?: Array<BucketWritable> | null;
+    page?: number;
+    per_page?: number;
+    total?: number;
+    total_pages?: number;
+};
+
+export type PaginatedCompassEntryBodyWritable = {
+    items?: Array<CompassEntryBodyWritable> | null;
+    page?: number;
+    per_page?: number;
+    total?: number;
+    total_pages?: number;
+};
+
+export type PaginatedCompassRevisionWritable = {
+    items?: Array<unknown> | null;
+    page?: number;
+    per_page?: number;
+    total?: number;
+    total_pages?: number;
+};
+
+export type PaginatedCompassSpaceBodyWritable = {
+    items?: Array<CompassSpaceBodyWritable> | null;
     page?: number;
     per_page?: number;
     total?: number;
@@ -9356,6 +9706,492 @@ export type BackgroundsUnsplashSearchResponses = {
 };
 
 export type BackgroundsUnsplashSearchResponse = BackgroundsUnsplashSearchResponses[keyof BackgroundsUnsplashSearchResponses];
+
+export type CompassEntriesDeleteData = {
+    body?: never;
+    path: {
+        entry: number;
+    };
+    query: {
+        revision: number;
+    };
+    url: '/compass/entries/{entry}';
+};
+
+export type CompassEntriesDeleteErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type CompassEntriesDeleteError = CompassEntriesDeleteErrors[keyof CompassEntriesDeleteErrors];
+
+export type CompassEntriesDeleteResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type CompassEntriesDeleteResponse = CompassEntriesDeleteResponses[keyof CompassEntriesDeleteResponses];
+
+export type CompassEntriesReadData = {
+    body?: never;
+    headers?: {
+        /**
+         * Succeeds if the server's resource matches one of the passed values.
+         */
+        'If-Match'?: Array<string> | null;
+        /**
+         * Succeeds if the server's resource matches none of the passed values. On writes, the special value * may be used to match any existing value.
+         */
+        'If-None-Match'?: Array<string> | null;
+        /**
+         * Succeeds if the server's resource date is more recent than the passed date.
+         */
+        'If-Modified-Since'?: string;
+        /**
+         * Succeeds if the server's resource date is older or the same as the passed date.
+         */
+        'If-Unmodified-Since'?: string;
+    };
+    path: {
+        entry: number;
+    };
+    query?: never;
+    url: '/compass/entries/{entry}';
+};
+
+export type CompassEntriesReadErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type CompassEntriesReadError = CompassEntriesReadErrors[keyof CompassEntriesReadErrors];
+
+export type CompassEntriesReadResponses = {
+    /**
+     * OK
+     */
+    200: CompassEntryBody;
+};
+
+export type CompassEntriesReadResponse = CompassEntriesReadResponses[keyof CompassEntriesReadResponses];
+
+export type PatchCompassEntriesReadData = {
+    body: Array<JsonPatchOp> | null;
+    path: {
+        entry: number;
+    };
+    query?: never;
+    url: '/compass/entries/{entry}';
+};
+
+export type PatchCompassEntriesReadErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type PatchCompassEntriesReadError = PatchCompassEntriesReadErrors[keyof PatchCompassEntriesReadErrors];
+
+export type PatchCompassEntriesReadResponses = {
+    /**
+     * OK
+     */
+    200: CompassEntryBody;
+};
+
+export type PatchCompassEntriesReadResponse = PatchCompassEntriesReadResponses[keyof PatchCompassEntriesReadResponses];
+
+export type CompassEntriesUpdateData = {
+    body: CompassEntryBodyWritable;
+    path: {
+        entry: number;
+    };
+    query?: never;
+    url: '/compass/entries/{entry}';
+};
+
+export type CompassEntriesUpdateErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type CompassEntriesUpdateError = CompassEntriesUpdateErrors[keyof CompassEntriesUpdateErrors];
+
+export type CompassEntriesUpdateResponses = {
+    /**
+     * OK
+     */
+    200: CompassEntryBody;
+};
+
+export type CompassEntriesUpdateResponse = CompassEntriesUpdateResponses[keyof CompassEntriesUpdateResponses];
+
+export type CompassRevisionsListData = {
+    body?: never;
+    path: {
+        entry: number;
+    };
+    query?: {
+        /**
+         * 1-based page number.
+         */
+        page?: number;
+        /**
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
+         */
+        per_page?: number;
+        /**
+         * Search query; filters the list to items matching this string.
+         */
+        q?: string;
+    };
+    url: '/compass/entries/{entry}/revisions';
+};
+
+export type CompassRevisionsListErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type CompassRevisionsListError = CompassRevisionsListErrors[keyof CompassRevisionsListErrors];
+
+export type CompassRevisionsListResponses = {
+    /**
+     * OK
+     */
+    200: PaginatedCompassRevision;
+};
+
+export type CompassRevisionsListResponse = CompassRevisionsListResponses[keyof CompassRevisionsListResponses];
+
+export type CompassRevisionsReadData = {
+    body?: never;
+    path: {
+        entry: number;
+        revision: number;
+    };
+    query?: never;
+    url: '/compass/entries/{entry}/revisions/{revision}';
+};
+
+export type CompassRevisionsReadErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type CompassRevisionsReadError = CompassRevisionsReadErrors[keyof CompassRevisionsReadErrors];
+
+export type CompassRevisionsReadResponses = {
+    /**
+     * OK
+     */
+    200: CompassEntryBody;
+};
+
+export type CompassRevisionsReadResponse = CompassRevisionsReadResponses[keyof CompassRevisionsReadResponses];
+
+export type CompassRevisionsRestoreData = {
+    body: CompassRevisionsRestoreRequestWritable;
+    path: {
+        entry: number;
+        revision: number;
+    };
+    query?: never;
+    url: '/compass/entries/{entry}/revisions/{revision}/restore';
+};
+
+export type CompassRevisionsRestoreErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type CompassRevisionsRestoreError = CompassRevisionsRestoreErrors[keyof CompassRevisionsRestoreErrors];
+
+export type CompassRevisionsRestoreResponses = {
+    /**
+     * OK
+     */
+    200: CompassEntryBody;
+};
+
+export type CompassRevisionsRestoreResponse = CompassRevisionsRestoreResponses[keyof CompassRevisionsRestoreResponses];
+
+export type CompassSpacesListData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * 1-based page number.
+         */
+        page?: number;
+        /**
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
+         */
+        per_page?: number;
+        /**
+         * Search query; filters the list to items matching this string.
+         */
+        q?: string;
+    };
+    url: '/compass/spaces';
+};
+
+export type CompassSpacesListErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type CompassSpacesListError = CompassSpacesListErrors[keyof CompassSpacesListErrors];
+
+export type CompassSpacesListResponses = {
+    /**
+     * OK
+     */
+    200: PaginatedCompassSpaceBody;
+};
+
+export type CompassSpacesListResponse = CompassSpacesListResponses[keyof CompassSpacesListResponses];
+
+export type CompassSpacesCreateData = {
+    body: CompassSpaceBodyWritable;
+    path?: never;
+    query?: never;
+    url: '/compass/spaces';
+};
+
+export type CompassSpacesCreateErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type CompassSpacesCreateError = CompassSpacesCreateErrors[keyof CompassSpacesCreateErrors];
+
+export type CompassSpacesCreateResponses = {
+    /**
+     * Created
+     */
+    201: CompassSpaceBody;
+};
+
+export type CompassSpacesCreateResponse = CompassSpacesCreateResponses[keyof CompassSpacesCreateResponses];
+
+export type CompassSpacesReadData = {
+    body?: never;
+    headers?: {
+        /**
+         * Succeeds if the server's resource matches one of the passed values.
+         */
+        'If-Match'?: Array<string> | null;
+        /**
+         * Succeeds if the server's resource matches none of the passed values. On writes, the special value * may be used to match any existing value.
+         */
+        'If-None-Match'?: Array<string> | null;
+        /**
+         * Succeeds if the server's resource date is more recent than the passed date.
+         */
+        'If-Modified-Since'?: string;
+        /**
+         * Succeeds if the server's resource date is older or the same as the passed date.
+         */
+        'If-Unmodified-Since'?: string;
+    };
+    path: {
+        space: number;
+    };
+    query?: never;
+    url: '/compass/spaces/{space}';
+};
+
+export type CompassSpacesReadErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type CompassSpacesReadError = CompassSpacesReadErrors[keyof CompassSpacesReadErrors];
+
+export type CompassSpacesReadResponses = {
+    /**
+     * OK
+     */
+    200: CompassSpaceBody;
+};
+
+export type CompassSpacesReadResponse = CompassSpacesReadResponses[keyof CompassSpacesReadResponses];
+
+export type PatchCompassSpacesReadData = {
+    body: Array<JsonPatchOp> | null;
+    path: {
+        space: number;
+    };
+    query?: never;
+    url: '/compass/spaces/{space}';
+};
+
+export type PatchCompassSpacesReadErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type PatchCompassSpacesReadError = PatchCompassSpacesReadErrors[keyof PatchCompassSpacesReadErrors];
+
+export type PatchCompassSpacesReadResponses = {
+    /**
+     * OK
+     */
+    200: CompassSpaceBody;
+};
+
+export type PatchCompassSpacesReadResponse = PatchCompassSpacesReadResponses[keyof PatchCompassSpacesReadResponses];
+
+export type CompassSpacesUpdateData = {
+    body: CompassSpaceBodyWritable;
+    path: {
+        space: number;
+    };
+    query?: never;
+    url: '/compass/spaces/{space}';
+};
+
+export type CompassSpacesUpdateErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type CompassSpacesUpdateError = CompassSpacesUpdateErrors[keyof CompassSpacesUpdateErrors];
+
+export type CompassSpacesUpdateResponses = {
+    /**
+     * OK
+     */
+    200: CompassSpaceBody;
+};
+
+export type CompassSpacesUpdateResponse = CompassSpacesUpdateResponses[keyof CompassSpacesUpdateResponses];
+
+export type CompassEntriesListData = {
+    body?: never;
+    path: {
+        space: number;
+    };
+    query?: {
+        /**
+         * 1-based page number.
+         */
+        page?: number;
+        /**
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
+         */
+        per_page?: number;
+        /**
+         * Search query; filters the list to items matching this string.
+         */
+        q?: string;
+        kind?: 'principle' | 'vision' | 'action' | 'memory' | 'note';
+        category?: string;
+        tag?: string;
+        state?: 'active' | 'archived' | 'trashed' | 'all';
+        pinned?: 'true' | 'false';
+        sort?: 'updated' | 'created' | 'title';
+    };
+    url: '/compass/spaces/{space}/entries';
+};
+
+export type CompassEntriesListErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type CompassEntriesListError = CompassEntriesListErrors[keyof CompassEntriesListErrors];
+
+export type CompassEntriesListResponses = {
+    /**
+     * OK
+     */
+    200: PaginatedCompassEntryBody;
+};
+
+export type CompassEntriesListResponse = CompassEntriesListResponses[keyof CompassEntriesListResponses];
+
+export type CompassEntriesCreateData = {
+    body: CompassEntryBodyWritable;
+    path: {
+        space: number;
+    };
+    query?: never;
+    url: '/compass/spaces/{space}/entries';
+};
+
+export type CompassEntriesCreateErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type CompassEntriesCreateError = CompassEntriesCreateErrors[keyof CompassEntriesCreateErrors];
+
+export type CompassEntriesCreateResponses = {
+    /**
+     * Created
+     */
+    201: CompassEntryBody;
+};
+
+export type CompassEntriesCreateResponse = CompassEntriesCreateResponses[keyof CompassEntriesCreateResponses];
+
+export type CompassTopicsListData = {
+    body?: never;
+    path: {
+        space: number;
+    };
+    query?: never;
+    url: '/compass/spaces/{space}/topics';
+};
+
+export type CompassTopicsListErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type CompassTopicsListError = CompassTopicsListErrors[keyof CompassTopicsListErrors];
+
+export type CompassTopicsListResponses = {
+    /**
+     * OK
+     */
+    200: CompassTopics;
+};
+
+export type CompassTopicsListResponse = CompassTopicsListResponses[keyof CompassTopicsListResponses];
 
 export type DriveListData = {
     body?: never;

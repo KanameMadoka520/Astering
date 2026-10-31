@@ -94,6 +94,17 @@
 					aria-labelledby="nav-group-records"
 				>
 					<li>
+						<RouterLink
+							data-tour="nav-compass"
+							:to="{name: 'compass.index'}"
+							:class="{'is-current': isCompassRoute}"
+							:aria-current="isCompassRoute ? 'page' : undefined"
+						>
+							<span class="menu-item-icon icon"><Icon icon="compass" /></span>
+							<span class="menu-item-label">{{ t('compass.title') }}</span>
+						</RouterLink>
+					</li>
+					<li>
 						<RouterLink :to="{name: 'projects.history'}">
 							<span class="menu-item-icon icon"><Icon icon="chart-gantt" /></span>
 							<span class="menu-item-label">{{ t('projectHistory.title') }}</span>
@@ -247,6 +258,7 @@ import {useI18n} from 'vue-i18n'
 const {t} = useI18n({useScope: 'global'})
 import {computed, nextTick, ref, watch} from 'vue'
 import {useEventListener} from '@vueuse/core'
+import {useRoute} from 'vue-router'
 import AronaAvatar from '@/components/ai/AronaAvatar.vue'
 import SystemStatus from '@/components/home/SystemStatus.vue'
 import TcyBrand from '@/components/home/TcyBrand.vue'
@@ -266,6 +278,9 @@ import {MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, useSidebarResize} from '@/composab
 
 const baseStore = useBaseStore()
 const projectList = useProjects()
+const route = useRoute()
+// Every Compass page (space, entry, editor) belongs to the one sidebar entry.
+const isCompassRoute = computed(() => String(route.name ?? '').startsWith('compass.'))
 const configStore = useConfigStore()
 
 const timeTrackingEnabled = computed(() => configStore.isProFeatureEnabled(PRO_FEATURE.TIME_TRACKING))

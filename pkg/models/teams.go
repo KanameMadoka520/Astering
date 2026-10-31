@@ -358,6 +358,11 @@ func (t *Team) Create(s *xorm.Session, a web.Auth) (err error) {
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /teams/{id} [delete]
 func (t *Team) Delete(s *xorm.Session, a web.Auth) (err error) {
+	if t.ID > 0 {
+		if err = deleteCompassSpaces(s, builder.Eq{"team_id": t.ID}); err != nil {
+			return err
+		}
+	}
 	memberIDs, err := teamMemberIDs(s, t.ID)
 	if err != nil {
 		return err

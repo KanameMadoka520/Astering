@@ -25,6 +25,13 @@ import UpcomingTasks from '@/views/tasks/ShowTasks.vue'
 
 import NotFoundComponent from '@/views/404.vue'
 
+// Compass is personal writing: link shares never reach it, even by a typed URL.
+function compassGuard() {
+	if (useAuthStore().authLinkShare) {
+		return {name: 'not-found'}
+	}
+}
+
 const router = createRouter({
 	history: createWebHistory(import.meta.env.BASE_URL),
 	scrollBehavior(to, from, savedPosition) {
@@ -242,6 +249,90 @@ const router = createRouter({
 			name: 'task.detail',
 			component: () => import('@/views/tasks/TaskDetailView.vue'),
 			props: route => ({ taskId: Number(route.params.id as string) }),
+		},
+		{
+			path: '/compass',
+			name: 'compass.index',
+			meta: {
+				title: 'compass.title',
+			},
+			beforeEnter: compassGuard,
+			component: () => import('@/views/compass/CompassHome.vue'),
+		},
+		{
+			path: '/compass/new',
+			name: 'compass.space.new',
+			meta: {
+				title: 'compass.create.title',
+			},
+			beforeEnter: compassGuard,
+			component: () => import('@/views/compass/CompassSpaceCreate.vue'),
+		},
+		{
+			path: '/compass/spaces/:spaceId(\\d+)',
+			name: 'compass.space',
+			meta: {
+				title: 'compass.title',
+			},
+			beforeEnter: compassGuard,
+			component: () => import('@/views/compass/CompassSpace.vue'),
+			props: route => ({spaceId: Number(route.params.spaceId as string)}),
+		},
+		{
+			path: '/compass/spaces/:spaceId(\\d+)/settings',
+			name: 'compass.space.settings',
+			meta: {
+				title: 'compass.settings.title',
+			},
+			beforeEnter: compassGuard,
+			component: () => import('@/views/compass/CompassSpaceSettings.vue'),
+			props: route => ({spaceId: Number(route.params.spaceId as string)}),
+		},
+		{
+			path: '/compass/spaces/:spaceId(\\d+)/write',
+			name: 'compass.entry.new',
+			meta: {
+				title: 'compass.editor.newTitle',
+			},
+			beforeEnter: compassGuard,
+			component: () => import('@/views/compass/CompassEntryEditor.vue'),
+			props: route => ({
+				spaceId: Number(route.params.spaceId as string),
+				entryId: 0,
+			}),
+		},
+		{
+			path: '/compass/entries/:entryId(\\d+)',
+			name: 'compass.entry',
+			meta: {
+				title: 'compass.title',
+			},
+			beforeEnter: compassGuard,
+			component: () => import('@/views/compass/CompassEntry.vue'),
+			props: route => ({entryId: Number(route.params.entryId as string)}),
+		},
+		{
+			path: '/compass/entries/:entryId(\\d+)/edit',
+			name: 'compass.entry.edit',
+			meta: {
+				title: 'compass.editor.editTitle',
+			},
+			beforeEnter: compassGuard,
+			component: () => import('@/views/compass/CompassEntryEditor.vue'),
+			props: route => ({
+				spaceId: 0,
+				entryId: Number(route.params.entryId as string),
+			}),
+		},
+		{
+			path: '/compass/entries/:entryId(\\d+)/history',
+			name: 'compass.entry.history',
+			meta: {
+				title: 'compass.history.title',
+			},
+			beforeEnter: compassGuard,
+			component: () => import('@/views/compass/CompassEntryHistory.vue'),
+			props: route => ({entryId: Number(route.params.entryId as string)}),
 		},
 		{
 			path: '/projects/history',
