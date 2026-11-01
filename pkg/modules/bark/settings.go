@@ -84,6 +84,9 @@ func aead() (cipher.AEAD, error) {
 	return cipher.NewGCM(block)
 }
 func read(uid int64) (r record, err error) {
+	if accountDeleted(uid) {
+		return r, ErrAccountDeleted
+	}
 	r.Settings = BarkSettings{ServerURL: "https://api.day.app", Scope: "reminders", Level: "timeSensitive", Language: "zh-CN"}
 	r.Deliveries = []BarkDelivery{}
 	b, err := os.ReadFile(path(uid))
@@ -108,6 +111,13 @@ func read(uid int64) (r record, err error) {
 	return r, err
 }
 func write(uid int64, r record) error {
+	return withAccountWrite(uid, func() error { return writeRecord(uid, r) })
+}
+
+func writeRecord(uid int64, r record) error {
+	if accountDeleted(uid) {
+		return ErrAccountDeleted
+	}
 	b, err := json.Marshal(r)
 	if err != nil {
 		return err
@@ -124,7 +134,7 @@ func write(uid int64, r record) error {
 	if err = os.MkdirAll(directory(), 0700); err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(directory(), ".push-*")
+	f, err := os.CreateTemp(directory(), fmt.Sprintf(".push-%d-*", uid))
 	if err != nil {
 		return err
 	}
@@ -183,7 +193,7 @@ func validate(s BarkSettings, old BarkSettings) (BarkSettings, error) {
 }
 func Save(uid int64, s BarkSettings) (BarkStatus, error) {
 	lock.Lock()
-	defer lock.Unlock()
+	defer func() { lock.Unlock(); cleanupRevokedAccount(uid) }()
 	r, e := read(uid)
 	if e != nil {
 		return BarkStatus{}, e

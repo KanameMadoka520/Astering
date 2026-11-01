@@ -36,6 +36,13 @@ import (
 
 // RegisterUserDeletionCron registers the cron job that actually removes users who are scheduled to delete.
 func RegisterUserDeletionCron() {
+	// Recover a commit interrupted by process shutdown without waiting for the
+	// next hourly tick. Storage and database engines are initialized before this.
+	go func() {
+		if err := RetryDeletedAccountCleanup(); err != nil {
+			log.Errorf("Could not recover deleted account cleanup: %s", err)
+		}
+	}()
 	err := cron.Schedule("0 * * * *", deleteUsers)
 	if err != nil {
 		log.Errorf("Could not register deletion cron: %s", err.Error())
@@ -43,6 +50,11 @@ func RegisterUserDeletionCron() {
 }
 
 func deleteUsers() {
+	// Recover committed deletions even if the process died before its callbacks.
+	if err := RetryDeletedAccountCleanup(); err != nil {
+		log.Errorf("Could not finish deleted account cleanup: %s", err)
+	}
+
 	s := db.NewSession()
 	users := []*user.User{}
 	err := s.Where(builder.Lt{"deletion_scheduled_at": time.Now()}).
@@ -208,6 +220,10 @@ func DeleteUser(s *xorm.Session, u *user.User) (err error) {
 	}
 
 	_, err = s.Where("id = ?", u.ID).Delete(&user.User{})
+	if err == nil {
+		userID := u.ID
+		events.OnCommit(s, func() error { return CleanupDeletedAccount(userID) })
+	}
 	return err
 }
 

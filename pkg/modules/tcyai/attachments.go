@@ -196,6 +196,9 @@ func decorateAttachmentsWithHistory(uid int64, c *Conversation, history []ChatTu
 
 // readAttachment reads an older encrypted chat file.
 func readAttachment(uid int64, id string) ([]byte, error) {
+	if accountDeleted(uid) {
+		return nil, ErrAccountDeleted
+	}
 	path, err := attachmentPath(uid, id)
 	if err != nil {
 		return nil, err

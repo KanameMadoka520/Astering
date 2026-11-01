@@ -127,24 +127,36 @@ func pushContent(s BarkSettings, n *notifications.DatabaseNotification) payload 
 	return p
 }
 func Test(ctx context.Context, uid int64) (BarkStatus, error) {
+	defer cleanupRevokedAccount(uid)
 	lock.Lock()
 	r, e := read(uid)
-	lock.Unlock()
 	if e != nil {
+		lock.Unlock()
 		return BarkStatus{}, e
 	}
 	if r.Settings.DeviceKey == "" {
+		lock.Unlock()
 		return BarkStatus{}, ErrInvalid
 	}
 	// Avoid accidental double clicks and test spam; delivery metadata survives browser refreshes.
 	for _, d := range r.Deliveries {
 		if d.NotificationID == 0 && time.Since(d.Updated) < 10*time.Second {
+			lock.Unlock()
 			return BarkStatus{}, ErrConflict
 		}
 	}
-	failure, _ := deliver(ctx, r.Settings, pushContent(r.Settings, nil))
+	requestCtx, job, e := beginDeliveryLocked(ctx, uid)
+	lock.Unlock()
+	if e != nil {
+		return BarkStatus{}, e
+	}
+	defer finishDelivery(job)
+	failure, _ := deliver(requestCtx, r.Settings, pushContent(r.Settings, nil))
 	lock.Lock()
 	defer lock.Unlock()
+	if !currentDeliveryLocked(job) {
+		return BarkStatus{}, ErrAccountDeleted
+	}
 	current, e := read(uid)
 	if e != nil {
 		return BarkStatus{}, e
@@ -231,6 +243,7 @@ func readableNotification(uid, id int64) (*notifications.DatabaseNotification, e
 	return n, nil
 }
 func processUser(ctx context.Context, uid int64) error {
+	defer cleanupRevokedAccount(uid)
 	lock.Lock()
 	r, e := read(uid)
 	if e != nil || !r.Settings.Enabled {
@@ -248,7 +261,12 @@ func processUser(ctx context.Context, uid int64) error {
 			return e
 		}
 	}
+	requestCtx, job, e := beginDeliveryLocked(ctx, uid)
 	lock.Unlock()
+	if e != nil {
+		return e
+	}
+	defer finishDelivery(job)
 	for _, d := range r.Deliveries {
 		if d.Status != "pending" || time.Now().Before(d.Next) {
 			continue
@@ -262,7 +280,7 @@ func processUser(ctx context.Context, uid int64) error {
 			d.Status = "skipped"
 		} else {
 			d.Attempts++
-			failure, retry := deliver(ctx, r.Settings, pushContent(r.Settings, n))
+			failure, retry := deliver(requestCtx, r.Settings, pushContent(r.Settings, n))
 			d.Error = failure
 			d.Status = "accepted"
 			if failure != "" {
@@ -274,6 +292,10 @@ func processUser(ctx context.Context, uid int64) error {
 			}
 		}
 		lock.Lock()
+		if !currentDeliveryLocked(job) {
+			lock.Unlock()
+			return ErrAccountDeleted
+		}
 		current, e := read(uid)
 		if e == nil && current.Settings.Revision == r.Settings.Revision && current.Settings.Enabled {
 			for i, old := range current.Deliveries {

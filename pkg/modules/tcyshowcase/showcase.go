@@ -150,6 +150,9 @@ func write(states map[string]State) error {
 func Load(uid int64) (State, error) {
 	lock.Lock()
 	defer lock.Unlock()
+	if ownerDeleted(uid) {
+		return State{}, ErrAccountDeleted
+	}
 	states, err := read()
 	if err != nil {
 		return State{}, err
@@ -187,6 +190,14 @@ func Save(uid int64, d Draft, publish bool) (State, error) {
 	}
 	lock.Lock()
 	defer lock.Unlock()
+	if ownerDeleted(uid) {
+		return State{}, ErrAccountDeleted
+	}
+	lease, err := acquireStoreLock()
+	if err != nil {
+		return State{}, err
+	}
+	defer lease.Close()
 	states, err := read()
 	if err != nil {
 		return State{}, err
@@ -204,11 +215,23 @@ func Save(uid int64, d Draft, publish bool) (State, error) {
 		s.PublishedAt = time.Now()
 	}
 	states[key] = s
-	return s, write(states)
+	err = models.WithAccountWrite(uid, func() error { return write(states) })
+	if errors.Is(err, models.ErrAccountCleanupUserMissing) {
+		err = ErrAccountDeleted
+	}
+	return s, err
 }
 func Unpublish(uid int64) (State, error) {
 	lock.Lock()
 	defer lock.Unlock()
+	if ownerDeleted(uid) {
+		return State{}, ErrAccountDeleted
+	}
+	lease, err := acquireStoreLock()
+	if err != nil {
+		return State{}, err
+	}
+	defer lease.Close()
 	states, err := read()
 	if err != nil {
 		return State{}, err
@@ -220,7 +243,11 @@ func Unpublish(uid int64) (State, error) {
 	}
 	s.Published = nil
 	states[key] = s
-	return s, write(states)
+	err = models.WithAccountWrite(uid, func() error { return write(states) })
+	if errors.Is(err, models.ErrAccountCleanupUserMissing) {
+		err = ErrAccountDeleted
+	}
+	return s, err
 }
 func Public(slug string) (int64, State, error) {
 	lock.Lock()
@@ -232,6 +259,9 @@ func Public(slug string) (int64, State, error) {
 	for id, s := range states {
 		if s.Published != nil && s.Published.Slug == slug {
 			uid, e := strconv.ParseInt(id, 10, 64)
+			if ownerDeleted(uid) {
+				continue
+			}
 			return uid, s, e
 		}
 	}

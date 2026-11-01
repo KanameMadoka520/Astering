@@ -255,6 +255,9 @@ func RunAgent(ctx context.Context, c Connection, state *AgentState, execute Exec
 		if err := ctx.Err(); err != nil {
 			return state.Result, err
 		}
+		if err := requireActiveAccount(state.OwnerID); err != nil {
+			return state.Result, err
+		}
 		if len(state.Pending) == 0 {
 			if state.Input.StopAtSegmentLimit && state.Result.Budget.Rounds >= state.Result.Budget.RoundLimit {
 				state.Result.Stage = "budget"

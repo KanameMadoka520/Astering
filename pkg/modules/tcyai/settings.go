@@ -85,6 +85,9 @@ func aead() (cipher.AEAD, error) {
 }
 
 func read(uid int64) (s Settings, err error) {
+	if accountDeleted(uid) {
+		return s, ErrAccountDeleted
+	}
 	s.Connections = []Connection{}
 	data, err := os.ReadFile(fileFor(uid))
 	if errors.Is(err, os.ErrNotExist) {
@@ -138,7 +141,7 @@ func (s Settings) Find(id, kind string) (Connection, error) {
 
 func Save(uid int64, s Settings) (Settings, error) {
 	settingsLock.Lock()
-	defer settingsLock.Unlock()
+	defer func() { settingsLock.Unlock(); cleanupRevokedAccount(uid) }()
 	old, err := read(uid)
 	if err != nil {
 		return s, err
@@ -179,6 +182,19 @@ func Save(uid int64, s Settings) (Settings, error) {
 }
 
 func writeSettings(uid int64, s Settings) (Settings, error) {
+	var result Settings
+	err := withAccountWrite(uid, func() error {
+		var writeErr error
+		result, writeErr = writeSettingsFile(uid, s)
+		return writeErr
+	})
+	return result, err
+}
+
+func writeSettingsFile(uid int64, s Settings) (Settings, error) {
+	if accountDeleted(uid) {
+		return s, ErrAccountDeleted
+	}
 	plain, err := json.Marshal(s)
 	if err != nil {
 		return s, err
@@ -196,7 +212,7 @@ func writeSettings(uid int64, s Settings) (Settings, error) {
 	if err = os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return s, err
 	}
-	f, err := os.CreateTemp(filepath.Dir(path), ".settings-*")
+	f, err := os.CreateTemp(filepath.Dir(path), fmt.Sprintf(".settings-%d-*", uid))
 	if err != nil {
 		return s, err
 	}

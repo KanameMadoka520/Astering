@@ -74,6 +74,9 @@ func driveOwner(uid int64) *user.User { return &user.User{ID: uid} }
 // storeDriveUpload saves validated chat bytes as a new file in the owner's drive. The
 // chat keeps its own 32 MiB limit instead of the instance upload limit, as before.
 func storeDriveUpload(uid int64, name string, data []byte) (int64, error) {
+	if accountDeleted(uid) {
+		return 0, ErrAccountDeleted
+	}
 	s := db.NewSession()
 	defer s.Close()
 	f, err := files.CreateWithMimeAndSession(s, bytes.NewReader(data), name, uint64(len(data)), driveOwner(uid), mimetype.Detect(data).String(), false)
@@ -145,6 +148,9 @@ func forgetDriveStat(uid, fileID int64) {
 // Without IDs it returns nil without touching the database (or allocating, which the
 // SSE snapshot path relies on).
 func driveStats(uid int64, ids []int64, cached bool) (map[int64]driveStat, error) {
+	if accountDeleted(uid) {
+		return nil, ErrAccountDeleted
+	}
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -182,6 +188,9 @@ func driveStats(uid int64, ids []int64, cached bool) (map[int64]driveStat, error
 	}
 	driveStatCache.Lock()
 	defer driveStatCache.Unlock()
+	if accountDeleted(uid) {
+		return nil, ErrAccountDeleted
+	}
 	if len(driveStatCache.entries) > 16384 {
 		for key, entry := range driveStatCache.entries {
 			if now.Sub(entry.at) >= driveStatTTL {
@@ -280,6 +289,9 @@ func cacheDriveBytes(key driveBytesKey, data []byte) {
 	}
 	driveBytesCache.Lock()
 	defer driveBytesCache.Unlock()
+	if accountDeleted(key.uid) {
+		return
+	}
 	now := time.Now()
 	expireDriveBytesLocked(now)
 	if slices.ContainsFunc(driveBytesCache.entries, func(entry driveBytesEntry) bool { return entry.key == key }) {

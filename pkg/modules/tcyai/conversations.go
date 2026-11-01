@@ -122,6 +122,9 @@ type liveConversation struct {
 	record     *conversationFile
 	cancel     context.CancelFunc
 	compacting bool
+	done       chan struct{}
+	watchDone  chan struct{}
+	storeRoot  string
 }
 
 var conversations = struct {
@@ -143,6 +146,9 @@ func conversationPath(uid int64, id string) (string, error) {
 	return filepath.Join(conversationDir(uid), id+".enc"), nil
 }
 func readConversation(uid int64, id string) (*conversationFile, error) {
+	if accountDeleted(uid) {
+		return nil, ErrAccountDeleted
+	}
 	path, err := conversationPath(uid, id)
 	if err != nil {
 		return nil, err
@@ -209,6 +215,13 @@ func readConversation(uid int64, id string) (*conversationFile, error) {
 	return &record, nil
 }
 func writeConversation(uid int64, record *conversationFile) error {
+	return withAccountWrite(uid, func() error { return writeConversationFile(uid, record) })
+}
+
+func writeConversationFile(uid int64, record *conversationFile) error {
+	if accountDeleted(uid) {
+		return ErrAccountDeleted
+	}
 	plain, err := json.Marshal(record)
 	if err != nil {
 		return err
@@ -278,6 +291,9 @@ func cloneConversationTurn(record *conversationFile, index int) ChatTurn {
 }
 
 func getConversationLocked(uid int64, id string) (*conversationFile, error) {
+	if accountDeleted(uid) {
+		return nil, ErrAccountDeleted
+	}
 	if live := conversations.live[uid]; live != nil && live.id == id {
 		return live.record, nil
 	}
@@ -686,9 +702,13 @@ func launchConversation(ctx context.Context, uid int64, record *conversationFile
 	} else {
 		jobCtx, cancel = context.WithCancel(baseCtx)
 	}
-	live := &liveConversation{uid: uid, id: record.ID, record: record, cancel: cancel}
+	live := &liveConversation{uid: uid, id: record.ID, record: record, cancel: cancel, done: make(chan struct{}), storeRoot: accountKey(uid).root}
 	conversations.live[uid] = live
+	live.watchDone = make(chan struct{})
+	go func() { defer close(live.watchDone); watchAccount(jobCtx, uid, cancel, live.done) }()
 	go func() {
+		defer close(live.done)
+		defer finishDeletedLiveAccount(uid, live)
 		defer cancel()
 		result, runErr := RunAgent(jobCtx, c, state, execute, prepare, func(state *AgentState) error {
 			snapshot := publicResult(state.Result)
@@ -698,6 +718,9 @@ func launchConversation(ctx context.Context, uid int64, record *conversationFile
 			}
 			conversations.Lock()
 			defer conversations.Unlock()
+			if !currentLiveAccountLocked(uid, live) {
+				return ErrAccountDeleted
+			}
 			record.Turns[index].Result = snapshot
 			if state.Streaming {
 				return nil
@@ -707,6 +730,9 @@ func launchConversation(ctx context.Context, uid int64, record *conversationFile
 		})
 		conversations.Lock()
 		defer conversations.Unlock()
+		if !currentLiveAccountLocked(uid, live) {
+			return
+		}
 		turn := &record.Turns[index]
 		turn.Result = publicResult(result)
 		finished := time.Now().UTC()
@@ -890,22 +916,39 @@ func CompactConversation(ctx context.Context, uid int64, id string, c Connection
 		cancel()
 		return Conversation{}, err
 	}
-	conversations.live[uid] = &liveConversation{uid: uid, id: id, record: record, cancel: cancel, compacting: true}
-	go compactConversationJob(requestCtx, cancel, uid, record, c, through)
+	live := &liveConversation{uid: uid, id: id, record: record, cancel: cancel, compacting: true, done: make(chan struct{}), storeRoot: accountKey(uid).root}
+	conversations.live[uid] = live
+	live.watchDone = make(chan struct{})
+	go func() { defer close(live.watchDone); watchAccount(requestCtx, uid, cancel, live.done) }()
+	go compactConversationJob(requestCtx, cancel, uid, record, c, through, live)
 	return cloneConversation(record), nil
 }
 
-func compactConversationJob(ctx context.Context, cancel context.CancelFunc, uid int64, record *conversationFile, c Connection, through int) {
+func compactConversationJob(ctx context.Context, cancel context.CancelFunc, uid int64, record *conversationFile, c Connection, through int, live *liveConversation) {
+	defer close(live.done)
+	defer finishDeletedLiveAccount(uid, live)
 	defer cancel()
+	conversations.Lock()
+	valid := currentLiveAccountLocked(uid, live) && live.record == record
+	conversations.Unlock()
+	if !valid {
+		return
+	}
 	started := time.Now()
 	summary, usage, model, err := summarizeConversation(ctx, record, c, through, func(text string, progress CompactProgress) {
 		conversations.Lock()
 		defer conversations.Unlock()
+		if !currentLiveAccountLocked(uid, live) {
+			return
+		}
 		record.CompactText = text
 		record.CompactProgress = cloneCompactProgress(&progress)
 	})
 	conversations.Lock()
 	defer conversations.Unlock()
+	if !currentLiveAccountLocked(uid, live) {
+		return
+	}
 	record.Compacting = false
 	record.CompactText = ""
 	if err != nil {
@@ -968,6 +1011,9 @@ func summarizeConversation(ctx context.Context, record *conversationFile, c Conn
 	progress := CompactProgress{Batches: len(bounded), Started: time.Now().UTC(), Endpoint: AgentEndpoint(c), Protocol: c.EffectiveProtocol(), Steps: []ModelStep{}}
 	for i, part := range bounded {
 		for attempt := 1; attempt <= 2; attempt++ {
+			if err = requireActiveAccount(record.OwnerID); err != nil {
+				return
+			}
 			if err = ctx.Err(); err != nil {
 				return
 			}

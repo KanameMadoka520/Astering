@@ -53,7 +53,7 @@ var ErrPreferencesConflict = errors.New("assistant preferences changed in anothe
 
 func SavePreferences(uid int64, p AssistantPreferences) (AssistantPreferences, error) {
 	settingsLock.Lock()
-	defer settingsLock.Unlock()
+	defer func() { settingsLock.Unlock(); cleanupRevokedAccount(uid) }()
 	s, err := read(uid)
 	if err != nil {
 		return p, err
