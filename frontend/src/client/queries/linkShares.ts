@@ -19,6 +19,8 @@ export function linkSharesQuery(projectId: number) {
 	return queryOptions({
 		queryKey: linkShareKeys.list(projectId),
 		queryFn: ({signal}) => fetchAllPages(async page => (await sharesList({path: {project: projectId}, query: {page}, signal})).data),
+		// The share page renders its own loading and error states.
+		meta: {handlesError: true},
 	})
 }
 

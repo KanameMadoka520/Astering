@@ -43,12 +43,20 @@ test.describe('Link shares', () => {
 		expect(created.password ?? '').toBe('')
 		const row = panel.getByRole('row').filter({hasText: 'Client link'})
 		await expect(row).toBeVisible()
+		await expect(row).toContainText('Password protected')
 		await row.getByRole('combobox').selectOption('2')
 		await expect(row.locator('input[readonly]')).toHaveValue(new RegExp(`/share/${created.hash}/auth\\?view=2$`))
 		await panel.getByRole('button', {name: 'Create a link share'}).click()
+		// Choosing Admin explains what an admin link hands out; going back removes the warning.
+		const adminWarning = 'Anyone with this link gets admin access to this project without signing in.'
+		await panel.locator('.link-share-form select').selectOption('2')
+		await expect(panel.locator('.link-share-form')).toContainText(adminWarning)
+		await panel.locator('.link-share-form select').selectOption('0')
+		await expect(panel.locator('.link-share-form')).not.toContainText(adminWarning)
 		await panel.locator('#linkShareName').fill('Second link')
 		await panel.getByRole('button', {name: 'Share', exact: true}).click()
 		await expect(panel.getByRole('row').filter({hasText: 'Second link'})).toBeVisible()
+		await expect(panel.getByRole('row').filter({hasText: 'Second link'})).toContainText('No password: anyone with the link')
 		await expect(row.getByRole('combobox')).toHaveValue('2')
 		const shareUrl = new URL(await row.locator('input[readonly]').inputValue())
 		expect(shareUrl.pathname + shareUrl.search).toBe(`/share/${created.hash}/auth?view=2`)
@@ -75,7 +83,9 @@ test.describe('Link shares', () => {
 		await page.reload()
 		await expect(row).toBeVisible()
 		await row.getByRole('button', {name: 'Remove a link share'}).click()
-		await page.locator('dialog[open]').getByRole('button', {name: 'Do it!'}).click()
+		const removeDialog = page.getByRole('dialog', {name: 'Delete the link “Client link”?'})
+		await expect(removeDialog).toContainText(`Anyone using this link loses access to “${project.title}”.`)
+		await removeDialog.locator('[data-cy="modalPrimary"]').click()
 		await expect(row).toHaveCount(0)
 		await expect(panel.getByRole('row').filter({hasText: 'Second link'})).toBeVisible()
 	})
@@ -264,6 +274,31 @@ test.describe('Link share: password protection', () => {
 		await expect(page.locator('h1.title')).toContainText(projects[0].title)
 		await expect(page.locator('.tasks')).toContainText(tasks[0].title)
 		await expect(page).toHaveURL(`/projects/${projects[0].id}/1#share-auth-token=${share.hash}`)
+	})
+})
+
+test.describe('Link share: sign-in problems', () => {
+	test.beforeEach(async ({page}) => {
+		await setupApiUrl(page)
+	})
+
+	test('says plainly that a deleted link no longer works', async ({page}) => {
+		await page.goto('/share/this-link-was-deleted/auth')
+
+		await expect(page.getByText('This link doesn\'t work anymore. Ask the person who shared it for a new one.')).toBeVisible()
+		await expect(page.getByRole('button', {name: 'Retry'})).toHaveCount(0)
+	})
+
+	test('opens the shared project, not a page saved from an earlier visit elsewhere', async ({page}) => {
+		const {share, project} = await prepareLinkShare()
+		await page.goto('/')
+		// An earlier logged-out visit to some other project left this behind.
+		await page.evaluate(() => localStorage.setItem('lastVisited', JSON.stringify({name: 'project.index', params: {projectId: '999'}, query: {}})))
+
+		await page.goto(`/share/${share.hash}/auth`)
+
+		await expect(page).toHaveURL(`/projects/${project.id}/1#share-auth-token=${share.hash}`)
+		expect(await page.evaluate(() => localStorage.getItem('lastVisited'))).toBeNull()
 	})
 })
 

@@ -40,11 +40,44 @@ test('tcymc public page requires preview, keeps drafts private and can be withdr
 		await expect(page.getByLabel('页面标题')).toHaveValue('仅草稿可见')
 		await visitor.reload()
 		await expect(visitor.getByRole('heading', {name: '我的公开日程'})).toBeVisible()
+		// Taking the page down is immediate for visitors, so it asks first.
 		await page.getByRole('button', {name: '撤下公开页面'}).click()
+		const takeDown = page.getByRole('dialog', {name: '撤下你的公开主页？'})
+		await expect(takeDown).toContainText('JSON 接口')
+		await takeDown.locator('[data-cy="modalPrimary"]').click()
 		await expect(page.getByText('尚未公开', {exact: true})).toBeVisible()
 		await visitor.reload()
 		await expect(visitor.getByRole('heading', {name: '页面未发布或暂时不可用'})).toBeVisible()
 	} finally {
 		await guest.close()
 	}
+})
+
+test('tcymc public page asks before leaving with unsaved changes', async ({authenticatedPage: page}) => {
+	await page.goto('/user/settings/showcase')
+	await expect(page.getByRole('heading', {name: '公开主页', exact: true})).toBeVisible()
+	await page.getByLabel('页面标题').fill('还没保存的标题')
+	await expect(page.getByText('有未保存的更改')).toBeVisible()
+
+	await page.locator('a[href="/user/settings/general"]').first().click()
+	const leave = page.getByRole('dialog', {name: '不保存就离开？'})
+	await expect(leave).toBeVisible()
+	await leave.getByRole('button', {name: '留在此页'}).click()
+	await expect(page).toHaveURL(/\/user\/settings\/showcase$/)
+	await expect(page.getByLabel('页面标题')).toHaveValue('还没保存的标题')
+
+	await page.locator('a[href="/user/settings/general"]').first().click()
+	await page.getByRole('dialog', {name: '不保存就离开？'}).getByRole('button', {name: '放弃更改并离开'}).click()
+	await expect(page).toHaveURL(/\/user\/settings\/general$/)
+})
+
+test('tcymc public page asks before replacing a written body with the template', async ({authenticatedPage: page}) => {
+	await page.goto('/user/settings/showcase')
+	const body = page.getByPlaceholder('写一段介绍，或者使用模板占位符嵌入公开日程。')
+	await body.fill('<h1>我自己写的</h1>')
+	await page.getByRole('button', {name: '插入日程模板'}).click()
+	const replace = page.getByRole('dialog', {name: '用模板替换页面正文？'})
+	await expect(replace).toBeVisible()
+	await replace.getByRole('button', {name: '取消'}).click()
+	await expect(body).toHaveValue('<h1>我自己写的</h1>')
 })

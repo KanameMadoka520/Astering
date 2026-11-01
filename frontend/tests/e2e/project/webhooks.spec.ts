@@ -47,7 +47,7 @@ test.describe('Project webhooks', () => {
 			r.url().match(/\/projects\/1\/webhooks\/\d+/) !== null && r.request().method() === 'DELETE',
 		)
 		await row.locator('.button.is-danger').click()
-		await page.locator('dialog[open] .modal-content .actions .button').filter({hasText: 'Do it!'}).click()
+		await page.locator('dialog[open] [data-cy="modalPrimary"]').click()
 		await deleted
 
 		await expect(row).toHaveCount(0)
@@ -100,7 +100,7 @@ test.describe('Project webhooks', () => {
 			r.url().match(/\/projects\/1\/webhooks\/\d+/) !== null && r.request().method() === 'DELETE',
 		)
 		await rows.first().locator('.button.is-danger').click()
-		await page.locator('dialog[open] .modal-content .actions .button').filter({hasText: 'Do it!'}).click()
+		await page.locator('dialog[open] [data-cy="modalPrimary"]').click()
 		await deleted
 
 		await expect(rows).toHaveCount(pageSize)

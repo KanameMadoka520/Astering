@@ -1,4 +1,4 @@
-import {QueryClient} from '@tanstack/vue-query'
+import {QueryClient, QueryObserver} from '@tanstack/vue-query'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 import {projectKeys} from './projects'
 
@@ -76,5 +76,30 @@ describe('project shares', () => {
 		await client.getMutationCache().build(client, deleteProjectTeamShareMutationOptions()).execute({projectId: 1, teamId: 7})
 		expect(client.getQueryData(projectShareKeys.users(1))).toEqual([{username: 'alex'}])
 		expect(client.getQueryData(projectShareKeys.teams(1))).toEqual([{id: 8}])
+	})
+
+	it('refreshes your project list after you remove your own share, without refetching the project into a 403', async () => {
+		const listFn = vi.fn().mockResolvedValue([])
+		const detailFn = vi.fn().mockResolvedValue({id: 1})
+		const sharesFn = vi.fn().mockResolvedValue([])
+		// Active observers stand in for the open sidebar, project page and share list.
+		const observers = [
+			new QueryObserver(client, {queryKey: projectKeys.list(), queryFn: listFn, staleTime: Infinity}),
+			new QueryObserver(client, {queryKey: projectKeys.detail(1), queryFn: detailFn, staleTime: Infinity}),
+			new QueryObserver(client, {queryKey: projectShareKeys.users(1), queryFn: sharesFn, staleTime: Infinity}),
+		]
+		const unsubscribe = observers.map(observer => observer.subscribe(() => {}))
+		await vi.waitFor(() => expect(listFn).toHaveBeenCalledTimes(1))
+		await vi.waitFor(() => expect(detailFn).toHaveBeenCalledTimes(1))
+		await vi.waitFor(() => expect(sharesFn).toHaveBeenCalledTimes(1))
+		sdk.projectUsersDelete.mockResolvedValue({})
+
+		await client.getMutationCache().build(client, deleteProjectUserShareMutationOptions()).execute({projectId: 1, username: 'me', self: true})
+
+		expect(listFn).toHaveBeenCalledTimes(2)
+		expect(detailFn).toHaveBeenCalledTimes(1)
+		expect(sharesFn).toHaveBeenCalledTimes(1)
+		expect(client.getQueryState(projectKeys.detail(1))?.isInvalidated).toBe(true)
+		unsubscribe.forEach(stop => stop())
 	})
 })

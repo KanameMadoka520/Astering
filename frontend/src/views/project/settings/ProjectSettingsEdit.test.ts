@@ -33,7 +33,13 @@ vi.mock('@/composables/useProject', () => ({
 }))
 
 vi.mock('@/composables/useProjects', () => ({
-	useProjects: () => ({projects: state.projects}),
+	useProjects: () => ({
+		projects: state.projects,
+		get projectsArray() {
+			return Object.values(state.projects ?? {})
+		},
+		isLoading: false,
+	}),
 }))
 
 vi.mock('@/stores/base', () => ({
@@ -59,7 +65,7 @@ import ProjectSettingsEdit from './ProjectSettingsEdit.vue'
 
 describe('ProjectSettingsEdit', () => {
 	beforeEach(() => {
-		state.project = ref(normalizeProject({id: 101, parent_project_id: 100}))
+		state.project = ref(normalizeProject({id: 101, parent_project_id: 100, max_permission: 2}))
 		state.projects = reactive({})
 		state.savedParentProjectIds = []
 	})
@@ -131,7 +137,7 @@ describe('ProjectSettingsEdit', () => {
 		expect(projectSearch.props('modelValue')).toMatchObject({id: 200})
 
 		await wrapper.setProps({projectId: 102})
-		state.project!.value = normalizeProject({id: 102, parent_project_id: 300})
+		state.project!.value = normalizeProject({id: 102, parent_project_id: 300, max_permission: 2})
 		await nextTick()
 		expect(projectSearch.props('modelValue')).toBeNull()
 
@@ -163,7 +169,7 @@ describe('ProjectSettingsEdit', () => {
 		await nextTick()
 
 		const routeChange = wrapper.setProps({projectId: 102})
-		state.project!.value = normalizeProject({id: 102, parent_project_id: 100})
+		state.project!.value = normalizeProject({id: 102, parent_project_id: 100, max_permission: 2})
 		await routeChange
 
 		expect(projectSearch.props('modelValue')).toMatchObject({

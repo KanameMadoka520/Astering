@@ -1,6 +1,9 @@
 <template>
 	<div class="teams-page is-max-width-desktop">
-		<PageHeader :title="$t('team.title')">
+		<PageHeader
+			:title="$t('team.title')"
+			:description="$t('team.description')"
+		>
 			<template #actions>
 				<XButton
 					:to="{name:'teams.create'}"

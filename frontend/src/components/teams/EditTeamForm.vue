@@ -9,8 +9,8 @@
 				v-model="teamDraft.name"
 				v-focus
 				:label="$t('team.attributes.name')"
-				:disabled="membersLoading"
-				:loading="membersLoading"
+				:disabled="loading"
+				:loading="loading"
 				:placeholder="$t('team.attributes.namePlaceholder')"
 				type="text"
 				:error="showErrorTeamnameRequired && teamDraft.name === '' ? $t('team.attributes.nameRequired') : null"
@@ -21,7 +21,7 @@
 			>
 				<FancyCheckbox
 					v-model="teamDraft.is_public"
-					:disabled="membersLoading || undefined"
+					:disabled="loading || undefined"
 					:class="{ 'disabled': loading }"
 				>
 					{{ $t('team.attributes.isPublicDescription') }}
@@ -60,8 +60,8 @@ import type {Team, TeamWritable} from '@/client/generated'
 
 const props = defineProps<{
 	team: Team
+	/** A save or delete of the team is running; member changes don't lock the form. */
 	loading: boolean
-	membersLoading: boolean
 }>()
 
 const emit = defineEmits<{
@@ -75,7 +75,7 @@ const showErrorTeamnameRequired = ref(false)
 
 function save() {
 	showErrorTeamnameRequired.value = teamDraft.value.name === ''
-	if (showErrorTeamnameRequired.value) return
+	if (showErrorTeamnameRequired.value || props.loading) return
 	emit('save', teamDraft.value)
 }
 </script>

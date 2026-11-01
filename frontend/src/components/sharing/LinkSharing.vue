@@ -5,6 +5,9 @@
 		</h3>
 		<p class="sharing-description">
 			{{ $t('project.share.links.explanation') }}
+			<template v-if="hasSubprojects">
+				{{ $t('project.share.links.onlyThisProject') }}
+			</template>
 		</p>
 
 		<div class="sharables-project">
@@ -22,29 +25,43 @@
 			<form
 				v-else
 				class="link-share-form"
-				@submit.prevent="add(projectId)"
+				@submit.prevent="add(project.id)"
 			>
 				<div class="link-share-fields">
-					<FormField :label="$t('project.share.permission.title')">
-						<template #default="{ id }">
-							<div class="select">
-								<select
-									:id="id"
-									v-model="draft.permission"
-								>
-									<option :value="PERMISSIONS.READ">
-										{{ $t('project.share.permission.read') }}
-									</option>
-									<option :value="PERMISSIONS.READ_WRITE">
-										{{ $t('project.share.permission.readWrite') }}
-									</option>
-									<option :value="PERMISSIONS.ADMIN">
-										{{ $t('project.share.permission.admin') }}
-									</option>
-								</select>
-							</div>
-						</template>
-					</FormField>
+					<div class="link-share-field">
+						<FormField :label="$t('project.share.permission.title')">
+							<template #default="{ id }">
+								<div class="select">
+									<select
+										:id="id"
+										v-model="draft.permission"
+										:aria-describedby="draft.permission === PERMISSIONS.ADMIN ? adminHelpId : undefined"
+									>
+										<option :value="PERMISSIONS.READ">
+											{{ $t('project.share.permission.read') }}
+										</option>
+										<option :value="PERMISSIONS.READ_WRITE">
+											{{ $t('project.share.permission.readWrite') }}
+										</option>
+										<option :value="PERMISSIONS.ADMIN">
+											{{ $t('project.share.permission.admin') }}
+										</option>
+									</select>
+								</div>
+							</template>
+						</FormField>
+						<p
+							v-if="draft.permission === PERMISSIONS.ADMIN"
+							:id="adminHelpId"
+							class="help link-share-admin-warning"
+						>
+							<Icon
+								icon="exclamation-circle"
+								aria-hidden="true"
+							/>
+							{{ $t('project.share.links.adminWarning') }}
+						</p>
+					</div>
 					<div class="link-share-field">
 						<FormField
 							id="linkShareName"
@@ -101,6 +118,7 @@
 			<div
 				v-if="linkShares.length > 0"
 				class="has-horizontal-overflow"
+				:aria-busy="sharesQuery.isFetching.value || undefined"
 			>
 				<table class="sharing-table">
 					<thead>
@@ -130,6 +148,14 @@
 										<span class="link-share-permission">
 											<Icon :icon="permissionIcon(s.permission)" />
 											{{ permissionLabel(s.permission) }}
+										</span>
+										<!-- Only the two types the server reports for certain; an unknown type claims nothing. -->
+										<span
+											v-if="s.sharing_type === SHARING_TYPE.WITH_PASSWORD || s.sharing_type === SHARING_TYPE.WITHOUT_PASSWORD"
+											class="link-share-password"
+										>
+											<Icon :icon="s.sharing_type === SHARING_TYPE.WITH_PASSWORD ? 'lock' : 'globe'" />
+											{{ s.sharing_type === SHARING_TYPE.WITH_PASSWORD ? $t('project.share.links.passwordProtected') : $t('project.share.links.noPassword') }}
 										</span>
 										<span>
 											<i18n-t
@@ -191,73 +217,118 @@
 									icon="trash-alt"
 									:shadow="false"
 									:aria-label="$t('project.share.links.remove')"
-									@click="
-										() => {
-											linkIdToDelete = s.id
-											showDeleteModal = true
-										}
-									"
+									@click="openRemoval(s)"
 								/>
 							</td>
 						</tr>
 					</tbody>
 				</table>
 			</div>
+			<!-- Rows from an earlier load stay, but they may be out of date. -->
+			<LoadError
+				v-if="linkShares.length > 0 && sharesStatus === 'error'"
+				:message="$t('project.share.refreshError')"
+				:retry="() => sharesQuery.refetch()"
+			/>
+			<div
+				v-else-if="linkShares.length === 0 && sharesStatus === 'pending'"
+				class="link-share-skeleton"
+				role="status"
+			>
+				<span class="is-sr-only">{{ $t('project.share.links.loading') }}</span>
+				<span
+					class="link-share-skeleton__row"
+					aria-hidden="true"
+				/>
+			</div>
+			<LoadError
+				v-else-if="linkShares.length === 0 && sharesStatus === 'error'"
+				:message="$t('project.share.links.loadError')"
+				:retry="() => sharesQuery.refetch()"
+			/>
+			<p
+				v-else-if="linkShares.length === 0"
+				class="link-share-empty"
+			>
+				{{ $t('project.share.links.empty') }}
+			</p>
 		</div>
 
 		<Modal
-			:enabled="showDeleteModal"
+			:enabled="shareToDelete !== null"
+			:loading="deleteMutation.isPending.value"
+			:confirm-label="$t('project.share.links.removeConfirm')"
 			danger
-			@close="showDeleteModal = false"
-			@submit="remove(projectId)"
+			@close="shareToDelete = null"
+			@submit="remove()"
 		>
 			<template #header>
-				<span>{{ $t('project.share.links.remove') }}</span>
+				<span>{{ removalTitle }}</span>
 			</template>
 
 			<template #text>
-				<p>{{ $t('project.share.links.removeText') }}</p>
+				<p>{{ $t('project.share.links.removeText', {project: project.title}) }}</p>
 			</template>
 		</Modal>
 	</section>
 </template>
 
 <script setup lang="ts">
-import {ref, watch, computed, useId} from 'vue'
+import {ref, watch, computed, useId, type Ref} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {useQuery} from '@tanstack/vue-query'
 import type {LinkSharing} from '@/client/generated'
 import {linkSharesQuery, createLinkShareDraft, useCreateLinkShareMutation, useDeleteLinkShareMutation} from '@/client/queries/linkShares'
+import type {ProjectResponse} from '@/client/queries/projects'
 import {PERMISSIONS} from '@/constants/permissions'
 import FormField from '@/components/input/FormField.vue'
+import LoadError from '@/components/misc/state/LoadError.vue'
+import {sharePermissionIcon as permissionIcon, sharePermissionKey} from '@/components/sharing/sharePermission'
+import {queryStatus} from '@/components/sharing/useProjectAccess'
 import {useCopyToClipboard} from '@/composables/useCopyToClipboard'
 import {getDisplayName} from '@/helpers/user'
 import {useConfigStore} from '@/stores/config'
 import {useProjectViews} from '@/composables/useProjectViews'
 
-const props = withDefaults(defineProps<{projectId?: number}>(), {projectId: 0})
+const props = withDefaults(defineProps<{
+	project: ProjectResponse
+	hasSubprojects?: boolean
+}>(), {hasSubprojects: false})
 const {t} = useI18n({useScope: 'global'})
-const sharesQuery = useQuery(computed(() => ({...linkSharesQuery(props.projectId), enabled: props.projectId > 0})))
+const projectId = computed(() => props.project.id)
+const sharesQuery = useQuery(computed(() => ({...linkSharesQuery(projectId.value), enabled: projectId.value > 0})))
+const sharesStatus = computed(() => queryStatus(sharesQuery.data.value, sharesQuery.isError.value, sharesQuery.isFetching.value))
 type VisibleShare = LinkSharing & Required<Pick<LinkSharing, 'id' | 'hash'>>
 const linkShares = computed(() => (sharesQuery.data.value ?? []).filter((share): share is VisibleShare => typeof share.id === 'number' && typeof share.hash === 'string'))
 const createMutation = useCreateLinkShareMutation()
 const deleteMutation = useDeleteLinkShareMutation()
 const isMutating = computed(() => createMutation.isPending.value || deleteMutation.isPending.value)
 const draft = ref(createLinkShareDraft())
-const showDeleteModal = ref(false)
-const linkIdToDelete = ref(0)
+const shareToDelete = ref(null) as Ref<VisibleShare | null>
+// Kept after closing so the dialog title doesn't blank during its fade-out.
+const removalSubject = ref(null) as Ref<VisibleShare | null>
+const removalTitle = computed(() => {
+	const share = removalSubject.value
+	if (!share) return ''
+	return share.name
+		? t('project.share.links.removeHeader', {name: share.name})
+		: t('project.share.links.removeHeaderUnnamed', {permission: t(sharePermissionKey(share.permission))})
+})
 const showNewForm = ref(false)
-const {views: availableViews} = useProjectViews(() => props.projectId)
+const {views: availableViews} = useProjectViews(projectId)
 const copy = useCopyToClipboard()
 const pickedViews = ref<Record<number, number>>({})
 const configStore = useConfigStore()
 const nameHelpId = useId()
 const passwordHelpId = useId()
+const adminHelpId = useId()
+// LinkSharing.sharing_type, from the generated API docs.
+const SHARING_TYPE = {WITHOUT_PASSWORD: 1, WITH_PASSWORD: 2} as const
 
-watch(() => props.projectId, () => {
+watch(projectId, () => {
 	draft.value = createLinkShareDraft()
 	showNewForm.value = false
-	showDeleteModal.value = false
+	shareToDelete.value = null
 }, {flush: 'sync'})
 
 function closeForm() {
@@ -265,38 +336,48 @@ function closeForm() {
 	showNewForm.value = false
 }
 
-async function add(projectId: number) {
-	if (projectId <= 0 || isMutating.value) return
+// Synchronous guards: isPending only flips after the next render, too late for a double click.
+let adding = false
+let removing = false
+
+async function add(targetProjectId: number) {
+	if (targetProjectId <= 0 || isMutating.value || adding) return
+	adding = true
 	try {
-		await createMutation.mutateAsync({projectId, share: draft.value})
+		await createMutation.mutateAsync({projectId: targetProjectId, share: draft.value})
 	} catch {
 		return
+	} finally {
+		adding = false
 	}
-	if (props.projectId === projectId) {
+	if (projectId.value === targetProjectId) {
 		draft.value = createLinkShareDraft()
 		showNewForm.value = false
 	}
 }
 
-function remove(projectId: number) {
-	if (isMutating.value) return
-	deleteMutation.mutate({projectId, id: linkIdToDelete.value}, {
-		onSettled: () => {
-			if (props.projectId === projectId) showDeleteModal.value = false
-		},
-	})
+function openRemoval(share: VisibleShare) {
+	removalSubject.value = share
+	shareToDelete.value = share
 }
 
-function permissionIcon(permission?: number) {
-	if (permission === PERMISSIONS.ADMIN) return 'lock'
-	return permission === PERMISSIONS.READ_WRITE ? 'pen' : 'users'
+// The dialog stays open on failure: the toast says what went wrong and the link can be removed again or kept.
+async function remove() {
+	const share = shareToDelete.value
+	if (!share || isMutating.value || removing) return
+	removing = true
+	try {
+		await deleteMutation.mutateAsync({projectId: projectId.value, id: share.id})
+	} catch {
+		return
+	} finally {
+		removing = false
+	}
+	if (shareToDelete.value === share) shareToDelete.value = null
 }
 
 function permissionLabel(permission?: number) {
-	if (permission === PERMISSIONS.ADMIN) return t('project.share.permission.admin')
-	return permission === PERMISSIONS.READ_WRITE
-		? t('project.share.permission.readWrite')
-		: t('project.share.permission.read')
+	return t(sharePermissionKey(permission))
 }
 
 // A focused read-only link is selected whole, so it can be copied by hand when the clipboard API is unavailable.
@@ -357,6 +438,20 @@ const shareLinks = computed(() => Object.fromEntries(linkShares.value.map(share 
 
 .link-share-create {
 	justify-self: start;
+}
+
+.sharing-section .link-share-empty {
+	margin: 0;
+	color: var(--text-tertiary);
+	font-size: var(--text-sm);
+}
+
+.link-share-skeleton__row {
+	display: block;
+	block-size: 2.5rem;
+	inline-size: 60%;
+	border-radius: var(--radius-xs);
+	background: var(--surface-active);
 }
 
 .link-share-form {
@@ -449,10 +544,23 @@ const shareLinks = computed(() => Object.fromEntries(linkShares.value.map(share 
 	font-size: var(--text-sm);
 }
 
-.link-share-permission {
+.link-share-permission,
+.link-share-password {
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-1);
+}
+
+.sharing-section .link-share-admin-warning {
+	display: flex;
+	align-items: baseline;
+	gap: var(--space-2);
+	margin-block-start: var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	border-inline-start: 3px solid var(--warning);
+	border-radius: var(--radius-sm);
+	background: var(--tint-warning);
+	color: var(--text-primary);
 }
 
 .link-share-controls {

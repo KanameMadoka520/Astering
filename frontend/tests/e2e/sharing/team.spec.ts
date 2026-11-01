@@ -6,15 +6,20 @@ import {UserFactory} from '../../factories/user'
 import {createProjects} from '../project/prepareProjects'
 import {login, setupApiUrl} from '../../support/authenticateUser'
 import {serverPageSize} from '../../support/pagination'
+import {createCompassSpace} from '../compass/compassApi'
 
 test.describe('Team', () => {
 	test('Creates a new team', async ({authenticatedPage: page}) => {
 		await page.goto('/teams')
+		// Both pages say up front that a team on its own shares nothing.
+		const sharesNothing = 'Creating one shares nothing; you choose which projects and Compass spaces to share with it.'
+		await expect(page.locator('.page-header__description')).toContainText(sharesNothing)
 
 		const newTeamName = 'New Team'
 
 		await page.locator('a.button').filter({hasText: 'Create a team'}).click()
 		await expect(page).toHaveURL(/\/teams\/new/)
+		await expect(page.getByText(sharesNothing)).toBeVisible()
 		await expect(page.locator('.card-header-title')).toContainText('Create a team')
 		await page.locator('input.input').fill(newTeamName)
 		await page.locator('.button').filter({hasText: 'Create'}).click()
@@ -170,13 +175,65 @@ test.describe('Team', () => {
 		await expect(newMemberRow).toContainText('Member')
 		await expect(page.locator('input#teamtext')).toHaveValue('Unsaved team name')
 		await newMemberRow.getByRole('button', {name: 'Make Admin', exact: true}).click()
+		// Making someone an admin hands them the team, so it asks first.
+		const promoteDialog = page.getByRole('dialog', {name: `Make ${users[1].username} an admin?`})
+		await promoteDialog.locator('[data-cy="modalPrimary"]').click()
+		await expect(promoteDialog).toHaveCount(0)
 		await expect(newMemberRow.getByRole('cell', {name: 'Admin', exact: true})).toBeVisible()
 		await page.reload()
 		await expect(newMemberRow.getByRole('cell', {name: 'Admin', exact: true})).toBeVisible()
 		await newMemberRow.getByRole('button', {name: 'Remove a user from the team'}).click()
-		await page.locator('dialog[open]').getByRole('button', {name: 'Do it!'}).click()
+		await page.getByRole('dialog', {name: new RegExp(`^Remove ${users[1].username} from `)})
+			.locator('[data-cy="modalPrimary"]').click()
 		await expect(newMemberRow).toHaveCount(0)
 		await expect(page.locator('.global-notification')).toContainText('Success')
+	})
+
+	test('Names the Compass spaces that are deleted with the team', async ({authenticatedPage: page, apiContext, userToken, currentUser}) => {
+		await TeamFactory.create(1, {id: 1, name: 'Night Watch', created_by_id: currentUser.id})
+		await TeamMemberFactory.create(1, {team_id: 1, user_id: currentUser.id, admin: true})
+		await createCompassSpace(apiContext, userToken, {title: 'Watch log', team_id: 1})
+		await createCompassSpace(apiContext, userToken, {title: 'Private harbour'})
+
+		await page.goto('/teams/1/edit')
+		await page.getByRole('button', {name: 'Delete the team'}).click()
+		const dialog = page.getByRole('dialog', {name: 'Delete “Night Watch”?'})
+		await expect(dialog).toContainText('Every Compass space that belongs to this team is deleted permanently with it')
+		await expect(dialog).toContainText('Spaces you can open that would be deleted:')
+		await expect(dialog).toContainText('Watch log')
+		await expect(dialog).not.toContainText('Private harbour')
+		await expect(dialog).toContainText('Members keep their accounts.')
+		await dialog.getByRole('button', {name: 'Cancel', exact: true}).click()
+		await expect(dialog).toHaveCount(0)
+	})
+
+	test('Keeps the delete dialog open when deleting the team fails', async ({authenticatedPage: page}) => {
+		await TeamMemberFactory.create(1, {team_id: 1, admin: true})
+		await TeamFactory.create(1, {id: 1, name: 'Night Watch'})
+		await page.route('**/teams/1', route => route.request().method() === 'DELETE'
+			? route.fulfill({status: 500, contentType: 'application/json', body: JSON.stringify({message: 'Internal Server Error'})})
+			: route.fallback())
+
+		await page.goto('/teams/1/edit')
+		await page.getByRole('button', {name: 'Delete the team'}).click()
+		const dialog = page.getByRole('dialog', {name: 'Delete “Night Watch”?'})
+		// Nothing is sent before the permanent Compass deletion is acknowledged.
+		await dialog.locator('[data-cy="modalPrimary"]').click()
+		await expect(dialog.getByRole('alert')).toContainText('Tick the box above to confirm.')
+		await dialog.getByText('I understand that the team\'s Compass spaces').click()
+		await dialog.locator('[data-cy="modalPrimary"]').click()
+		await expect(page.locator('.global-notification')).toBeVisible()
+		await expect(dialog).toBeVisible()
+		await expect(page).toHaveURL(/\/teams\/1\/edit/)
+	})
+
+	test('Offers deleting instead of leaving to the only member', async ({authenticatedPage: page}) => {
+		await TeamMemberFactory.create(1, {team_id: 1, admin: true})
+		await TeamFactory.create(1, {id: 1})
+
+		await page.goto('/teams/1/edit')
+		await expect(page.getByText('You\'re the only member of this team. To leave it, delete the team.')).toBeVisible()
+		await expect(page.getByRole('button', {name: 'Leave team'})).toHaveCount(0)
 	})
 
 	test('Clears member search results when the search input is cleared', async ({authenticatedPage: page}) => {
@@ -265,8 +322,8 @@ test.describe('Team permission tiers on shared projects', () => {
 		const deleteRequest = page.waitForResponse(r =>
 			r.url().includes('/projects/1/teams/') && r.request().method() === 'DELETE',
 		)
-		await page.getByRole('dialog', {name: 'Remove a team from the project'})
-			.getByRole('button', {name: 'Do it!'}).click()
+		await page.getByRole('dialog', {name: `Remove ${team.name}?`})
+			.locator('[data-cy="modalPrimary"]').click()
 		await deleteRequest
 
 		await expect(teamRow).toHaveCount(0)

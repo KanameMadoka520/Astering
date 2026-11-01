@@ -5,6 +5,9 @@
 		:primary-disabled="team.name === ''"
 		@create="createTeam()"
 	>
+		<p class="team-create-help">
+			{{ $t('team.description') }}
+		</p>
 		<FormField
 			id="teamName"
 			v-model="team.name"
@@ -97,3 +100,11 @@ async function createTeam() {
 	})
 }
 </script>
+
+<style lang="scss" scoped>
+.team-create-help {
+	margin: 0 0 var(--space-3);
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+</style>

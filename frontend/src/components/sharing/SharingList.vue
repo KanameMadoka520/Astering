@@ -1,10 +1,15 @@
 <template>
-	<section class="sharing-section">
+	<section
+		class="sharing-section"
+		:aria-busy="status === 'pending' || undefined"
+	>
 		<h3 class="sharing-title">
 			{{ $t('project.share.userTeam.shared', {type: typeNames}) }}
 		</h3>
+		<slot name="help" />
+		<!-- Adding waits for the list: it filters out people who already have a direct share. -->
 		<div
-			v-if="userIsAdmin"
+			v-if="userIsAdmin && isListed(status)"
 			class="field has-addons sharing-add"
 		>
 			<p
@@ -71,8 +76,8 @@
 						/>
 						<td class="type">
 							<span class="sharing-permission">
-								<Icon :icon="permissionIcon(share.permission)" />
-								{{ permissionLabel(share.permission) }}
+								<Icon :icon="sharePermissionIcon(share.permission)" />
+								{{ $t(sharePermissionKey(share.permission)) }}
 							</span>
 						</td>
 						<td
@@ -113,7 +118,7 @@
 									icon="trash-alt"
 									:shadow="false"
 									:aria-label="$t('project.share.userTeam.remove', {type: typeName})"
-									@click="shareToDelete = share"
+									@click="openRemoval(share)"
 								/>
 							</div>
 						</td>
@@ -121,9 +126,35 @@
 				</tbody>
 			</table>
 		</div>
+		<!-- Rows from an earlier load stay, but they may be out of date. -->
+		<LoadError
+			v-if="identifiedShares.length > 0 && status === 'error'"
+			:message="$t('project.share.refreshError')"
+			:retry="retry"
+		/>
+
+		<div
+			v-else-if="identifiedShares.length === 0 && status === 'pending'"
+			class="sharing-skeleton"
+			role="status"
+		>
+			<span class="is-sr-only">{{ $t('project.share.userTeam.loading') }}</span>
+			<span
+				v-for="row in 2"
+				:key="row"
+				class="sharing-skeleton__row"
+				aria-hidden="true"
+			/>
+		</div>
+
+		<LoadError
+			v-else-if="identifiedShares.length === 0 && status === 'error'"
+			:message="$t('project.share.userTeam.loadError')"
+			:retry="retry"
+		/>
 
 		<p
-			v-else
+			v-else-if="identifiedShares.length === 0"
 			class="sharing-empty"
 		>
 			{{ $t('project.share.userTeam.notShared', {type: typeNames}) }}
@@ -131,18 +162,57 @@
 
 		<Modal
 			:enabled="shareToDelete !== null"
+			:loading="isMutating"
+			:confirm-label="$t('project.share.userTeam.removeConfirm')"
 			danger
 			@close="shareToDelete = null"
 			@submit="removeShare()"
 		>
 			<template #header>
-				<span>{{
-					$t('project.share.userTeam.removeHeader', {type: typeName, sharable: $t('project.share.userTeam.sharable')})
-				}}</span>
+				<span v-if="removingSelf">{{ $t('project.share.userTeam.removeSelfHeader') }}</span>
+				<span v-else>{{ $t('project.share.userTeam.removeHeader', {name: removalName}) }}</span>
 			</template>
 			<template #text>
-				<p>{{ $t('project.share.userTeam.removeText', {type: typeName, sharable: $t('project.share.userTeam.sharable')}) }}</p>
-				<ProjectAccessCleanupList :intro="$t('project.share.userTeam.removeCleanupText')" />
+				<p v-if="removingSelf">
+					{{ $t('project.share.userTeam.removeSelfText', {project: project.title}) }}
+				</p>
+				<p v-else>
+					{{ $t(kind === 'user' ? 'project.share.userTeam.removeUserText' : 'project.share.userTeam.removeTeamText', {
+						name: removalName,
+						project: project.title,
+					}) }}
+				</p>
+				<p v-if="removalInherited">
+					{{ $t(removingSelf ? 'project.share.userTeam.removeSelfStillThrough' : 'project.share.userTeam.removeStillThrough', {
+						name: removalName,
+						parent: removalInherited.parent.title,
+						permission: $t(sharePermissionKey(removalInherited.permission)),
+					}) }}
+				</p>
+				<p v-else-if="!removingSelf">
+					{{ $t('project.share.userTeam.removeMayRemain') }}
+				</p>
+				<ProjectAccessCleanupList
+					:intro="$t(removingSelf ? 'project.share.userTeam.removeSelfCleanupText' : 'project.share.userTeam.removeCleanupText')"
+					:perspective="removingSelf ? 'self' : 'others'"
+				/>
+			</template>
+		</Modal>
+
+		<!-- Lowering your own share can take away the very control needed to undo it. -->
+		<Modal
+			:enabled="selfLowering !== null"
+			:loading="isMutating"
+			:confirm-label="$t('project.share.userTeam.lowerSelfConfirm')"
+			danger
+			@close="cancelLowering()"
+			@submit="confirmLowering()"
+		>
+			<template #header>
+				<span>{{ $t('project.share.userTeam.lowerSelfHeader', {permission: loweringLabel}) }}</span>
+			</template>
+			<template #text>
+				<p>{{ $t('project.share.userTeam.lowerSelfText') }}</p>
 			</template>
 		</Modal>
 	</section>
@@ -152,17 +222,24 @@
 import {computed, ref, watch, type Ref} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {normalizeSharePermission} from '@/client/queries/projectShares'
+import type {ProjectResponse} from '@/client/queries/projects'
 import {PERMISSIONS, type Permission} from '@/constants/permissions'
 import {useDelayedLoading} from '@/composables/useDelayedLoading'
 import Multiselect from '@/components/input/Multiselect.vue'
+import LoadError from '@/components/misc/state/LoadError.vue'
 import ProjectAccessCleanupList from '@/components/sharing/ProjectAccessCleanupList.vue'
+import {sharePermissionIcon, sharePermissionKey} from '@/components/sharing/sharePermission'
+import {isListed, type AccessStatus, type InheritedGrant} from '@/components/sharing/useProjectAccess'
 
 type Identified<T extends {id?: number}> = T & {id: number}
 
 const props = defineProps<{
-	projectId: number
+	kind: 'user' | 'team'
+	project: ProjectResponse
 	userIsAdmin: boolean
 	shares: Share[]
+	status: AccessStatus
+	retry: () => unknown
 	candidates: Candidate[]
 	searchLoading: boolean
 	searchLabel: string
@@ -170,9 +247,17 @@ const props = defineProps<{
 	typeName: string
 	typeNames: string
 	shareName: (share: Identified<Share>) => string
+	inheritedGrant: (share: Identified<Share>) => InheritedGrant | null
 	add: (projectId: number, candidate: Identified<Candidate>) => Promise<unknown>
 	updatePermission: (projectId: number, share: Identified<Share>, permission: Permission) => Promise<unknown>
 	remove: (projectId: number, share: Identified<Share>) => Promise<unknown>
+	/** The share is the current user's own. */
+	isSelf?: (share: Identified<Share>) => boolean
+}>()
+
+const emit = defineEmits<{
+	/** The current user removed their own direct share. */
+	removedSelf: []
 }>()
 
 const {t} = useI18n({useScope: 'global'})
@@ -181,6 +266,7 @@ const showSearchLoading = useDelayedLoading(() => props.searchLoading)
 const search = defineModel<string>('search', {required: true})
 
 defineSlots<{
+	help?(): unknown
 	candidate(props: {candidate: Identified<Candidate>}): unknown
 	share(props: {share: Identified<Share>}): unknown
 }>()
@@ -194,58 +280,106 @@ const unsharedCandidates = computed(() => props.candidates.filter(hasId).filter(
 const selected = ref(null) as Ref<Identified<Candidate> | null>
 const selectedPermission = ref<Record<number, Permission>>({})
 const shareToDelete = ref(null) as Ref<Identified<Share> | null>
+// Kept after closing so the dialog text doesn't blank during its fade-out.
+const removalSubject = ref(null) as Ref<Identified<Share> | null>
+const removalName = computed(() => removalSubject.value ? props.shareName(removalSubject.value) : '')
+const removalInherited = computed(() => removalSubject.value ? props.inheritedGrant(removalSubject.value) : null)
+const removingSelf = computed(() => removalSubject.value !== null && isOwnShare(removalSubject.value))
+const selfLowering = ref(null) as Ref<{share: Identified<Share>, permission: Permission} | null>
+// Kept after closing so the dialog title doesn't blank during its fade-out.
+const loweringLabel = ref('')
+
+function isOwnShare(share: Identified<Share>) {
+	return props.isSelf?.(share) ?? false
+}
 
 watch(identifiedShares, shares => {
 	selectedPermission.value = Object.fromEntries(shares.map(share => [share.id, normalizeSharePermission(share.permission)]))
 }, {immediate: true})
-watch(() => props.projectId, () => {
+watch(() => props.project.id, () => {
 	selected.value = null
 	search.value = ''
 	shareToDelete.value = null
 })
 
+function openRemoval(share: Identified<Share>) {
+	removalSubject.value = share
+	shareToDelete.value = share
+}
+
+// Synchronous guards: isMutating only flips after the next render, too late for a double click.
+let adding = false
+let removing = false
+
 async function addSelected() {
 	const candidate = selected.value
-	const projectId = props.projectId
-	if (!candidate || props.isMutating) return
+	const projectId = props.project.id
+	if (!candidate || props.isMutating || adding) return
+	adding = true
 	try {
 		await props.add(projectId, candidate)
 	} catch {
 		return
+	} finally {
+		adding = false
 	}
-	if (props.projectId === projectId && selected.value === candidate) {
+	if (props.project.id === projectId && selected.value === candidate) {
 		selected.value = null
 		search.value = ''
 	}
 }
 
+function currentPermission(share: Identified<Share>) {
+	return normalizeSharePermission(identifiedShares.value.find(item => item.id === share.id)?.permission)
+}
+
 async function changePermission(share: Identified<Share>) {
-	const projectId = props.projectId
+	const permission = normalizeSharePermission(selectedPermission.value[share.id])
+	if (isOwnShare(share) && permission < currentPermission(share)) {
+		loweringLabel.value = t(sharePermissionKey(permission))
+		selfLowering.value = {share, permission}
+		return
+	}
+	await applyPermission(share)
+}
+
+function cancelLowering() {
+	const lowering = selfLowering.value
+	selfLowering.value = null
+	if (lowering) selectedPermission.value[lowering.share.id] = currentPermission(lowering.share)
+}
+
+async function confirmLowering() {
+	const lowering = selfLowering.value
+	if (!lowering) return
+	await applyPermission(lowering.share)
+	if (selfLowering.value === lowering) selfLowering.value = null
+}
+
+async function applyPermission(share: Identified<Share>) {
+	const projectId = props.project.id
 	if (!props.isMutating) {
 		await props.updatePermission(projectId, share, normalizeSharePermission(selectedPermission.value[share.id])).catch(() => {})
 	}
-	if (props.projectId === projectId) {
+	if (props.project.id === projectId) {
 		selectedPermission.value[share.id] = normalizeSharePermission(identifiedShares.value.find(item => item.id === share.id)?.permission)
 	}
 }
 
-function permissionIcon(permission?: number) {
-	if (permission === PERMISSIONS.ADMIN) return 'lock'
-	return permission === PERMISSIONS.READ_WRITE ? 'pen' : 'users'
-}
-
-function permissionLabel(permission?: number) {
-	if (permission === PERMISSIONS.ADMIN) return t('project.share.permission.admin')
-	return permission === PERMISSIONS.READ_WRITE
-		? t('project.share.permission.readWrite')
-		: t('project.share.permission.read')
-}
-
+// The dialog stays open on failure: the toast says what went wrong and the person can retry or cancel.
 async function removeShare() {
 	const share = shareToDelete.value
-	if (!share || props.isMutating) return
-	await props.remove(props.projectId, share).catch(() => {})
+	if (!share || props.isMutating || removing) return
+	removing = true
+	try {
+		await props.remove(props.project.id, share)
+	} catch {
+		return
+	} finally {
+		removing = false
+	}
 	if (shareToDelete.value === share) shareToDelete.value = null
+	if (isOwnShare(share)) emit('removedSelf')
 }
 </script>
 
@@ -277,6 +411,28 @@ async function removeShare() {
 		margin: 0;
 		color: var(--text-tertiary);
 		font-size: var(--text-sm);
+	}
+
+	:deep(.sharing-help) {
+		margin: 0;
+		color: var(--text-secondary);
+		font-size: var(--text-sm);
+	}
+}
+
+.sharing-skeleton {
+	display: grid;
+	gap: var(--space-2);
+}
+
+.sharing-skeleton__row {
+	block-size: 1.5rem;
+	inline-size: 45%;
+	border-radius: var(--radius-xs);
+	background: var(--surface-active);
+
+	&:nth-child(2n) {
+		inline-size: 30%;
 	}
 }
 

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import {computed, ref, useId} from 'vue'
 import {useI18n} from 'vue-i18n'
+import {onBeforeRouteLeave, onBeforeRouteUpdate, useRouter, type RouteLocationNormalized} from 'vue-router'
+import {useEventListener} from '@vueuse/core'
 import {useProjects} from '@/composables/useProjects'
 import {
 	normalizeDraft,
@@ -11,6 +13,9 @@ import {
 } from '@/client/queries/tcyShowcase'
 import type {TcyShowcasePreviewResponse, TcyShowcaseSettingsResponse} from '@/client/generated'
 import PageHeader from '@/components/misc/state/PageHeader.vue'
+import LoadError from '@/components/misc/state/LoadError.vue'
+import {getFullBaseUrl} from '@/helpers/getFullBaseUrl'
+import {useConfigStore} from '@/stores/config'
 import ShowcasePage from './ShowcasePage.vue'
 
 const props = defineProps<{initial: TcyShowcaseSettingsResponse}>()
@@ -18,6 +23,11 @@ const {t} = useI18n({useScope: 'global'})
 
 function seed() { return normalizeDraft(props.initial.draft) }
 const draft = ref(seed())
+// The draft as last saved or published. Only that copy is safe to leave; nothing is kept on the device.
+const savedFingerprint = ref(JSON.stringify(seed()))
+const dirty = computed(() => JSON.stringify(draft.value) !== savedFingerprint.value)
+const router = useRouter()
+const configStore = useConfigStore()
 const projectList = useProjects()
 const save = useSaveShowcase()
 const previewMutation = usePreviewShowcase()
@@ -39,8 +49,14 @@ const publishHint = computed(() => {
 	return readyToPublish.value ? '' : t('tcymc.text.the_draft_has_changed_preview_it_again_before')
 })
 const publicSlug = computed(() => props.initial.published?.slug ?? draft.value.slug)
-const publicURL = computed(() => `${window.location.origin}/p/${publicSlug.value}`)
-const jsonURL = computed(() => `${window.location.origin}/api/v2/public/${publicSlug.value}`)
+// Built like the other shared links: the configured frontend address (or this app's base path) and the API root, so
+// sub-path installs, the desktop app and a separate API host all hand out working addresses.
+const frontendBase = computed(() => {
+	const base = configStore.frontend_url || new URL(getFullBaseUrl(), window.location.origin).href
+	return base.endsWith('/') ? base : `${base}/`
+})
+const publicURL = computed(() => `${frontendBase.value}p/${publicSlug.value}`)
+const jsonURL = computed(() => `${configStore.apiBase}/api/v2/public/${publicSlug.value}`)
 const weekdays = computed(() => [
 	t('tcymc.text.sun'),
 	t('tcymc.text.mon'),
@@ -52,8 +68,13 @@ const weekdays = computed(() => [
 ])
 const selectableProjects = computed(() => projectList.projectsArray.filter(project => project.id > 0 && !project.is_archived))
 
+// Without the project list nothing can be added, and saved rules can't be named yet.
+const projectsFailed = computed(() => projectList.isError && projectList.projectsArray.length === 0)
+
 function projectTitle(id: number) {
-	return projectList.projectsArray.find(project => project.id === id)?.title ?? t('tcymc.projectID', {id})
+	const project = projectList.projectsArray.find(candidate => candidate.id === id)
+	if (project) return project.title
+	return projectList.isLoading ? t('misc.loading') : t('tcymc.projectID', {id})
 }
 
 function addProject() {
@@ -82,23 +103,73 @@ async function showPreview() {
 
 async function saveDraft() {
 	if (busy.value) return
-	try { await save.mutateAsync(draft.value) } catch { return }
+	const sent = JSON.stringify(draft.value)
+	try { await save.mutateAsync(JSON.parse(sent)) } catch { return }
+	savedFingerprint.value = sent
 }
 
 async function publishDraft() {
 	if (busy.value || !readyToPublish.value) return
-	try { await publish.mutateAsync(draft.value) } catch { return }
+	const sent = JSON.stringify(draft.value)
+	try { await publish.mutateAsync(JSON.parse(sent)) } catch { return }
+	savedFingerprint.value = sent
 }
+
+// Taking the page down is immediate for friends and bots and discards the published version, so it asks first.
+const showTakeDown = ref(false)
 
 async function takeDown() {
 	if (busy.value) return
 	try { await unpublish.mutateAsync() } catch { return }
+	showTakeDown.value = false
+}
+
+// The template replaces the whole body and its format; a written body is only replaced after asking.
+const showTemplateConfirm = ref(false)
+
+function requestTemplate() {
+	if (draft.value.content.trim() === '') {
+		insertTemplate()
+		return
+	}
+	showTemplateConfirm.value = true
 }
 
 function insertTemplate() {
 	draft.value.content = t('tcymc.text.welcome_to_my_schedule_here_are_the_plans')
 	draft.value.format = 'markdown'
+	showTemplateConfirm.value = false
 }
+
+// Leaving with unsaved changes asks first; the route is only followed after an explicit discard.
+const leaveTarget = ref<string | null>(null)
+let leaving = false
+
+function confirmLeave(to: RouteLocationNormalized) {
+	if (leaving || !dirty.value) return true
+	leaveTarget.value = to.fullPath
+	return false
+}
+
+onBeforeRouteLeave(confirmLeave)
+onBeforeRouteUpdate(confirmLeave)
+
+async function discardAndLeave() {
+	const target = leaveTarget.value
+	if (target === null) return
+	leaving = true
+	leaveTarget.value = null
+	const failure = await router.push(target)
+	// Another guard stopped the navigation: the draft is still here and still protected.
+	if (failure) leaving = false
+}
+
+useEventListener(window, 'beforeunload', (event: BeforeUnloadEvent) => {
+	if (!dirty.value) return
+	event.preventDefault()
+	// Older browsers only ask when a return value is set.
+	event.returnValue = ''
+})
 </script>
 
 <template>
@@ -135,9 +206,8 @@ function insertTemplate() {
 					class="is-small publication-take-down"
 					danger
 					:shadow="false"
-					:loading="unpublish.isPending.value"
 					:aria-disabled="busy || undefined"
-					@click="takeDown"
+					@click="showTakeDown = true"
 				>
 					{{ t('tcymc.text.take_down_page') }}
 				</XButton>
@@ -246,14 +316,26 @@ function insertTemplate() {
 					<p class="panel-description">
 						{{ t('tcymc.text.projects_not_added_here_stay_private_by_default') }}
 					</p>
-					<div class="inline-actions">
-						<div class="select">
+					<LoadError
+						v-if="projectsFailed"
+						:message="t('tcymc.showcase.projectsError')"
+						:retry="() => projectList.refetch()"
+					/>
+					<div
+						v-else
+						class="inline-actions"
+					>
+						<div
+							class="select"
+							:class="{'is-loading': projectList.isLoading}"
+						>
 							<select
 								v-model.number="selectedProject"
 								:aria-label="t('tcymc.text.select_a_project')"
+								:aria-busy="projectList.isLoading || undefined"
 							>
 								<option :value="0">
-									{{ t('tcymc.text.select_a_project') }}
+									{{ projectList.isLoading ? t('tcymc.showcase.projectsLoading') : t('tcymc.text.select_a_project') }}
 								</option>
 								<option
 									v-for="project in selectableProjects"
@@ -341,7 +423,7 @@ function insertTemplate() {
 						<XButton
 							variant="secondary"
 							:shadow="false"
-							@click="insertTemplate"
+							@click="requestTemplate"
 						>
 							{{ t('tcymc.text.insert_schedule_template') }}
 						</XButton>
@@ -396,6 +478,13 @@ function insertTemplate() {
 				</section>
 			</div>
 			<div class="editor-actions">
+				<p
+					v-if="dirty"
+					class="editor-unsaved"
+					role="status"
+				>
+					{{ t('tcymc.showcase.unsaved') }}
+				</p>
 				<XButton
 					variant="secondary"
 					icon="save"
@@ -456,6 +545,72 @@ function insertTemplate() {
 				:page="preview.page"
 			/>
 		</section>
+
+		<Modal
+			:enabled="showTakeDown"
+			:loading="unpublish.isPending.value"
+			:confirm-label="t('tcymc.text.take_down_page')"
+			danger
+			@close="showTakeDown = false"
+			@submit="takeDown()"
+		>
+			<template #header>
+				<span>{{ t('tcymc.showcase.takeDownTitle') }}</span>
+			</template>
+			<template #text>
+				<p>{{ t('tcymc.showcase.takeDownText') }}</p>
+			</template>
+		</Modal>
+
+		<Modal
+			:enabled="showTemplateConfirm"
+			:confirm-label="t('tcymc.showcase.templateConfirm')"
+			@close="showTemplateConfirm = false"
+			@submit="insertTemplate()"
+		>
+			<template #header>
+				<span>{{ t('tcymc.showcase.templateTitle') }}</span>
+			</template>
+			<template #text>
+				<p>{{ t('tcymc.showcase.templateText') }}</p>
+			</template>
+		</Modal>
+
+		<Modal
+			:enabled="leaveTarget !== null"
+			:aria-label="t('tcymc.showcase.leaveTitle')"
+			@close="leaveTarget = null"
+		>
+			<Card
+				:title="t('tcymc.showcase.leaveTitle')"
+				:shadow="false"
+				:padding="false"
+				:show-close="true"
+				class="showcase-leave has-text-start"
+				@close="leaveTarget = null"
+			>
+				<p class="showcase-leave__text">
+					{{ t('tcymc.showcase.leaveText') }}
+				</p>
+				<template #footer>
+					<XButton
+						variant="secondary"
+						:shadow="false"
+						@click="leaveTarget = null"
+					>
+						{{ t('compass.settings.leave.stay') }}
+					</XButton>
+					<XButton
+						variant="primary"
+						danger
+						:shadow="false"
+						@click="discardAndLeave"
+					>
+						{{ t('compass.settings.leave.discard') }}
+					</XButton>
+				</template>
+			</Card>
+		</Modal>
 	</div>
 </template>
 
@@ -753,6 +908,20 @@ function insertTemplate() {
 	.editor-actions > .button {
 		flex: 1 1 100%;
 	}
+}
+
+.editor-unsaved {
+	flex-basis: 100%;
+	margin: 0;
+	color: var(--text-primary);
+	font-size: var(--text-sm);
+	font-weight: var(--weight-medium);
+}
+
+.showcase-leave__text {
+	margin: 0;
+	padding: var(--space-4);
+	color: var(--text-secondary);
 }
 
 .publish-hint {

@@ -1,4 +1,4 @@
-import {QueryClient} from '@tanstack/vue-query'
+import {QueryClient, QueryObserver} from '@tanstack/vue-query'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 import type {
 	Team,
@@ -14,7 +14,10 @@ vi.mock('@/helpers/auth', () => ({getAuthSessionEpoch: () => session.epoch, getT
 vi.mock('@/helpers/apiUrl', () => ({getApiBaseUrl: () => '/api/v2/'}))
 
 import {PICKER_PAGE_SIZE} from './pagination'
-import {teamKeys, teamsPageQuery, teamSearchQuery, createTeamMutationOptions, updateTeamMutationOptions, deleteTeamMutationOptions, addTeamMemberMutationOptions, removeTeamMemberMutationOptions, leaveTeamMutationOptions, toggleTeamMemberAdminMutationOptions} from './teams'
+import {teamKeys, teamsPageQuery, teamSearchQuery, teamQuery, memberTeamIdsQuery, createTeamMutationOptions, updateTeamMutationOptions, deleteTeamMutationOptions, addTeamMemberMutationOptions, removeTeamMemberMutationOptions, leaveTeamMutationOptions, toggleTeamMemberAdminMutationOptions} from './teams'
+import {compassKeys} from './compass'
+import {projectKeys} from './projects'
+import {userSearchKeys} from './userSearch'
 
 function teamPage(items: Team[], page = 1, total = items.length) {
 	return {
@@ -154,5 +157,69 @@ describe('teams', () => {
 		await expect(client.getMutationCache().build(client, updateTeamMutationOptions()).execute({id: 1, team: {name: 'old identity'}})).rejects.toThrow('Client request context changed')
 		expect(client.getQueryData(teamKeys.detail(1))).toEqual({id: 1, name: 'other identity'})
 		expect(success).not.toHaveBeenCalled()
+	})
+})
+
+describe('teams: access of the current user after leaving or deleting a team', () => {
+	// The sidebar keeps one mounted observer on the project list; nothing else would refetch it.
+	function watchProjectList() {
+		const queryFn = vi.fn(async () => ({projects: [], favoriteProject: null, savedFilterProjects: []}))
+		client.setQueryData(projectKeys.list(), {projects: [{id: 5}], favoriteProject: null, savedFilterProjects: []})
+		const observer = new QueryObserver(client, {queryKey: projectKeys.list(), queryFn, staleTime: Infinity})
+		const unsubscribe = observer.subscribe(() => {})
+		return {queryFn, unsubscribe}
+	}
+
+	it.each([
+		['leaving', () => leaveTeamMutationOptions(), {teamId: 1, username: 'me'}],
+		['deleting', () => deleteTeamMutationOptions(), 1],
+	] as const)('refetches the project list and Compass spaces after %s', async (_name, options, input) => {
+		sdk.teamsMembersRemove.mockResolvedValue({})
+		sdk.teamsDelete.mockResolvedValue({})
+		client.setQueryData(compassKeys.spaces, [{id: 11, team_id: 1}])
+		client.setQueryData(compassKeys.space(11), {id: 11, team_id: 1})
+		const list = watchProjectList()
+
+		await client.getMutationCache().build(client, options() as never).execute(input as never)
+
+		expect(list.queryFn).toHaveBeenCalledTimes(1)
+		expect(client.getQueryState(compassKeys.spaces)?.isInvalidated).toBe(true)
+		// Only the list: single space pages are left alone.
+		expect(client.getQueryState(compassKeys.space(11))?.isInvalidated).toBe(false)
+		list.unsubscribe()
+	})
+
+	it('marks user search stale after deleting a team', async () => {
+		sdk.teamsDelete.mockResolvedValue({})
+		client.setQueryData(userSearchKeys.global('sam'), [])
+		await client.getMutationCache().build(client, deleteTeamMutationOptions()).execute(1)
+		expect(client.getQueryState(userSearchKeys.global('sam'))?.isInvalidated).toBe(true)
+	})
+
+	it('leaves the project list alone when another member changes', async () => {
+		sdk.teamsMembersRemove.mockResolvedValue({})
+		const list = watchProjectList()
+		await client.getMutationCache().build(client, removeTeamMemberMutationOptions()).execute({teamId: 1, username: 'sam'})
+		expect(list.queryFn).not.toHaveBeenCalled()
+		list.unsubscribe()
+	})
+})
+
+describe('teams: views that show their own errors', () => {
+	it('skips the global toast for the team pages and the team detail', () => {
+		expect(teamsPageQuery(1).meta?.handlesError).toBe(true)
+		expect(teamQuery(1).meta?.handlesError).toBe(true)
+	})
+
+	it('lists the ids of every team the user is in, across pages', async () => {
+		sdk.teamsList
+			.mockResolvedValueOnce({data: teamPage([{id: 1}, {id: 2}], 1, 26)})
+			.mockResolvedValueOnce({data: teamPage([{id: 26}], 2, 26)})
+		expect(await client.fetchQuery(memberTeamIdsQuery())).toEqual([1, 2, 26])
+		expect(sdk.teamsList.mock.calls[0][0].query.include_public).toBeUndefined()
+
+		sdk.teamsCreate.mockResolvedValue({data: {id: 3}})
+		await client.getMutationCache().build(client, createTeamMutationOptions()).execute({name: 'New'})
+		expect(client.getQueryState(memberTeamIdsQuery().queryKey)?.isInvalidated).toBe(true)
 	})
 })

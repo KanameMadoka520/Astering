@@ -22,8 +22,16 @@
 			v-if="projectList.hasProjects"
 			:label="$t('project.parent')"
 		>
-			<ProjectSearch v-model="parentProject" />
+			<ProjectSearch
+				:model-value="parentProject"
+				:filter="canHoldProject"
+				@update:modelValue="chooseParent"
+			/>
 		</FormField>
+		<ParentAccessNote
+			kind="new"
+			:parent="parentProject"
+		/>
 		<FormField :label="$t('project.color')">
 			<ColorPicker v-model="project.hex_color" />
 		</FormField>
@@ -43,6 +51,8 @@ import {useTitle} from '@/composables/useTitle'
 import {useProjects} from '@/composables/useProjects'
 import {useGoBack} from '@/composables/useGoBack'
 import ProjectSearch from '@/components/tasks/partials/ProjectSearch.vue'
+import ParentAccessNote from '@/components/sharing/ParentAccessNote.vue'
+import {PERMISSIONS} from '@/constants/permissions'
 import {createProjectDraft, useCreateProjectMutation, type ProjectResponse} from '@/client/queries/projects'
 
 const props = defineProps<{
@@ -62,11 +72,26 @@ const projectList = useProjects()
 const parentProject = ref<ProjectResponse | null>(null)
 const isSubmitting = ref(false)
 
+// The preselected parent may only arrive with the project list; a parent picked by hand wins.
+const parentChosen = ref(false)
+watch(() => props.parentProjectId, () => parentChosen.value = false)
 watch(
-	() => props.parentProjectId,
-	() => parentProject.value = projectList.projects[props.parentProjectId ?? 0],
+	() => projectList.projects[props.parentProjectId ?? 0],
+	parent => {
+		if (!parentChosen.value) parentProject.value = parent ?? null
+	},
 	{immediate: true},
 )
+
+function chooseParent(parent: ProjectResponse | null) {
+	parentChosen.value = true
+	parentProject.value = parent
+}
+
+// Creating a project inside another needs write access there.
+function canHoldProject(candidate: ProjectResponse) {
+	return (candidate.max_permission ?? PERMISSIONS.READ) >= PERMISSIONS.READ_WRITE
+}
 
 async function createProject() {
 	if (project.title === '') {
@@ -81,13 +106,14 @@ async function createProject() {
 
 	isSubmitting.value = true
 
-	if (parentProject.value) {
-		project.parent_project_id = parentProject.value.id
-	}
+	// A parent cleared after a failed attempt must not stick.
+	project.parent_project_id = parentProject.value?.id ?? 0
 
 	try {
 		const created = await createMutation.mutateAsync(project)
 		await router.push({name: 'project.index', params: {projectId: created.id}})
+	} catch {
+		// The toast says what went wrong; the form keeps what was typed.
 	} finally {
 		isSubmitting.value = false
 	}

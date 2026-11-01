@@ -14,6 +14,7 @@ import {
 	type TimeEntryResponse,
 } from './timeEntries'
 import {notificationKeys} from './notifications'
+import {projectKeys} from './projects'
 import {commentKeys} from './comments'
 import {taskKeys} from './tasks'
 import {
@@ -39,6 +40,7 @@ export type ServerCacheEvent =
 	| {
 		kind: 'notifications',
 		taskId?: number,
+		projects?: true,
 	}
 	| {
 		kind: 'subscribed',
@@ -72,6 +74,8 @@ export function parseServerCacheEvent(
 		return {
 			kind: 'notifications',
 			taskId,
+			// Only the new member gets this notification, and the team may open projects for them.
+			...(data.name === 'team.member.added' ? {projects: true as const} : {}),
 		}
 	}
 	return null
@@ -126,6 +130,7 @@ export function serverCacheEventMutationOptions() {
 				const taskId = event.taskId
 				return Promise.all([
 					client.invalidateQueries({queryKey: notificationKeys.all}),
+					...(event.projects ? [client.invalidateQueries({queryKey: projectKeys.list()})] : []),
 					...(taskId === undefined ? [] : [
 						refetchComments(client, taskId),
 						invalidateCachedTask(client, taskId),

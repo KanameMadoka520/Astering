@@ -10,10 +10,12 @@ vi.mock('@/message', () => ({success: vi.fn(), error: vi.fn()}))
 
 import LinkSharing from './LinkSharing.vue'
 import {linkShareKeys} from '@/client/queries/linkShares'
-import {projectKeys} from '@/client/queries/projects'
+import {projectKeys, type ProjectResponse} from '@/client/queries/projects'
 import en from '@/i18n/lang/en.json'
 
 const i18n = createI18n({legacy: false, locale: 'en', messages: {en}})
+
+const PROJECT = {id: 7, title: 'Project', views: []} as unknown as ProjectResponse
 
 let client: QueryClient
 let wrapper: VueWrapper | undefined
@@ -24,7 +26,7 @@ beforeEach(() => {
 	setActivePinia(createPinia())
 	client = new QueryClient({defaultOptions: {queries: {retry: false, staleTime: Infinity}}})
 	client.setQueryData(linkShareKeys.list(7), [])
-	client.setQueryData(projectKeys.detail(7), {id: 7, title: 'Project', views: []})
+	client.setQueryData(projectKeys.detail(7), PROJECT)
 	sdk.sharesList.mockResolvedValue({data: {items: [], total_pages: 1}})
 })
 
@@ -49,7 +51,7 @@ describe('LinkSharing', () => {
 		wrapper = mount(LinkSharing, {
 			// Share submits the create form, which jsdom only does for a connected form.
 			attachTo: document.body,
-			props: {projectId: 7},
+			props: {project: PROJECT},
 			global: {
 				plugins: [i18n, [VueQueryPlugin, {queryClient: client}]],
 				stubs: {
@@ -69,5 +71,54 @@ describe('LinkSharing', () => {
 
 		expect(sdk.sharesCreate).toHaveBeenCalledWith(expect.objectContaining({body: expect.objectContaining({password: 'secret'})}))
 		expect(client.getMutationCache().getAll().some(mutation => JSON.stringify(mutation.state.variables ?? null).includes('secret'))).toBe(false)
+	})
+})
+
+describe('LinkSharing: who a link lets in', () => {
+	function mountWith(shares: unknown[]) {
+		client.setQueryData(linkShareKeys.list(7), shares)
+		wrapper = mount(LinkSharing, {
+			attachTo: document.body,
+			props: {project: PROJECT},
+			global: {
+				plugins: [i18n, [VueQueryPlugin, {queryClient: client}]],
+				stubs: {
+					XButton: {template: '<button type="button" v-bind="$attrs"><slot /></button>'},
+					Modal: true,
+					Icon: true,
+				},
+				directives: {tooltip: {}},
+			},
+		})
+		return wrapper
+	}
+
+	it('marks which links need a password and which open for anyone', () => {
+		mountWith([
+			{id: 1, hash: 'a', name: 'Locked', permission: 0, sharing_type: 2},
+			{id: 2, hash: 'b', name: 'Open', permission: 0, sharing_type: 1},
+			{id: 3, hash: 'c', name: 'Unknown', permission: 0},
+		])
+
+		const rows = wrapper!.findAll('tbody tr')
+		expect(rows[0].text()).toContain('Password protected')
+		expect(rows[1].text()).toContain('No password: anyone with the link')
+		// An unknown type claims neither.
+		expect(rows[2].text()).not.toContain('Password protected')
+		expect(rows[2].text()).not.toContain('No password')
+	})
+
+	it('warns that an admin link gives admin access without signing in', async () => {
+		mountWith([])
+		await buttonByText('Create a link share').trigger('click')
+		const warning = 'Anyone with this link gets admin access to this project without signing in.'
+		expect(wrapper!.text()).not.toContain(warning)
+
+		const select = wrapper!.find('select')
+		await select.setValue('2')
+
+		expect(wrapper!.text()).toContain(warning)
+		const help = wrapper!.find('.link-share-admin-warning')
+		expect(select.attributes('aria-describedby')).toBe(help.attributes('id'))
 	})
 })

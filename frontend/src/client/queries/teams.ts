@@ -6,7 +6,9 @@ import {
 } from '@tanstack/vue-query'
 import {teamsList, teamsRead, teamsCreate, teamsUpdate, teamsDelete, teamsMembersAdd, teamsMembersRemove, teamsMembersToggleAdmin} from '@/client/generated'
 import type {Team, TeamReadBody, TeamWritable, TeamMemberWritable} from '@/client/generated'
+import {compassKeys} from './compass'
 import {contextMutationOptions} from './contextMutation'
+import {fetchAllPages} from './fetchAllPages'
 import {
 	PICKER_PAGE_SIZE,
 	removeFromPages,
@@ -25,6 +27,8 @@ export const teamKeys = {
 	searches: ['teams', 'search'] as const,
 	search: (search: string, includePublic = false) => [...teamKeys.searches, search, includePublic] as const,
 	detail: (id: number) => ['teams', 'detail', id] as const,
+	// Kept apart from `lists`: those caches hold pages, and the page patches below must not touch this one.
+	memberIds: ['teams', 'member-ids'] as const,
 }
 
 export function createTeamDraft(team: TeamWritable = {}): Required<TeamWritable> {
@@ -42,6 +46,19 @@ export function teamsPageQuery(page: number) {
 			return toPaginated(data, page)
 		},
 		placeholderData: keepPreviousData,
+		// The teams page shows its own error with Retry.
+		meta: {handlesError: true},
+	})
+}
+
+/** Ids of the teams the user is in. Only these team pages open for them (instance admins aside). */
+export function memberTeamIdsQuery() {
+	return queryOptions({
+		queryKey: teamKeys.memberIds,
+		queryFn: async ({signal}) => (await fetchAllPages(async page => (await teamsList({query: {page}, signal})).data))
+			.flatMap(team => typeof team.id === 'number' ? [team.id] : []),
+		// Without it a team share shows as plain text, which is still correct.
+		meta: {handlesError: true},
 	})
 }
 
@@ -67,6 +84,8 @@ export function teamQuery(id: number) {
 	return queryOptions({
 		queryKey: teamKeys.detail(id),
 		queryFn: async ({signal}) => (await teamsRead({path: {id}, signal})).data,
+		// The team page shows its own error with Retry.
+		meta: {handlesError: true},
 	})
 }
 
@@ -89,7 +108,17 @@ async function invalidateTeams(client: QueryClient, id?: number) {
 	await Promise.all([
 		client.invalidateQueries({queryKey: teamKeys.lists}),
 		client.invalidateQueries({queryKey: teamKeys.searches}),
+		client.invalidateQueries({queryKey: teamKeys.memberIds}),
 		...(id ? [client.invalidateQueries({queryKey: teamKeys.detail(id)})] : []),
+	])
+}
+
+// Leaving or deleting a team changes what the current user can open: shared projects and the team's Compass spaces
+// may be gone. Nothing was patched, so the sidebar list refetches now instead of keeping projects that would 403.
+async function invalidateOwnAccess(client: QueryClient) {
+	await Promise.all([
+		client.invalidateQueries({queryKey: projectKeys.list()}),
+		client.invalidateQueries({queryKey: compassKeys.spaces, exact: true}),
 	])
 }
 
@@ -114,7 +143,11 @@ export function deleteTeamMutationOptions() {
 	return contextMutationOptions({
 		mutationFn: async (id: number) => { await teamsDelete({path: {id}}) },
 		onSuccess: (_data, id, client) => removeCachedTeam(client, id),
-		onSettled: (_id, client) => invalidateTeams(client),
+		onSettled: (_id, client) => Promise.all([
+			invalidateTeams(client),
+			invalidateOwnAccess(client),
+			client.invalidateQueries({queryKey: userSearchKeys.all, refetchType: 'none'}),
+		]),
 		successMessage: () => i18n.global.t('team.edit.delete.success'),
 	})
 }
@@ -154,7 +187,7 @@ export function leaveTeamMutationOptions() {
 	return contextMutationOptions({
 		mutationFn: removeTeamMember,
 		onSuccess: (_data, {teamId}, client) => client.removeQueries({queryKey: teamKeys.detail(teamId), exact: true}),
-		onSettled: (_input, client) => invalidateMembership(client),
+		onSettled: (_input, client) => Promise.all([invalidateMembership(client), invalidateOwnAccess(client)]),
 		successMessage: () => i18n.global.t('team.edit.leave.success'),
 	})
 }

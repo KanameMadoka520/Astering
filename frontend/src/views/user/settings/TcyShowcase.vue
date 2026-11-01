@@ -2,6 +2,7 @@
 import {useI18n} from 'vue-i18n'
 import {useQuery} from '@tanstack/vue-query'
 import {showcaseSettingsQuery} from '@/client/queries/tcyShowcase'
+import LoadError from '@/components/misc/state/LoadError.vue'
 import ShowcaseEditor from '@/components/showcase/ShowcaseEditor.vue'
 import {useTitle} from '@/composables/useTitle'
 
@@ -16,6 +17,12 @@ const settings = useQuery(showcaseSettingsQuery())
 	<ShowcaseEditor
 		v-if="settings.data.value"
 		:initial="settings.data.value"
+	/>
+	<!-- Without settings the publication status is unknown, so none is shown. -->
+	<LoadError
+		v-else-if="settings.isError.value"
+		:message="t('tcymc.showcase.loadError')"
+		:retry="() => settings.refetch()"
 	/>
 	<p
 		v-else

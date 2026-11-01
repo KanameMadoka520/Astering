@@ -13,17 +13,17 @@
 			:key="team.id"
 			:team="team"
 			:loading="teamLoading"
-			:members-loading="membersLoading"
 			@save="save"
 		/>
 
 		<Card
+			v-if="team || isPending"
 			class="is-fullwidth has-overflow team-members"
 			:title="$t('team.edit.members')"
 			:padding="false"
 		>
 			<form
-				v-if="userIsAdmin && !team?.external_id"
+				v-if="userIsAdmin && team && !team.external_id"
 				class="team-members__add"
 				@submit.prevent="addUser"
 			>
@@ -62,9 +62,18 @@
 				>
 					{{ $t('team.edit.mustSelectUser') }}
 				</p>
+				<p class="help team-members__help">
+					{{ $t('team.edit.addHelp') }}
+				</p>
 			</form>
+			<p
+				v-if="team?.external_id"
+				class="team-members__external"
+			>
+				{{ $t('team.edit.externalMembers') }}
+			</p>
 			<div
-				v-if="!team && isPending"
+				v-if="!team"
 				class="team-members__skeleton"
 				role="status"
 			>
@@ -145,14 +154,16 @@
 									>
 										{{ m.admin ? $t('team.edit.makeMember') : $t('team.edit.makeAdmin') }}
 									</XButton>
+									<!-- The sign-in provider owns the members of a managed team; the server refuses removals. -->
 									<XButton
+										v-if="!team.external_id"
 										variant="tertiary"
 										class="is-small team-member__remove"
 										:shadow="false"
 										:loading="isRemovingMember(m)"
 										icon="trash-alt"
 										:aria-label="$t('team.edit.deleteUser.header')"
-										@click="() => {memberToDelete = m; showUserDeleteModal = true}"
+										@click="() => openMemberRemoval(m)"
 									/>
 								</template>
 							</td>
@@ -173,8 +184,15 @@
 			>
 				{{ $t('team.edit.dangerZone') }}
 			</h2>
+			<p
+				v-if="isOnlyMember"
+				class="team-danger-zone__hint"
+			>
+				{{ $t('team.edit.leave.onlyMember') }}
+			</p>
 			<div class="team-danger-zone__actions">
 				<XButton
+					v-if="!isOnlyMember"
 					variant="secondary"
 					icon="sign-out-alt"
 					:shadow="false"
@@ -189,7 +207,7 @@
 					icon="trash-alt"
 					:shadow="false"
 					:loading="deleteMutation.isPending.value"
-					@click="showDeleteModal = true"
+					@click="openDeleteModal()"
 				>
 					{{ $t('team.edit.delete.header') }}
 				</XButton>
@@ -198,19 +216,40 @@
 
 		<!-- Leave team modal -->
 		<Modal
-			v-if="showLeaveModal"
+			:enabled="showLeaveModal"
+			:loading="leaveMutation.isPending.value"
+			:confirm-label="$t('team.edit.leave.title')"
 			danger
 			@close="showLeaveModal = false"
 			@submit="leave()"
 		>
 			<template #header>
-				<span>{{ $t('team.edit.leave.title') }}</span>
+				<span>{{ $t('team.edit.leave.confirmHeader', {team: teamName}) }}</span>
 			</template>
 
 			<template #text>
-				<p>
-					{{ $t('team.edit.leave.text1') }}<br>
-					{{ $t('team.edit.leave.text2') }}
+				<p>{{ $t('team.edit.leave.text1') }}</p>
+				<p>{{ $t('team.edit.leave.text2') }}</p>
+				<p
+					v-if="isOnlyAdmin"
+					class="team-dialog__warning"
+				>
+					{{ $t('team.edit.leave.onlyAdmin') }}
+				</p>
+				<p
+					v-if="compassStatus === 'pending'"
+					role="status"
+				>
+					{{ $t('team.edit.leave.compassChecking') }}
+				</p>
+				<p
+					v-else-if="compassStatus === 'error'"
+					role="alert"
+				>
+					{{ $t('team.edit.leave.compassError') }}
+				</p>
+				<p v-else-if="teamSpaces.length > 0">
+					{{ $t('team.edit.leave.compassSpaces', {count: teamSpaces.length, spaces: spaceList}, teamSpaces.length) }}
 				</p>
 				<ProjectAccessCleanupList
 					:intro="$t('team.edit.leave.cleanupText')"
@@ -222,18 +261,67 @@
 		<!-- Team delete modal -->
 		<Modal
 			:enabled="showDeleteModal"
+			:loading="deleteMutation.isPending.value"
+			:confirm-label="$t('team.edit.delete.header')"
 			danger
-			@close="showDeleteModal = false"
+			@close="closeDeleteModal()"
 			@submit="deleteTeam()"
 		>
 			<template #header>
-				<span>{{ $t('team.edit.delete.header') }}</span>
+				<span>{{ $t('team.edit.delete.confirmHeader', {team: teamName}) }}</span>
 			</template>
 
 			<template #text>
-				<p>
-					{{ $t('team.edit.delete.text1') }}<br>
-					{{ $t('team.edit.delete.text2') }}
+				<p>{{ $t('team.edit.delete.text1') }}</p>
+				<p>{{ $t('team.edit.delete.text2') }}</p>
+				<!-- Deleting a team deletes all of its Compass spaces with every entry (pkg/models/teams.go). The space list only
+				holds spaces the viewer can open (an instance admin outside the team sees none), so it is never called complete. -->
+				<p class="team-dialog__warning">
+					{{ $t('team.edit.delete.compassWarning') }}
+				</p>
+				<p
+					v-if="compassStatus === 'pending'"
+					role="status"
+				>
+					{{ $t('team.edit.delete.compassChecking') }}
+				</p>
+				<LoadError
+					v-else-if="compassStatus === 'error'"
+					:message="$t('team.edit.delete.compassError')"
+					:retry="() => compassQuery.refetch()"
+				/>
+				<div
+					v-else-if="teamSpaces.length > 0"
+					class="team-dialog__spaces"
+				>
+					<p>{{ $t('team.edit.delete.compassKnown') }}</p>
+					<ul>
+						<li
+							v-for="space in teamSpaces"
+							:key="space.id"
+						>
+							{{ $t('team.edit.delete.compassSpace', {title: space.title, count: space.entry_count}, space.entry_count) }}
+						</li>
+					</ul>
+				</div>
+				<p
+					v-if="!ownMembership"
+					class="team-dialog__muted"
+				>
+					{{ $t('team.edit.delete.compassMaybeMore') }}
+				</p>
+				<FancyCheckbox
+					v-model="deleteAcknowledged"
+					class="team-dialog__acknowledge"
+				>
+					{{ $t('team.edit.delete.acknowledge') }}
+				</FancyCheckbox>
+				<p
+					v-if="showAcknowledgeError && !deleteAcknowledged"
+					class="help is-danger"
+					role="alert"
+				>
+					{{ $t('team.edit.delete.acknowledgeRequired') }}
 				</p>
 				<ProjectAccessCleanupList :intro="$t('team.edit.delete.cleanupText')" />
 			</template>
@@ -241,21 +329,38 @@
 
 		<!-- User delete modal -->
 		<Modal
-			:enabled="showUserDeleteModal"
+			:enabled="memberToDelete !== null"
+			:loading="removeMemberMutation.isPending.value"
+			:confirm-label="$t('team.edit.deleteUser.confirm')"
 			danger
-			@close="showUserDeleteModal = false"
+			@close="memberToDelete = null"
 			@submit="deleteMember()"
 		>
 			<template #header>
-				<span>{{ $t('team.edit.deleteUser.header') }}</span>
+				<span>{{ $t('team.edit.deleteUser.confirmHeader', {name: removalName, team: teamName}) }}</span>
 			</template>
 
 			<template #text>
-				<p>
-					{{ $t('team.edit.deleteUser.text1') }}<br>
-					{{ $t('team.edit.deleteUser.text2') }}
-				</p>
+				<p>{{ $t('team.edit.deleteUser.text1', {name: removalName}) }}</p>
+				<p>{{ $t('team.edit.deleteUser.text2') }}</p>
 				<ProjectAccessCleanupList :intro="$t('team.edit.deleteUser.cleanupText')" />
+			</template>
+		</Modal>
+
+		<!-- Promote member modal -->
+		<Modal
+			:enabled="memberToPromote !== null"
+			:loading="toggleAdminMutation.isPending.value"
+			:confirm-label="$t('team.edit.makeAdmin')"
+			@close="memberToPromote = null"
+			@submit="promote()"
+		>
+			<template #header>
+				<span>{{ $t('team.edit.makeAdminHeader', {name: promotionName}) }}</span>
+			</template>
+
+			<template #text>
+				<p>{{ $t('team.edit.makeAdminText') }}</p>
 			</template>
 		</Modal>
 	</div>
@@ -265,12 +370,15 @@
 import {computed, ref} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {useRoute, useRouter} from 'vue-router'
+import {useQuery} from '@tanstack/vue-query'
+import FancyCheckbox from '@/components/input/FancyCheckbox.vue'
 import Multiselect from '@/components/input/Multiselect.vue'
 import User from '@/components/misc/User.vue'
 import ProjectAccessCleanupList from '@/components/sharing/ProjectAccessCleanupList.vue'
 import EditTeamForm from '@/components/teams/EditTeamForm.vue'
 import LoadError from '@/components/misc/state/LoadError.vue'
 import {getDisplayName} from '@/helpers/user'
+import {compassSpacesQuery} from '@/client/queries/compass'
 import {useUpdateTeamMutation, useDeleteTeamMutation, useAddTeamMemberMutation, useRemoveTeamMemberMutation, useLeaveTeamMutation, useToggleTeamMemberAdminMutation} from '@/client/queries/teams'
 import {useTeam} from '@/composables/useTeams'
 import {useUserSearch} from '@/composables/useUserSearch'
@@ -282,13 +390,22 @@ import type {User as ApiUser, TeamUser, TeamWritable} from '@/client/generated'
 const authStore = useAuthStore()
 const route = useRoute()
 const router = useRouter()
-const {t} = useI18n({useScope: 'global'})
+const {t, locale} = useI18n({useScope: 'global'})
 const teamId = computed(() => Number(route.params.id))
 const {data: team, isFetching, isPending, isError, refetch} = useTeam(teamId)
 
 const userIsAdmin = computed(() => (team.value?.max_permission ?? PERMISSIONS.READ) === PERMISSIONS.ADMIN)
 const userInfo = computed(() => authStore.info)
-const sortedMembers = computed(() => [...(team.value?.members ?? [])].sort((a, b) => getDisplayName(a).localeCompare(getDisplayName(b), undefined, {sensitivity: 'base'})))
+const teamName = computed(() => team.value?.name ?? '')
+const members = computed(() => team.value?.members ?? [])
+const sortedMembers = computed(() => [...members.value].sort((a, b) => getDisplayName(a).localeCompare(getDisplayName(b), undefined, {sensitivity: 'base'})))
+const ownMembership = computed(() => members.value.find(member => member.id === userInfo.value?.id))
+// The server refuses to remove a team's last member.
+const isOnlyMember = computed(() => members.value.length === 1 && ownMembership.value !== undefined)
+// The server lets the last admin leave, which leaves a team nobody can manage.
+const isOnlyAdmin = computed(() => Boolean(ownMembership.value?.admin)
+	&& members.value.length > 1
+	&& members.value.filter(member => member.admin).length === 1)
 const updateMutation = useUpdateTeamMutation()
 const deleteMutation = useDeleteTeamMutation()
 const addMemberMutation = useAddTeamMemberMutation()
@@ -296,53 +413,105 @@ const removeMemberMutation = useRemoveTeamMemberMutation()
 const leaveMutation = useLeaveTeamMutation()
 const toggleAdminMutation = useToggleTeamMemberAdminMutation()
 const teamLoading = computed(() => updateMutation.isPending.value || deleteMutation.isPending.value)
-const membersLoading = computed(() => addMemberMutation.isPending.value || removeMemberMutation.isPending.value || toggleAdminMutation.isPending.value)
 const userSearch = ref('')
 const {users: userResults, isFetching: usersLoading} = useUserSearch(userSearch)
 const foundUsers = computed(() => userResults.value.filter(u => u.id !== userInfo.value?.id && !team.value?.members?.some(member => member.id === u.id)))
-const memberToDelete = ref<TeamUser>()
 const newMember = ref<ApiUser | null>(null)
+const memberToDelete = ref<TeamUser | null>(null)
+const memberToPromote = ref<TeamUser | null>(null)
+// Kept after closing so the dialog text doesn't blank during its fade-out.
+const removalName = ref('')
+const promotionName = ref('')
 const showDeleteModal = ref(false)
-const showUserDeleteModal = ref(false)
+// Deleting the team also deletes its Compass spaces for good, so the dialog asks for an explicit acknowledgement.
+const deleteAcknowledged = ref(false)
+const showAcknowledgeError = ref(false)
 const showLeaveModal = ref(false)
 const showMustSelectUserError = ref(false)
 const title = computed(() => t('team.edit.title', {team: team.value?.name ?? ''}))
 useTitle(title)
 
+// Team Compass spaces go with the team: deleting it deletes them, leaving it ends access to them.
+const compassQuery = useQuery(computed(() => ({...compassSpacesQuery(), enabled: showDeleteModal.value || showLeaveModal.value})))
+const teamSpaces = computed(() => (compassQuery.data.value ?? []).filter(space => space.team_id === teamId.value))
+const compassStatus = computed(() => {
+	if (compassQuery.data.value !== undefined) return 'success'
+	return compassQuery.isError.value ? 'error' : 'pending'
+})
+const spaceList = computed(() => new Intl.ListFormat(locale.value, {type: 'conjunction'}).format(teamSpaces.value.map(space => space.title)))
+
+// Synchronous guards: isPending only flips after the next render, too late for a double click.
+let deleting = false
+let removing = false
+let leaving = false
+let promoting = false
+
 function save(draft: Required<TeamWritable>) {
+	// A second Enter in the name field would otherwise send the update again.
+	if (updateMutation.isPending.value) return
 	updateMutation.mutate({id: teamId.value, team: draft})
 }
 
+function openDeleteModal() {
+	deleteAcknowledged.value = false
+	showAcknowledgeError.value = false
+	showDeleteModal.value = true
+}
+
+function closeDeleteModal() {
+	showDeleteModal.value = false
+}
+
 async function deleteTeam() {
+	if (!deleteAcknowledged.value) {
+		showAcknowledgeError.value = true
+		return
+	}
+	if (deleting) return
+	deleting = true
 	try {
 		await deleteMutation.mutateAsync(teamId.value)
 	} catch {
 		return
 	} finally {
-		showDeleteModal.value = false
+		deleting = false
 	}
+	showDeleteModal.value = false
 	await router.push({name: 'teams.index'})
 }
 
-function deleteMember() {
-	if (!memberToDelete.value?.username) return
-	removeMemberMutation.mutate({teamId: teamId.value, username: memberToDelete.value.username}, {
-		onSettled: () => {
-			showUserDeleteModal.value = false
-		},
-	})
+function openMemberRemoval(member: TeamUser) {
+	removalName.value = getDisplayName(member)
+	memberToDelete.value = member
+}
+
+async function deleteMember() {
+	const member = memberToDelete.value
+	if (!member?.username || removing) return
+	removing = true
+	try {
+		await removeMemberMutation.mutateAsync({teamId: teamId.value, username: member.username})
+	} catch {
+		return
+	} finally {
+		removing = false
+	}
+	if (memberToDelete.value === member) memberToDelete.value = null
 }
 
 async function addUser() {
 	showMustSelectUserError.value = !newMember.value?.username
-	if (!newMember.value?.username) return
+	if (!newMember.value?.username || addMemberMutation.isPending.value) return
+	const member = newMember.value
 	try {
-		await addMemberMutation.mutateAsync({teamId: teamId.value, username: newMember.value.username})
+		await addMemberMutation.mutateAsync({teamId: teamId.value, username: member.username!})
 	} catch {
 		return
 	}
-	newMember.value = null
-	userSearch.value = ''
+	if (newMember.value === member) {
+		newMember.value = null
+		userSearch.value = ''
+	}
 }
 
 // Only the row being changed shows a spinner.
@@ -354,9 +523,29 @@ function isRemovingMember(member: TeamUser) {
 	return removeMemberMutation.isPending.value && removeMemberMutation.variables.value?.username === member.username
 }
 
+// Making someone an admin hands them the team, so it asks first; taking it back doesn't.
 function toggleUserType(member: TeamUser) {
 	if (!member.username) return
+	if (!member.admin) {
+		promotionName.value = getDisplayName(member)
+		memberToPromote.value = member
+		return
+	}
 	toggleAdminMutation.mutate({teamId: teamId.value, username: member.username})
+}
+
+async function promote() {
+	const member = memberToPromote.value
+	if (!member?.username || promoting) return
+	promoting = true
+	try {
+		await toggleAdminMutation.mutateAsync({teamId: teamId.value, username: member.username})
+	} catch {
+		return
+	} finally {
+		promoting = false
+	}
+	if (memberToPromote.value === member) memberToPromote.value = null
 }
 
 function findUser(query: string) {
@@ -364,14 +553,16 @@ function findUser(query: string) {
 }
 
 async function leave() {
-	if (!userInfo.value?.username) return
+	if (!userInfo.value?.username || leaving) return
+	leaving = true
 	try {
 		await leaveMutation.mutateAsync({teamId: teamId.value, username: userInfo.value.username})
 	} catch {
 		return
 	} finally {
-		showLeaveModal.value = false
+		leaving = false
 	}
+	showLeaveModal.value = false
 	await router.push({name: 'home'})
 }
 </script>
@@ -441,6 +632,19 @@ async function leave() {
 	color: var(--danger-text);
 }
 
+.team-members__help {
+	margin-block-start: var(--space-2);
+	color: var(--text-secondary);
+}
+
+.team-members__external {
+	margin: 0;
+	padding: var(--space-3) var(--space-4);
+	border-block-end: 1px solid var(--border-subtle);
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+
 .team-members__skeleton {
 	display: grid;
 	gap: var(--space-2);
@@ -470,6 +674,31 @@ async function leave() {
 .team-danger-zone__title {
 	margin: 0;
 	font-size: var(--text-lg);
+}
+
+.team-danger-zone__hint {
+	flex: 1 1 16rem;
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+
+.team-dialog__warning {
+	color: var(--text-primary);
+	font-weight: var(--weight-semibold);
+}
+
+.team-dialog__muted {
+	color: var(--text-secondary);
+}
+
+.team-dialog__acknowledge {
+	margin-block: var(--space-3);
+}
+
+.team-dialog__spaces ul {
+	margin-block: var(--space-1) 0;
+	padding-inline-start: var(--space-5);
 }
 
 .team-danger-zone__actions {

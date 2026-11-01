@@ -1,97 +1,167 @@
-import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest'
-import {mount, flushPromises, type VueWrapper} from '@vue/test-utils'
-import {setActivePinia, createPinia} from 'pinia'
-import {createI18n} from 'vue-i18n'
-import {createRouter, createMemoryHistory} from 'vue-router'
-import {QueryClient, VueQueryPlugin} from '@tanstack/vue-query'
-
-import type {ProjectResponse} from '@/client/queries/projects'
+import {afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest'
+import {flushPromises, mount, type VueWrapper} from '@vue/test-utils'
+import {createPinia, setActivePinia} from 'pinia'
+import {VueQueryPlugin} from '@tanstack/vue-query'
+import {createMemoryHistory, createRouter, type Router} from 'vue-router'
 
 const sdk = vi.hoisted(() => ({
+	projectsList: vi.fn(),
+	projectsDelete: vi.fn(),
+	projectTasksList: vi.fn(),
 	tasksList: vi.fn(),
+	userShow: vi.fn(),
 }))
-
 vi.mock('@/client/generated', () => sdk)
-
-const {projects} = vi.hoisted(() => ({projects: {} as Record<number, ProjectResponse>}))
-
-vi.mock('@/composables/useProjects', () => ({
-	useProjects: () => ({
-		projects,
-		getChildProjects: () => [],
-	}),
-}))
+vi.mock('@/message', () => ({success: vi.fn(), error: vi.fn()}))
 
 import ProjectSettingsDelete from '@/views/project/settings/ProjectSettingsDelete.vue'
-import Modal from '@/components/misc/Modal.vue'
+import XButton from '@/components/input/Button.vue'
 import Loading from '@/components/misc/Loading.vue'
+import Modal from '@/components/misc/Modal.vue'
+import {queryClient} from '@/client/queryClient'
+import {AUTH_TYPES} from '@/constants/auth'
 import testid from '@/directives/testid'
-import enMessages from '@/i18n/lang/en.json'
+import {i18n} from '@/i18n'
+import en from '@/i18n/lang/en.json'
+import {useAuthStore} from '@/stores/auth'
 
-const i18n = createI18n({legacy: false, locale: 'en', messages: {en: enMessages}})
+const defaults = queryClient.getDefaultOptions()
+let wrapper: VueWrapper | undefined
+let router: Router
+
+function project(id: number, extra: Record<string, unknown> = {}) {
+	return {id, title: id === 42 ? 'Test' : `Project ${id}`, parent_project_id: 0, is_archived: false, max_permission: 2, position: id, ...extra}
+}
+
+function list(items: unknown[]) {
+	return {data: {items, total_pages: 1}}
+}
+
+function taskTotal(total: number) {
+	return {data: {items: [], total, page: 1, per_page: 1, total_pages: total}}
+}
+
+beforeAll(() => {
+	queryClient.setDefaultOptions({...defaults, queries: {...defaults.queries, retry: false}})
+})
+
+afterAll(() => {
+	queryClient.setDefaultOptions(defaults)
+})
+
+beforeEach(() => {
+	vi.resetAllMocks()
+	setActivePinia(createPinia())
+	i18n.global.setLocaleMessage('en', en)
+	i18n.global.locale.value = 'en'
+	useAuthStore().setSession({id: 1, username: 'me', type: AUTH_TYPES.USER, exp: 0})
+	sdk.userShow.mockReturnValue(new Promise(() => {}))
+	sdk.projectsList.mockResolvedValue(list([project(42)]))
+	document.body.innerHTML = ''
+})
+
+afterEach(() => {
+	wrapper?.unmount()
+	wrapper = undefined
+	queryClient.clear()
+	document.body.innerHTML = ''
+})
 
 async function mountModal() {
-	const router = createRouter({
+	router = createRouter({
 		history: createMemoryHistory(),
-		routes: [{
-			path: '/projects/:projectId/settings/delete',
-			name: 'project.settings.delete',
-			component: ProjectSettingsDelete,
-		}],
+		routes: [
+			{path: '/', name: 'home', component: {template: '<div />'}},
+			{path: '/projects/:projectId/settings/delete', name: 'project.settings.delete', component: ProjectSettingsDelete},
+			{path: '/projects/:projectId', name: 'project.index', component: {template: '<div />'}},
+		],
 	})
 	await router.push('/projects/42/settings/delete')
 	await router.isReady()
-
-	const wrapper = mount(ProjectSettingsDelete, {
-		global: {
-			plugins: [i18n, router, [VueQueryPlugin, {queryClient: new QueryClient()}]],
-			components: {Modal},
-			directives: {cy: testid},
-			stubs: {
-				BaseButton: {template: '<a v-bind="$attrs"><slot /></a>'},
-				XButton: {template: '<button type="button" v-bind="$attrs"><slot /></button>'},
-				Icon: true,
-			},
-		},
+	wrapper = mount(ProjectSettingsDelete, {
 		attachTo: document.body,
+		global: {
+			plugins: [i18n, router, [VueQueryPlugin, {queryClient}]],
+			components: {Modal, XButton},
+			directives: {cy: testid},
+			stubs: {Icon: true},
+		},
 	})
 	await flushPromises()
 	return wrapper
 }
 
+function dialogText() {
+	return document.querySelector('dialog.modal-dialog:not([data-closing])')?.textContent ?? ''
+}
+
+function confirmButton() {
+	const found = document.querySelector<HTMLButtonElement>('dialog.modal-dialog .actions .is-primary')
+	if (!found) throw new Error('No confirm button')
+	return found
+}
+
 describe('ProjectSettingsDelete', () => {
-	let wrapper: VueWrapper | undefined
-
-	beforeEach(() => {
-		setActivePinia(createPinia())
-		document.body.innerHTML = ''
-		projects[42] = {id: 42, title: 'Test'} as ProjectResponse
-		sdk.tasksList.mockReset()
-	})
-
-	afterEach(() => {
-		wrapper?.unmount()
-		wrapper = undefined
-		document.body.innerHTML = ''
-	})
-
 	it('shows the loader while the task count is pending', async () => {
+		sdk.projectTasksList.mockReturnValue(new Promise(() => {}))
 		sdk.tasksList.mockReturnValue(new Promise(() => {}))
+		await mountModal()
 
-		wrapper = await mountModal()
-
-		expect(wrapper.findComponent(Loading).exists()).toBe(true)
-		expect(document.querySelector('dialog.modal-dialog')?.textContent)
-			.not.toContain('does not contain any tasks')
+		expect(wrapper!.findComponent(Loading).exists()).toBe(true)
+		expect(dialogText()).not.toContain('does not contain any tasks')
 	})
 
 	it('shows the task count once the query resolved', async () => {
-		sdk.tasksList.mockResolvedValue({data: {items: [], total: 3, page: 1, per_page: 1, total_pages: 3}})
+		sdk.projectTasksList.mockResolvedValue(taskTotal(3))
+		sdk.tasksList.mockResolvedValue(taskTotal(3))
+		await mountModal()
 
-		wrapper = await mountModal()
+		expect(wrapper!.findComponent(Loading).exists()).toBe(false)
+		expect(dialogText()).toContain('irrevocably remove approx. 3 tasks')
+		expect(dialogText()).toContain('Delete “Test”?')
+	})
 
-		expect(wrapper.findComponent(Loading).exists()).toBe(false)
-		expect(document.querySelector('dialog.modal-dialog')?.textContent)
-			.toContain('irrevocably remove approx. 3 tasks')
+	it('counts the tasks of every project inside it, archived ones included', async () => {
+		sdk.projectsList.mockResolvedValue(list([
+			project(42),
+			project(43, {parent_project_id: 42}),
+			project(44, {parent_project_id: 43, is_archived: true}),
+			project(45),
+		]))
+		const totals: Record<number, number> = {42: 1, 43: 2, 44: 4, 45: 100}
+		sdk.projectTasksList.mockImplementation(async ({path}: {path: {project: number}}) => taskTotal(totals[path.project] ?? 0))
+		sdk.tasksList.mockResolvedValue(taskTotal(1))
+		await mountModal()
+
+		const counted = sdk.projectTasksList.mock.calls.map(([options]) => options.path.project).sort()
+		expect(counted).toEqual([42, 43, 44])
+		expect(dialogText()).toContain('approx. 7 tasks and 3 projects')
+	})
+
+	it('says when it could not count the tasks instead of spinning', async () => {
+		sdk.projectTasksList.mockRejectedValue(new Error('offline'))
+		sdk.tasksList.mockRejectedValue(new Error('offline'))
+		await mountModal()
+
+		expect(wrapper!.findComponent(Loading).exists()).toBe(false)
+		const alert = document.querySelector('dialog.modal-dialog [role="alert"]')
+		expect(alert?.textContent).toContain('Couldn\'t count the tasks.')
+		expect(dialogText()).not.toContain('safe to delete')
+	})
+
+	it('sends one delete request for a double click and keeps the dialog open when it fails', async () => {
+		sdk.projectTasksList.mockResolvedValue(taskTotal(0))
+		sdk.tasksList.mockResolvedValue(taskTotal(0))
+		sdk.projectsDelete.mockRejectedValue(new Error('offline'))
+		await mountModal()
+
+		const confirm = confirmButton()
+		confirm.click()
+		confirm.click()
+		await flushPromises()
+
+		expect(sdk.projectsDelete).toHaveBeenCalledTimes(1)
+		expect(router.currentRoute.value.name).toBe('project.settings.delete')
+		expect(dialogText()).toContain('Delete “Test”?')
 	})
 })

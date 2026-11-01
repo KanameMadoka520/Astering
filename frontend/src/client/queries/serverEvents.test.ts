@@ -24,6 +24,7 @@ import {
 	normalizeTask,
 } from './tasks'
 import {kanbanKeys} from './kanban'
+import {projectKeys} from './projects'
 vi.mock('@/message', () => ({
 	error: vi.fn(),
 	success: vi.fn(),
@@ -97,7 +98,7 @@ it('rejects timer entries with an unusable id or task id', () => {
 it('falls back to an inbox refresh for notifications it cannot route', () => {
 	expect(parseServerCacheEvent('notification.created', {
 		id: 5,
-		name: 'team.member.added',
+		name: 'project.shared',
 	}, 7)).toEqual({kind: 'notifications'})
 	expect(parseServerCacheEvent('notification.created', {
 		id: 5,
@@ -380,5 +381,40 @@ it('refetches comments whose first read was still in flight when a comment notif
 
 	expect(client.getQueryData(key)).toEqual({items: [{id: 40}]})
 	expect(results.filter(Boolean)).toEqual([{items: [{id: 40}]}])
+	stop()
+})
+
+it('refreshes the project list once when you are added to a team', async () => {
+	const event = parseServerCacheEvent('notification.created', {
+		id: 5,
+		name: 'team.member.added',
+		notification: {team: {id: 3}, member: {id: 7}},
+	}, 7)
+	expect(event).toEqual({kind: 'notifications', projects: true})
+
+	const client = new QueryClient()
+	const listFn = vi.fn().mockResolvedValue({projects: []})
+	// An active observer stands in for the sidebar, which keeps the list for five minutes.
+	const stop = new QueryObserver(client, {queryKey: projectKeys.list(), queryFn: listFn, staleTime: 5 * 60 * 1000})
+		.subscribe(() => {})
+	await vi.waitFor(() => expect(listFn).toHaveBeenCalledTimes(1))
+
+	await client.getMutationCache().build(client, serverCacheEventMutationOptions()).execute(event!)
+
+	expect(listFn).toHaveBeenCalledTimes(2)
+	stop()
+})
+
+it('leaves the project list alone for other notifications', async () => {
+	const client = new QueryClient()
+	const listFn = vi.fn().mockResolvedValue({projects: []})
+	const stop = new QueryObserver(client, {queryKey: projectKeys.list(), queryFn: listFn, staleTime: 5 * 60 * 1000})
+		.subscribe(() => {})
+	await vi.waitFor(() => expect(listFn).toHaveBeenCalledTimes(1))
+
+	await client.getMutationCache().build(client, serverCacheEventMutationOptions())
+		.execute(parseServerCacheEvent('notification.created', {id: 6, name: 'task.assigned'}, 7)!)
+
+	expect(listFn).toHaveBeenCalledTimes(1)
 	stop()
 })

@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import {computed, ref, watch} from 'vue'
 
-import type {WebhookWritable} from '@/client/generated'
+import type {Webhook, WebhookWritable} from '@/client/generated'
 import {useQuery} from '@tanstack/vue-query'
 import {
 	webhooksQuery,
@@ -18,14 +18,22 @@ import FormInput from '@/components/input/FormInput.vue'
 import Expandable from '@/components/base/Expandable.vue'
 import User from '@/components/misc/User.vue'
 import PaginationEmit from '@/components/misc/PaginationEmit.vue'
+import LoadError from '@/components/misc/state/LoadError.vue'
 import {formatDateShort} from '@/helpers/time/formatDate'
 import {isValidHttpUrl} from '@/helpers/isValidHttpUrl'
 import {useDelayedLoading} from '@/composables/useDelayedLoading'
 
 const props = defineProps<{scope: WebhookScope}>()
 const currentPage = ref(1)
-const {data: webhookData, isFetching, isPending, isPlaceholderData} = useQuery(computed(() => webhooksQuery(props.scope, currentPage.value)))
-const {data: eventData, isPending: isEventsPending} = useQuery(computed(() => webhookEventsQuery(props.scope.kind)))
+// Both failures are shown in place, so they don't also need a toast.
+const webhooksResult = useQuery(computed(() => ({...webhooksQuery(props.scope, currentPage.value), meta: {handlesError: true}})))
+const eventsResult = useQuery(computed(() => ({...webhookEventsQuery(props.scope.kind), meta: {handlesError: true}})))
+const {data: webhookData, isFetching, isPending, isPlaceholderData} = webhooksResult
+const {data: eventData, isPending: isEventsPending} = eventsResult
+// Without a list nobody can tell whether webhooks already send this data somewhere, so the form waits for it.
+const listFailed = computed(() => webhooksResult.isError.value && webhookData.value === undefined)
+const refreshFailed = computed(() => webhooksResult.isError.value && webhookData.value !== undefined)
+const eventsFailed = computed(() => eventsResult.isError.value && eventData.value === undefined)
 const isLoadingInitial = computed(() => isPending.value || isEventsPending.value)
 const showInitialLoader = useDelayedLoading(isLoadingInitial)
 const reloading = useDelayedLoading(isPlaceholderData)
@@ -62,7 +70,8 @@ watch(availableEvents, (events) => {
 const webhookTargetUrlValid = ref(true)
 const selectedEventsValid = ref(true)
 const showDeleteModal = ref(false)
-const webhookIdToDelete = ref<number>()
+// Kept after closing so the dialog doesn't blank during its fade-out.
+const webhookToDelete = ref<Webhook>()
 
 function validateTargetUrl() {
 	webhookTargetUrlValid.value = isValidHttpUrl(newWebhook.value.target_url)
@@ -103,17 +112,27 @@ async function create() {
 	showNewForm.value = false
 }
 
-function confirmDelete(webhookId: number) {
-	webhookIdToDelete.value = webhookId
+function confirmDelete(webhook: Webhook) {
+	webhookToDelete.value = webhook
 	showDeleteModal.value = true
 }
 
-function doDelete() {
-	if (webhookIdToDelete.value) {
-		deleteMutation.mutate({scope: props.scope, id: webhookIdToDelete.value})
+// Synchronous guard: isPending only flips after the next render, too late for a double click.
+let deleting = false
+
+// The dialog stays open until the request settles; on failure the toast says why and the person can retry or cancel.
+async function doDelete() {
+	const webhook = webhookToDelete.value
+	if (!webhook?.id || deleting) return
+	deleting = true
+	try {
+		await deleteMutation.mutateAsync({scope: props.scope, id: webhook.id})
+	} catch {
+		return
+	} finally {
+		deleting = false
 	}
-	webhookIdToDelete.value = undefined
-	showDeleteModal.value = false
+	if (webhookToDelete.value === webhook) showDeleteModal.value = false
 }
 </script>
 
@@ -122,8 +141,13 @@ function doDelete() {
 		class="loader-container"
 		:class="{'is-loading': showInitialLoader || reloading}"
 	>
+		<LoadError
+			v-if="listFailed"
+			:retry="() => webhooksResult.refetch()"
+		/>
+
 		<XButton
-			v-if="hasWebhooks && !showNewForm"
+			v-if="!listFailed && hasWebhooks && !showNewForm"
 			icon="plus"
 			class="mbe-4"
 			@click="showNewForm = true"
@@ -132,7 +156,7 @@ function doDelete() {
 		</XButton>
 
 		<div
-			v-if="!isLoadingInitial && (!hasWebhooks || showNewForm)"
+			v-if="!listFailed && !isLoadingInitial && (!hasWebhooks || showNewForm)"
 			class="p-4"
 		>
 			<FormField
@@ -195,7 +219,14 @@ function doDelete() {
 				<p class="help">
 					{{ $t('project.webhooks.eventsHint') }}
 				</p>
-				<div class="control">
+				<LoadError
+					v-if="eventsFailed"
+					:retry="() => eventsResult.refetch()"
+				/>
+				<div
+					v-else
+					class="control"
+				>
 					<FancyCheckbox
 						v-for="event in availableEvents"
 						:key="event"
@@ -257,12 +288,18 @@ function doDelete() {
 							danger
 							icon="trash-alt"
 							:aria-label="$t('project.webhooks.delete')"
-							@click="() => w.id && confirmDelete(w.id)"
+							@click="confirmDelete(w)"
 						/>
 					</td>
 				</tr>
 			</tbody>
 		</table>
+		<!-- Rows from an earlier load stay, but they may be out of date. -->
+		<LoadError
+			v-if="refreshFailed"
+			:message="$t('project.share.refreshError')"
+			:retry="() => webhooksResult.refetch()"
+		/>
 		<PaginationEmit
 			:total-pages="totalPages"
 			:current-page="currentPage"
@@ -272,6 +309,8 @@ function doDelete() {
 		<Modal
 			danger
 			:enabled="showDeleteModal"
+			:loading="deleteMutation.isPending.value"
+			:confirm-label="$t('misc.delete')"
 			@close="showDeleteModal = false"
 			@submit="doDelete()"
 		>
@@ -280,6 +319,10 @@ function doDelete() {
 			</template>
 
 			<template #text>
+				<p class="webhook-delete-target">
+					<span class="is-sr-only">{{ $t('project.webhooks.targetUrl') }}: </span>
+					<code>{{ webhookToDelete?.target_url }}</code>
+				</p>
 				<p>{{ $t('project.webhooks.deleteText') }}</p>
 			</template>
 		</Modal>
@@ -294,7 +337,8 @@ function doDelete() {
 
 // Webhook URLs have no break opportunities, so without this the cell's min-content
 // width forces the whole table wider than its container.
-.webhook-target-url {
+.webhook-target-url,
+.webhook-delete-target {
 	overflow-wrap: anywhere;
 }
 </style>

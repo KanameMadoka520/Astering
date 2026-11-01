@@ -46,6 +46,10 @@
 				</span>
 				{{ getProjectTitle(project) }}
 			</div>
+			<ProjectAccessBadge
+				class="project-access"
+				:project="project"
+			/>
 		</div>
 		<BaseButton
 			class="project-button"
@@ -82,6 +86,7 @@ import {usePatchProjectFavoriteMutation, type ProjectResponse} from '@/client/qu
 import BaseButton from '@/components/base/BaseButton.vue'
 import ProjectSettingsDropdown from '@/components/project/ProjectSettingsDropdown.vue'
 import ProjectStatusBadges from '@/components/project/partials/ProjectStatusBadges.vue'
+import ProjectAccessBadge from '@/components/sharing/ProjectAccessBadge.vue'
 import {PERMISSIONS} from '@/constants/permissions'
 
 import {useProjectBackground} from '@/composables/useProjectBackground'
@@ -233,9 +238,15 @@ const parentPath = computed(() => {
 	-webkit-box-orient: vertical;
 }
 
+.project-access {
+	align-self: flex-start;
+}
+
 // Fixed white, not var(--white): that turns near-black in dark mode and the photo stays as bright as it is.
 .has-background .project-title,
-.has-background .project-parent {
+.has-background .project-parent,
+.has-background .project-access,
+.has-background .project-access :deep(.project-access-badge__icon) {
 	color: var(--text-on-accent);
 	text-shadow: 0 1px 3px hsla(220, 30%, 6%, .6);
 }
