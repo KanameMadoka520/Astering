@@ -222,6 +222,8 @@ func (state *AgentState) tools() []map[string]any {
 
 //nolint:gocyclo // Keep steering fences, budget checks, model retries and tool settlement in their execution order.
 func RunAgent(ctx context.Context, c Connection, state *AgentState, execute Executor, prepare Preparer, save func(*AgentState) error, controls ...AgentControl) (result RunResult, runErr error) {
+	ctx, releaseClient := withProviderClient(ctx)
+	defer releaseClient()
 	startActions := len(state.Result.Actions)
 	control := AgentControl{}
 	if len(controls) > 0 {

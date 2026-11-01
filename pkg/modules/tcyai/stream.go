@@ -40,12 +40,14 @@ func readStream(reader io.Reader, protocol string, o *observation) ([]byte, erro
 	annotations := []any{}
 	event, data := "", ""
 	terminal := false
+	protocolDone := false
 	emit := func() error {
 		if data == "" {
 			return nil
 		}
 		if strings.TrimSpace(data) == "[DONE]" {
 			terminal = true
+			protocolDone = true
 			return nil
 		}
 		var frame map[string]any
@@ -126,6 +128,7 @@ func readStream(reader io.Reader, protocol string, o *observation) ([]byte, erro
 				response["usage"] = usage
 			case "message_stop":
 				terminal = true
+				protocolDone = true
 			}
 		case "openai-responses":
 			switch textValue(frame, "type") {
@@ -152,6 +155,7 @@ func readStream(reader io.Reader, protocol string, o *observation) ([]byte, erro
 					return streamProviderError(response, o)
 				}
 				terminal = true
+				protocolDone = true
 			}
 		case "gemini":
 			if usage := object(frame, "usageMetadata"); usage != nil {
@@ -291,6 +295,10 @@ func readStream(reader io.Reader, protocol string, o *observation) ([]byte, erro
 				return nil, err
 			}
 			event, data = "", ""
+			// Finish reasons can precede usage; only explicit protocol end events stop reading.
+			if protocolDone {
+				break
+			}
 			continue
 		}
 		if strings.HasPrefix(line, "event:") {

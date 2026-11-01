@@ -33,8 +33,6 @@ import (
 	"time"
 
 	"code.vikunja.io/api/pkg/modules/tcylocale"
-
-	"code.vikunja.io/api/pkg/utils"
 )
 
 type FunctionCall struct {
@@ -75,10 +73,8 @@ func request(ctx context.Context, c Connection, method, suffix, contentType stri
 			req.Header.Set("Authorization", "Bearer "+c.APIKey)
 		}
 	}
-	client := utils.NewSSRFSafeHTTPClient()
-	// Caller contexts own the execution deadline; do not add a hidden output-time cap.
-	client.Timeout = 0
-	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+	client, release := providerClient(ctx)
+	defer release()
 	resp, err := client.Do(req)
 	if err != nil {
 		return tcylocale.Error("e26")
