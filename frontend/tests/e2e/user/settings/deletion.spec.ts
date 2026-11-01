@@ -4,6 +4,13 @@ import {TEST_PASSWORD} from '../../../support/constants'
 import {TokenFactory} from '../../../factories/token'
 
 test.describe('Account deletion', () => {
+	test('lists what deleting the account removes and what to save first', async ({authenticatedPage: page}) => {
+		await gotoUserSettings(page, 'deletion')
+		await expect(page.locator('.deletion-card')).toContainText('your private Compass spaces')
+		await expect(page.locator('.deletion-card')).toContainText('Team Compass spaces stay with their team.')
+		await expect(page.locator('.deletion-card')).toContainText('download Drive files from Drive')
+	})
+
 	test('blocks deletion request with no password', async ({authenticatedPage: page}) => {
 		await gotoUserSettings(page, 'deletion')
 		await page.locator('.card .button.is-danger').click()
@@ -33,9 +40,18 @@ test.describe('Account deletion', () => {
 		}, false)
 
 		await page.goto(`/user/settings/deletion?accountDeletionConfirm=${deletionToken}`)
-		// Scheduled-state copy: "We will delete your Vikunja account at ..."
-		await expect(page.locator('.card')).toContainText(/we will delete your Vikunja account/i)
+		// Scheduled-state copy: "We will delete your vikunja-x account on <date> (in …)."
+		// The date itself is absolute, with a year; only the parentheses say how far away it is.
+		const scheduled = /we will delete your vikunja-x account on [^()]*\b\d{4}\b[^()]* \(in [^)]+\)/i
+		await expect(page.locator('.card')).toContainText(scheduled)
+		await expect(page.locator('.card')).not.toContainText(/account on in /i)
 		await expect(page).not.toHaveURL(/accountDeletionConfirm/)
+
+		// The home page shows the same notice.
+		await page.goto('/')
+		await expect(page.locator('.workspace-notice')).toContainText(scheduled)
+		await expect(page.locator('.workspace-notice')).not.toContainText(/account on in /i)
+		await page.goto('/user/settings/deletion')
 
 		await page.locator('#currentPasswordAccountDelete').fill(TEST_PASSWORD)
 		const cancel = page.waitForResponse(r => r.url().includes('/user/deletion/cancel'))

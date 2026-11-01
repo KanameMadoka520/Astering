@@ -58,6 +58,9 @@ for (const width of [1440, 390]) {
 		await open.click()
 		await expect(panel.getByLabel('Working mode')).toHaveValue('write')
 		await panel.getByRole('button', {name: 'Delete this template'}).click()
+		// An account-wide template asks before it goes.
+		await expect(panel.getByLabel('My templates')).toContainText('Weekly review')
+		await panel.getByRole('button', {name: 'Delete template', exact: true}).click()
 		await expect(panel.getByLabel('My templates')).toHaveCount(0)
 		await panel.getByRole('button', {name: 'Use for upcoming messages'}).click()
 		await expect(page.locator('.profile-switch select')).toHaveValue('ask')
@@ -71,7 +74,7 @@ for (const width of [1440, 390]) {
 	})
 }
 
-test('a stale template save retains edits and asks to reload instead of overwriting another window', async ({authenticatedPage: page, apiContext, userToken}) => {
+test('a stale template save retains edits, and its retry reloads and keeps the other window\'s change', async ({authenticatedPage: page, apiContext, userToken}) => {
 	await page.goto('/ai')
 	await page.getByRole('button', {name: 'Scenarios & preferences', exact: true}).click()
 	const panel = page.getByRole('dialog', {name: 'Scenarios & preferences'})
@@ -83,8 +86,10 @@ test('a stale template save retains edits and asks to reload instead of overwrit
 	await expect(panel.getByRole('alert')).toContainText('Another window')
 	await expect(panel.getByLabel('Save a personal template', {exact: true})).toHaveValue('Do not lose this')
 	await panel.getByRole('button', {name: 'Try again', exact: true}).click()
-	await panel.getByRole('button', {name: 'Save as new template'}).click()
 	await expect(panel.getByLabel('My templates')).toContainText('Do not lose this')
+	const stored = await (await apiContext.get(`${api}/ai/preferences`, {headers})).json()
+	expect(stored.default_profile).toBe('plan')
+	expect(stored.profiles.map((profile: {name: string}) => profile.name)).toEqual(['Do not lose this'])
 })
 
 // Real preferences API: the template must carry both runtime switches, not just the dialog's draft.
@@ -122,6 +127,7 @@ test('parallel subtasks and pausing at the segment limit are stored in a templat
 	await expect(pauseAtLimit).toBeChecked()
 
 	await panel.getByRole('button', {name: 'Delete this template'}).click()
+	await panel.getByRole('button', {name: 'Delete template', exact: true}).click()
 	await expect(panel.getByLabel('My templates')).toHaveCount(0)
 	expect(await storedTemplates()).toEqual([])
 	await page.keyboard.press('Escape')

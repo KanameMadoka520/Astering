@@ -109,6 +109,12 @@
 					:has-content="false"
 					class="project-table-card"
 				>
+					<LoadError
+						v-if="loadFailed"
+						class="project-table-load-error"
+						:message="$t('project.tasksLoadError')"
+						:retry="taskList.loadTasks"
+					/>
 					<div
 						class="project-table-scroll"
 						tabindex="0"
@@ -360,6 +366,14 @@
 										/>
 									</td>
 								</tr>
+								<tr v-if="loaded && tasks.length === 0">
+									<td
+										:colspan="visibleColumnCount"
+										class="project-table-empty"
+									>
+										{{ $t('project.table.empty') }}
+									</td>
+								</tr>
 							</tbody>
 						</table>
 					</div>
@@ -397,6 +411,7 @@ import Popup from '@/components/misc/Popup.vue'
 
 import type {SortBy} from '@/composables/useTaskList'
 import {useTaskList} from '@/composables/useTaskList'
+import LoadError from '@/components/misc/state/LoadError.vue'
 import type {TaskResponse} from '@/client/queries/tasks'
 import {useTableSort} from '@/composables/useTableSort'
 import {useDelayedLoading} from '@/composables/useDelayedLoading'
@@ -462,6 +477,8 @@ const {
 	sortByParam,
 } = taskList
 const tasks: Ref<TaskResponse[]> = taskList.tasks
+const {loadFailed, loaded} = taskList
+const visibleColumnCount = computed(() => Math.max(1, Object.values(activeColumns.value).filter(Boolean).length))
 // The spinner overlay is for a first load only; a background refetch keeps the rows usable.
 const loading = useDelayedLoading(() => taskList.loading.value && tasks.value.length === 0)
 const refreshing = useDelayedLoading(() => taskList.loading.value && tasks.value.length > 0)
@@ -504,6 +521,16 @@ const taskDetailRoutes = computed(() => Object.fromEntries(
 	&.is-refreshing {
 		opacity: .85;
 	}
+}
+
+.project-table-load-error {
+	margin: var(--space-3);
+}
+
+.project-table-empty {
+	padding: var(--space-4);
+	color: var(--text-secondary);
+	text-align: center;
 }
 
 // The table scrolls inside its own region, so the sticky header stays in view and phones never scroll the page sideways.

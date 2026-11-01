@@ -72,8 +72,14 @@
 					{{ $t('user.settings.caldav.wontSeeItAgain') }}
 				</Message>
 
+				<LoadError
+					v-if="tokenQuery.isError.value && !tokenQuery.data.value"
+					class="mbe-4"
+					:message="$t('user.settings.accessLoadError')"
+					:retry="() => tokenQuery.refetch()"
+				/>
 				<div
-					v-if="tokens.length > 0"
+					v-else-if="tokens.length > 0"
 					class="has-horizontal-overflow loader-container"
 					:class="{'is-loading': tokenQuery.isPlaceholderData.value}"
 				>
@@ -115,6 +121,12 @@
 						</tbody>
 					</table>
 				</div>
+				<p
+					v-else-if="tokenQuery.isSuccess.value"
+					class="settings-copy"
+				>
+					{{ $t('user.settings.caldav.empty') }}
+				</p>
 
 				<Pagination
 					v-if="totalPages > 1"
@@ -136,13 +148,17 @@
 		<Modal
 			danger
 			:enabled="tokenToDelete !== null"
+			:confirm-label="$t('user.settings.caldav.delete.confirm')"
 			@close="tokenToDelete = null"
-			@submit="deleteToken()"
+			@submit="deleteToken"
 		>
 			<template #header>
 				{{ $t('user.settings.caldav.delete.header') }}
 			</template>
 			<template #text>
+				<p v-if="tokenToDelete">
+					<strong>{{ $t('user.settings.caldav.delete.subject', {id: tokenToDelete.id, created: formatDateShort(tokenToDelete.created)}) }}</strong>
+				</p>
 				<p>{{ $t('user.settings.caldav.delete.text') }}</p>
 			</template>
 		</Modal>
@@ -163,6 +179,7 @@ import Message from '@/components/misc/Message.vue'
 import FormField from '@/components/input/FormField.vue'
 import Pagination from '@/components/misc/Pagination.vue'
 import PageHeader from '@/components/misc/state/PageHeader.vue'
+import LoadError from '@/components/misc/state/LoadError.vue'
 import {useQuery} from '@tanstack/vue-query'
 import {caldavTokensQuery, useCreateCaldavTokenMutation, useDeleteCaldavTokenMutation} from '@/client/queries/caldavTokens'
 import {normalizePageNumber} from '@/client/queries/pagination'
@@ -180,9 +197,11 @@ const authStore = useAuthStore()
 const configStore = useConfigStore()
 const caldav_enabled = computed(() => configStore.caldav_enabled)
 const page = useRouteQuery('page', '1', {transform: normalizePageNumber})
+// The page shows its own load error: an unknown list must not read as "no tokens".
 const tokenQuery = useQuery(computed(() => ({
 	...caldavTokensQuery(page.value),
 	enabled: caldav_enabled.value,
+	meta: {handlesError: true},
 })))
 const tokens = computed(() => tokenQuery.data.value?.items ?? [])
 const totalPages = computed(() => tokenQuery.data.value?.total_pages ?? 0)
@@ -198,14 +217,15 @@ async function createToken() {
 	} catch { return }
 }
 
+// The dialog stays open (and busy) until the token is really gone; a failure leaves it open to retry or cancel.
 async function deleteToken() {
 	const token = tokenToDelete.value
 	if (!token?.id || deleteMutation.isPending.value) return
-	tokenToDelete.value = null
 	try {
 		await deleteMutation.mutateAsync(token.id)
-		if (newToken.value?.id === token.id) newToken.value = undefined
 	} catch { return }
+	if (newToken.value?.id === token.id) newToken.value = undefined
+	if (tokenToDelete.value?.id === token.id) tokenToDelete.value = null
 }
 
 const username = computed(() => authStore.info?.username)

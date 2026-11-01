@@ -1,15 +1,29 @@
 <script setup lang="ts">
-import {computed, defineAsyncComponent, nextTick, ref, watch, onMounted, onBeforeUnmount, shallowRef, useId} from 'vue'
+import {computed, nextTick, ref, shallowRef, watch, useId, type Component} from 'vue'
 import {useRoute, useRouter} from 'vue-router'
 import {useI18n} from 'vue-i18n'
 import {useBaseStore} from '@/stores/base'
 import {useAuthStore} from '@/stores/auth'
 import {useIsMobile} from '@/composables/useIsMobile'
 import {captureClientRequestContext} from '@/client/requestContext'
+import {useTopModalDialog} from '@/composables/useTopModalDialog'
 import AronaAvatar from './AronaAvatar.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
-const Assistant = defineAsyncComponent(() => import('@/views/TcyAssistant.vue'))
+import LoadError from '@/components/misc/state/LoadError.vue'
 const {t} = useI18n({useScope: 'global'})
+// Loaded on first open. A slow or failed download shows in the panel, which keeps its minimize button, instead of an
+// empty box.
+const assistant = shallowRef<Component>()
+const assistantFailed = ref(false)
+let assistantLoading: Promise<void> | undefined
+function loadAssistant() {
+	if (assistant.value) return
+	assistantFailed.value = false
+	assistantLoading ??= import('@/views/TcyAssistant.vue')
+		.then(module => { assistant.value = module.default })
+		.catch(() => { assistantFailed.value = true })
+		.finally(() => { assistantLoading = undefined })
+}
 const route = useRoute()
 const router = useRouter()
 const base = useBaseStore()
@@ -17,20 +31,15 @@ const auth = useAuthStore()
 const open = ref(false)
 const loaded = ref(false)
 const running = ref(false)
+const waiting = ref(false)
 const navigationBusy = ref(false)
 const conversation = ref('')
 const launcher = ref<InstanceType<typeof BaseButton>>()
 const panel = ref<HTMLElement>()
 const activityId = useId()
-const portal = shallowRef<string | HTMLElement>('body')
-let modalObserver: MutationObserver | undefined
-onMounted(() => {
-	const update = () => { portal.value = document.querySelector<HTMLDialogElement>('dialog.task-detail-view-modal[open]') || 'body' }
-	modalObserver = new MutationObserver(update)
-	modalObserver.observe(document.body, {childList: true, subtree: true, attributes: true, attributeFilter: ['open']})
-	update()
-})
-onBeforeUnmount(() => modalObserver?.disconnect())
+// Arona joins an open task detail, which is modal, so it stays usable next to the task; other dialogs cover it.
+const {taskDetailDialog} = useTopModalDialog()
+const portal = computed<string | HTMLElement>(() => taskDetailDialog.value ?? 'body')
 const fullPage = computed(() => route.name === 'tcy-ai')
 // The phone drawer is modal; the dock steps aside (state and streaming stay mounted).
 const isMobile = useIsMobile()
@@ -42,16 +51,27 @@ const accountKey = computed(() => {
 	return JSON.stringify([context.apiBaseUrl, auth.info?.id, context.identity?.type])
 })
 watch(accountKey, key => {
-	open.value = false; loaded.value = false; running.value = false
+	open.value = false; loaded.value = false; running.value = false; waiting.value = false
 	try { conversation.value = sessionStorage.getItem(`arona-floating:${key}`) || '' } catch { conversation.value = '' }
 }, {immediate: true})
 watch(conversation, id => {try { sessionStorage.setItem(`arona-floating:${accountKey.value}`, id) } catch { /* Browser storage is optional. */ }})
-watch(() => route.query.chat, id => {if (fullPage.value && typeof id === 'string') conversation.value = id}, {immediate: true})
+// Follows the full page, including a new chat there (no id): a chat deleted on that page must not reopen here.
+watch(() => route.query.chat, id => {if (fullPage.value) conversation.value = typeof id === 'string' ? id : ''}, {immediate: true})
 async function toggle() {
 	open.value = !open.value
-	if (open.value) { loaded.value = true; await nextTick(); panel.value?.focus() }
+	if (!open.value) return
+	loaded.value = true
+	loadAssistant()
+	await nextTick()
+	panel.value?.focus()
 }
 function minimize() { open.value = false; nextTick(() => launcher.value?.$el?.focus()) }
+// Work beats waiting: a paused turn the user is already answering shows as running.
+const status = computed(() => running.value ? 'working' : waiting.value ? 'waiting' : '')
+const launcherTitle = computed(() => [
+	t(open.value ? 'floatingArona.minimize' : 'floatingArona.open'),
+	...status.value ? [t(`floatingArona.${status.value}`)] : [],
+].join(' · '))
 function expand() { open.value = false; void router.push({name: 'tcy-ai', query: {chat: conversation.value || undefined, project: base.currentProjectId || undefined}}) }
 </script>
 
@@ -76,14 +96,17 @@ function expand() { open.value = false; void router.push({name: 'tcy-ai', query:
 				@keydown.esc.prevent.stop="minimize"
 			>
 				<div class="panel-body">
-					<Assistant
-						v-if="loaded"
+					<component
+						:is="assistant"
+						v-if="assistant"
 						:key="accountKey"
 						v-model:conversation-id="conversation"
 						embedded
+						:presenting="open"
 						:context-project-id="base.currentProjectId || 0"
 						:context-task-id="taskID"
 						@activity="running = $event"
+						@attention="waiting = $event"
 						@navigationBusy="navigationBusy = $event"
 					>
 						<template #panel-actions>
@@ -105,7 +128,35 @@ function expand() { open.value = false; void router.push({name: 'tcy-ai', query:
 								<Icon icon="minus" />
 							</BaseButton>
 						</template>
-					</Assistant>
+					</component>
+					<div
+						v-else
+						class="panel-state"
+					>
+						<div class="panel-state__header">
+							<strong>{{ t('floatingArona.title') }}</strong>
+							<BaseButton
+								class="panel-button"
+								:aria-label="t('floatingArona.minimize')"
+								:title="t('floatingArona.minimize')"
+								@click="minimize"
+							>
+								<Icon icon="minus" />
+							</BaseButton>
+						</div>
+						<LoadError
+							v-if="assistantFailed"
+							:message="t('floatingArona.loadFailed')"
+							:retry="loadAssistant"
+						/>
+						<p
+							v-else
+							class="panel-state__loading"
+							role="status"
+						>
+							{{ t('floatingArona.loading') }}
+						</p>
+					</div>
 				</div>
 			</section>
 			<BaseButton
@@ -114,23 +165,28 @@ function expand() { open.value = false; void router.push({name: 'tcy-ai', query:
 				:class="{working: running}"
 				:aria-label="t(open ? 'floatingArona.minimize' : 'floatingArona.open')"
 				:aria-expanded="open"
-				:aria-describedby="running ? activityId : undefined"
-				:title="t('floatingArona.open')"
+				:aria-describedby="status ? activityId : undefined"
+				:title="launcherTitle"
 				@click="toggle"
 			>
 				<AronaAvatar />
 				<span
-					v-if="running"
+					v-if="status === 'working'"
 					class="activity-dot"
 					aria-hidden="true"
-					:title="t('floatingArona.working')"
 				/>
+				<!-- Shape and color both set it apart from the working dot. -->
+				<span
+					v-else-if="status === 'waiting'"
+					class="attention-badge"
+					aria-hidden="true"
+				><Icon icon="exclamation" /></span>
 			</BaseButton>
-			<!-- The launcher keeps its name; the running state is its description. -->
+			<!-- The launcher keeps its name; working or waiting is its description. -->
 			<span
 				:id="activityId"
 				class="is-sr-only"
-			>{{ t('floatingArona.working') }}</span>
+			>{{ status ? t(`floatingArona.${status}`) : '' }}</span>
 		</div>
 	</Teleport>
 </template>
@@ -182,6 +238,22 @@ function expand() { open.value = false; void router.push({name: 'tcy-ai', query:
 	box-sizing: content-box;
 }
 
+.attention-badge {
+	position: absolute;
+	inset-block-start: -.125rem;
+	inset-inline-end: -.125rem;
+	display: grid;
+	place-items: center;
+	inline-size: 1rem;
+	block-size: 1rem;
+	border: 2px solid var(--surface-raised);
+	border-radius: var(--radius-full);
+	background: var(--warning);
+	color: var(--warning-invert);
+	font-size: .5625rem;
+	box-sizing: content-box;
+}
+
 .arona-panel {
 	display: flex;
 	flex-direction: column;
@@ -226,5 +298,24 @@ function expand() { open.value = false; void router.push({name: 'tcy-ai', query:
 	flex: 1;
 	min-block-size: 0;
 	overflow: hidden;
+}
+
+.panel-state {
+	display: grid;
+	align-content: start;
+	gap: var(--space-4);
+	padding: var(--space-3) var(--space-4);
+}
+
+.panel-state__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+}
+
+.panel-state__loading {
+	color: var(--text-secondary);
+	font-size: var(--text-md);
 }
 </style>

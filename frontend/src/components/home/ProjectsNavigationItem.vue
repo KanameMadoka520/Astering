@@ -95,9 +95,9 @@
 </template>
 
 <script setup lang="ts">
-import {computed, ref, onUnmounted, watch} from 'vue'
+import {computed} from 'vue'
 import {useProjects} from '@/composables/useProjects'
-import {useCurrentProject} from '@/composables/useCurrentProject'
+import {useBaseStore} from '@/stores/base'
 import {useTaskDragState} from '@/composables/useTaskDragState'
 import {useDelayedLoading} from '@/composables/useDelayedLoading'
 import {useStorage} from '@vueuse/core'
@@ -126,51 +126,12 @@ const props = defineProps<{
 
 const showLoading = useDelayedLoading(() => props.isLoading)
 
-const {draggedTask} = useTaskDragState()
-const isHoveredDuringDrag = ref(false)
-
-// Track mouse position during drag to detect hover (mouseenter doesn't fire during drag)
-function handleMouseMove(e: MouseEvent) {
-	if (!draggedTask.value) {
-		isHoveredDuringDrag.value = false
-		return
-	}
-
-	// Synthetic drag events carry no pointer position, and elementsFromPoint throws on NaN
-	if (!Number.isFinite(e.clientX) || !Number.isFinite(e.clientY)) {
-		return
-	}
-
-	const elementsUnderMouse = document.elementsFromPoint(e.clientX, e.clientY)
-	const isOverThisProject = elementsUnderMouse.some(el => {
-		const projectId = (el as HTMLElement).dataset?.projectId
-		return projectId && parseInt(projectId, 10) === props.project.id
-	})
-
-	isHoveredDuringDrag.value = isOverThisProject
-}
-
-// Only add the listener when a task is being dragged
-// Use capture phase to receive events before Sortable.js can prevent them
-watch(draggedTask, task => {
-	if (task) {
-		document.addEventListener('mousemove', handleMouseMove, true)
-		document.addEventListener('dragover', handleMouseMove, true)
-	} else {
-		document.removeEventListener('mousemove', handleMouseMove, true)
-		document.removeEventListener('dragover', handleMouseMove, true)
-		isHoveredDuringDrag.value = false
-	}
-}, {immediate: true})
-
-onUnmounted(() => {
-	document.removeEventListener('mousemove', handleMouseMove, true)
-	document.removeEventListener('dragover', handleMouseMove, true)
-})
+// The drag state tracks the hovered project once for all rows.
+const {draggedTask, hoveredProjectId} = useTaskDragState()
 
 // Show drop target highlight when a task is being dragged and this project is hovered
 const isDropTarget = computed(() => {
-	if (!draggedTask.value || !isHoveredDuringDrag.value) {
+	if (!draggedTask.value || hoveredProjectId.value !== props.project.id) {
 		return false
 	}
 	// Highlight any valid project (not a pseudo project, has write permission)
@@ -183,9 +144,10 @@ const isDropTarget = computed(() => {
 const projectList = useProjects()
 const projectFavoriteMutation = usePatchProjectFavoriteMutation()
 const savedFilterFavoriteMutation = usePatchSavedFilterFavoriteMutation()
-const {currentProject} = useCurrentProject()
-// Every view of the current project highlights its row, not only the exact project route.
-const isCurrent = computed(() => currentProject.value?.id === props.project.id)
+const baseStore = useBaseStore()
+// Every view of the current project highlights its row, not only the exact project route. The id is enough: loading
+// the current project in every row would add two queries per row and wait for them.
+const isCurrent = computed(() => baseStore.currentProjectId === props.project.id)
 
 // Persist open state across browser reloads. Using a separate ref for the state 
 // allows us to use only one entry in local storage instead of one for every project id.

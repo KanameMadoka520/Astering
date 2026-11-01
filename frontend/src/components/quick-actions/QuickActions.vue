@@ -27,7 +27,10 @@
 					v-focus
 					:value="query"
 					class="input"
-					:class="{'is-loading': loading}"
+					:class="{'is-loading': loading || running}"
+					:aria-busy="running || undefined"
+					:aria-invalid="commandError !== '' || undefined"
+					:aria-describedby="commandError !== '' ? commandErrorId : undefined"
 					:placeholder="placeholder"
 					@input="updateQuery"
 					@keyup="search"
@@ -47,6 +50,15 @@
 					<Icon icon="times" />
 				</BaseButton>
 			</div>
+
+			<p
+				v-if="commandError !== ''"
+				:id="commandErrorId"
+				class="help is-danger quick-actions-error"
+				role="alert"
+			>
+				{{ commandError }}
+			</p>
 
 			<div
 				v-if="hintText !== '' && !isNewTaskCommand"
@@ -120,7 +132,7 @@
 </template>
 
 <script setup lang="ts">
-import {type ComponentPublicInstance, computed, ref, watch, watchEffect, onBeforeUnmount} from 'vue'
+import {type ComponentPublicInstance, computed, ref, useId, watch, watchEffect, onBeforeUnmount} from 'vue'
 import {useQuickAddMode} from '@/composables/useQuickAddMode'
 import {useI18n} from 'vue-i18n'
 import {useRouter} from 'vue-router'
@@ -140,6 +152,7 @@ import {useBaseStore} from '@/stores/base'
 import {useProjects} from '@/composables/useProjects'
 import {useCurrentProject} from '@/composables/useCurrentProject'
 import {useQuickAddTask} from '@/composables/useQuickAddTask'
+import {isRequestContextAbort} from '@/client/requestContext'
 import {useAuthStore} from '@/stores/auth'
 import {useLabels} from '@/composables/useLabels'
 import {useDelayedLoading} from '@/composables/useDelayedLoading'
@@ -515,6 +528,7 @@ const loading = useDelayedLoading(() =>
 // under the finger once tapping one commits the composition.
 function updateQuery(event: Event) {
 	query.value = (event.target as HTMLInputElement).value
+	commandError.value = ''
 }
 
 function search() {
@@ -609,8 +623,14 @@ function onEnter(event: KeyboardEvent) {
 	doCmd()
 }
 
+// A command keeps the dialog and the typed text until it worked; a second Enter meanwhile does nothing.
+const running = ref(false)
+const commandError = ref('')
+const commandErrorId = useId()
+
 async function doCmd() {
-	if (results.value.length === 1 && results.value[0].items.length === 1) {
+	// With a command chosen the search results are hidden, so Enter must never run one of them.
+	if (selectedCmd.value === null && results.value.length === 1 && results.value[0].items.length === 1) {
 		const result = results.value[0]
 		doAction(result.type, result.items[0])
 		openTaskAfterCreate = false
@@ -622,10 +642,20 @@ async function doCmd() {
 		return
 	}
 
-	if (!isQuickAddMode) {
-		closeQuickActions()
+	if (running.value) return
+	running.value = true
+	commandError.value = ''
+	try {
+		await selectedCmd.value.action()
+	} catch (cause) {
+		openTaskAfterCreate = false
+		if (isRequestContextAbort(cause)) return
+		commandError.value = cause instanceof Error && cause.message === 'NO_PROJECT'
+			? t('project.create.addProjectRequired')
+			: t('quickActions.notCreated')
+	} finally {
+		running.value = false
 	}
-	await selectedCmd.value.action()
 }
 
 async function newTask() {
@@ -638,6 +668,7 @@ async function newTask() {
 		project_id: projectId,
 	})
 	success({message: t('task.createSuccess')})
+	if (!isQuickAddMode) closeQuickActions()
 
 	if (isQuickAddMode) {
 		const channel = new BroadcastChannel('vikunja-task-updates')
@@ -663,16 +694,13 @@ async function newProject() {
 		title: query.value,
 		parent_project_id: Math.max(parentProjectId, 0),
 	}))
+	closeQuickActions()
 	await router.push({name: 'project.index', params: {projectId: created.id}})
 }
 
 async function newTeam() {
-	let team
-	try {
-		team = await createTeamMutation.mutateAsync({name: query.value})
-	} catch {
-		return
-	}
+	const team = await createTeamMutation.mutateAsync({name: query.value})
+	closeQuickActions()
 	await router.push({
 		name: 'teams.edit',
 		params: {id: team.id},
@@ -726,6 +754,7 @@ function unselectCmd() {
 function reset() {
 	query.value = ''
 	selectedCmd.value = null
+	commandError.value = ''
 }
 
 const resultCount = computed(() => results.value.reduce((total, group) => total + group.items.length, 0))
@@ -831,6 +860,13 @@ onBeforeUnmount(() => {
 	color: var(--accent-text);
 	font-size: var(--text-sm);
 	font-weight: var(--weight-medium);
+}
+
+.quick-actions-error {
+	margin: 0;
+	padding: var(--space-2) var(--space-4);
+	border-block-end: 1px solid var(--border-subtle);
+	font-size: var(--text-sm);
 }
 
 .quick-actions-hint {

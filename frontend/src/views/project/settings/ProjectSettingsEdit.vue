@@ -132,6 +132,9 @@ const updateProject = useUpdateProjectMutation(t('project.edit.success'))
 const parentProject = ref<ProjectResponse | null>(null)
 const parentProjectChanged = ref(false)
 const isSaving = ref(false)
+// A -> B -> A is a new visit too: an earlier save must not close the reopened editor.
+let projectRouteVersion = 0
+watch(() => props.projectId, () => { projectRouteVersion++ }, {flush: 'sync'})
 
 const loadingModel = computed({
 	get: () => isSaving.value || isLoading.value,
@@ -187,22 +190,24 @@ async function save() {
 		return
 	}
 
+	const current = project.value
+	const originVersion = projectRouteVersion
+	const isCurrentRequest = () => alive.value && props.projectId === current.id && projectRouteVersion === originVersion
 	isSaving.value = true
 
 	try {
 		if (parentProjectChanged.value) {
-			project.value.parent_project_id = parentProject.value?.id ?? 0
+			current.parent_project_id = parentProject.value?.id ?? 0
 		}
-		await updateProject.mutateAsync(project.value)
-		baseStore.setCurrentProject(project.value)
+		const updated = await updateProject.mutateAsync(current)
+		if (isCurrentRequest()) baseStore.setCurrentProject(updated)
 	} catch {
 		// The toast says what went wrong; the form keeps the changes.
 		return
 	} finally {
 		isSaving.value = false
 	}
-	// Leaving mid-save is blocked by the dialog; this still keeps a late save from stepping back a second time.
-	if (alive.value) {
+	if (isCurrentRequest()) {
 		goBack()
 	}
 }

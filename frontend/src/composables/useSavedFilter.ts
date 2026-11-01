@@ -70,6 +70,7 @@ export function useSavedFilter(projectId: MaybeRefOrGetter<number>) {
 		isLoaded,
 		isLoading: computed(() => savedFilterId.value > 0 && query.isPending.value),
 		error: query.error,
+		retry: () => query.refetch(),
 		validate: (): Omit<UpdateSavedFilterInput, 'id'> | undefined => {
 			const current = query.data.value
 			if (!isLoaded.value || current?.id !== savedFilterId.value) {

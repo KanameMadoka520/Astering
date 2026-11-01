@@ -91,6 +91,26 @@ export function formatDisplayDate(date: Date | string | null | undefined) {
 	return formatDisplayDateFormat(date, dateDisplay.value, timeFormat.value)	
 }
 
+// Building a formatter costs far more than formatting with it, and date tooltips call this for every row.
+const longDateFormatters = new Map<string, Intl.DateTimeFormat>()
+function longDateFormatter(locale: string, weekday: boolean, hour12: boolean) {
+	const key = JSON.stringify([locale, weekday, hour12])
+	let formatter = longDateFormatters.get(key)
+	if (!formatter) {
+		formatter = new Intl.DateTimeFormat(locale, {
+			...weekday ? {weekday: 'long'} : {},
+			day: 'numeric',
+			month: 'long',
+			year: 'numeric',
+			hour: 'numeric',
+			minute: 'numeric',
+			hour12,
+		})
+		longDateFormatters.set(key, formatter)
+	}
+	return formatter
+}
+
 export function formatDisplayDateFormat(date: Date | string | null | undefined, format: DateDisplay, timeFormat?: TimeFormat) {
 	const parsed = toDate(date)
 	if (parsed === null) {
@@ -115,14 +135,13 @@ export function formatDisplayDateFormat(date: Date | string | null | undefined, 
 			return formatDate(parsed, `DD/MM/YYYY ${timeFormatString}`)
 		case DATE_DISPLAY.YYYY_SLASH_MM_DD:
 			return formatDate(parsed, `YYYY/MM/DD ${timeFormatString}`)
-		case DATE_DISPLAY.DAY_MONTH_YEAR: {
-			const hour12 = timeFormat !== TIME_FORMAT.HOURS_24
-			return new Intl.DateTimeFormat(i18n.global.locale.value, {day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: 'numeric', hour12}).format(parsed)
-		}
-		case DATE_DISPLAY.WEEKDAY_DAY_MONTH_YEAR: {
-			const hour12 = timeFormat !== TIME_FORMAT.HOURS_24
-			return new Intl.DateTimeFormat(i18n.global.locale.value, {weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: 'numeric', hour12}).format(parsed)
-		}
+		case DATE_DISPLAY.DAY_MONTH_YEAR:
+		case DATE_DISPLAY.WEEKDAY_DAY_MONTH_YEAR:
+			return longDateFormatter(
+				i18n.global.locale.value,
+				format === DATE_DISPLAY.WEEKDAY_DAY_MONTH_YEAR,
+				timeFormat !== TIME_FORMAT.HOURS_24,
+			).format(parsed)
 		case DATE_DISPLAY.RELATIVE:
 		default:
 			return formatDateSince(parsed)

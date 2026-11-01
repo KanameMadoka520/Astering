@@ -120,7 +120,7 @@ test.describe('Task', () => {
 	test('Should be created new', async ({authenticatedPage: page}) => {
 		await page.goto('/projects/1/1')
 		await page.locator('.input[placeholder="Add a task…"]').fill('New Task')
-		await page.locator('.button').filter({hasText: 'Add'}).click()
+		await page.getByRole('button', {name: 'Add', exact: true}).click()
 		await expect(page.locator('.tasks .task .tasktext').first()).toContainText('New Task')
 	})
 
@@ -130,7 +130,7 @@ test.describe('Task', () => {
 		await page.goto('/projects/1/1')
 		await expect(page.locator('.project-is-empty-notice')).not.toBeVisible()
 		await page.locator('.input[placeholder="Add a task…"]').fill('New Task')
-		await page.locator('.button').filter({hasText: 'Add'}).click()
+		await page.getByRole('button', {name: 'Add', exact: true}).click()
 
 		await page.waitForTimeout(1000) // Wait for the request
 		await expect(page.locator('.tasks .task .tasktext').first()).toContainText('New Task')
@@ -464,10 +464,32 @@ test.describe('Task', () => {
 			await expect(page.locator('.task-view .action-buttons .button').filter({hasText: 'Delete'})).toBeVisible()
 			await page.locator('.task-view .action-buttons .button').filter({hasText: 'Delete'}).click()
 			await expect(page.locator('dialog[open] .modal-content .modal-header')).toContainText('Delete this task')
-			await page.locator('dialog[open] .modal-content .actions .button').filter({hasText: 'Do it!'}).click()
+			await expect(page.locator('dialog[open] .modal-content')).toContainText(tasks[0].title)
+			await expect(page.locator('dialog[open] [data-cy="modalPrimary"]')).toHaveText('Delete task')
+			await page.locator('dialog[open] [data-cy="modalPrimary"]').click()
 
 			await expect(page.locator('.global-notification')).toContainText('Success')
 			await expect(page).toHaveURL(new RegExp(`/projects/${tasks[0].project_id}/`))
+		})
+
+		test('Deleting a task opened from Home goes back to Home', async ({authenticatedPage: page}) => {
+			await TaskFactory.create(1, {
+				id: 1,
+				project_id: 1,
+				title: 'Return to Home after deleting',
+				due_date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+			})
+			await page.goto('/')
+			const row = page.locator('[data-cy="showTasks"] .task').filter({hasText: 'Return to Home after deleting'})
+			await row.locator('a.task-link').click()
+			await expect(page).toHaveURL(/\/tasks\/1/)
+
+			await page.locator('.task-view .action-buttons .button').filter({hasText: 'Delete'}).click()
+			await page.locator('dialog[open] [data-cy="modalPrimary"]').click()
+
+			await expect(page.locator('.global-notification')).toContainText('Success')
+			await expect(page).toHaveURL(/\/$/)
+			await expect(row).toHaveCount(0)
 		})
 
 		test('an edit in the task detail shows in the list and the kanban board without a reload', async ({authenticatedPage: page, apiContext, userToken}) => {
@@ -534,7 +556,7 @@ test.describe('Task', () => {
 
 			await page.locator('.task-view .action-buttons .button').filter({hasText: 'Delete'}).click()
 			await expect(page.locator('dialog[open] .modal-content .modal-header')).toContainText('Delete this task')
-			await page.locator('dialog[open] .modal-content .actions .button').filter({hasText: 'Do it!'}).click()
+			await page.locator('dialog[open] [data-cy="modalPrimary"]').click()
 			await expect(page.locator('.global-notification')).toContainText('Success')
 
 			await expect(page).toHaveURL(/\/projects\/1\/\d+/)
@@ -744,6 +766,27 @@ test.describe('Task', () => {
 			await expect(page.locator('.task-view .details.labels-list .multiselect .input-wrapper span.tag')).toHaveCount(1)
 			await expect(page.locator('.task-view .details.labels-list .multiselect .input-wrapper span.tag')).toContainText(newLabelText)
 			await expect(labelInput).toBeFocused()
+		})
+
+		test('Takes a label away again when adding it fails', async ({authenticatedPage: page}) => {
+			const tasks = await TaskFactory.create(1, {
+				id: 1,
+				project_id: 1,
+			})
+			const labels = await LabelFactory.create(1)
+			await page.route(/\/tasks\/\d+\/labels$/, route => route.request().method() === 'GET'
+				? route.continue()
+				: route.fulfill({status: 500, contentType: 'application/json', body: JSON.stringify({message: 'Server error'})}))
+
+			await page.goto(`/tasks/${tasks[0].id}`)
+			await page.locator('.task-view .action-buttons .button').filter({hasText: 'Add Labels'}).click()
+			await page.locator('.task-view .details.labels-list .multiselect input').fill(labels[0].title)
+			const searchResults = page.locator('.task-view .details.labels-list .multiselect .search-results')
+			await searchResults.waitFor({state: 'visible'})
+			await searchResults.locator('> *').first().click()
+
+			await expect(page.locator('.global-notification .vue-notification.error')).toHaveCount(1)
+			await expect(page.locator('.task-view .details.labels-list .multiselect .input-wrapper span.tag')).toHaveCount(0)
 		})
 
 		test('Can add an existing label to a task', async ({authenticatedPage: page}) => {

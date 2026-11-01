@@ -6,6 +6,7 @@ import {allTasksQuery} from '@/client/queries/tasks'
 import type {TaskFilterParams} from '@/client/queries/tasks'
 import {useCreateTaskMutation, useUpdateTaskMutation} from '@/client/queries/taskMutations'
 import {useAuthStore} from '@/stores/auth'
+import {isRequestContextAbort} from '@/client/requestContext'
 
 export function useGanttTaskList<F extends Filters>(
 	filters: Ref<F>,
@@ -13,16 +14,21 @@ export function useGanttTaskList<F extends Filters>(
 	viewId: Ref<number>,
 ) {
 	const auth = useAuthStore()
-	const query = useQuery(computed(() => allTasksQuery({
-		project: filters.value.projectId,
-		view: viewId.value,
-		params: {...filterToApiParams(filters.value), filter_timezone: auth.settings.timezone},
+	// The chart shows a failed load in place, so an empty timeline never stands in for "could not load".
+	const query = useQuery(computed(() => ({
+		...allTasksQuery({
+			project: filters.value.projectId,
+			view: viewId.value,
+			params: {...filterToApiParams(filters.value), filter_timezone: auth.settings.timezone},
+		}),
+		meta: {handlesError: true},
 	})))
 	const tasks = computed(() => new Map((query.data.value ?? []).map(task => [task.id, task])))
 	const create = useCreateTaskMutation()
 	const update = useUpdateTaskMutation(true)
 	return {
 		tasks, isLoading: query.isFetching,
+		loadFailed: computed(() => query.isError.value && !isRequestContextAbort(query.error.value)),
 		loadTasks: async () => { await query.refetch() },
 		addTask: (task: Task) => create.mutateAsync({...task, project_id: filters.value.projectId}),
 		updateTask: async (task: Task) => {

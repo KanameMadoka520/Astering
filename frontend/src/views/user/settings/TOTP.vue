@@ -7,8 +7,13 @@
 			:title="$t('user.settings.totp.title')"
 			:description="$t('user.settings.totp.description')"
 		/>
-		<Card>
-			<template v-if="status.isSuccess.value && !totp.enabled && !totp.secret">
+		<Card :loading="status.isPending.value">
+			<LoadError
+				v-if="status.isError.value && !status.data.value"
+				:message="$t('user.settings.totp.loadError')"
+				:retry="() => status.refetch()"
+			/>
+			<template v-else-if="status.isSuccess.value && !totp.enabled && !totp.secret">
 				<FormField
 					id="totpEnrollPassword"
 					v-model="totpPassword"
@@ -159,6 +164,7 @@ import {
 import FormField from '@/components/input/FormField.vue'
 import Message from '@/components/misc/Message.vue'
 import PageHeader from '@/components/misc/state/PageHeader.vue'
+import LoadError from '@/components/misc/state/LoadError.vue'
 
 import {useTitle} from '@/composables/useTitle'
 import {useConfigStore} from '@/stores/config'
@@ -179,9 +185,11 @@ const configStore = useConfigStore()
 const authStore = useAuthStore()
 const isLocalUser = computed(() => authStore.info?.is_local_user)
 
+// The page shows its own load error instead of a blank card: whether 2FA is on must never look unknown-but-fine.
 const status = useQuery(computed(() => ({
 	...totpQuery(),
 	enabled: Boolean(configStore.totp_enabled && isLocalUser.value),
+	meta: {handlesError: true},
 })))
 const totp = computed(() => status.data.value ?? {})
 const isEnrolling = computed(() => Boolean(totp.value.secret) && !totp.value.enabled)

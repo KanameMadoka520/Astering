@@ -1,3 +1,4 @@
+import type {ClientRequestContext} from '@/client/requestContext'
 import {commentKeys} from './comments'
 import {removeAttachmentImages} from '@/helpers/attachmentImages'
 import {useMutation} from '@tanstack/vue-query'
@@ -49,7 +50,7 @@ export async function attachmentBlob(attachment: AttachmentIdentity, size?: Prev
 	return expectBlob(data, 'Attachment')
 }
 
-export function uploadAttachmentsMutationOptions(shouldNotify: () => boolean = () => true) {
+export function uploadAttachmentsMutationOptions(shouldNotify: () => boolean = () => true, owner?: ClientRequestContext) {
 	return contextMutationOptions({
 		mutationFn: async ({taskId, files, signal}: {
 			taskId: number,
@@ -73,7 +74,7 @@ export function uploadAttachmentsMutationOptions(shouldNotify: () => boolean = (
 		},
 		onSettled: ({taskId}, client) => invalidateTaskMembership(client, taskId),
 		toastError: shouldNotify,
-	})
+	}, owner)
 }
 
 export function deleteAttachmentMutationOptions() {
@@ -101,8 +102,8 @@ export function deleteAttachmentMutationOptions() {
 	})
 }
 
-export function useUploadAttachmentsMutation(shouldNotify?: () => boolean) {
-	return useMutation(uploadAttachmentsMutationOptions(shouldNotify))
+export function useUploadAttachmentsMutation(shouldNotify?: () => boolean, owner?: ClientRequestContext) {
+	return useMutation(uploadAttachmentsMutationOptions(shouldNotify, owner))
 }
 
 export function useDeleteAttachmentMutation() {

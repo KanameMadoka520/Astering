@@ -5,7 +5,7 @@
 			class="input recorder-button"
 			:class="{'is-recording': recording}"
 			@click="startRecording"
-			@keydown.prevent="onKeyDown"
+			@keydown="onKeyDown"
 			@blur="stopRecording"
 		>
 			<template v-if="recording">
@@ -139,6 +139,20 @@ function stopRecording() {
 }
 
 function onKeyDown(event: KeyboardEvent) {
+	// Tab and Shift+Tab always move on, so keyboard users are never trapped here (WCAG 2.1.2).
+	// A global shortcut needs Ctrl, Cmd or Alt anyway.
+	if (event.key === 'Tab' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+		recording.value = false
+		return
+	}
+	if (event.key === 'Escape') {
+		// Escape only stops a recording; otherwise it belongs to the page (closing a dialog, for example).
+		if (!recording.value) return
+		event.preventDefault()
+		recording.value = false
+		return
+	}
+	event.preventDefault()
 	if (!recording.value) {
 		startRecording()
 	}

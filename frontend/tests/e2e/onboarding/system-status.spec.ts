@@ -24,7 +24,7 @@ for (const width of [1440, 390]) {
   await status.getByText('How these numbers are measured').click()
   await expect(status).toContainText('1.25 / 0.75 / 0.50')
   await expect(status).toContainText('Server uptime: 2d 2h 2m')
-  await expect(status).toContainText('all applications, not only Vikunja')
+  await expect(status).toContainText('all applications, not only vikunja-x')
   await expect(status).toContainText('separately mounted disks are not summed')
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({path: testInfo.outputPath(`system-status-${width}.png`)})
@@ -35,6 +35,6 @@ for (const width of [1440, 390]) {
   await expect(status).toContainText('Disconnected')
   fail = false
   await status.getByRole('button', {name: 'try again', exact: true}).click()
-  await expect(status).toContainText('Vikunja healthy')
+  await expect(status).toContainText('vikunja-x healthy')
  })
 }

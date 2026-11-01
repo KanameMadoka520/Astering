@@ -9,6 +9,7 @@ import XButton from '@/components/input/Button.vue'
 import FormField from '@/components/input/FormField.vue'
 import Message from '@/components/misc/Message.vue'
 import PageHeader from '@/components/misc/state/PageHeader.vue'
+import LoadError from '@/components/misc/state/LoadError.vue'
 import Pagination from '@/components/misc/Pagination.vue'
 import PaginationEmit from '@/components/misc/PaginationEmit.vue'
 import ApiTokenForm from '@/components/token/ApiTokenForm.vue'
@@ -30,7 +31,11 @@ const {t} = useI18n({useScope: 'global'})
 useTitle(() => `${t('user.settings.bots.title')} - ${t('user.settings.title')}`)
 
 const page = useRouteQuery('page', '1', {transform: normalizePageNumber})
-const {data: botPage, isPlaceholderData} = useQuery(computed(() => botsQuery(page.value)))
+// The page shows its own load error: an unknown list must not open the "first bot" form as if there were none.
+const {data: botPage, isPlaceholderData, isPending: botsPending, isError: botsError, isSuccess: botsLoaded, refetch: refetchBots} = useQuery(computed(() => ({
+	...botsQuery(page.value),
+	meta: {handlesError: true},
+})))
 const createMutation = useCreateBotMutation()
 const updateMutation = useUpdateBotMutation()
 const deleteMutation = useDeleteBotMutation()
@@ -38,6 +43,8 @@ const deleteTokenMutation = useDeleteApiTokenMutation()
 const bots = computed(() => (botPage.value?.items ?? []).filter((bot): bot is Bot => typeof bot.id === 'number' && bot.id > 0 && typeof bot.status === 'number'))
 const totalPages = computed(() => botPage.value?.total_pages ?? 0)
 const hasBots = computed(() => (botPage.value?.total ?? 0) > 0)
+// Only a loaded, empty list means "no bots yet".
+const showFirstBotForm = computed(() => botsLoaded.value && !hasBots.value)
 useClampedPage(page, {data: botPage, isPlaceholderData})
 const newBotUsername = ref('')
 const newBotName = ref('')
@@ -52,6 +59,13 @@ const tokenQueries = useQueries({queries: computed(() => bots.value.map(bot => b
 const tokenPageByBot = computed(() => Object.fromEntries(
 	bots.value.map((bot, index) => [bot.id, tokenQueries.value[index]?.data]),
 ))
+const tokenLoadFailedByBot = computed(() => Object.fromEntries(
+	bots.value.map((bot, index) => [bot.id, Boolean(tokenQueries.value[index]?.isError && !tokenQueries.value[index]?.data)]),
+))
+function retryTokens(bot: Bot) {
+	const index = bots.value.findIndex(candidate => candidate.id === bot.id)
+	return tokenQueries.value[index]?.refetch()
+}
 watch(tokenQueries, results => bots.value.forEach((bot, index) => {
 	const result = results[index]
 	if (!result) return
@@ -66,6 +80,7 @@ const nameDraft = ref<Record<number, string>>({})
 
 const showDeleteModal = ref<boolean>(false)
 const botToDelete = ref<Bot>()
+const tokenToDelete = ref<ApiToken>()
 
 async function createBot() {
 	if (createMutation.isPending.value) return
@@ -125,18 +140,22 @@ async function saveBotName(bot: Bot) {
 	} catch { /* Mutation reports the error. */ }
 }
 
+// Both delete dialogs stay open (and busy) until the server confirms; a failure leaves them open to retry or cancel.
 async function deleteBot() {
 	const bot = botToDelete.value
-	if (!bot) {
+	if (!bot || deleteMutation.isPending.value) {
 		return
 	}
-	showDeleteModal.value = false
-	botToDelete.value = undefined
 	try {
 		await deleteMutation.mutateAsync(bot.id)
-		delete newTokensByBot.value[bot.id]
-		delete tokenPages.value[bot.id]
-	} catch { /* Mutation reports the error. */ }
+	} catch {
+		return // The mutation reports the error.
+	}
+	delete newTokensByBot.value[bot.id]
+	delete tokenPages.value[bot.id]
+	if (botToDelete.value?.id !== bot.id) return
+	showDeleteModal.value = false
+	botToDelete.value = undefined
 }
 
 function onTokenCreated(bot: Bot, token: ApiToken) {
@@ -144,9 +163,15 @@ function onTokenCreated(bot: Bot, token: ApiToken) {
 	showTokenForm.value[bot.id] = false
 }
 
-async function deleteToken(token: ApiToken) {
-	if (!token.id) return
-	try { await deleteTokenMutation.mutateAsync(token.id) } catch { /* Mutation reports the error. */ }
+async function deleteToken() {
+	const token = tokenToDelete.value
+	if (!token?.id || deleteTokenMutation.isPending.value) return
+	try {
+		await deleteTokenMutation.mutateAsync(token.id)
+	} catch {
+		return // The mutation reports the error.
+	}
+	if (tokenToDelete.value?.id === token.id) tokenToDelete.value = undefined
 }
 </script>
 
@@ -157,7 +182,7 @@ async function deleteToken(token: ApiToken) {
 			:description="$t('user.settings.bots.description')"
 		>
 			<template
-				v-if="hasBots && !showCreateForm"
+				v-if="(hasBots || botsError) && !showCreateForm"
 				#actions
 			>
 				<XButton
@@ -169,8 +194,15 @@ async function deleteToken(token: ApiToken) {
 			</template>
 		</PageHeader>
 
+		<LoadError
+			v-if="botsError && !botPage"
+			class="mbe-4"
+			:message="$t('user.settings.accessLoadError')"
+			:retry="refetchBots"
+		/>
+
 		<Card
-			v-if="!hasBots || showCreateForm"
+			v-if="showFirstBotForm || showCreateForm"
 			:title="$t('user.settings.bots.create')"
 		>
 			<form
@@ -203,7 +235,7 @@ async function deleteToken(token: ApiToken) {
 			</form>
 			<template #footer>
 				<XButton
-					v-if="hasBots"
+					v-if="!showFirstBotForm"
 					variant="tertiary"
 					@click="showCreateForm = false"
 				>
@@ -220,7 +252,7 @@ async function deleteToken(token: ApiToken) {
 
 		<div
 			class="bot-list loader-container"
-			:class="{'is-loading': isPlaceholderData}"
+			:class="{'is-loading': isPlaceholderData || botsPending}"
 		>
 			<section
 				v-for="bot in bots"
@@ -307,8 +339,14 @@ async function deleteToken(token: ApiToken) {
 						{{ $t('user.settings.apiTokens.tokenCreatedNotSeeAgain') }}
 						<code>{{ newTokensByBot[bot.id] }}</code>
 					</Message>
+					<LoadError
+						v-if="tokenLoadFailedByBot[bot.id]"
+						class="mbe-3"
+						:message="$t('user.settings.accessLoadError')"
+						:retry="() => retryTokens(bot)"
+					/>
 					<div
-						v-if="(tokenPageByBot[bot.id]?.items ?? []).length > 0"
+						v-else-if="(tokenPageByBot[bot.id]?.items ?? []).length > 0"
 						class="has-horizontal-overflow"
 					>
 						<table class="table is-fullwidth">
@@ -335,7 +373,7 @@ async function deleteToken(token: ApiToken) {
 											variant="secondary"
 											danger
 											class="is-small"
-											@click="deleteToken(token)"
+											@click="tokenToDelete = token"
 										>
 											{{ $t('misc.delete') }}
 										</XButton>
@@ -382,8 +420,9 @@ async function deleteToken(token: ApiToken) {
 		<Modal
 			danger
 			:enabled="showDeleteModal"
+			:confirm-label="$t('user.settings.bots.delete.confirm')"
 			@close="showDeleteModal = false"
-			@submit="deleteBot()"
+			@submit="deleteBot"
 		>
 			<template #header>
 				{{ $t('user.settings.bots.delete.header') }}
@@ -393,6 +432,25 @@ async function deleteToken(token: ApiToken) {
 				<p v-if="botToDelete">
 					{{ $t('user.settings.bots.delete.text1', {username: botToDelete.username}) }}<br>
 					{{ $t('user.settings.bots.delete.text2') }}
+				</p>
+			</template>
+		</Modal>
+
+		<Modal
+			danger
+			:enabled="tokenToDelete !== undefined"
+			:confirm-label="$t('user.settings.apiTokens.delete.confirm')"
+			@close="tokenToDelete = undefined"
+			@submit="deleteToken"
+		>
+			<template #header>
+				{{ $t('user.settings.apiTokens.delete.header') }}
+			</template>
+
+			<template #text>
+				<p v-if="tokenToDelete">
+					{{ $t('user.settings.apiTokens.delete.text1', {token: tokenToDelete.title}) }}<br>
+					{{ $t('user.settings.apiTokens.delete.text2') }}
 				</p>
 			</template>
 		</Modal>

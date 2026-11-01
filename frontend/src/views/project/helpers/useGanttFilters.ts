@@ -145,6 +145,7 @@ export function useGanttFilters(
 		loadTasks,
 
 		isLoading,
+		loadFailed,
 		addTask,
 		updateTask,
 	} = useGanttTaskList<GanttFilters>(filters, ganttFiltersToApiParams, viewId)
@@ -158,6 +159,7 @@ export function useGanttFilters(
 		loadTasks,
 
 		isLoading,
+		loadFailed,
 		addTask,
 		updateTask,
 	}

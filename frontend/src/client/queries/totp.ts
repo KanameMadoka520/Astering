@@ -1,4 +1,4 @@
-import {queryOptions, useMutation} from '@tanstack/vue-query'
+import {queryOptions} from '@tanstack/vue-query'
 import {totpGet, totpEnroll, totpEnable, totpDisable, totpQrcode, type Totp} from '@/client/generated'
 import type {VikunjaErrorModel} from '@/client/generated'
 import {expectBlob} from './blobResponse'
@@ -67,8 +67,9 @@ export function enableTotpMutationOptions() {
 	})
 }
 
+// Carries the account password; it must not stay in the mutation cache after a failed attempt.
 export function useEnableTotpMutation() {
-	return useMutation(enableTotpMutationOptions())
+	return useSecretMutation(enableTotpMutationOptions())
 }
 
 export function disableTotpMutationOptions() {

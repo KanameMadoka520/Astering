@@ -35,11 +35,11 @@ test.describe('Sessions', () => {
 
 		await gotoUserSettings(page, 'sessions')
 		await page.locator('tr', {hasText: /192\.0\.2\.5/})
-			.getByRole('button', {name: 'Delete'}).click()
+			.getByRole('button', {name: 'Revoke'}).click()
 		const deleted = page.waitForResponse(r =>
 			/\/user\/sessions\/[^/]+/.test(r.url()) && r.request().method() === 'DELETE',
 		)
-		await page.locator('dialog[open] .modal-content .actions .button').filter({hasText: 'Do it!'}).click()
+		await page.locator('dialog[open] [data-cy="modalPrimary"]').click()
 		await deleted
 		await expect(page.locator('table.table tbody tr')).toHaveCount(1)
 
@@ -75,8 +75,8 @@ test.describe('Sessions', () => {
 		await expect(rows).toHaveCount(1)
 		await expect(rows).toContainText(oldest)
 
-		await rows.getByRole('button', {name: 'Delete'}).click()
-		await page.locator('dialog[open] .modal-content .actions .button').filter({hasText: 'Do it!'}).click()
+		await rows.getByRole('button', {name: 'Revoke'}).click()
+		await page.locator('dialog[open] [data-cy="modalPrimary"]').click()
 		await expect(page).not.toHaveURL(/[?&]page=2/)
 		await expect(rows).toHaveCount(pageSize)
 		await expect(page.getByRole('navigation', {name: 'pagination'})).toHaveCount(0)
@@ -89,6 +89,30 @@ test.describe('Sessions', () => {
 	test('current session cannot be deleted from the UI', async ({authenticatedPage: page}) => {
 		await gotoUserSettings(page, 'sessions')
 		const currentRow = page.locator('tr', {has: page.locator('.tag.is-primary')})
-		await expect(currentRow.getByRole('button', {name: 'Delete'})).toHaveCount(0)
+		await expect(currentRow.getByRole('button', {name: 'Revoke'})).toHaveCount(0)
+	})
+
+	test('names the device and keeps the dialog open when revoking fails', async ({
+		authenticatedPage: page, currentUser,
+	}) => {
+		await SessionFactory.create(1, {
+			user_id: currentUser.id,
+			device_info: 'Firefox on Linux',
+			ip_address: '192.0.2.5',
+		}, false)
+		await page.route(/\/user\/sessions\/[^/]+$/, route => route.request().method() === 'DELETE'
+			? route.fulfill({status: 500, contentType: 'application/json', body: JSON.stringify({message: 'Server error'})})
+			: route.continue())
+
+		await gotoUserSettings(page, 'sessions')
+		await page.locator('tr', {hasText: '192.0.2.5'}).getByRole('button', {name: 'Revoke'}).click()
+		const dialog = page.locator('dialog[open]')
+		await expect(dialog).toContainText('Device: Firefox on Linux · IP address: 192.0.2.5')
+		await expect(dialog.locator('[data-cy="modalPrimary"]')).toHaveText('Revoke session')
+		await dialog.locator('[data-cy="modalPrimary"]').click()
+
+		await expect(page.locator('.global-notification')).toBeVisible()
+		await expect(dialog).toBeVisible()
+		await expect(page.locator('table.table tbody tr')).toHaveCount(2)
 	})
 })

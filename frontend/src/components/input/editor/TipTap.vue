@@ -266,7 +266,8 @@ import inputPrompt from '@/helpers/inputPrompt'
 import {getScrollParent} from '@/helpers/getScrollParent'
 import {setLinkInEditor} from '@/components/input/editor/setLinkInEditor'
 import {getViewportBelowNavbar} from '@/components/input/editor/popupContainer'
-import {saveEditorDraft, loadEditorDraft, clearEditorDraft} from '@/helpers/editorDraftStorage'
+import {captureClientRequestContext} from '@/client/requestContext'
+import {saveEditorDraft, loadEditorDraft, clearEditorDraft, captureEditorDraftLease} from '@/helpers/editorDraftStorage'
 import {error} from '@/message'
 
 const props = withDefaults(defineProps<{
@@ -305,7 +306,10 @@ allowTaskLists?: boolean,
 	imageSource: undefined,
 })
 
-const emit = defineEmits(['save'])
+const emit = defineEmits(['save', 'discard'])
+// A mounted editor keeps its original lease even if a later account opens the same task id.
+// eslint-disable-next-line vue/no-setup-props-reactivity-loss
+const draftLease = captureEditorDraftLease(props.storageKey)
 
 provide(taskLinkCurrentProjectIdKey, computed(() => props.projectId || undefined))
 
@@ -471,7 +475,7 @@ function bubbleNow() {
 
 	// Save to localStorage if storageKey is provided
 	if (props.storageKey) {
-		saveEditorDraft(props.storageKey, editorVal)
+		saveEditorDraft(props.storageKey, editorVal, draftLease)
 	}
 
 	modelValue.value = editorVal
@@ -481,10 +485,8 @@ function bubbleSave() {
 	bubbleNow()
 	lastSavedState = editor.value?.getHTML() ?? ''
 
-	// Clear draft from localStorage when saved
-	if (props.storageKey) {
-		clearEditorDraft(props.storageKey)
-	}
+	// Save is an intent, not an acknowledgement: keep the copy until the parent confirms the HTTP write.
+	if (props.storageKey) saveEditorDraft(props.storageKey, lastSavedState, draftLease)
 
 	emit('save', lastSavedState)
 	if (isEditing.value) {
@@ -500,8 +502,14 @@ function exitEditMode() {
 
 	// Clear draft from localStorage when discarding changes
 	if (props.storageKey) {
-		clearEditorDraft(props.storageKey)
+		clearEditorDraft(props.storageKey, draftLease)
 	}
+
+	// The parent already received every keystroke; without the restored text its pending save would write the
+	// discarded one. 'discard' lets parents that save on their own fall back to their last saved value.
+	contentHasChanged.value = false
+	if (modelValue.value !== lastSavedState) modelValue.value = lastSavedState
+	emit('discard')
 
 	if (isEditing.value) {
 		internalMode.value = 'preview'
@@ -544,7 +552,7 @@ onBeforeUnmount(() => {
 })
 
 const driveOpen = ref(false)
-const attachDrive = useAttachDriveMutation()
+const attachDrive = useAttachDriveMutation(captureClientRequestContext())
 async function insertDriveImage(file: DriveEntry) {
 	if (!props.driveTaskId) return
 	const taskId = props.driveTaskId

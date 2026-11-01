@@ -2,7 +2,7 @@ import {afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi} fr
 import {flushPromises, mount, type VueWrapper} from '@vue/test-utils'
 import {createPinia, setActivePinia} from 'pinia'
 import {VueQueryPlugin} from '@tanstack/vue-query'
-import {createMemoryHistory, createRouter} from 'vue-router'
+import {createMemoryHistory, createRouter, type Router} from 'vue-router'
 import {defineComponent} from 'vue'
 
 const sdk = vi.hoisted(() => ({
@@ -28,6 +28,7 @@ import {useAuthStore} from '@/stores/auth'
 
 const defaults = queryClient.getDefaultOptions()
 let wrapper: VueWrapper | undefined
+let router: Router
 
 const ProjectSearchStub = defineComponent({
 	name: 'ProjectSearch',
@@ -84,7 +85,7 @@ afterEach(() => {
 })
 
 async function mountDuplicate() {
-	const router = createRouter({
+	router = createRouter({
 		history: createMemoryHistory(),
 		routes: [
 			{path: '/projects/:projectId/settings/duplicate', name: 'project.settings.duplicate', component: ProjectSettingsDuplicate},
@@ -107,6 +108,23 @@ async function mountDuplicate() {
 }
 
 describe('ProjectSettingsDuplicate', () => {
+	it('does not leave the later source page when an earlier copy finishes', async () => {
+		const request = deferred<unknown>()
+		sdk.projectsDuplicate.mockReturnValue(request.promise)
+		sdk.projectsRead.mockImplementation(({path}: {path: {id: number}}) => Promise.resolve({data: project(path.id)}))
+		await mountDuplicate()
+		await wrapper!.get('button.primary').trigger('click')
+		await flushPromises()
+		expect(sdk.projectsDuplicate.mock.calls[0][0].path).toEqual({projectid: 101})
+
+		await router.push('/projects/102/settings/duplicate')
+		await flushPromises()
+		request.resolve({data: {duplicated_project: project(200)}})
+		await flushPromises()
+
+		expect(router.currentRoute.value.fullPath).toBe('/projects/102/settings/duplicate')
+	})
+
 	it('selects the parent when navigation projects load after project detail', async () => {
 		const projects = deferred<unknown>()
 		sdk.projectsList.mockReturnValue(projects.promise)

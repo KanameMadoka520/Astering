@@ -166,6 +166,13 @@
 				v-if="projectList.isLoading"
 				variant="small"
 			/>
+			<!-- A failed load is not "no projects" (D1). -->
+			<LoadError
+				v-else-if="projectList.isError && !projectList.hasProjects"
+				class="menu-load-error"
+				:message="t('navigation.projectsLoadError')"
+				:retry="() => projectList.refetch()"
+			/>
 			<template v-else>
 				<nav
 					v-if="favoriteProjects.length"
@@ -268,6 +275,7 @@ import {SHORTCUTS} from '@/constants/shortcuts'
 import PoweredByLink from '@/components/home/PoweredByLink.vue'
 import Logo from '@/components/home/Logo.vue'
 import Loading from '@/components/misc/Loading.vue'
+import LoadError from '@/components/misc/state/LoadError.vue'
 
 import {useBaseStore} from '@/stores/base'
 import {useProjects} from '@/composables/useProjects'
@@ -309,11 +317,18 @@ function closeDrawer() {
 }
 
 // Opening the drawer moves focus into it; a guide (or any dialog) on top keeps its own focus.
+// Closing it after a link was followed hides the focused link: focus goes to the new page's content, not <body>.
 watch(drawerOpen, async open => {
-	if (!open) return
 	await nextTick()
 	if (document.querySelector('dialog[open]')) return
-	sidebar.value?.querySelector<HTMLElement>('.top-menu a')?.focus({preventScroll: true})
+	if (open) {
+		sidebar.value?.querySelector<HTMLElement>('.top-menu a')?.focus({preventScroll: true})
+		return
+	}
+	const active = document.activeElement
+	if (active === null || active === document.body || sidebar.value?.contains(active)) {
+		document.getElementById('main-content')?.focus({preventScroll: true})
+	}
 })
 
 // The mobile drawer is modal-like; Escape closes it unless a dialog on top owns the key.
@@ -329,6 +344,11 @@ const savedFilterProjects = computed(() => projectList.savedFilterProjects)
 </script>
 
 <style lang="scss" scoped>
+.menu-load-error {
+	margin: var(--space-2) var(--space-3);
+	font-size: var(--text-sm);
+}
+
 .menu-container {
 	--sidebar-width: #{$navbar-width};
 

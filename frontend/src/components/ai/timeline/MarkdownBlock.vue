@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import {onBeforeUnmount, shallowRef, watch} from 'vue'
-import {marked} from 'marked'
+import {onBeforeUnmount, onMounted, ref, watch} from 'vue'
+import {marked, type Token, type TokensList} from 'marked'
 import {sanitizeProjectDescription} from '@/helpers/sanitizeProjectDescription'
 
 const props = withDefaults(defineProps<{
@@ -12,32 +12,82 @@ const props = withDefaults(defineProps<{
 
 // Streamed text re-parses at most this often, with a trailing render so the last delta always lands.
 const STREAM_INTERVAL_MS = 120
-const html = shallowRef('')
+const root = ref<HTMLElement>()
 let timer: ReturnType<typeof setTimeout> | undefined
 let renderedAt = 0
+// While streaming, finished top-level blocks keep their DOM: a selection, focus or hover inside them survives,
+// and only the growing tail is parsed, sanitized and laid out again.
+let blocks: {raw: string, nodes: ChildNode[]}[] = []
+let linkKey = ''
+
+function renderAll(el: HTMLElement) {
+	blocks = []
+	linkKey = ''
+	const html = sanitizeProjectDescription(marked.parse(props.source, {async: false}))
+	// The settled answer usually equals what streaming built; keeping that DOM keeps the reader's selection.
+	if (el.innerHTML !== html) el.innerHTML = html
+}
+
+function hasRawHtml(tokens: TokensList) {
+	let found = false
+	marked.walkTokens(tokens, token => {
+		if (token.type === 'html') found = true
+	})
+	return found
+}
+
+function renderBlocks(el: HTMLElement) {
+	const tokens = marked.lexer(props.source)
+	// Raw HTML can open in one block and close in a later one, and a reference definition can change any earlier
+	// block, so neither may be rendered block by block.
+	if (hasRawHtml(tokens)) return renderAll(el)
+	const links = JSON.stringify(tokens.links)
+	if (links !== linkKey) {
+		blocks = []
+		linkKey = links
+		el.textContent = ''
+	}
+	let kept = 0
+	while (kept < blocks.length && kept < tokens.length - 1 && blocks[kept].raw === tokens[kept].raw) kept++
+	if (kept === 0) el.textContent = ''
+	else for (const block of blocks.slice(kept)) block.nodes.forEach(node => node.remove())
+	blocks.length = kept
+	for (const token of tokens.slice(kept)) {
+		const single = Object.assign([token] as Token[], {links: tokens.links}) as TokensList
+		const before = el.lastChild
+		el.insertAdjacentHTML('beforeend', sanitizeProjectDescription(marked.parser(single)))
+		const nodes: ChildNode[] = []
+		for (let node = before ? before.nextSibling : el.firstChild; node; node = node.nextSibling) nodes.push(node)
+		blocks.push({raw: token.raw, nodes})
+	}
+}
 
 function render() {
 	clearTimeout(timer)
 	timer = undefined
 	renderedAt = performance.now()
-	html.value = sanitizeProjectDescription(marked.parse(props.source, {async: false}))
+	const el = root.value
+	if (!el) return
+	if (props.streaming) renderBlocks(el)
+	else renderAll(el)
 }
 
+onMounted(render)
 watch([() => props.source, () => props.streaming], ([, streaming]) => {
 	if (!streaming) return render()
 	if (timer !== undefined) return
 	const wait = renderedAt + STREAM_INTERVAL_MS - performance.now()
 	if (wait <= 0) render()
 	else timer = setTimeout(render, wait)
-}, {immediate: true})
+})
 onBeforeUnmount(() => clearTimeout(timer))
 </script>
 
 <template>
 	<div
+		ref="root"
 		class="markdown-block content"
 		:class="{'is-streaming': streaming}"
-		v-html="html"
 	/>
 </template>
 

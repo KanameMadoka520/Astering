@@ -104,4 +104,20 @@ describe('MCP settings', () => {
 			expect(Object.values(groups).flat()).toEqual([])
 		}
 	})
+
+	it('says the token list could not be loaded instead of showing no MCP tokens', async () => {
+		getAll.mockRejectedValueOnce(new Error('Server error'))
+		mountSettings()
+		await flushPromises()
+		expect(wrapper.find('[role="alert"]').text()).toContain("This list couldn't be loaded, so it may not be empty.")
+		expect(wrapper.text()).not.toContain('No tokens with MCP access yet.')
+	})
+
+	it('says so when no token has MCP access', async () => {
+		getAll.mockResolvedValueOnce({data: {items: [tokenRows[1]], total_pages: 1}})
+		mountSettings()
+		await flushPromises()
+		expect(wrapper.text()).toContain('No tokens with MCP access yet.')
+		expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+	})
 })

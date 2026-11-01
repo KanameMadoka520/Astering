@@ -62,6 +62,7 @@ import {combineStatus, queryStatus} from '@/components/sharing/useProjectAccess'
 import {useTitle} from '@/composables/useTitle'
 import {useProject} from '@/composables/useProject'
 import {useProjects} from '@/composables/useProjects'
+import {useIsAlive} from '@/composables/useIsAlive'
 import {PERMISSIONS} from '@/constants/permissions'
 import {linkSharesQuery} from '@/client/queries/linkShares'
 import {projectTeamSharesQuery, projectUserSharesQuery} from '@/client/queries/projectShares'
@@ -74,6 +75,7 @@ useTitle(() => t('project.duplicate.title'))
 
 const route = useRoute()
 const router = useRouter()
+const alive = useIsAlive()
 const projectList = useProjects()
 const configStore = useConfigStore()
 
@@ -131,15 +133,19 @@ async function duplicate() {
 	if (isDuplicating.value || !isLoaded.value) {
 		return
 	}
+	const id = project.value.id
+	const origin = router.currentRoute.value
 	isDuplicating.value = true
 
 	try {
 		const duplicated = await duplicateProject.mutateAsync({
-			projectId: project.value.id,
+			projectId: id,
 			parentProjectId: parentProject.value?.id ?? 0,
 			duplicateShares: duplicateShares.value,
 		})
-		await router.push({name: 'project.index', params: {projectId: duplicated.id}})
+		if (alive.value && Number(route.params.projectId) === id && router.currentRoute.value === origin) {
+			await router.push({name: 'project.index', params: {projectId: duplicated.id}})
+		}
 	} catch {
 		// The toast says what went wrong; the form stays as it was.
 	} finally {

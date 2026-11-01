@@ -5,6 +5,7 @@ import {useQuery} from '@tanstack/vue-query'
 import {useI18n} from 'vue-i18n'
 
 import ProjectStatusBadges from '@/components/project/partials/ProjectStatusBadges.vue'
+import LoadError from '@/components/misc/state/LoadError.vue'
 import type {ProjectHistory} from '@/client/generated'
 import {projectHistoryQuery} from '@/client/queries/projectHistory'
 import {useProjects} from '@/composables/useProjects'
@@ -96,6 +97,7 @@ watch(() => query.data.value, value => {
 }, {immediate: true})
 const history = computed(() => query.data.value ?? (query.isFetching.value ? lastHistory.value : undefined))
 const refreshing = computed(() => query.isPlaceholderData.value || (!query.data.value && history.value !== undefined))
+const failed = computed(() => query.isError.value && !query.isFetching.value)
 
 const projectOptions = computed(() => projects.projectsArray
 	.filter(isRealProject)
@@ -290,8 +292,9 @@ watch(() => query.data.value?.total_pages, total => {
 			role="status"
 		>{{ refreshing ? t('projectHistory.loading') : '' }}</span>
 
+		<!-- Like the timeline: a failed refresh keeps the records that are already on screen and says so above them. -->
 		<div
-			v-if="query.isError.value"
+			v-if="query.isError.value && !history"
 			class="history-state"
 			role="alert"
 		>
@@ -305,6 +308,12 @@ watch(() => query.data.value?.total_pages, total => {
 			</button>
 		</div>
 		<template v-else-if="history">
+			<LoadError
+				v-if="failed"
+				class="history-stale-error"
+				:message="t('projectHistory.loadError')"
+				:retry="() => query.refetch()"
+			/>
 			<p
 				class="history-stats"
 				:class="{'is-refreshing': refreshing}"
@@ -1081,6 +1090,10 @@ h2 {
 	font-variant-numeric: tabular-nums;
 }
 
+
+.history-stale-error {
+	margin-block-end: var(--space-3);
+}
 .history-state {
 	display: flex;
 	flex-direction: column;

@@ -175,6 +175,11 @@ test.describe('WebSocket Protocol', () => {
 				})
 				const team = await teamResponse.json()
 
+				// The server sends the notification before it answers the request, so listen first.
+				const notified = waitForMessage(ws, 10000)
+				// Awaited below; a failed request must not leave it rejecting unhandled.
+				notified.catch(() => {})
+
 				// User A adds currentUser to the team
 				const addResponse = await apiContext.put(`teams/${team.id}/members`, {
 					data: {username: currentUser.username},
@@ -183,7 +188,7 @@ test.describe('WebSocket Protocol', () => {
 				expect(addResponse.ok()).toBe(true)
 
 				// currentUser should receive the notification via WebSocket
-				const msg = await waitForMessage(ws, 10000)
+				const msg = await notified
 				expect(msg.event).toBe('notification.created')
 				expect(msg.data).toBeDefined()
 			} finally {
@@ -242,16 +247,21 @@ test.describe('WebSocket Protocol', () => {
 				})
 				const team = await teamResponse.json()
 
+				// The server sends the notification before it answers the request, so listen first.
+				const notified = Promise.all([
+					waitForMessage(ws1, 10000),
+					waitForMessage(ws2, 10000),
+				])
+				// Awaited below; a failed request must not leave it rejecting unhandled.
+				notified.catch(() => {})
+
 				await apiContext.put(`teams/${team.id}/members`, {
 					data: {username: currentUser.username},
 					headers: {Authorization: `Bearer ${tokenA}`},
 				})
 
 				// Both connections should receive the notification
-				const [msg1, msg2] = await Promise.all([
-					waitForMessage(ws1, 10000),
-					waitForMessage(ws2, 10000),
-				])
+				const [msg1, msg2] = await notified
 				expect(msg1.event).toBe('notification.created')
 				expect(msg2.event).toBe('notification.created')
 			} finally {

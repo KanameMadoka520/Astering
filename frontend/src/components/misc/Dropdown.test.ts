@@ -83,4 +83,37 @@ describe('Dropdown', () => {
 
 		expect(shown).toHaveBeenCalledTimes(2)
 	})
+
+	it('closes only itself on Escape, not a dialog around it', async () => {
+		const wrapper = mountDropdown(() => {})
+		await wrapper.get('.trigger').trigger('click')
+		await flushPromises()
+		floatingUi.releasePosition()
+		await flushPromises()
+
+		const escape = new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true})
+		wrapper.get('.item').element.dispatchEvent(escape)
+		await flushPromises()
+
+		// A cancelled keydown is what keeps a native <dialog> from turning Escape into a close request.
+		expect(escape.defaultPrevented).toBe(true)
+		const menu = wrapper.find<HTMLElement>('.dropdown-menu')
+		expect(menu.exists() && menu.element.style.display !== 'none').toBe(false)
+	})
+
+	it('can be closed by the page that holds it, giving focus back to its button', async () => {
+		const wrapper = mountDropdown(() => {})
+		await wrapper.get('.trigger').trigger('click')
+		await flushPromises()
+		floatingUi.releasePosition()
+		await flushPromises()
+		;(wrapper.get('.item').element as HTMLElement).focus()
+
+		;(wrapper.vm as unknown as {closeMenu: (options?: {focusTrigger?: boolean}) => void}).closeMenu({focusTrigger: true})
+		await flushPromises()
+
+		const menu = wrapper.find<HTMLElement>('.dropdown-menu')
+		expect(menu.exists() && menu.element.style.display !== 'none').toBe(false)
+		expect(document.activeElement).toBe(wrapper.get('.trigger').element)
+	})
 })

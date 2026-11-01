@@ -141,6 +141,9 @@ function onKeydown(e: KeyboardEvent) {
 	if (e.key !== 'Escape' || !open.value) {
 		return
 	}
+	// preventDefault cancels a wrapping native <dialog>'s Escape close request (task detail, settings dialogs);
+	// stopPropagation alone does not, so the dialog would close together with the menu.
+	e.preventDefault()
 	e.stopPropagation()
 	close()
 	focusTrigger()
@@ -178,6 +181,16 @@ onClickOutside(dropdown, (e) => {
 	}
 	close()
 	emit('close', e)
+})
+
+defineExpose({
+	// For menus whose items open a page or a dialog. Returning focus to the menu button means a dialog opened from
+	// an item gives focus back to something visible once it closes.
+	closeMenu({focusTrigger: refocus = false}: {focusTrigger?: boolean} = {}) {
+		if (!open.value) return
+		close()
+		if (refocus) focusTrigger()
+	},
 })
 </script>
 

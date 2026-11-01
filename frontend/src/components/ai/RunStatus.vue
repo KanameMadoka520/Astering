@@ -2,6 +2,7 @@
 import {computed, ref, watch} from 'vue'
 import {useNow} from '@vueuse/core'
 import {useI18n} from 'vue-i18n'
+import {useAronaPresenting} from '@/composables/useAronaPresentation'
 import {useQuery} from '@tanstack/vue-query'
 import type {RunResult} from '@/client/generated'
 import {aiSettingsQuery} from '@/client/queries/tcyAi'
@@ -27,9 +28,15 @@ const props = withDefaults(defineProps<{
 })
 const {t, n} = useI18n({useScope: 'global'})
 const open = ref(false)
-// The clock ticks only while a model request streams; compaction and tool stages never tick it.
+// The clock ticks only while a model request streams on screen; compaction and tool stages never tick it.
+const presenting = useAronaPresenting()
 const {now, pause, resume} = useNow({interval: 1000, controls: true})
-watch(() => props.running && props.result?.stage === 'model', value => value ? resume() : pause(), {immediate: true})
+watch(() => props.running && props.result?.stage === 'model' && presenting.value, ticking => {
+	if (!ticking) return pause()
+	// Shown again after a pause, the clock reads the real time at once instead of a second later.
+	now.value = new Date()
+	resume()
+}, {immediate: true})
 
 const request = computed(() => currentRequest(props.result, props.running ? now.value.getTime() : undefined))
 const context = computed(() => contextOccupancy(props.result))

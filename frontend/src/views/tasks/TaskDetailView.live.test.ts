@@ -19,6 +19,12 @@ vi.mock('@/message', () => ({error: vi.fn(), success: vi.fn(), getErrorText: (ca
 vi.mock('@/composables/useProjects', () => ({useProjects: () => ({projects: {}})}))
 vi.mock('@/composables/useLabels', () => ({useLabels: () => ({filterLabelsByQuery: () => [], isPending: {value: false}, getLabelById: vi.fn()})}))
 vi.mock('vuemoji-picker', () => ({VuemojiPicker: {render: () => null}}))
+// The base store probes the API on creation and swaps window.API_URL while it does; the view's saves are fenced on
+// that URL (a save never goes to another server), so the probe must not run in the middle of these tests.
+vi.mock('@/helpers/checkAndSetApiUrl', async importOriginal => ({
+	...await importOriginal<typeof import('@/helpers/checkAndSetApiUrl')>(),
+	checkAndSetApiUrl: vi.fn(async () => window.API_URL),
+}))
 vi.mock('vue-i18n', async importOriginal => ({
 	...await importOriginal<typeof import('vue-i18n')>(),
 	useI18n: () => ({t: (key: string) => key}),

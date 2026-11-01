@@ -227,6 +227,23 @@
 
 			<div class="columns task-layout">
 				<div class="column detail-content">
+					<p
+						v-if="unsavedFieldLabels.length > 0"
+						class="task-fields-not-saved"
+						role="alert"
+					>
+						<Icon
+							icon="exclamation-circle"
+							aria-hidden="true"
+						/>
+						<span>{{ $t('task.detail.fieldsNotSaved', {fields: unsavedFieldLabels.join(', ')}) }}</span>
+						<BaseButton
+							class="task-fields-not-saved__retry"
+							@click="retryFailedSave"
+						>
+							{{ $t('misc.retry') }}
+						</BaseButton>
+					</p>
 					<div
 						v-if="hasFieldPanel"
 						class="task-fields"
@@ -569,6 +586,7 @@
 
 					<div class="details content description">
 						<Description
+							ref="descriptionRef"
 							:model-value="task"
 							:can-write="canWrite"
 						/>
@@ -864,11 +882,18 @@
 			<Icon icon="chevron-down" />
 		</BaseButton>
 
+		<UnsavedLeaveDialog
+			:open="leaveTarget !== null"
+			@stay="stay"
+			@discard="discardAndLeave"
+		/>
+
 		<Modal
 			:enabled="showDeleteModal"
 			danger
+			:confirm-label="$t('task.detail.delete.confirm')"
 			@close="showDeleteModal = false"
-			@submit="deleteTask()"
+			@submit="deleteTask"
 		>
 			<template #header>
 				<span>{{ $t('task.detail.delete.header') }}</span>
@@ -876,7 +901,7 @@
 
 			<template #text>
 				<p class="tw:text-balance">
-					{{ $t('task.detail.delete.text1') }}
+					{{ $t('task.detail.delete.subject', {task: task.title}) }}
 				</p>
 				<p class="tw:text-balance">
 					{{ $t('task.detail.delete.text2') }}
@@ -902,7 +927,7 @@ import {
 } from 'vue'
 import {useRouter, useRoute, type RouteLocation, type RouteLocationRaw, onBeforeRouteLeave} from 'vue-router'
 import {useI18n} from 'vue-i18n'
-import {unrefElement, useDebounceFn, useElementSize, useIntersectionObserver, useMutationObserver} from '@vueuse/core'
+import {useDebounceFn, useElementSize, useIntersectionObserver, useMutationObserver} from '@vueuse/core'
 import {klona} from 'klona/lite'
 import type {IconProp} from '@fortawesome/fontawesome-svg-core'
 
@@ -920,6 +945,8 @@ import {SHORTCUTS} from '@/constants/shortcuts'
 
 import BaseButton from '@/components/base/BaseButton.vue'
 import LoadError from '@/components/misc/state/LoadError.vue'
+import UnsavedLeaveDialog from '@/components/misc/UnsavedLeaveDialog.vue'
+import {useUnsavedLeaveGuard} from '@/composables/useUnsavedLeaveGuard'
 
 // partials
 import Attachments from '@/components/tasks/partials/Attachments.vue'
@@ -960,6 +987,7 @@ import {
 	mergeServerDraft,
 	settleSubmitted,
 	unsavedDraftChanges,
+	type DraftField,
 	type DraftValues,
 } from './taskDraftMerge'
 
@@ -1263,10 +1291,12 @@ const favoriteLabel = computed(() => task.value.is_favorite
 
 const isModal = computed(() => Boolean(props.backdropView))
 
-const heading = ref<HTMLElement | null>(null)
+const heading = ref<InstanceType<typeof Heading> | null>(null)
+const descriptionRef = ref<InstanceType<typeof Description> | null>(null)
 
 async function scrollToHeading() {
-	scrollIntoView(unrefElement(heading))
+	const element: unknown = heading.value?.$el
+	scrollIntoView(element instanceof HTMLElement ? element : null)
 }
 
 const attachmentsRef = ref<InstanceType<typeof Attachments> | null>(null)
@@ -1576,13 +1606,15 @@ function openAttachments() {
 
 // A save sends only the given changes plus the user's other unsaved edits, so values another client or Arona
 // wrote in the meantime are never overwritten with what this view loaded earlier.
+type SaveOutcome = 'none' | 'saved' | 'failed'
+
 async function saveTask(
 	changes: Partial<ITask> = {},
 	undoCallback?: () => void,
 	id = task.value.id,
-) {
+): Promise<SaveOutcome> {
 	if (!canWrite.value || !id) {
-		return
+		return 'none'
 	}
 
 	const isShowing = () => props.taskId === id && task.value.id === id
@@ -1592,8 +1624,7 @@ async function saveTask(
 	}
 	if (Object.keys(submitted).length === 0) {
 		// Only the save shortcut gets here: every field saves itself, so nothing is left to send.
-		success({message: t('task.detail.updateSuccess')})
-		return
+		return 'none'
 	}
 
 	let saved: ITask
@@ -1601,13 +1632,16 @@ async function saveTask(
 	try {
 		saved = await updateTask.mutateAsync({...submitted, id})
 	} catch {
-		return
+		if (isShowing()) saveFailedFor.value = id
+		return 'failed'
 	}
 
 	// The response of a task the view has since left must never reach the next one.
 	if (isShowing()) {
 		settleSave(submitted, saved, mark)
 		setActiveFields()
+		// Every save also sends the other unsaved fields, so nothing is left unsaved now.
+		if (saveFailedFor.value === id) saveFailedFor.value = null
 	}
 
 	let actions: MessageAction[] = []
@@ -1618,6 +1652,27 @@ async function saveTask(
 		}]
 	}
 	success({message: t('task.detail.updateSuccess')}, actions)
+	return 'saved'
+}
+
+// Ctrl/⌘+S: send the title and description still being typed plus any other unsaved field, and only claim a
+// save when something was actually sent and accepted.
+async function saveFromShortcut() {
+	if (!canWrite.value) return
+	const id = task.value.id
+	const [title, description] = await Promise.all([
+		heading.value?.flush() ?? Promise.resolve<SaveOutcome>('none'),
+		descriptionRef.value?.flush() ?? Promise.resolve<SaveOutcome>('none'),
+	])
+	const fields = await saveTask({}, undefined, id)
+	if (fields !== 'none' || props.taskId !== id) return
+	const outcomes = [title, description]
+	if (outcomes.includes('failed')) return
+	success({
+		message: outcomes.includes('saved')
+			? t('task.detail.updateSuccess')
+			: t('task.detail.nothingToSave'),
+	})
 }
 
 function settleSave(submitted: Partial<ITask>, saved: ITask, mark: number) {
@@ -1626,6 +1681,32 @@ function settleSave(submitted: Partial<ITask>, saved: ITask, mark: number) {
 	// The query may not have picked up the patched cache yet, so the response usually leads. A receipt
 	// that arrived while the PATCH was in flight is newer still, and must not be undone.
 	followServerTask(isOvertakenByServerWrite(queryClient, saved, mark) ? cached : mergeTask(cached, saved))
+}
+
+// A field whose save failed keeps showing the new value (the local draft sends it again with the next save).
+// Say which fields are not saved, offer a retry, and ask before leaving the task drops them.
+const saveFailedFor = ref<number | null>(null)
+const DRAFT_FIELD_LABELS: Record<DraftField, string> = {
+	priority: 'task.attributes.priority',
+	percent_done: 'task.attributes.percentDone',
+	due_date: 'task.attributes.dueDate',
+	start_date: 'task.attributes.startDate',
+	end_date: 'task.attributes.endDate',
+	reminders: 'task.attributes.reminders',
+	repeat_after: 'task.attributes.repeat',
+	repeat_mode: 'task.attributes.repeat',
+	hex_color: 'task.attributes.color',
+}
+const unsavedFieldLabels = computed(() => {
+	if (saveFailedFor.value === null || saveFailedFor.value !== task.value.id) return []
+	const fields = Object.keys(unsavedDraftChanges(localDraft(), draftBaseline)) as DraftField[]
+	return [...new Set(fields.map(field => t(DRAFT_FIELD_LABELS[field])))]
+})
+const hasUnsavedFailedFields = computed(() => unsavedFieldLabels.value.length > 0)
+const {leaveTarget, stay, discardAndLeave} = useUnsavedLeaveGuard(hasUnsavedFailedFields)
+
+function retryFailedSave() {
+	return saveTask({}, undefined, task.value.id)
 }
 
 // Pending state stays on the field being saved; the rest of the view stays usable.
@@ -1689,7 +1770,7 @@ function saveRepeat(value: ITask | undefined) {
 useTaskDetailShortcuts({
 	task: () => task.value,
 	taskTitle: () => taskTitle.value,
-	onSave: () => saveTask(),
+	onSave: () => saveFromShortcut(),
 })
 
 const showDeleteModal = ref(false)
@@ -1704,6 +1785,18 @@ async function deleteTask() {
 	}
 	success({message: t('task.detail.deleteSuccess')})
 	if (props.taskId !== id) return
+	showDeleteModal.value = false
+	// Back to where the task was opened from (Home, Upcoming, a board behind the dialog), not always its project,
+	// so the browser's Back button does not lead to the deleted task's 404 page either.
+	if (isModal.value) {
+		emit('close')
+		return
+	}
+	const back = router.options.history.state.back
+	if (typeof back === 'string' && !back.startsWith(`/tasks/${id}`)) {
+		router.back()
+		return
+	}
 	router.push({name: 'project.index', params: {projectId}})
 }
 
@@ -1923,6 +2016,26 @@ function setRelatedTasksActive() {
 
 .task-view-load-error {
 	margin: var(--space-4) var(--space-2);
+}
+
+.task-fields-not-saved {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-1) var(--space-2);
+	margin-block-end: var(--space-3);
+	padding: var(--space-2) var(--space-3);
+	border-inline-start: 3px solid var(--danger);
+	border-radius: var(--radius-md);
+	background: var(--tint-danger);
+	color: var(--text-primary);
+	font-size: var(--text-sm);
+}
+
+.task-fields-not-saved__retry {
+	min-block-size: var(--target-min, 2rem);
+	font-weight: var(--weight-medium);
+	text-decoration: underline;
 }
 
 .task-view-deleted {

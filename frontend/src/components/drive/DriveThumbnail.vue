@@ -1,6 +1,7 @@
 <template>
 	<img
 		v-if="url"
+		ref="element"
 		class="drive-thumbnail"
 		:src="url"
 		:alt="decorative ? '' : (file.file?.name || '')"
@@ -9,17 +10,19 @@
 	>
 	<span
 		v-else
+		ref="element"
 		class="drive-file-symbol"
 		aria-hidden="true"
 	><Icon :icon="symbol" /></span>
 </template>
 
 <script setup lang="ts">
-import {computed} from 'vue'
+import {computed, ref} from 'vue'
 import {useQuery} from '@tanstack/vue-query'
 import {useObjectUrl} from '@vueuse/core'
 import type {DriveEntry} from '@/client/queries/drive'
 import {drivePreviewQuery} from '@/client/queries/drive'
+import {useNearViewport} from '@/composables/useNearViewport'
 
 const props = withDefaults(defineProps<{
 	file: DriveEntry
@@ -37,9 +40,12 @@ const symbol = computed(() => {
 	if (mime.value.startsWith('image/')) return 'file-image'
 	return mime.value === 'application/pdf' ? 'file-pdf' : 'file'
 })
+// A page holds 60 cards; `loading="lazy"` cannot delay bytes fetched before the image has a URL.
+const element = ref<HTMLElement>()
+const near = useNearViewport(element)
 const query = useQuery(computed(() => ({
 	...drivePreviewQuery(props.file.file_id),
-	enabled: image.value && !props.file.purging,
+	enabled: image.value && !props.file.purging && near.value,
 })))
 const url = useObjectUrl(computed(() => image.value ? query.data.value : undefined))
 </script>

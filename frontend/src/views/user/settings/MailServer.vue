@@ -9,6 +9,8 @@ import {isRequestContextAbort} from '@/client/requestContext'
 import Message from '@/components/misc/Message.vue'
 import PageHeader from '@/components/misc/state/PageHeader.vue'
 import SettingsScope from './SettingsScope.vue'
+import UnsavedLeaveDialog from '@/components/misc/UnsavedLeaveDialog.vue'
+import {useUnsavedLeaveGuard} from '@/composables/useUnsavedLeaveGuard'
 const {t} = useI18n({useScope: 'global'})
 useTitle(() => `${t('mailServer.title')} - ${t('user.settings.title')}`)
 const access = useQuery(mailSettingsAccessQuery())
@@ -17,6 +19,8 @@ const settings = useQuery({...mailSettingsQuery(), enabled: allowed})
 const draft = ref<MailSettings & MailSettingsWritable>()
 const baseline = ref('')
 const dirty = computed(() => draft.value !== undefined && JSON.stringify(draft.value) !== baseline.value)
+// Switching settings pages or closing the tab asks before unsaved changes are dropped.
+const {leaveTarget, stay, discardAndLeave} = useUnsavedLeaveGuard(dirty)
 const errorMessage = ref('')
 function adopt(value: MailSettings) {
 	draft.value = {...value, password: '', clear_password: false}
@@ -226,6 +230,12 @@ async function submit() {
 				</Message>
 			</form>
 		</Card>
+
+		<UnsavedLeaveDialog
+			:open="leaveTarget !== null"
+			@stay="stay"
+			@discard="discardAndLeave"
+		/>
 	</div>
 </template>
 

@@ -1,8 +1,10 @@
 <template>
 	<!-- Explicit aria-current: RouterLink ignores the query, so it would mark every page link as current. -->
+	<!-- aria-disabled, not disabled: "Previous" on the first page stays a focusable link instead of turning into a
+	     div, so focus is not lost when the last page is reached with the keyboard. -->
 	<BaseButton
 		:to="to"
-		:disabled="disabled"
+		:aria-disabled="disabled"
 		:class="[`pagination-${variant}`, {'is-current': isCurrent}]"
 		:aria-current="isCurrent ? 'page' : 'false'"
 		@click="emit('click')"

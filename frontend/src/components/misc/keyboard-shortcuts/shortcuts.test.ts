@@ -47,4 +47,22 @@ describe('keyboard shortcuts help data', () => {
 		expect(shortcut.keys).toEqual(expected.keys)
 		expect(shortcut.combination).toEqual(expected.combination)
 	})
+
+	// The "g …" go-to sequences are all bound through SHORTCUTS (the ". ." copy sequences are wired by hand in the task detail).
+	it('lists only "g …" sequences that something actually listens for', () => {
+		const bindings: string[] = []
+		const collect = (value: unknown) => {
+			if (typeof value === 'string') bindings.push(value)
+			else if (value && typeof value === 'object') Object.values(value).forEach(collect)
+		}
+		collect(SHORTCUTS)
+		const bound = bindings.map(binding => JSON.stringify(shortcutBindingToDisplay(binding)))
+
+		const listed = KEYBOARD_SHORTCUTS.flatMap(group => group.shortcuts)
+			.filter(shortcut => shortcut.combination === 'then' && shortcut.keys[0] === 'g')
+		expect(listed.length).toBeGreaterThan(0)
+		for (const shortcut of listed) {
+			expect(bound, shortcut.title).toContain(JSON.stringify({keys: shortcut.keys, combination: 'then'}))
+		}
+	})
 })

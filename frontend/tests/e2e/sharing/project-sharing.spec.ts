@@ -178,8 +178,18 @@ test('duplicating a project does not copy its shares unless asked to', async ({a
 	await expect(checkbox).not.toBeChecked()
 	await expect(page.getByText('1 person, no teams and no public links would also get access to the copy.')).toBeVisible()
 
-	const duplicated = page.waitForResponse(response => /\/projects\/1\/duplicate$/.test(new URL(response.url()).pathname))
+	// The API is cross-origin, so the POST follows a CORS preflight. Unrouted, Playwright reports that OPTIONS
+	// request like any other and its bodiless response matches a URL-only predicate first; hence the POST filter.
+	// Reading the body while routing (where preflights are answered by Playwright and never reach the handler) is
+	// an extra safeguard.
+	let body: {duplicate_shares?: boolean} | undefined
+	await page.route('**/api/v2/projects/1/duplicate', async route => {
+		if (route.request().method() === 'POST') body = route.request().postDataJSON()
+		await route.continue()
+	})
+	const duplicated = page.waitForResponse(response => response.request().method() === 'POST'
+		&& /\/projects\/1\/duplicate$/.test(new URL(response.url()).pathname))
 	await page.getByRole('button', {name: 'Duplicate', exact: true}).click()
-	const request = (await duplicated).request()
-	expect(request.postDataJSON().duplicate_shares).toBe(false)
+	expect((await duplicated).ok()).toBe(true)
+	expect(body?.duplicate_shares).toBe(false)
 })

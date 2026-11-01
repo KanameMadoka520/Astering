@@ -49,6 +49,7 @@ import router from '@/router'
 import {navigableUrl, useConfigStore} from '@/stores/config'
 import type {IProvider} from '@/types/IProvider'
 import {queryClient} from '@/client/queryClient'
+import {clearStorageKeepingScopedDrafts} from '@/helpers/localDrafts'
 
 const ACCOUNT_GONE_ERROR_CODES: readonly number[] = [
 	ERROR_CODE_USER_DOES_NOT_EXIST,
@@ -194,6 +195,7 @@ export const useAuthStore = defineStore('auth', () => {
 		session.value = claims
 		if (identityChanged) useWebSocket().closeStaleConnection()
 		if (usernameChanged && claims) invalidateAvatar()
+		return identityChanged
 	}
 
 	function setAuthenticated(newAuthenticated: boolean) {
@@ -604,8 +606,13 @@ export const useAuthStore = defineStore('auth', () => {
 		const loggedInVia = getLoggedInVia()
 		lastUserInfoRefresh.value = null
 		setAuthenticated(false)
-		setSession(null)
-		window.localStorage.clear() // Clear all settings and history we might have saved in local storage.
+		// setSession clears the cache when an identity ends; without readable claims there was none to end, but a
+		// cache may still be left behind.
+		const clearedIdentity = setSession(null)
+		if (!clearedIdentity) queryClient.clear()
+		// Clear settings and history, but keep account-scoped drafts: an expired or revoked session must not take
+		// unsaved writing with it. The header asks whether to remove them on an explicit logout.
+		clearStorageKeepingScopedDrafts()
 
 		sessionStorage.setItem(JUST_LOGGED_OUT_KEY, 'true')
 

@@ -350,7 +350,20 @@ export function argumentSummary(raw?: string, max = 160): string {
 	return clip(text.replace(/\s+/g, ' ').trim(), max)
 }
 
-// Counts code points, so emoji and CJK are one character each.
+// Counts code points, so emoji and CJK are one character each. The streamed reasoning is counted on every frame, so
+// this walks the text instead of spreading it into an array of characters.
 export function characterCount(text?: string): number {
-	return text ? [...text].length : 0
+	if (!text) return 0
+	let count = text.length
+	for (let index = 0; index < text.length - 1; index++) {
+		const code = text.charCodeAt(index)
+		if (code < 0xD800 || code > 0xDBFF) continue
+		const next = text.charCodeAt(index + 1)
+		// A high surrogate followed by a low one is a single code point; a lone half counts as one, as before.
+		if (next >= 0xDC00 && next <= 0xDFFF) {
+			count--
+			index++
+		}
+	}
+	return count
 }

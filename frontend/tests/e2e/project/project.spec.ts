@@ -89,7 +89,8 @@ test.describe('Projects', () => {
 		await page.waitForLoadState('networkidle')
 
 		await expect(page).toHaveURL(/\/settings\/delete/)
-		await page.getByRole('button', {name: /do it/i}).click()
+		// The confirm button names the action.
+		await page.getByRole('dialog').getByRole('button', {name: 'Delete', exact: true}).click()
 
 		await expect(page.locator('.global-notification')).toContainText('Success')
 		await expect(page).toHaveURL('/')
@@ -104,6 +105,26 @@ test.describe('Projects', () => {
 		const dialog = page.getByRole('dialog', {name: 'Edit This Project'})
 		await dialog.getByRole('button', {name: 'Cancel', exact: true}).click()
 
+		await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/\\d+$`))
+		await expect(dialog).toHaveCount(0)
+	})
+
+	test('Asks before Cancel or Escape drop typed changes in the edit dialog', async ({authenticatedPage: page}) => {
+		const projectId = projects[0].id
+		await page.goto(`/projects/${projectId}/settings/edit`)
+
+		const dialog = page.getByRole('dialog', {name: 'Edit This Project'})
+		await dialog.locator('input#title').fill('Typed but not saved')
+		await page.keyboard.press('Escape')
+
+		const question = page.getByRole('dialog', {name: 'Leave without saving?'})
+		await expect(question).toBeVisible()
+		await question.getByRole('button', {name: 'Keep editing'}).click()
+		await expect(question).toHaveCount(0)
+		await expect(dialog.locator('input#title')).toHaveValue('Typed but not saved')
+
+		await dialog.getByRole('button', {name: 'Cancel', exact: true}).click()
+		await question.getByRole('button', {name: 'Discard and leave'}).click()
 		await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/\\d+$`))
 		await expect(dialog).toHaveCount(0)
 	})
@@ -145,7 +166,7 @@ test.describe('Projects', () => {
 		await page.locator('.project-title-dropdown .project-title-button').click()
 		await page.getByRole('link', {name: /^archive$/i}).click()
 		await expect(page.locator('dialog[open] .modal-content')).toContainText('Archive this project')
-		await page.getByRole('button', {name: /do it/i}).click()
+		await page.getByRole('dialog').getByRole('button', {name: 'Archive', exact: true}).click()
 
 		await expect(page.locator('.global-notification')).toContainText('Success')
 		await expect(page.locator('main.app-content')).toContainText('This project is archived. It is not possible to create new or edit tasks for it.')

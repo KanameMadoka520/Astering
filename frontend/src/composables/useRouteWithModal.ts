@@ -1,84 +1,58 @@
-import {
-	computed,
-	defineAsyncComponent,
-	h,
-	shallowRef,
-	watchEffect,
-	type AsyncComponentLoader,
-	type Component,
-	type VNode,
-} from 'vue'
-import {useRoute, useRouter, type RouteLocationNormalizedGeneric} from 'vue-router'
+import {computed, h, onScopeDispose, shallowRef, watch, type VNode} from 'vue'
+import {RouterView, useRoute, useRouter, type RouteLocationNormalizedGeneric, type RouteRecordNormalized} from 'vue-router'
 import {useBaseStore} from '@/stores/base'
 import {useProjects} from '@/composables/useProjects'
 
-// One wrapper per lazy route component: a new wrapper is a new component type, so every hash or query
-// change while the modal is open would remount it and drop its drafts, scroll and focus.
-const asyncRouteComponents = new WeakMap<AsyncComponentLoader, Component>()
-
-function asyncRouteComponent(loader: AsyncComponentLoader): Component {
-	const cached = asyncRouteComponents.get(loader)
-	if (cached) return cached
-	const component = defineAsyncComponent(loader)
-	asyncRouteComponents.set(loader, component)
-	return component
+function displayedRecord(route: Pick<RouteLocationNormalizedGeneric, 'matched'>) {
+	const record = [...route.matched].reverse().find(record => record.components?.default)
+	return record?.aliasOf ?? record
 }
 
 export function useRouteWithModal() {
 	const router = useRouter()
 	const route = useRoute()
-	const backdropView = computed(() => route.fullPath ? window.history.state?.backdropView : undefined)
+	const modalLocation = shallowRef<{record: RouteRecordNormalized, backdrop: string}>()
+	const backdropView = computed(() => modalLocation.value?.backdrop)
 	const baseStore = useBaseStore()
 	const projectList = useProjects()
 
-	const routeWithModal = computed(() => {
-		return backdropView.value
-			? router.resolve(backdropView.value) as RouteLocationNormalizedGeneric
-			: route
-	})
+	let poppedEntry: {path: string, position: unknown} | undefined
+	// Browser back/forward must honor that history entry, including an intentional full-page task.
+	// The entry identity also distinguishes a later programmatic push after a cancelled browser back.
+	onScopeDispose(router.options.history.listen(path => {
+		poppedEntry = {path, position: window.history.state?.position}
+	}))
 
-	const currentModal = shallowRef<VNode>()
-	watchEffect(() => {
-		if (!backdropView.value) {
-			currentModal.value = undefined
+	watch(() => route.fullPath, () => {
+		const state = window.history.state
+		const isPop = poppedEntry?.path === route.fullPath && poppedEntry.position === state?.position
+		const record = displayedRecord(route)
+		const inherited = !isPop && state?.backdropView === undefined && record?.name === 'task.detail'
+			&& modalLocation.value?.record === record
+		const candidate = inherited ? modalLocation.value?.backdrop : state?.backdropView
+		const backdrop = typeof candidate === 'string' ? router.resolve(candidate) : undefined
+		// A task behind another task would register two instances and two sets of guards on the same record.
+		// Old task-to-task history entries fall back to the normal full-page task instead.
+		if (!record || !backdrop || !displayedRecord(backdrop) || displayedRecord(backdrop) === record) {
+			modalLocation.value = undefined
 			return
 		}
+		modalLocation.value = {record, backdrop: candidate}
+		// Hash/query links and a confirmed guard's replay omit custom state. Keep the active task modal's
+		// original board across those task navigations, retaining Vue Router's own history data. Explicit
+		// backdropView: null, another page, or a browser history entry always keeps its own presentation.
+		if (inherited) window.history.replaceState({...state, backdropView: candidate}, '')
+	}, {immediate: true, flush: 'sync'})
 
-		// this is adapted from vue-router
-		// https://github.com/vuejs/vue-router-next/blob/798cab0d1e21f9b4d45a2bd12b840d2c7415f38a/src/RouterView.ts#L125
-		const routePropsOption = route.matched[0]?.props.default
-		let routeProps = undefined
-		if (routePropsOption) {
-			if (routePropsOption === true) {
-				routeProps = route.params
-			} else {
-				if (typeof routePropsOption === 'function') {
-					routeProps = routePropsOption(route)
-				} else {
-					routeProps = routePropsOption
-				}
-			}
-		}
+	const routeWithModal = computed(() => backdropView.value
+		? router.resolve(backdropView.value) as RouteLocationNormalizedGeneric
+		: route)
 
-		if (typeof routeProps === 'undefined') {
-			currentModal.value = undefined
-			return
-		}
-
-		routeProps.backdropView = backdropView.value
-
-		let component = route.matched[0]?.components?.default
-
-		if (typeof component === 'function') {
-			component = asyncRouteComponent(component as AsyncComponentLoader)
-		}
-
-		if (!component) {
-			currentModal.value = undefined
-			return
-		}
-		currentModal.value = h(component, routeProps)
-	})
+	// RouterView supplies matchedRouteKey and owns the route instance and guard lifecycle. A manually
+	// rendered task component outside RouterView silently skips its composition navigation guards.
+	const currentModal = computed<VNode | undefined>(() => backdropView.value
+		? h(RouterView, {backdropView: backdropView.value})
+		: undefined)
 
 	const historyState = computed(() => route.fullPath ? window.history.state : undefined)
 

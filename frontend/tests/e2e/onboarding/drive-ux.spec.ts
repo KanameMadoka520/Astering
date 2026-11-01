@@ -41,6 +41,77 @@ test('cancelling the first image stops the whole upload queue', async ({authenti
 	await page.getByRole('dialog', {name: 'Choose how to upload images'}).getByRole('button', {name: 'Cancel', exact: true}).click()
 	await page.waitForTimeout(500) // Assert that a queued request does not follow cancellation.
 	await expect(page.locator('.drive-card')).toHaveCount(0)
+	await expect(page.locator('.drive-upload-status')).toContainText('Upload cancelled after 0 of 2 files')
+})
+
+test('several images are uploaded after one image question', async ({authenticatedPage: page}) => {
+	await page.goto('/drive')
+	const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a/RkAAAAASUVORK5CYII=', 'base64')
+	await page.locator('.drive-browser input[type=file]').setInputFiles([
+		{name: 'first.png', mimeType: 'image/png', buffer: image},
+		{name: 'second.png', mimeType: 'image/png', buffer: image},
+		{name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('notes')},
+	])
+	const question = page.getByRole('dialog', {name: 'Choose how to upload images'})
+	await expect(question).toContainText('Applies to all 2 images')
+	await question.getByRole('button', {name: 'Upload images', exact: true}).click()
+	await expect(page.locator('.drive-upload-status')).toContainText('Uploaded 3 of 3 files')
+	await expect(page.locator('.drive-card')).toHaveCount(3)
+	await expect(question).toHaveCount(0)
+})
+
+test('a failed upload is named and can be retried on its own', async ({authenticatedPage: page}) => {
+	await page.goto('/drive')
+	let failNext = true
+	await page.route('**/api/v2/drive/files', async route => {
+		if (route.request().method() === 'POST' && failNext && route.request().postDataBuffer()?.includes('broken.txt')) {
+			failNext = false
+			await route.fulfill({status: 500, contentType: 'application/problem+json', body: JSON.stringify({title: 'Internal Server Error', status: 500, detail: 'Storage is not available.'})})
+			return
+		}
+		await route.continue()
+	})
+	await page.locator('.drive-browser input[type=file]').setInputFiles([
+		{name: 'fine.txt', mimeType: 'text/plain', buffer: Buffer.from('fine')},
+		{name: 'broken.txt', mimeType: 'text/plain', buffer: Buffer.from('broken')},
+	])
+	const failed = page.locator('.drive-upload-failed')
+	await expect(failed).toContainText('1 file couldn\'t be uploaded:')
+	await expect(failed).toContainText('broken.txt')
+	await expect(page.locator('.drive-upload-status')).toContainText('Uploaded 1 of 2 files')
+	await failed.getByRole('button', {name: 'Retry failed files', exact: true}).click()
+	await expect(page.locator('.drive-upload-status')).toContainText('Uploaded 1 of 1 files')
+	await expect(failed).toHaveCount(0)
+	await expect(page.locator('.drive-card')).toHaveCount(2)
+})
+
+test('leaving during an upload asks first, and stays when told to', async ({authenticatedPage: page}) => {
+	await page.setViewportSize({width: 1440, height: 900})
+	await page.goto('/drive')
+	let release: () => void = () => {}
+	const held = new Promise<void>(resolve => {
+		release = resolve
+	})
+	await page.route('**/api/v2/drive/files', async route => {
+		if (route.request().method() === 'POST') await held
+		await route.continue()
+	})
+	await page.locator('.drive-browser input[type=file]').setInputFiles({name: 'slow.txt', mimeType: 'text/plain', buffer: Buffer.from('slow')})
+	await expect(page.locator('.drive-upload-status')).toContainText('Uploaded 0 of 1 files')
+
+	const upcoming = page.getByRole('link', {name: 'Upcoming'}).first()
+	await upcoming.click()
+	const dialog = page.getByRole('dialog', {name: 'Uploads are still running'})
+	await expect(dialog).toBeVisible()
+	await expect(dialog.getByRole('button', {name: 'Keep uploading'})).toBeFocused()
+	await dialog.getByRole('button', {name: 'Keep uploading'}).click()
+	await expect(page).toHaveURL(/\/drive/)
+
+	release()
+	await expect(page.locator('.drive-upload-status')).toContainText('Uploaded 1 of 1 files')
+	await expect(page.locator('.drive-card')).toContainText('slow.txt')
+	await upcoming.click()
+	await expect(page).toHaveURL(/\/tasks\/by\/upcoming/)
 })
 
 test('assistant does not claim to reconnect before a conversation is selected', async ({authenticatedPage: page}) => {
@@ -57,12 +128,12 @@ for (const width of [1440, 360]) {
 		await page.locator('.drive-card').getByRole('button', {name: 'Details and usages', exact: true}).click()
 		const panel = page.locator('.drive-details')
 		await expect(panel).toBeVisible()
-        const iconOffset = await panel.getByRole('button', {name: 'Close dialog'}).evaluate(button => {
-         const b = button.getBoundingClientRect(), icon = button.querySelector('svg')!.getBoundingClientRect()
-         return {x: Math.abs(icon.x + icon.width / 2 - b.x - b.width / 2), y: Math.abs(icon.y + icon.height / 2 - b.y - b.height / 2)}
-        })
-        expect(iconOffset.x).toBeLessThan(.75)
-        expect(iconOffset.y).toBeLessThan(.75)
+		const iconOffset = await panel.getByRole('button', {name: 'Close dialog'}).evaluate(button => {
+			const b = button.getBoundingClientRect(), icon = button.querySelector('svg')!.getBoundingClientRect()
+			return {x: Math.abs(icon.x + icon.width / 2 - b.x - b.width / 2), y: Math.abs(icon.y + icon.height / 2 - b.y - b.height / 2)}
+		})
+		expect(iconOffset.x).toBeLessThan(.75)
+		expect(iconOffset.y).toBeLessThan(.75)
 		await expect(page.getByRole('dialog', {name: 'Details and usages'})).toHaveCSS('opacity', '1')
 		await page.screenshot({path: testInfo.outputPath('drive-details.png')})
 		expect(await panel.evaluate(el => getComputedStyle(el).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)')

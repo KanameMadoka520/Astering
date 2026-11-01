@@ -19,7 +19,7 @@
 		>
 			{{
 				$t('user.deletion.scheduled', {
-					date: formatDisplayDate(deletionScheduledAt),
+					date: formatDateLong(deletionScheduledAt),
 					dateSince: formatDateSince(deletionScheduledAt),
 				})
 			}}
@@ -124,7 +124,7 @@ import WorkspaceLinks, {type WorkspaceLink} from '@/components/home/workspace/Wo
 
 import {parseDateOrNull} from '@/helpers/parseDateOrNull'
 import {isHiddenFromView, parseWorkspaceTaskView, type WorkspaceTaskView} from '@/helpers/workspaceTasks'
-import {formatDateSince, formatDisplayDate} from '@/helpers/time/formatDate'
+import {formatDateLong, formatDateSince} from '@/helpers/time/formatDate'
 import {resolveUserTimezone} from '@/helpers/time/userTimezone'
 import {useDaytimeSalutation} from '@/composables/useDaytimeSalutation'
 import {useGlobalNow} from '@/composables/useGlobalNow'

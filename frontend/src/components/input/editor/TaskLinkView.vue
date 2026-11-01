@@ -14,6 +14,7 @@
 <script lang="ts" setup>
 import {nodeViewProps, NodeViewWrapper} from '@tiptap/vue-3'
 import {useRoute, useRouter} from 'vue-router'
+import {taskModalNavigationState} from '@/helpers/taskModal'
 
 import type {Task as ITask} from '@/client/generated'
 import TaskLinkPill from './TaskLinkPill.vue'
@@ -31,7 +32,7 @@ function open(task: ITask) {
 	router.push({
 		name: 'task.detail',
 		params: {id: task.id},
-		state: {backdropView: route.fullPath},
+		state: taskModalNavigationState(route),
 	})
 }
 </script>

@@ -32,7 +32,7 @@ test.describe('Quick add default reminders', () => {
 			response.url().includes('/tasks/bulk') &&
 			response.request().method() === 'POST',
 		)
-		await page.locator('.button').filter({hasText: 'Add'}).click()
+		await page.getByRole('button', {name: 'Add', exact: true}).click()
 		await createTaskPromise
 
 		const taskLink = page.locator('.tasks .task').filter({hasText: 'Buy milk'}).first().locator('a.task-link')

@@ -8,6 +8,18 @@
 			:description="$t('user.deletion.text1')"
 		/>
 		<Card class="deletion-card">
+			<p class="settings-copy">
+				{{ $t('user.deletion.scope') }}
+			</p>
+			<p class="settings-copy">
+				{{ $t('user.deletion.privateData') }}
+			</p>
+			<p class="settings-copy">
+				{{ $t('user.deletion.sharedFiles') }}
+			</p>
+			<p class="settings-copy">
+				{{ $t('user.deletion.keepFirst') }}
+			</p>
 			<template v-if="deletionScheduledAt !== null">
 				<form @submit.prevent="cancelDeletion()">
 					<Message
@@ -16,7 +28,7 @@
 					>
 						{{
 							$t('user.deletion.scheduled', {
-								date: formatDisplayDate(deletionScheduledAt),
+								date: formatDateLong(deletionScheduledAt),
 								dateSince: formatDateSince(deletionScheduledAt),
 							})
 						}}
@@ -98,7 +110,7 @@ import {useI18n} from 'vue-i18n'
 
 import {useRequestDeletionMutation, useCancelDeletionMutation} from '@/client/queries/accountDeletion'
 import {parseDateOrNull} from '@/helpers/parseDateOrNull'
-import {formatDateSince, formatDisplayDate} from '@/helpers/time/formatDate'
+import {formatDateLong, formatDateSince} from '@/helpers/time/formatDate'
 import {useTitle} from '@/composables/useTitle'
 import {useAuthStore} from '@/stores/auth'
 import {useConfigStore} from '@/stores/config'

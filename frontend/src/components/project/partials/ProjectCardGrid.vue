@@ -4,8 +4,8 @@
 		:class="{ 'show-even-number-of-projects': showEvenNumberOfProjects }"
 	>
 		<li
-			v-for="(item, index) in filteredProjects"
-			:key="`project_${item.id}_${index}`"
+			v-for="item in filteredProjects"
+			:key="item.id"
 			class="project-grid-item"
 		>
 			<ProjectCard :project="item" />

@@ -155,9 +155,22 @@ export function isFormField(target: EventTarget | null): boolean {
 
 	const tagName = target.tagName.toLowerCase()
 	if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') return true
-	if (target.contentEditable === 'true') return true
+	// isContentEditable also covers "plaintext-only" and elements inside an editable region.
+	if (target.isContentEditable || target.contentEditable === 'true' || target.contentEditable === 'plaintext-only') return true
 
 	return false
+}
+
+// An open modal dialog makes the page behind it inert. A plain-key shortcut there would click a button the user
+// cannot see (marking the task done behind its delete question, say). Shortcuts with Ctrl, Cmd or Alt are deliberate
+// and keep working, like opening quick actions. The task detail is a page shown as a dialog: `g …` navigation leaves it,
+// as it does from the full task page.
+function reachable(binding: Binding, sequence: ParsedKey[]): boolean {
+	const dialogs = document.querySelectorAll('dialog.modal-dialog[open]')
+	const top = dialogs[dialogs.length - 1]
+	if (!top || top.contains(binding.el)) return true
+	if (sequence.length > 1 && top.classList.contains('task-detail-view-modal')) return true
+	return sequence.length === 1 && Boolean(sequence[0].ctrl || sequence[0].meta || sequence[0].alt || sequence[0].mod)
 }
 
 // --- Install / Uninstall ---
@@ -231,7 +244,7 @@ function globalKeydownHandler(event: KeyboardEvent) {
 	// Check single-key shortcuts
 	for (const binding of bindings) {
 		for (const sequence of binding.keys) {
-			if (sequence.length === 1 && matchesKey(event, sequence[0])) {
+			if (sequence.length === 1 && matchesKey(event, sequence[0]) && reachable(binding, sequence)) {
 				event.preventDefault()
 				binding.el.click()
 				return
@@ -244,7 +257,7 @@ function globalKeydownHandler(event: KeyboardEvent) {
 	for (const binding of bindings) {
 		for (let i = 0; i < binding.keys.length; i++) {
 			const sequence = binding.keys[i]
-			if (sequence.length > 1 && matchesKey(event, sequence[0])) {
+			if (sequence.length > 1 && matchesKey(event, sequence[0]) && reachable(binding, sequence)) {
 				newActive.push({binding, sequenceIndex: i, step: 1})
 			}
 		}

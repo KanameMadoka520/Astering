@@ -37,6 +37,11 @@ const tooltip: Directive<Element, unknown> = {
 		;(vTooltip as any).beforeMount(el, buildBinding(el, binding))
 	},
 	updated(el, binding) {
+		// Every re-render of the host component lands here, and floating-vue then re-renders its one app for all
+		// tooltips on the page: a ticking clock next to a tooltip would do that every second.
+		if (binding.value === binding.oldValue) {
+			return
+		}
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		;(vTooltip as any).updated(el, buildBinding(el, binding))
 	},

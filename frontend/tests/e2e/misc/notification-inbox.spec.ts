@@ -35,6 +35,10 @@ test('notification read and clear state survives reload', async ({authenticatedP
 	await open()
 	await expect(page.locator('.single-notification .read-indicator.read')).toHaveCount(2)
 	await page.getByRole('button', {name: 'Clear notifications', exact: true}).click()
+	// Deleting every notification asks first; nothing is gone until it is confirmed.
+	await expect(rows).toHaveCount(2)
+	await expect(page.locator('dialog[open] [data-cy="modalPrimary"]')).toHaveText('Delete all notifications')
+	await page.locator('dialog[open] [data-cy="modalPrimary"]').click()
 	await expect(rows).toHaveCount(0)
 	await page.reload()
 	await open()

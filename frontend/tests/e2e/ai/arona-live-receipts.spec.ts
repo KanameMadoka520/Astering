@@ -221,9 +221,14 @@ async function seedProject({doneBucket = false} = {}) {
 }
 
 async function seedTasks(project: number, titles: string[], attributes: Record<string, unknown> = {}) {
+	// The server stores whole seconds. A seed with milliseconds in the same second as a receipt's write would look
+	// newer than that write, and the receipt would rightly be ignored as stale.
+	const seededAt = new Date(Math.floor(Date.now() / 1000) * 1000 - 60_000).toISOString()
 	const tasks = await TaskFactory.create(titles.length, {
 		project_id: project,
 		title: (i: number) => titles[i - 1],
+		created: seededAt,
+		updated: seededAt,
 		...attributes,
 	}) as Seeded[]
 	await TaskBucketFactory.create(tasks.length, {

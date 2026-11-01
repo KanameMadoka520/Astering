@@ -32,6 +32,9 @@
 					</XButton>
 				</div>
 			</Message>
+			<p class="settings-copy">
+				{{ $t('user.export.notIncluded') }}
+			</p>
 			<form
 				v-if="isLocalUser"
 				@submit.prevent="requestDataExport()"

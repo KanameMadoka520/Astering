@@ -35,6 +35,11 @@ test.describe('WebSocket Comment Notifications', () => {
 			// Share the project with currentUser so the mention access check passes
 			await UserProjectFactory.create(1, {id: 100, project_id: 100, user_id: 1}, false)
 
+			// The notification may arrive before the request is answered, so listen first.
+			const notified = waitForMessage(ws, 15000)
+			// Awaited below; a failed request must not leave it rejecting unhandled.
+			notified.catch(() => {})
+
 			// Commenter posts a comment mentioning currentUser
 			const commentBody = `<p>Hey <mention-user data-id="${currentUser.username}">@${currentUser.username}</mention-user> check this out</p>`
 			const commentResponse = await apiContext.put('tasks/100/comments', {
@@ -44,7 +49,7 @@ test.describe('WebSocket Comment Notifications', () => {
 			expect(commentResponse.ok()).toBe(true)
 
 			// currentUser should receive the notification via WebSocket
-			const msg = await waitForMessage(ws, 15000)
+			const msg = await notified
 			expect(msg.event).toBe('notification.created')
 			expect(msg.data).toBeDefined()
 

@@ -371,8 +371,9 @@
 				<Modal
 					danger
 					:enabled="showBucketDeleteModal"
+					:confirm-label="$t('project.kanban.deleteBucketConfirm')"
 					@close="showBucketDeleteModal = false"
-					@submit="deleteBucket()"
+					@submit="deleteBucket"
 				>
 					<template #header>
 						<span>{{ $t('project.kanban.deleteHeaderBucket') }}</span>
@@ -909,16 +910,19 @@ function deleteBucketModal(bucketId: number) {
 	showBucketDeleteModal.value = true
 }
 
+// Stays open while the request runs and after a failure (the mutation reports it); closes once this bucket is gone.
 async function deleteBucket() {
+	const bucket = bucketToDelete.value
 	try {
 		await deleteBucketMutation.mutateAsync({
 			project: projectId.value,
 			view: props.viewId,
-			bucket: bucketToDelete.value,
+			bucket,
 		})
-	} finally {
-		showBucketDeleteModal.value = false
+	} catch {
+		return
 	}
+	if (bucketToDelete.value === bucket) showBucketDeleteModal.value = false
 }
 
 /** This little helper allows us to drag a bucket around at the title without focusing on it right away. */

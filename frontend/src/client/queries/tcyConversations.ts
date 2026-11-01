@@ -1,7 +1,6 @@
-import {onScopeDispose, ref, shallowReactive, toValue, watch, type MaybeRefOrGetter, type Ref} from 'vue'
+import {computed, onScopeDispose, ref, shallowReactive, toValue, watch, type MaybeRefOrGetter, type Ref} from 'vue'
 import {
 	hashKey,
-	keepPreviousData,
 	queryOptions,
 	useMutation,
 	useQueryClient,
@@ -59,6 +58,8 @@ export const conversationKeys = {
 	all: ['tcymc-conversations'] as const,
 	lists: () => [...conversationKeys.all, 'list'] as const,
 	list: (page: number, q = '', scope = 'all') => [...conversationKeys.lists(), page, q, scope] as const,
+	// Attachment bytes live below a detail key (chatAttachmentQuery). They never change for an id, so writes
+	// invalidate the detail with `exact` instead of downloading every image of the conversation again.
 	detail: (id: string) => [...conversationKeys.all, 'detail', id] as const,
 }
 
@@ -68,8 +69,18 @@ export function conversationsQuery(page: number, q = '', scope: 'all' | 'active'
 	return queryOptions({
 		queryKey: conversationKeys.list(page, q, scope),
 		queryFn: async ({signal}) => (await tcyAiConversationsList({query: {page, q, scope}, signal})).data,
-		placeholderData: keepPreviousData,
-		refetchInterval: 3000,
+		// Another page keeps the rows on screen while it loads; another search or scope must not show the old rows
+		// under its heading.
+		placeholderData: (previous, previousQuery) => previousQuery?.queryKey[3] === q && previousQuery.queryKey[4] === scope
+			? previous
+			: undefined,
+		// Each request makes the server decrypt every conversation. Only a running one changes by itself; this tab's
+		// own writes invalidate the lists, and the assistant view does so when its run ends.
+		refetchInterval: query => query.state.data?.items?.some(item => item.running) ? 3000 : false,
+		// A run started on another device shows up when the user comes back to the page.
+		refetchOnWindowFocus: true,
+		// The history panel shows its own error and retry.
+		meta: {handlesError: true},
 	})
 }
 
@@ -147,7 +158,7 @@ export function useConversationAction() {
 			client.invalidateQueries({queryKey: conversationKeys.lists()}),
 			input.action === 'delete'
 				? Promise.resolve()
-				: client.invalidateQueries({queryKey: conversationKeys.detail(input.id)}),
+				: client.invalidateQueries({queryKey: conversationKeys.detail(input.id), exact: true}),
 		]),
 	}))
 }
@@ -160,7 +171,7 @@ export function useSendConversation() {
 		}) => (await tcyAiConversationsSend({path: {id: input.id}, body: input.body})).data,
 		onSuccess: (data, input, client) => client.setQueryData(conversationKeys.detail(input.id), data),
 		onSettled: (input, client) => Promise.all([
-			client.invalidateQueries({queryKey: conversationKeys.detail(input.id)}),
+			client.invalidateQueries({queryKey: conversationKeys.detail(input.id), exact: true}),
 			client.invalidateQueries({queryKey: conversationKeys.lists()}),
 		]),
 	}))
@@ -173,7 +184,7 @@ export function useReviewConversation() {
 			(await tcyAiConversationsReview({path: {id: input.id}, body: input.body})).data,
 		onSuccess: (data, input, client) => client.setQueryData(conversationKeys.detail(input.id), data),
 		onSettled: (input, client) => Promise.all([
-			client.invalidateQueries({queryKey: conversationKeys.detail(input.id)}),
+			client.invalidateQueries({queryKey: conversationKeys.detail(input.id), exact: true}),
 			client.invalidateQueries({queryKey: conversationKeys.lists()}),
 		]),
 	}))
@@ -886,6 +897,12 @@ export function useApplyAgentReceipts() {
 		if (receipts.length) refresh.mutate(planAgentRefresh(receipts))
 		noteAgentRun(client, conversation)
 	}
+}
+
+/** The account's running conversation, if any: the server runs one model job per account. */
+export function useLiveAgentRun() {
+	const client = useQueryClient()
+	return computed(() => agentRunScope(client).live.value)
 }
 
 // For an assistant view: applies the receipts of the conversation it shows and keeps the app-level

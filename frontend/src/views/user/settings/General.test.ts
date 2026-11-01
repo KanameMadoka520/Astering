@@ -146,6 +146,99 @@ describe('General user settings', () => {
 	})
 })
 
+describe('leaving General settings with unsaved changes', () => {
+	beforeEach(() => {
+		vi.clearAllMocks()
+		queryClient.clear()
+		setActivePinia(createPinia())
+		removeToken()
+		errors = []
+		document.body.innerHTML = ''
+		sdk.userGetAvatarProvider.mockResolvedValue({data: {avatar_provider: 'default'}})
+	})
+
+	afterEach(() => {
+		wrapper?.unmount()
+		wrapper = undefined
+		removeToken()
+		document.body.innerHTML = ''
+	})
+
+	async function mountWithSecondPage() {
+		seedAccount()
+		const router = createRouter({
+			history: createMemoryHistory(),
+			routes: [
+				{path: '/user/settings/general', name: 'user.settings.general', component: General},
+				{path: '/user/settings/sessions', name: 'user.settings.sessions', component: {template: '<p>Sessions</p>'}},
+			],
+		})
+		await router.push('/user/settings/general')
+		await router.isReady()
+		wrapper = mount({template: '<RouterView />'}, {
+			attachTo: document.body,
+			global: {
+				plugins: [i18n, router, [VueQueryPlugin, {queryClient}]],
+				directives: {cy: testid, focus: () => {}},
+				stubs: {
+					Card: {template: '<div class="card"><slot /><slot name="footer" /></div>'},
+					ProjectSearch: true,
+					Multiselect: true,
+					FormSelect: true,
+					FormCheckbox: true,
+					ShortcutRecorder: true,
+					Reminders: true,
+					CustomTransition: {template: '<div><slot /></div>'},
+					XButton: {template: '<button type="button" v-bind="$attrs" @click="$emit(\'click\', $event)"><slot /></button>', emits: ['click']},
+					Icon: true,
+				},
+			},
+		})
+		await flushPromises()
+		await wrapper.find('input[type="text"]').setValue('Changed but not saved')
+		return router
+	}
+
+	function leaveButton(label: string) {
+		return Array.from(document.querySelectorAll<HTMLButtonElement>('dialog[open] button')).find(button => button.textContent?.trim() === label)
+	}
+
+	it('asks first and stays on "Keep editing"', async () => {
+		const router = await mountWithSecondPage()
+		await router.push('/user/settings/sessions')
+		await flushPromises()
+
+		expect(router.currentRoute.value.name).toBe('user.settings.general')
+		expect(document.querySelector('dialog[open]')?.textContent).toContain("Your changes on this page haven't been saved.")
+		leaveButton('Keep editing')!.click()
+		await flushPromises()
+		expect(router.currentRoute.value.name).toBe('user.settings.general')
+		expect((wrapper!.find('input[type="text"]').element as HTMLInputElement).value).toBe('Changed but not saved')
+		expect(sdk.patchUserSettingsRead).not.toHaveBeenCalled()
+	})
+
+	it('leaves without saving on "Discard and leave"', async () => {
+		const router = await mountWithSecondPage()
+		await router.push('/user/settings/sessions')
+		await flushPromises()
+		leaveButton('Discard and leave')!.click()
+		await flushPromises()
+
+		expect(router.currentRoute.value.name).toBe('user.settings.sessions')
+		expect(sdk.patchUserSettingsRead).not.toHaveBeenCalled()
+	})
+
+	it('never holds up a logout', async () => {
+		const router = await mountWithSecondPage()
+		removeToken()
+		await router.push('/user/settings/sessions')
+		await flushPromises()
+
+		expect(router.currentRoute.value.name).toBe('user.settings.sessions')
+		expect(document.querySelector('dialog[open]')).toBeNull()
+	})
+})
+
 function seedAccount() {
 	saveToken(`header.${btoa(JSON.stringify({id: 1, type: AUTH_TYPES.USER}))}.signature`, false)
 	useAuthStore().setSession({

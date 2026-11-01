@@ -36,6 +36,8 @@ export type CompassSaveState =
 	// Changed, and kept on this device.
 	| 'stored'
 	| 'saving'
+	// Images are still uploading into the body; until they land, the entry is not complete.
+	| 'uploading'
 	// The last save failed; the changes are kept on this device.
 	| 'failed'
 	// The browser refused to store the draft: it only lives in this tab.
@@ -108,7 +110,8 @@ const icon = computed(() => ICONS[props.state])
 	background: var(--warning);
 }
 
-.is-saving .compass-save-status__dot {
+.is-saving .compass-save-status__dot,
+.is-uploading .compass-save-status__dot {
 	border-color: var(--compass-accent);
 	background: var(--compass-accent);
 }

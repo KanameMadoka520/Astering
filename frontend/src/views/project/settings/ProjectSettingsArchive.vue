@@ -23,7 +23,7 @@
 
 <script setup lang="ts">
 import {computed, ref, watch} from 'vue'
-import {useRoute} from 'vue-router'
+import {useRoute, useRouter} from 'vue-router'
 import {useI18n} from 'vue-i18n'
 
 import {useUpdateProjectMutation} from '@/client/queries/projects'
@@ -43,6 +43,7 @@ const archiveMutation = useUpdateProjectMutation(t('project.archive.success'))
 const unarchiveMutation = useUpdateProjectMutation(t('project.archive.unarchiveSuccess'))
 const goBack = useGoBack()
 const route = useRoute()
+const router = useRouter()
 const alive = useIsAlive()
 // Taken during setup: a store first created after the await could not set itself up.
 const baseStore = useBaseStore()
@@ -73,20 +74,22 @@ async function archiveProject() {
 		return
 	}
 	const isArchiving = archiving.value
+	const origin = router.currentRoute.value
+	const isCurrentRequest = () => alive.value && projectId.value === current.id && router.currentRoute.value === origin
 	isSaving.value = true
 	try {
 		const updated = await (isArchiving ? archiveMutation : unarchiveMutation).mutateAsync({
 			...current,
 			is_archived: isArchiving,
 		})
-		baseStore.setCurrentProject(updated)
+		if (isCurrentRequest()) baseStore.setCurrentProject(updated)
 	} catch {
 		// The toast says what went wrong; the dialog stays open to retry or cancel.
 		return
 	} finally {
 		isSaving.value = false
 	}
-	if (alive.value) {
+	if (isCurrentRequest()) {
 		goBack()
 	}
 }

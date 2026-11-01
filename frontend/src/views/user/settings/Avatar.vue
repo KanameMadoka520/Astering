@@ -4,8 +4,15 @@
 			:title="$t('user.settings.avatar.title')"
 			:description="$t('user.settings.avatar.description')"
 		/>
-		<Card>
-			<Message v-if="avatarProvider === 'ldap'">
+		<!-- The saved source is unknown until it loads: no "Default" guess, and no picker for accounts that cannot change it. -->
+		<Card :loading="providerQuery.isPending.value">
+			<LoadError
+				v-if="providerQuery.isError.value && !providerQuery.data.value"
+				:message="$t('user.settings.avatar.loadError')"
+				:retry="() => providerQuery.refetch()"
+			/>
+			<template v-else-if="!providerQuery.data.value" />
+			<Message v-else-if="avatarProvider === 'ldap'">
 				{{ $t('user.settings.avatar.ldap') }}
 			</Message>
 			<Message v-else-if="avatarProvider === 'openid'">
@@ -70,7 +77,7 @@
 				</template>
 			</template>
 			<template
-				v-if="!['ldap', 'openid', 'upload'].includes(avatarProvider)"
+				v-if="providerQuery.data.value && !['ldap', 'openid', 'upload'].includes(avatarProvider)"
 				#footer
 			>
 				<XButton
@@ -97,6 +104,7 @@ import {useTitle} from '@/composables/useTitle'
 import {useAuthStore} from '@/stores/auth'
 import Message from '@/components/misc/Message.vue'
 import PageHeader from '@/components/misc/state/PageHeader.vue'
+import LoadError from '@/components/misc/state/LoadError.vue'
 
 defineOptions({name: 'UserSettingsAvatar'})
 
@@ -113,7 +121,8 @@ const AVATAR_PROVIDERS = computed(() => ({
 
 useTitle(() => `${t('user.settings.avatar.title')} - ${t('user.settings.title')}`)
 
-const providerQuery = useQuery(avatarProviderQuery())
+// Shown inline with a retry, so no toast as well.
+const providerQuery = useQuery({...avatarProviderQuery(), meta: {handlesError: true}})
 const updateProvider = useUpdateAvatarProviderMutation()
 const upload = useUploadAvatarMutation()
 const saving = computed(() => updateProvider.isPending.value || upload.isPending.value)

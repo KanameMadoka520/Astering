@@ -113,4 +113,27 @@ describe('Avatar settings', () => {
 		expect(await sent.text()).toBe('cropped')
 		expect(wrapper.find('.vue-advanced-cropper').exists()).toBe(false)
 	})
+
+	it('does not show "Default" as the saved source when it failed to load, and offers a retry', async () => {
+		sdk.userGetAvatarProvider.mockReset()
+		sdk.userGetAvatarProvider.mockRejectedValueOnce(new Error('Server error'))
+		await mountAvatar()
+
+		expect(wrapper.find('input[type=radio]').exists()).toBe(false)
+		expect(wrapper.text()).not.toContain('Save')
+		expect(wrapper.find('.load-error').text()).toContain("Couldn't load which avatar you use")
+
+		sdk.userGetAvatarProvider.mockResolvedValueOnce({data: {avatar_provider: 'gravatar'}})
+		await wrapper.get('.load-error button').trigger('click')
+		await flushPromises()
+		expect(wrapper.get<HTMLInputElement>('input[type=radio][value="gravatar"]').element.checked).toBe(true)
+	})
+
+	it('shows no picker while the saved source is still loading', async () => {
+		sdk.userGetAvatarProvider.mockReset()
+		sdk.userGetAvatarProvider.mockReturnValue(new Promise(() => {}))
+		await mountAvatar()
+
+		expect(wrapper.find('input[type=radio]').exists()).toBe(false)
+	})
 })

@@ -11,7 +11,7 @@ import McpClientGuide from '@/components/token/McpClientGuide.vue'
 import XButton from '@/components/input/Button.vue'
 import FormField from '@/components/input/FormField.vue'
 import Message from '@/components/misc/Message.vue'
-import ErrorMessage from '@/components/misc/Error.vue'
+import LoadError from '@/components/misc/state/LoadError.vue'
 import PageHeader from '@/components/misc/state/PageHeader.vue'
 import {useCopyToClipboard} from '@/composables/useCopyToClipboard'
 import {useTitle} from '@/composables/useTitle'
@@ -22,17 +22,21 @@ defineOptions({name: 'McpSettings'})
 
 const {t} = useI18n({useScope: 'global'})
 useTitle(() => `MCP - ${t('user.settings.title')}`)
-const {data: info, isPending: infoPending, isError: infoError} = useQuery(mcpInfoQuery())
+// The page shows its own load errors: an unknown token list must not read as "no MCP tokens".
+const {data: info, isPending: infoPending, isError: infoError, refetch: refetchInfo} = useQuery({...mcpInfoQuery(), meta: {handlesError: true}})
 const {
 	data: allTokens,
 	isPending: tokensPending,
 	isError: tokensError,
-} = useQuery(allApiTokensQuery())
+	isSuccess: tokensLoaded,
+	refetch: refetchTokens,
+} = useQuery({...allApiTokensQuery(), meta: {handlesError: true}})
 const deleteMutation = useDeleteApiTokenMutation()
 const endpoint = computed(() => info.value?.endpoint ?? '')
 const tokens = computed(() => (allTokens.value ?? []).filter(token => token.permissions?.mcp?.includes('access')))
 const loading = computed(() => infoPending.value || tokensPending.value)
-const loadFailed = computed(() => infoError.value || tokensError.value)
+const infoFailed = computed(() => infoError.value && !info.value)
+const tokensFailed = computed(() => tokensError.value && !allTokens.value)
 const showCreateForm = ref(false)
 const newToken = ref('')
 const tokenToDelete = ref<IApiToken>()
@@ -63,12 +67,18 @@ function onTokenCreated(token: IApiToken) {
 
 function done() { newToken.value = '' }
 
+// The dialog stays open (and busy) until the token is really gone; a failure leaves it open to retry or cancel.
 async function deleteToken() {
 	const token = tokenToDelete.value
-	if (!token?.id) return
+	if (!token?.id || deleteMutation.isPending.value) return
+	try {
+		await deleteMutation.mutateAsync(token.id)
+	} catch {
+		return // The mutation reports the error.
+	}
+	if (tokenToDelete.value?.id !== token.id) return
 	tokenToDelete.value = undefined
 	showDeleteModal.value = false
-	try { await deleteMutation.mutateAsync(token.id) } catch { /* Mutation reports the error. */ }
 }
 </script>
 
@@ -85,7 +95,10 @@ async function deleteToken() {
 			</template>
 		</PageHeader>
 		<Card :loading="loading">
-			<ErrorMessage v-if="loadFailed" />
+			<LoadError
+				v-if="infoFailed"
+				:retry="refetchInfo"
+			/>
 			<template v-if="info">
 				<label
 					class="label"
@@ -128,8 +141,14 @@ async function deleteToken() {
 					<h2 class="settings-subheading">
 						{{ t('user.settings.mcp.tokens') }}
 					</h2>
+					<LoadError
+						v-if="tokensFailed"
+						class="mbe-4"
+						:message="t('user.settings.accessLoadError')"
+						:retry="refetchTokens"
+					/>
 					<div
-						v-if="tokens.length"
+						v-else-if="tokens.length"
 						class="has-horizontal-overflow"
 					>
 						<table class="table">
@@ -174,6 +193,12 @@ async function deleteToken() {
 							</tbody>
 						</table>
 					</div>
+					<p
+						v-else-if="tokensLoaded"
+						class="mbe-4 mcp-empty"
+					>
+						{{ t('user.settings.mcp.empty') }}
+					</p>
 					<p class="mbe-4">
 						<RouterLink :to="{name: 'user.settings.apiTokens'}">
 							{{ t('user.settings.mcp.manageTokens') }}
@@ -201,6 +226,7 @@ async function deleteToken() {
 			<Modal
 				danger
 				:enabled="showDeleteModal"
+				:confirm-label="t('user.settings.apiTokens.delete.confirm')"
 				@close="showDeleteModal = false"
 				@submit="deleteToken"
 			>
@@ -222,6 +248,10 @@ async function deleteToken() {
 .settings-subheading {
 	margin-block: var(--space-5) var(--space-3);
 	font-size: var(--text-lg);
+}
+
+.mcp-empty {
+	color: var(--text-secondary);
 }
 
 .mcp-token-expired {

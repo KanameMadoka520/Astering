@@ -1,5 +1,6 @@
 import {test, expect} from '../../../support/fixtures'
 import {setupApiUrl} from '../../../support/authenticateUser'
+import {apiRootUrl} from '../../../support/apiUrl'
 
 import {UserFactory} from '../../../factories/user'
 
@@ -8,7 +9,7 @@ test.use({currentUser: async ({apiContext}, use) => {
 	await use(user)
 }})
 
-test('tcymc public page requires preview, keeps drafts private and can be withdrawn', async ({authenticatedPage: page, browser}) => {
+test('tcymc public page requires preview, keeps drafts private and can be withdrawn', async ({authenticatedPage: page, browser, baseURL}) => {
 	await page.goto('/user/settings/showcase')
 	await expect(page.getByRole('heading', {name: '公开主页', exact: true})).toBeVisible()
 	await page.getByLabel('页面地址').fill('tcy-e2e-public')
@@ -26,7 +27,11 @@ test('tcymc public page requires preview, keeps drafts private and can be withdr
 	expect((await published).ok()).toBe(true)
 	const publicLink = page.getByRole('link', {name: '查看公开页面 ↗'})
 	await expect(publicLink).toHaveAttribute('href', /\/p\/tcy-e2e-public$/)
+	// Visitors get the configured frontend address, bots the API's JSON address.
 	const href = await publicLink.getAttribute('href')
+	expect(new URL(href!).origin).toBe(new URL(baseURL!).origin)
+	const json = await page.getByRole('link', {name: '机器人 JSON 接口 ↗'}).getAttribute('href')
+	expect(json).toBe(`${apiRootUrl(process.env.API_URL || 'http://127.0.0.1:3456')}/api/v2/public/tcy-e2e-public`)
 	const guest = await browser.newContext({locale: 'zh-CN'})
 	try {
 		const visitor = await guest.newPage()

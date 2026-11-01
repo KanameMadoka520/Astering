@@ -99,13 +99,20 @@ async function addAssignee(user: UserWithId) {
 		await addAssigneeMutation.mutateAsync({user: user, taskId: props.taskId})
 		emit('update:modelValue', assignees.value)
 		success({message: t('task.assignee.assignSuccess')})
+	} catch {
+		// The picker already shows the person; take them away again so it doesn't look saved. The mutation reports the error.
+		assignees.value = withIds(props.modelValue ?? [])
 	} finally {
 		nextTick(() => isAdding = false)
 	}
 }
 
 async function removeAssignee(user: UserWithId) {
-	await removeAssigneeMutation.mutateAsync({user: user, taskId: props.taskId})
+	try {
+		await removeAssigneeMutation.mutateAsync({user: user, taskId: props.taskId})
+	} catch {
+		return // The assignee stays; the mutation reports the error.
+	}
 
 	assignees.value = assignees.value.filter(a => a.id !== user.id)
 	emit('update:modelValue', assignees.value)

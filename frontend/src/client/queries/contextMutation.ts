@@ -18,10 +18,11 @@ export function contextMutationOptions<TData, TInput, TOptimistic = undefined>(o
 	onSettled?: (input: TInput, client: QueryClient, optimistic: TOptimistic) => Promise<unknown>
 	successMessage?: (data: TData, input: TInput) => string | undefined
 	toastError?: (input: TInput) => boolean
-}) {
+}, owner?: ClientRequestContext) {
 	return mutationOptions({
 		onMutate: async (input: TInput, {client}) => {
-			const request = captureClientRequestContext()
+			const request = owner ?? captureClientRequestContext()
+			assertClientRequestContext(request)
 			if (!options.optimistic) {
 				return {request, previous: [], optimistic: undefined as TOptimistic}
 			}
@@ -32,7 +33,8 @@ export function contextMutationOptions<TData, TInput, TOptimistic = undefined>(o
 			return {request, previous, optimistic: options.optimistic.update(input, client)}
 		},
 		mutationFn: async (input: TInput) => {
-			const request = captureClientRequestContext()
+			const request = owner ?? captureClientRequestContext()
+			assertClientRequestContext(request)
 			const data = await options.mutationFn(input, {request})
 			assertClientRequestContext(request)
 			return data

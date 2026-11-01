@@ -17,6 +17,7 @@ const sdk = vi.hoisted(() => ({
 	labelsList: vi.fn(async () => ({data: {items: [], total_pages: 1}})),
 	projectsList: vi.fn(async () => ({data: {items: [], total_pages: 1}})),
 	projectsRead: vi.fn(async () => ({data: {id: 1, title: 'Test'}})),
+	tasksCreate: vi.fn(),
 }))
 
 vi.mock('@/client/generated', () => sdk)
@@ -27,7 +28,11 @@ async function mountQuickActions(project: ProjectResponse | null) {
 	const errors: unknown[] = []
 	const router = createRouter({
 		history: createMemoryHistory(),
-		routes: [{path: '/', name: 'home', component: {template: '<div />'}}],
+		routes: [
+			{path: '/', name: 'home', component: {template: '<div />'}},
+			{path: '/tasks/:id', name: 'task.detail', component: {template: '<div />'}},
+			{path: '/projects/:projectId', name: 'project.index', component: {template: '<div />'}},
+		],
 	})
 	await router.push('/')
 	await router.isReady()
@@ -49,7 +54,7 @@ async function mountQuickActions(project: ProjectResponse | null) {
 			stubs: {
 				Modal: {template: '<div><slot /></div>'},
 				QuickAddMagic: true,
-				BaseButton: {template: '<a><slot /></a>'},
+				BaseButton: {template: '<a class="stub-button"><slot /></a>'},
 				Icon: true,
 				XLabel: true,
 				SingleTaskInlineReadonly: true,
@@ -64,7 +69,18 @@ async function mountQuickActions(project: ProjectResponse | null) {
 		attachTo: document.body,
 	})
 	await flushPromises()
-	return {wrapper, errors}
+	return {wrapper, errors, router}
+}
+
+async function chooseNewTask(wrapper: Awaited<ReturnType<typeof mountQuickActions>>['wrapper'], text: string) {
+	const command = wrapper.findAll('.stub-button').find(button => button.text().includes('New task'))
+	expect(command).toBeTruthy()
+	await command!.trigger('click')
+	await flushPromises()
+	const input = wrapper.get('input.input')
+	;(input.element as HTMLInputElement).value = text
+	await input.trigger('input')
+	return input
 }
 
 describe('QuickActions', () => {
@@ -96,5 +112,55 @@ describe('QuickActions', () => {
 		expect(errors).toEqual([])
 		expect(event.defaultPrevented).toBe(true)
 		expect(useBaseStore().quickActionsActive).toBe(false)
+	})
+
+	describe('creating from "New task"', () => {
+		beforeEach(() => {
+			sdk.tasksCreate.mockReset()
+		})
+
+		it('says a project is needed and keeps the text and the dialog when there is none', async () => {
+			const {wrapper, errors} = await mountQuickActions(null)
+			const input = await chooseNewTask(wrapper, 'Buy milk')
+			await input.trigger('keydown', {key: 'Enter'})
+			await flushPromises()
+
+			expect(wrapper.get('[role="alert"]').text()).toBe('Please specify a project or set a default project in the settings.')
+			expect((input.element as HTMLInputElement).value).toBe('Buy milk')
+			expect(useBaseStore().quickActionsActive).toBe(true)
+			expect(sdk.tasksCreate).not.toHaveBeenCalled()
+			expect(errors).toEqual([])
+		})
+
+		it('creates once when Enter is pressed again while the first one is still saving', async () => {
+			let finish!: (value: unknown) => void
+			sdk.tasksCreate.mockImplementation(() => new Promise(resolve => {finish = resolve}))
+			const {wrapper, router} = await mountQuickActions(normalizeProject({id: 1, title: 'Test'}))
+			const input = await chooseNewTask(wrapper, 'Buy milk')
+			await input.trigger('keydown', {key: 'Enter'})
+			await input.trigger('keydown', {key: 'Enter'})
+			await flushPromises()
+
+			expect(sdk.tasksCreate).toHaveBeenCalledTimes(1)
+			expect(useBaseStore().quickActionsActive).toBe(true)
+			finish({data: {id: 42, title: 'Buy milk', project_id: 1}})
+			await flushPromises()
+			expect(useBaseStore().quickActionsActive).toBe(false)
+			expect(router.currentRoute.value.name).toBe('task.detail')
+		})
+
+		it('never runs a hidden search result instead of creating the task', async () => {
+			// "New team" also matches the command list, which is hidden while "New task" is chosen.
+			sdk.tasksCreate.mockResolvedValue({data: {id: 43, title: 'New team', project_id: 1}})
+			const {wrapper, router} = await mountQuickActions(normalizeProject({id: 1, title: 'Test'}))
+			const input = await chooseNewTask(wrapper, 'New team')
+			await flushPromises()
+			await input.trigger('keydown', {key: 'Enter'})
+			await flushPromises()
+
+			expect(sdk.tasksCreate).toHaveBeenCalledTimes(1)
+			expect(sdk.tasksCreate.mock.calls[0][0].body.title).toBe('New team')
+			expect(router.currentRoute.value.name).toBe('task.detail')
+		})
 	})
 })

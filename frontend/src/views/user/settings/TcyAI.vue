@@ -50,7 +50,7 @@ const identityKey = computed(() => authStore.session ? `${authStore.session.type
 		/>
 		<LoadError
 			v-else-if="settings.isError.value"
-			:message="t('tcymc.text.could_not_load_settings_refresh_the_page_to')"
+			:message="t('modelSettings.loadFailed')"
 			:retry="() => settings.refetch()"
 		/>
 		<div

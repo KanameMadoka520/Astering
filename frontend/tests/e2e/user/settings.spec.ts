@@ -209,4 +209,26 @@ test.describe('User Settings', () => {
 		await weekStartSelectAfterReload.scrollIntoViewIfNeeded()
 		await expect(weekStartSelectAfterReload).toHaveValue('3')
 	})
+
+	test('Asks before leaving with unsaved changes', async ({authenticatedPage: page}) => {
+		await page.goto('/user/settings/general')
+		await page.waitForLoadState('networkidle')
+
+		const nameInput = page.locator('.general-settings input.input').first()
+		await expect(nameInput).toBeEnabled({timeout: 10000})
+		await nameInput.fill('Not saved yet')
+		const sessionsLink = page.getByRole('link', {name: 'Sessions', exact: true}).first()
+
+		await sessionsLink.click()
+		const dialog = page.getByRole('dialog', {name: 'Leave without saving?'})
+		await expect(dialog).toBeVisible()
+		await expect(dialog.getByRole('button', {name: 'Keep editing'})).toBeFocused()
+		await dialog.getByRole('button', {name: 'Keep editing'}).click()
+		await expect(page).toHaveURL(/\/user\/settings\/general/)
+		await expect(nameInput).toHaveValue('Not saved yet')
+
+		await sessionsLink.click()
+		await dialog.getByRole('button', {name: 'Discard and leave'}).click()
+		await expect(page).toHaveURL(/\/user\/settings\/sessions/)
+	})
 })

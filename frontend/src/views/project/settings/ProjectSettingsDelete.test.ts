@@ -102,6 +102,25 @@ function confirmButton() {
 }
 
 describe('ProjectSettingsDelete', () => {
+	it('does not navigate away after an earlier project deletion finishes on a reused route', async () => {
+		sdk.projectsList.mockResolvedValue(list([project(42), project(43)]))
+		sdk.projectTasksList.mockResolvedValue(taskTotal(0))
+		let finish!: (value: unknown) => void
+		sdk.projectsDelete.mockReturnValue(new Promise(resolve => { finish = resolve }))
+		await mountModal()
+		confirmButton().click()
+		await flushPromises()
+		expect(sdk.projectsDelete.mock.calls[0][0].path).toEqual({id: 42})
+
+		await router.push('/projects/43/settings/delete')
+		await flushPromises()
+		finish({data: {}})
+		await flushPromises()
+
+		expect(router.currentRoute.value.fullPath).toBe('/projects/43/settings/delete')
+		expect(dialogText()).toContain('Project 43')
+	})
+
 	it('shows the loader while the task count is pending', async () => {
 		sdk.projectTasksList.mockReturnValue(new Promise(() => {}))
 		sdk.tasksList.mockReturnValue(new Promise(() => {}))

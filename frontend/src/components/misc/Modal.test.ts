@@ -317,7 +317,7 @@ describe('Modal.vue — focus restoration', () => {
 	})
 })
 
-describe('Modal.vue — nested body scroll lock', () => {
+describe('Modal.vue — nested page scroll lock', () => {
 	it('keeps the page locked while an outer modal is still open', async () => {
 		const outer = mount(Modal, {
 			...globalMocks,
@@ -334,23 +334,23 @@ describe('Modal.vue — nested body scroll lock', () => {
 		await flushPromises()
 		await nextTick()
 
-		expect(document.body.style.overflow).toBe('hidden')
+		expect(document.documentElement.style.overflow).toBe('hidden')
 
 		await inner.setProps({enabled: false})
 		await new Promise(resolve => setTimeout(resolve, 200))
 		await flushPromises()
 
-		expect(document.body.style.overflow).toBe('hidden')
+		expect(document.documentElement.style.overflow).toBe('hidden')
 
 		await outer.setProps({enabled: false})
 		await new Promise(resolve => setTimeout(resolve, 200))
 		await flushPromises()
 
-		expect(document.body.style.overflow).toBe('')
+		expect(document.documentElement.style.overflow).toBe('')
 
 		inner.unmount()
 		outer.unmount()
-		expect(document.body.style.overflow).toBe('')
+		expect(document.documentElement.style.overflow).toBe('')
 	})
 
 	it('keeps the page locked when an inner modal is unmounted instead of closed', async () => {
@@ -370,10 +370,101 @@ describe('Modal.vue — nested body scroll lock', () => {
 		await nextTick()
 
 		inner.unmount()
-		expect(document.body.style.overflow).toBe('hidden')
+		expect(document.documentElement.style.overflow).toBe('hidden')
 
 		outer.unmount()
-		expect(document.body.style.overflow).toBe('')
+		expect(document.documentElement.style.overflow).toBe('')
+	})
+})
+
+
+describe('Modal.vue — page scroll', () => {
+	afterEach(() => {
+		vi.unstubAllGlobals()
+		vi.restoreAllMocks()
+		window.history.replaceState(null, '')
+	})
+
+	function phone() {
+		vi.stubGlobal('matchMedia', (query: string) => ({matches: query.includes('max-width'), media: query, addEventListener() {}, removeEventListener() {}}))
+	}
+
+	async function closeAndSettle(wrapper: ReturnType<typeof mount>) {
+		await wrapper.setProps({enabled: false})
+		await new Promise(resolve => setTimeout(resolve, 200))
+		await flushPromises()
+	}
+
+	it('holds the page itself still, which is what scrolls (not body)', async () => {
+		const wrapper = mount(Modal, {...globalMocks, attachTo: document.body, props: {enabled: true}, slots: {default: '<p>hi</p>'}})
+		await flushPromises()
+		expect(document.documentElement.style.overflow).toBe('hidden')
+		await closeAndSettle(wrapper)
+		expect(document.documentElement.style.overflow).toBe('')
+		wrapper.unmount()
+	})
+
+	it('on phones, puts the page back where the router saved it after closing by going back', async () => {
+		phone()
+		window.history.replaceState({position: 6, scroll: null}, '')
+		const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+		const wrapper = mount(Modal, {...globalMocks, attachTo: document.body, props: {enabled: true}, slots: {default: '<p>task</p>'}})
+		await flushPromises()
+		// A full-page dialog on a phone scrolls with the document, so the page is not locked.
+		expect(document.documentElement.style.overflow).toBe('')
+
+		// Back: the previous entry, with the scroll position the router saved when the dialog's page was pushed.
+		window.history.replaceState({position: 5, scroll: {left: 0, top: 1800}}, '')
+		await closeAndSettle(wrapper)
+
+		expect(scrollTo).toHaveBeenLastCalledWith({top: 1800, left: 0})
+		wrapper.unmount()
+	})
+
+	it('on phones, leaves a newly opened page where the router put it', async () => {
+		phone()
+		window.history.replaceState({position: 6, scroll: null}, '')
+		const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+		const wrapper = mount(Modal, {...globalMocks, attachTo: document.body, props: {enabled: true}, slots: {default: '<p>task</p>'}})
+		await flushPromises()
+
+		window.history.replaceState({position: 7, scroll: null}, '')
+		await closeAndSettle(wrapper)
+
+		expect(scrollTo).not.toHaveBeenCalled()
+		wrapper.unmount()
+	})
+})
+
+describe('Modal.vue — backdrop press', () => {
+	function container() {
+		const element = document.querySelector<HTMLElement>('.modal-container')!
+		// A tall dialog: the container shows a 15px classic scrollbar on its right edge.
+		Object.defineProperties(element, {
+			offsetWidth: {value: 1000, configurable: true},
+			clientWidth: {value: 985, configurable: true},
+			offsetHeight: {value: 800, configurable: true},
+			clientHeight: {value: 800, configurable: true},
+			clientLeft: {value: 0, configurable: true},
+		})
+		element.getBoundingClientRect = () => ({left: 0, top: 0, width: 1000, height: 800, right: 1000, bottom: 800, x: 0, y: 0, toJSON() {}})
+		return element
+	}
+
+	it('does not close when the press is on the dialog\'s own scrollbar', async () => {
+		const wrapper = mount(Modal, {...globalMocks, attachTo: document.body, props: {enabled: true}, slots: {default: '<p>long task</p>'}})
+		await flushPromises()
+		container().dispatchEvent(new MouseEvent('mousedown', {clientX: 992, clientY: 300, bubbles: true, cancelable: true}))
+		expect(wrapper.emitted('close')).toBeUndefined()
+		wrapper.unmount()
+	})
+
+	it('still closes on a press on the backdrop', async () => {
+		const wrapper = mount(Modal, {...globalMocks, attachTo: document.body, props: {enabled: true}, slots: {default: '<p>long task</p>'}})
+		await flushPromises()
+		container().dispatchEvent(new MouseEvent('mousedown', {clientX: 40, clientY: 300, bubbles: true, cancelable: true}))
+		expect(wrapper.emitted('close')).toHaveLength(1)
+		wrapper.unmount()
 	})
 })
 

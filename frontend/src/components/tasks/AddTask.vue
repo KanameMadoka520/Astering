@@ -37,7 +37,7 @@
 					class="add-task-button"
 					:disabled="newTaskTitle === '' || showLoading || undefined"
 					icon="plus"
-					:loading="loading"
+					:loading="busy"
 					:aria-label="$t('project.list.add')"
 					@click="addTask()"
 				>
@@ -103,7 +103,11 @@ const {t} = useI18n({useScope: 'global'})
 const authStore = useAuthStore()
 const configStore = useConfigStore()
 const {createNewTasksBulk, findProjectId, ensureLabelsExist, isLoading: loading} = useQuickAddTask()
-const showLoading = useDelayedLoading(loading)
+// From Enter until the tasks exist, including looking up and creating labels first: a second Enter in that
+// time would create the task and its new labels twice.
+const submitting = ref(false)
+const busy = computed(() => loading.value || submitting.value)
+const showLoading = useDelayedLoading(busy)
 const createRelationMutation = useCreateTaskRelationMutation()
 const router = useRouter()
 
@@ -127,16 +131,28 @@ function resetEmptyTitleError() {
 }
 
 async function addTask() {
+	if (busy.value) {
+		return
+	}
 	if (newTaskTitle.value === '') {
 		errorMessage.value = t('project.create.addTitleRequired')
 		return
 	}
 	errorMessage.value = ''
-
-	if (loading.value) {
-		return
+	submitting.value = true
+	try {
+		await createTasks()
+	} finally {
+		submitting.value = false
 	}
+}
 
+// A failed create puts the title back. Text typed in the meantime stays, after it on its own line.
+function restoreTitle(backup: string) {
+	newTaskTitle.value = newTaskTitle.value === '' ? backup : `${backup}\n${newTaskTitle.value}`
+}
+
+async function createTasks() {
 	const context = captureClientRequestContext()
 	const taskTitleBackup = newTaskTitle.value
 	// Keyed by the title the task had before quick add magic parsed it. A Map,
@@ -174,7 +190,7 @@ async function addTask() {
 
 		// Input like a lone bullet passes the empty check but parses to nothing.
 		if (entries.length === 0) {
-			newTaskTitle.value = taskTitleBackup
+			restoreTitle(taskTitleBackup)
 			errorMessage.value = t('project.create.addTitleRequired')
 			return
 		}
@@ -235,11 +251,11 @@ async function addTask() {
 		}
 
 		if (bulk.error !== null) {
-			newTaskTitle.value = taskTitleBackup
+			restoreTitle(taskTitleBackup)
 			error(bulk.error)
 		}
 	} catch (e) {
-		newTaskTitle.value = taskTitleBackup
+		restoreTitle(taskTitleBackup)
 		if (e instanceof Error && e.message === 'NO_PROJECT') {
 			errorMessage.value = t('project.create.addProjectRequired')
 			return

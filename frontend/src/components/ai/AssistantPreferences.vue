@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed, nextTick, onMounted, onBeforeUnmount, ref, useId} from 'vue'
+import {computed, nextTick, onMounted, onBeforeUnmount, ref, shallowRef, useId} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {useQuery} from '@tanstack/vue-query'
 import {assistantPreferencesQuery, useSaveAssistantPreferences} from '@/client/queries/assistantPreferences'
@@ -40,29 +40,82 @@ function choose(id: string) {
 	name.value = p?.name ?? ''
 	sourceProfile.value = p?.id ?? ''
 	saved.value = false
+	confirmingDelete.value = false
 }
 function edited() {selected.value = ''; saved.value = false}
-async function persist(next: AssistantPreferences) {
+// The action that failed. Its retry reloads first: a save that lost to another window then applies the same change
+// on top of that window's, instead of failing again or overwriting it.
+const failedAction = shallowRef<() => Promise<unknown>>()
+async function persist(next: AssistantPreferences, again: () => Promise<unknown>) {
 	error.value = ''
-	try {await save.mutateAsync(next); saved.value = true; return true} catch {error.value = t('assistantUI.saveFailed'); return false}
+	saved.value = false
+	failedAction.value = undefined
+	try {
+		await save.mutateAsync(next)
+		saved.value = true
+		return true
+	} catch {
+		error.value = t('assistantUI.saveFailed')
+		failedAction.value = again
+		return false
+	}
 }
+async function retrySave() {
+	const action = failedAction.value
+	if (!action || save.isPending.value || preferences.isFetching.value) return
+	await preferences.refetch()
+	await action()
+}
+const loadFailed = computed(() => preferences.isError.value && !preferences.data.value)
 async function saveTemplate(overwrite = false) {
 	if (!name.value.trim() || !valid.value || !preferences.data.value || (!overwrite && custom.value.length >= 20)) return
 	const id = overwrite ? sourceProfile.value : `custom-${crypto.randomUUID()}`
 	if (overwrite && !custom.value.some(p => p.id === id)) return
 	const profile = {id, name: name.value.trim(), options: normalizeOptions(draft.value)}
 	const profiles = overwrite ? custom.value.map(p => p.id === id ? profile : p) : [...custom.value, profile]
-	if (await persist({...preferences.data.value, profiles})) {selected.value = id; sourceProfile.value = id}
+	if (await persist({...preferences.data.value, profiles}, () => saveTemplate(overwrite))) {
+		selected.value = id
+		sourceProfile.value = id
+	}
 }
 async function setDefault() {
 	if (!selected.value || !preferences.data.value) return
-	await persist({...preferences.data.value, default_profile: selected.value})
+	await persist({...preferences.data.value, default_profile: selected.value}, setDefault)
+}
+// An account-wide template is gone for every device once deleted, so the button asks first.
+const confirmingDelete = ref(false)
+const deleteButton = ref<HTMLButtonElement>()
+const confirmDeleteButton = ref<HTMLButtonElement>()
+const selectedName = computed(() => custom.value.find(p => p.id === selected.value)?.name ?? '')
+async function askDelete() {
+	confirmingDelete.value = true
+	await nextTick()
+	confirmDeleteButton.value?.focus()
+}
+async function cancelDelete() {
+	confirmingDelete.value = false
+	await nextTick()
+	deleteButton.value?.focus()
 }
 async function removeTemplate() {
-	if (!selected.value.startsWith('custom-') || !preferences.data.value) return
+	if (save.isPending.value || !selected.value.startsWith('custom-') || !preferences.data.value) return
 	const next = {...preferences.data.value, profiles: custom.value.filter(p => p.id !== selected.value)}
 	if (next.default_profile === selected.value) next.default_profile = 'ask'
-	if (await persist(next)) choose('ask')
+	if (!await persist(next, removeTemplate)) return
+	choose('ask')
+	// The delete button left with the template; the scenario that is selected now takes the focus.
+	await nextTick()
+	dialog.value?.querySelector<HTMLButtonElement>('.preset[aria-pressed="true"]')?.focus()
+}
+// Closes only for a press that started on the backdrop too: a text selection dragged out of a field keeps it open.
+let pressedBackdrop = false
+// Both listen on the dialog, which is the backdrop's target.
+function pressBackdrop(event: MouseEvent) {
+	pressedBackdrop = event.target === event.currentTarget
+}
+function clickBackdrop(event: MouseEvent) {
+	if (pressedBackdrop && event.target === event.currentTarget) emit('close')
+	pressedBackdrop = false
 }
 function apply() {
 	if (!valid.value || save.isPending.value) return
@@ -115,7 +168,8 @@ onBeforeUnmount(() => {clearTimeout(displayNoteTimer); displayNoteRequest++; dia
 			class="assistant-preferences"
 			:aria-label="t('assistantUI.preferences')"
 			@cancel.prevent="emit('close')"
-			@click="($event.target === dialog) && emit('close')"
+			@mousedown="pressBackdrop"
+			@click="clickBackdrop"
 		>
 			<form
 				class="preferences-body"
@@ -167,12 +221,34 @@ onBeforeUnmount(() => {clearTimeout(displayNoteTimer); displayNoteRequest++; dia
 							>
 								{{ t('assistantUI.makeDefault') }}
 							</button><button
-								v-if="selected.startsWith('custom-')"
+								v-if="selected.startsWith('custom-') && !confirmingDelete"
+								ref="deleteButton"
 								type="button"
 								:disabled="save.isPending.value"
-								@click="removeTemplate"
+								@click="askDelete"
 							>
 								{{ t('assistantUI.deleteTemplate') }}
+							</button>
+						</div>
+						<div
+							v-if="confirmingDelete"
+							class="delete-confirm"
+							role="group"
+							:aria-label="t('assistantUI.deleteTemplate')"
+						>
+							<span>{{ t('assistantUI.deleteTemplateConfirm', {name: selectedName}) }}</span><button
+								ref="confirmDeleteButton"
+								type="button"
+								class="danger-button"
+								:aria-disabled="save.isPending.value"
+								@click="removeTemplate"
+							>
+								{{ t('assistantUI.deleteTemplateYes') }}
+							</button><button
+								type="button"
+								@click="cancelDelete"
+							>
+								{{ t('misc.cancel') }}
 							</button>
 						</div>
 						<p class="help">
@@ -310,10 +386,22 @@ onBeforeUnmount(() => {clearTimeout(displayNoteTimer); displayNoteRequest++; dia
 					>
 						{{ t('assistantUI.saved') }}
 					</p><p
-						v-if="error || preferences.isError.value"
+						v-if="error"
 						role="alert"
 					>
-						{{ error || t('assistantUI.loadFailed') }} <button
+						{{ error }} <button
+							v-if="failedAction"
+							type="button"
+							:aria-disabled="save.isPending.value || preferences.isFetching.value"
+							@click="retrySave"
+						>
+							{{ t('chat.retry') }}
+						</button>
+					</p><p
+						v-else-if="loadFailed"
+						role="alert"
+					>
+						{{ t('assistantUI.loadFailed') }} <button
 							type="button"
 							@click="preferences.refetch()"
 						>
@@ -550,6 +638,27 @@ button {
 	flex-wrap: wrap;
 	gap: var(--space-2);
 	margin-block-start: var(--space-3);
+}
+
+.delete-confirm {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2);
+	margin-block-start: var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	border-inline-start: 3px solid var(--danger);
+	border-radius: var(--radius-sm);
+	background: var(--tint-danger);
+
+	span {
+		flex: 1 1 14rem;
+	}
+}
+
+.danger-button {
+	border-color: var(--danger);
+	color: var(--danger-text);
 }
 
 .project-scope {

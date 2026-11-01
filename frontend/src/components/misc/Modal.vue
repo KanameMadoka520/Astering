@@ -18,7 +18,7 @@
 		>
 			<div
 				class="modal-container"
-				@mousedown.self.prevent.stop="requestClose"
+				@mousedown.self="onBackdropPress"
 			>
 				<div
 					v-if="isSheet"
@@ -135,6 +135,28 @@ function requestClose() {
 	if (!busy.value && props.enabled) emit('close')
 }
 
+// The container is both the backdrop and the scroller of tall dialogs: a press on its own scrollbar targets it too,
+// so only a press inside its content box counts as a press on the backdrop.
+function pressedScrollbar(event: MouseEvent, container: HTMLElement) {
+	const rect = container.getBoundingClientRect()
+	const scrollbarWidth = container.offsetWidth - container.clientWidth
+	if (scrollbarWidth > 0) {
+		const x = event.clientX - rect.left
+		// clientLeft covers a scrollbar drawn on the left (right-to-left pages).
+		const onScrollbar = container.clientLeft >= scrollbarWidth ? x < scrollbarWidth : x >= rect.width - scrollbarWidth
+		if (onScrollbar) return true
+	}
+	const scrollbarHeight = container.offsetHeight - container.clientHeight
+	return scrollbarHeight > 0 && event.clientY - rect.top >= rect.height - scrollbarHeight
+}
+
+function onBackdropPress(event: MouseEvent) {
+	if (pressedScrollbar(event, event.currentTarget as HTMLElement)) return
+	event.preventDefault()
+	event.stopPropagation()
+	requestClose()
+}
+
 function isThenable(value: unknown): value is PromiseLike<unknown> {
 	return typeof (value as PromiseLike<unknown> | null)?.then === 'function'
 }
@@ -159,6 +181,8 @@ defineOptions({
 
 // Matches --motion-fast on .modal-dialog; the token drops to 0ms under reduced motion.
 const TRANSITION_DURATION = 140
+// Matches $mobile-max below (useIsMobile() switches at 768px).
+const MOBILE_MAX = 768
 
 function closeTransitionDuration() {
 	return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : TRANSITION_DURATION
@@ -182,11 +206,22 @@ const showDialog = ref(false)
 let closeTimer: ReturnType<typeof setTimeout> | null = null
 let holdsScrollLock = false
 
+// Phones show the other dialogs as a full page that scrolls with the document while the app behind is hidden
+// (see the global styles below).
+function isPhonePage() {
+	return !isConfirm.value && !isSheet.value && Boolean(window.matchMedia?.(`(max-width: ${MOBILE_MAX}px)`).matches)
+}
+
+// html owns the page scroll (body overflow does not reach it), so that is where the page behind is held still.
+// A phone page dialog scrolls with the document itself and must not be locked.
 function lockBodyScroll() {
-	if (holdsScrollLock) return
+	if (holdsScrollLock || isPhonePage()) return
 	holdsScrollLock = true
-	openModalCount++
-	document.body.style.overflow = 'hidden'
+	if (openModalCount++ > 0) return
+	const root = document.documentElement
+	// Keep the room of a classic scrollbar, so the page behind the backdrop does not shift sideways.
+	if (window.innerWidth > root.clientWidth) root.style.scrollbarGutter = 'stable'
+	root.style.overflow = 'hidden'
 }
 
 function releaseBodyScroll() {
@@ -194,8 +229,29 @@ function releaseBodyScroll() {
 	holdsScrollLock = false
 	openModalCount--
 	if (openModalCount === 0) {
-		document.body.style.overflow = ''
+		document.documentElement.style.overflow = ''
+		document.documentElement.style.scrollbarGutter = ''
 	}
+}
+
+// Hiding the app collapses the page, and the router's restore on Back runs while the dialog is still closing,
+// so it lands at the top. Put the page back once the dialog is really gone.
+let pageScroll: {entry: unknown, top: number} | null = null
+
+function rememberPageScroll() {
+	if (pageScroll || !isPhonePage()) return
+	pageScroll = {entry: window.history.state?.position, top: window.scrollY}
+}
+
+function restorePageScroll() {
+	const saved = pageScroll
+	pageScroll = null
+	if (!saved || document.querySelector('dialog.modal-dialog[open]:not(.bottom-sheet, .is-confirm)')) return
+	const state = window.history.state as {position?: unknown, scroll?: {top?: number} | null} | null
+	// Closed in place: where the page was. Closed by going back: where the router saved that page.
+	// Closed by opening another page: that page starts where the router put it.
+	const top = state?.position === saved.entry ? saved.top : state?.scroll?.top
+	if (typeof top === 'number') window.scrollTo({top, left: 0})
 }
 
 function openDialog() {
@@ -205,6 +261,7 @@ function openDialog() {
 	}
 	previouslyFocused.value = document.activeElement
 	showDialog.value = true
+	rememberPageScroll()
 	lockBodyScroll()
 	// If we're re-opening while the previous close transition is still in
 	// flight the <dialog> is still mounted and [open], so the dialogRef
@@ -233,6 +290,7 @@ function closeDialog() {
 	closeTimer = setTimeout(() => {
 		delete dialog.dataset.closing
 		dialog.close()
+		restorePageScroll()
 		showDialog.value = false
 		closeTimer = null
 		const toFocus = previouslyFocused.value
@@ -320,6 +378,7 @@ onBeforeUnmount(() => {
 	// Leave the top layer first: while the dialog is [open] everything outside
 	// it is inert and focus() silently does nothing.
 	dialog?.close()
+	restorePageScroll()
 	const toFocus = previouslyFocused.value
 	const active = document.activeElement
 	const focusIsLost = !active || active === document.body || Boolean(dialog?.contains(active))
@@ -776,6 +835,11 @@ $mobile-max: $tablet - 1px;
 @media print {
 	body:has(dialog[open].modal-dialog:not(.bottom-sheet)) #app {
 		display: none;
+	}
+
+	// The page scroll lock (an inline style on html) would cut the print off after the first page.
+	html:has(dialog[open].modal-dialog) {
+		overflow: visible !important;
 	}
 }
 

@@ -1,6 +1,6 @@
-import {describe, expect, it} from 'vitest'
+import {describe, expect, it, vi} from 'vitest'
 import type {Action, ModelStep, Operation, RunResult, ToolCall} from '@/client/generated'
-import {callName, finalAnswer, groupEntries, hidesLastStepText, NO_OPERATIONS, rejectedByStep, stepEntries, timelineLayout} from './aronaTimeline'
+import {callName, characterCount, finalAnswer, groupEntries, hidesLastStepText, NO_OPERATIONS, rejectedByStep, stepEntries, timelineLayout} from './aronaTimeline'
 
 const call = (name: string, args = '{}'): ToolCall => ({id: name, function: {name, arguments: args}})
 const action = (round: number, tool: string, success = true): Action => ({round, tool, success, arguments: '{}', result: '{}', duration_ms: 100})
@@ -128,5 +128,24 @@ describe('Arona execution timeline', () => {
 			'round 1', 'compaction-checkpoint', 'round 2', 'subagent-child', 'round 3', 'subagent-unmatched', 'compaction-live',
 		])
 		expect(items.flatMap(item => item.kind !== 'step' && item.first ? [item.key] : [])).toEqual(['compaction-checkpoint', 'subagent-child'])
+	})
+})
+
+describe('characterCount', () => {
+	const samples = ['', 'plain', '中文推理', 'emoji 👍🏽 and 𠮷', 'lone \uD83D high', 'lone \uDC4D low', 'end \uD83D']
+
+	it('counts code points like spreading the text does', () => {
+		for (const text of samples) expect(characterCount(text)).toBe([...text].length)
+		expect(characterCount(undefined)).toBe(0)
+	})
+
+	it('counts streamed text without iterating it into characters', () => {
+		const iterate = vi.spyOn(String.prototype, Symbol.iterator)
+		try {
+			expect(characterCount('推理'.repeat(27_000))).toBe(54_000)
+			expect(iterate).not.toHaveBeenCalled()
+		} finally {
+			iterate.mockRestore()
+		}
 	})
 })

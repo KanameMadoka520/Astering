@@ -8,6 +8,8 @@ import {useAuthStore} from '@/stores/auth'
 
 import {saveProjectView} from '@/helpers/projectView'
 import {projectQuery} from '@/client/queries/projects'
+import {isRequestContextAbort} from '@/client/requestContext'
+import LoadError from '@/components/misc/state/LoadError.vue'
 
 import ProjectList from '@/components/project/views/ProjectList.vue'
 import ProjectGantt from '@/components/project/views/ProjectGantt.vue'
@@ -26,7 +28,8 @@ const router = useRouter()
 const route = useRoute()
 const baseStore = useBaseStore()
 const authStore = useAuthStore()
-const project = useQuery(computed(() => projectQuery(props.projectId)))
+// The page shows a failed load itself instead of staying blank.
+const project = useQuery(computed(() => ({...projectQuery(props.projectId), meta: {handlesError: true}})))
 const currentProject = computed(() => project.data.value)
 
 const currentView = computed(() => {
@@ -34,6 +37,11 @@ const currentView = computed(() => {
 })
 
 const isLoadingProject = project.isPending
+const loadFailed = computed(() => project.isError.value && !currentProject.value && !isRequestContextAbort(project.error.value))
+const projectMissing = computed(() => {
+	const status = (project.error.value as {status?: number} | null)?.status
+	return status === 403 || status === 404
+})
 
 watch(
 	() => [currentProject.value, props.viewId, route.name, route.params.projectId] as const,
@@ -103,6 +111,26 @@ watchEffect(() => saveProjectView(props.projectId, props.viewId))
 </script>
 
 <template>
+	<div
+		v-if="loadFailed"
+		class="project-load-state"
+	>
+		<LoadError
+			:message="projectMissing ? $t('project.loadError.missing') : $t('project.loadError.failed')"
+			:retry="projectMissing ? undefined : () => project.refetch()"
+		/>
+		<RouterLink
+			:to="{name: 'projects.index'}"
+			class="project-load-state__link"
+		>
+			{{ $t('project.loadError.toProjects') }}
+		</RouterLink>
+	</div>
+	<div
+		v-else-if="isLoadingProject && !currentProject"
+		class="project-load-state loader-container is-loading"
+		aria-busy="true"
+	/>
 	<!-- The completion notice lives in ProjectWrapper's banner region, below the view toolbar. -->
 	<ProjectList
 		v-if="currentView?.view_kind === 'list'"
@@ -130,3 +158,15 @@ watchEffect(() => saveProjectView(props.projectId, props.viewId))
 		:view-id
 	/>
 </template>
+
+<style lang="scss" scoped>
+.project-load-state {
+	display: grid;
+	gap: var(--space-3);
+	justify-items: start;
+	max-inline-size: 40rem;
+	min-block-size: 10rem;
+	margin: var(--space-5) auto;
+	padding-inline: var(--space-4);
+}
+</style>

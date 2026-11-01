@@ -4,9 +4,13 @@
  * just because the browser would not persist it.
  */
 
+import {isDraftLeaseCurrent, type DraftLease} from '@/helpers/draftScope'
+
 const PREFIX = 'tcymc-compass'
+const DRAFT_PREFIX = `${PREFIX}-draft:`
 
 const memory = new Map<string, string>()
+const memoryLeases = new Map<string, DraftLease>()
 
 export function compassAccountNamespace(apiBaseUrl: string, userId: number): string {
 	return `${encodeURIComponent(apiBaseUrl)}:${userId}`
@@ -17,7 +21,12 @@ export function compassStorageKey(kind: string, namespace: string, ...parts: (st
 }
 
 export function readCompassStorage(key: string): string | null {
-	if (memory.has(key)) return memory.get(key) ?? null
+	if (memory.has(key)) {
+		const lease = memoryLeases.get(key)
+		if (!lease || isDraftLeaseCurrent(lease)) return memory.get(key) ?? null
+		memory.delete(key)
+		memoryLeases.delete(key)
+	}
 	try {
 		return localStorage.getItem(key)
 	} catch {
@@ -26,24 +35,69 @@ export function readCompassStorage(key: string): string | null {
 }
 
 /** Returns false when only the in-memory copy could be kept. */
-export function writeCompassStorage(key: string, value: string): boolean {
+export function writeCompassStorage(key: string, value: string, lease?: DraftLease): boolean {
+	// Drafts the user just removed on logout stay removed, even if an unmounting desk still flushes.
+	if (key.startsWith(DRAFT_PREFIX) && lease && (
+		!isDraftLeaseCurrent(lease) || !key.startsWith(`${DRAFT_PREFIX}v1:${lease.namespace}:`)
+	)) return true
 	try {
 		localStorage.setItem(key, value)
 		memory.delete(key)
+		memoryLeases.delete(key)
 		return true
 	} catch {
 		memory.set(key, value)
+		if (lease) memoryLeases.set(key, lease)
+		else memoryLeases.delete(key)
 		return false
 	}
 }
 
-export function removeCompassStorage(key: string) {
+export function removeCompassStorage(key: string, lease?: DraftLease) {
+	if (key.startsWith(DRAFT_PREFIX) && lease && (
+		!isDraftLeaseCurrent(lease) || !key.startsWith(`${DRAFT_PREFIX}v1:${lease.namespace}:`)
+	)) return
 	memory.delete(key)
+	memoryLeases.delete(key)
 	try {
 		localStorage.removeItem(key)
 	} catch {
 		// Nothing persisted to remove.
 	}
+}
+
+/** Removes every key with this prefix, including copies only kept in memory. */
+export function removeCompassStorageByPrefix(prefix: string) {
+	for (const key of [...memory.keys()]) {
+		if (key.startsWith(prefix)) {
+			memory.delete(key)
+			memoryLeases.delete(key)
+		}
+	}
+	try {
+		const keys: string[] = []
+		for (let index = 0; index < localStorage.length; index++) {
+			const key = localStorage.key(index)
+			if (key?.startsWith(prefix)) keys.push(key)
+		}
+		keys.forEach(key => localStorage.removeItem(key))
+	} catch {
+		// Nothing persisted to remove.
+	}
+}
+
+/** Keys with this prefix, wherever they are kept. */
+export function compassStorageKeys(prefix: string): string[] {
+	const keys = new Set([...memory.keys()].filter(key => key.startsWith(prefix) && readCompassStorage(key) !== null))
+	try {
+		for (let index = 0; index < localStorage.length; index++) {
+			const key = localStorage.key(index)
+			if (key?.startsWith(prefix)) keys.add(key)
+		}
+	} catch {
+		// Storage the browser refuses to read holds nothing.
+	}
+	return [...keys]
 }
 
 export function readCompassJson(key: string): unknown {

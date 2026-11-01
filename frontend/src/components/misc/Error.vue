@@ -1,14 +1,11 @@
 <template>
 	<Message variant="danger">
 		<i18n-t
-			keypath="loadingError.failed"
+			keypath="loadingError.failedRetry"
 			scope="global"
 		>
-			<ButtonLink @click="reload">
+			<ButtonLink @click="tryAgain">
 				{{ $t('loadingError.tryAgain') }}
-			</ButtonLink>
-			<ButtonLink href="https://vikunja.io/contact/">
-				{{ $t('loadingError.contact') }}
 			</ButtonLink>
 		</i18n-t>
 	</Message>
@@ -18,11 +15,21 @@
 import Message from '@/components/misc/Message.vue'
 import ButtonLink from '@/components/misc/ButtonLink.vue'
 
+// With `retry` only the failed request runs again, so nothing typed elsewhere on the page is lost;
+// without it the page reloads, as before.
+const props = defineProps<{
+	retry?: () => unknown,
+}>()
+
 defineOptions({
 	inheritAttrs: false,
 })
 
-function reload() {
+function tryAgain() {
+	if (props.retry) {
+		void props.retry()
+		return
+	}
 	window.location.reload()
 }
 </script>

@@ -225,4 +225,41 @@ describe('ApiTokens settings page', () => {
 		expect(wrapper.find('nav.pagination').exists()).toBe(false)
 		expect(runtimeErrorMessages(mounted.errors)).toEqual([])
 	})
+
+	it('keeps the dialog open, names the token and keeps it listed when deleting fails', async () => {
+		del.mockRejectedValueOnce(new Error('Server error'))
+		const mounted = await mountPage()
+		wrapper = mounted.wrapper
+
+		const confirmBtn = await openDeleteModalForFirstToken(wrapper)
+		expect(confirmBtn.textContent).toContain('Delete token')
+		const dialog = document.querySelector('dialog.modal-dialog')
+		expect(dialog?.textContent).toContain('Are you sure you want to delete the token "chrome-quick-add"?')
+		confirmBtn.click()
+		await settleCloseTransition()
+
+		expect(del).toHaveBeenCalledTimes(1)
+		expect(document.querySelector('dialog.modal-dialog')).not.toBeNull()
+		expect(document.querySelector('dialog.modal-dialog')?.textContent).toContain('chrome-quick-add')
+		expect(wrapper.findAll('tbody tr')).toHaveLength(2)
+		expect(runtimeErrorMessages(mounted.errors)).toEqual([])
+	})
+
+	it('says the list could not be loaded instead of showing no tokens', async () => {
+		getAll.mockRejectedValueOnce(new Error('Server error'))
+		const mounted = await mountPage()
+		wrapper = mounted.wrapper
+
+		expect(wrapper.find('[role="alert"]').text()).toContain("This list couldn't be loaded, so it may not be empty.")
+		expect(wrapper.text()).not.toContain('You have no API tokens yet.')
+	})
+
+	it('says so when there are no tokens', async () => {
+		stored = []
+		const mounted = await mountPage()
+		wrapper = mounted.wrapper
+
+		expect(wrapper.text()).toContain('You have no API tokens yet.')
+		expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+	})
 })

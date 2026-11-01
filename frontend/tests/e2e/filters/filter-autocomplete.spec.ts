@@ -147,6 +147,26 @@ test.describe('Filter Autocomplete', () => {
 		})
 	})
 
+	test('Escape hides the suggestions and keeps the new filter dialog open', async ({authenticatedPage: page}) => {
+		await page.goto('/filters/new')
+		await expect(page.getByRole('link', {name: 'Inbox', exact: true})).toBeVisible({timeout: 10000})
+		await page.locator('input#Title').fill('Kept after Escape')
+
+		const filterInput = getFilterInput(page)
+		await filterInput.click()
+		await page.keyboard.press('ControlOrMeta+a')
+		await page.keyboard.press('Backspace')
+		await filterInput.pressSequentially('project = Inb', {delay: 50})
+		const autocompletePopup = page.locator('#filter-autocomplete-popup')
+		await expect(autocompletePopup).toBeVisible({timeout: 5000})
+
+		await page.keyboard.press('Escape')
+		await expect(autocompletePopup).toBeHidden()
+		await expect(page).toHaveURL(/\/filters\/new/)
+		await expect(page.locator('input#Title')).toHaveValue('Kept after Escape')
+		await expect(filterInput).toContainText('project = Inb')
+	})
+
 	test.describe('Edit Saved Filter with Multi-Value Autocomplete (Issue #2010 Regression)', () => {
 		test('should preserve filter text after editing and adding trailing space', async ({authenticatedPage: page}) => {
 			// This test covers the specific bug from Issue #2010:

@@ -326,6 +326,12 @@
 				</XButton>
 			</div>
 		</div>
+
+		<UnsavedLeaveDialog
+			:open="leaveTarget !== null"
+			@stay="stay"
+			@discard="discardAndLeave"
+		/>
 	</div>
 </template>
 
@@ -374,6 +380,8 @@ import {RELATION_KINDS} from '@/types/IRelationKind'
 import {isDesktopApp} from '@/helpers/desktopAuth'
 import ShortcutRecorder from '@/components/misc/ShortcutRecorder.vue'
 import Reminders from '@/components/tasks/partials/Reminders.vue'
+import UnsavedLeaveDialog from '@/components/misc/UnsavedLeaveDialog.vue'
+import {useUnsavedLeaveGuard} from '@/composables/useUnsavedLeaveGuard'
 import {REMINDER_PERIOD_RELATIVE_TO_TYPES} from '@/types/IReminderPeriodRelativeTo'
 
 const props = defineProps<{identity: AccountIdentity}>()
@@ -473,6 +481,8 @@ const quickAddDefaultReminders = computed({
 
 const initialSettings = ref(createUserSettingsDraft(authStore.settings))
 const isDirty = computed(() => !isEqual(settings.value, initialSettings.value))
+// Switching settings pages or closing the tab asks before unsaved changes are dropped.
+const {leaveTarget, stay, discardAndLeave} = useUnsavedLeaveGuard(isDirty)
 
 function enforceBackgroundBrightnessBounds() {
 	const value = Number(settings.value.frontend_settings.background_brightness)

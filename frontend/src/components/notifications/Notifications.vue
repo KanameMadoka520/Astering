@@ -40,14 +40,17 @@
 				<div class="head">
 					<span :id="`${popupId}-title`">{{ $t('notification.title') }}</span>
 					<div class="actions">
+						<!-- Deletes every notification, so it says so and asks first; the double check belongs to "mark read". -->
 						<BaseButton
 							v-if="notifications.length > 0"
-							v-tooltip="$t('notification.clearAll')"
-							class="action-link"
-							:aria-label="$t('notification.clearAll')"
-							@click="clearAll"
+							class="action-link clear-all"
+							@click="confirmingClear = true"
 						>
-							<Icon icon="check-double" />
+							<Icon
+								icon="trash-alt"
+								aria-hidden="true"
+							/>
+							<span>{{ $t('notification.clearAll') }}</span>
 						</BaseButton>
 						<BaseButton
 							v-tooltip="$t('notification.subscribeFeed')"
@@ -130,6 +133,21 @@
 				</p>
 			</div>
 		</CustomTransition>
+
+		<Modal
+			:enabled="confirmingClear"
+			danger
+			:confirm-label="$t('notification.clearAllConfirm')"
+			@close="confirmingClear = false"
+			@submit="clearAll"
+		>
+			<template #header>
+				<span>{{ $t('notification.clearAllTitle') }}</span>
+			</template>
+			<template #text>
+				<p>{{ $t('notification.clearAllText') }}</p>
+			</template>
+		</Modal>
 	</div>
 </template>
 
@@ -147,6 +165,7 @@ import {notificationDoer, notificationRoute, notificationText} from '@/helpers/n
 import {parseDateOrNull} from '@/helpers/parseDateOrNull'
 import BaseButton from '@/components/base/BaseButton.vue'
 import CustomTransition from '@/components/misc/CustomTransition.vue'
+import Modal from '@/components/misc/Modal.vue'
 import UserAvatar from '@/components/misc/UserAvatar.vue'
 import {closeWhenClickedOutside} from '@/helpers/closeWhenClickedOutside'
 import {formatDateLong, formatDisplayDate} from '@/helpers/time/formatDate'
@@ -187,6 +206,7 @@ const notifications = computed(() => loadedNotifications.value.flatMap(n => {
 type NotificationRow = typeof notifications.value[number]
 const unreadNotifications = computed(() => notifications.value.filter(n => !n.read).length)
 const showNotifications = ref(false)
+const confirmingClear = ref(false)
 const popup = ref<HTMLElement | null>(null)
 const trigger = ref<InstanceType<typeof BaseButton> | null>(null)
 const popupId = useId()
@@ -208,6 +228,8 @@ onMounted(() => document.addEventListener('click', hidePopup))
 onUnmounted(() => document.removeEventListener('click', hidePopup))
 
 function hidePopup(e: MouseEvent) {
+	// The delete question opens outside the popup; answering it is not a click away from the list.
+	if (confirmingClear.value) return
 	if (showNotifications.value && popup.value !== null) {
 		closeWhenClickedOutside(e, popup.value, () => showNotifications.value = false)
 	}
@@ -222,7 +244,15 @@ async function to(n: NotificationRow) {
 }
 
 function markAllRead() { readAllMutation.mutate() }
-function clearAll() { clearMutation.mutate() }
+// The question stays open while the request runs and after a failure (the mutation reports it).
+async function clearAll() {
+	try {
+		await clearMutation.mutateAsync()
+	} catch {
+		return
+	}
+	confirmingClear.value = false
+}
 </script>
 
 <style lang="scss" scoped>
@@ -287,6 +317,14 @@ function clearAll() { clearMutation.mutate() }
 		align-items: center;
 		gap: var(--space-1);
 	}
+}
+
+.action-link.clear-all {
+	gap: var(--space-1);
+	inline-size: auto;
+	padding-inline: var(--space-2);
+	font-size: var(--text-sm);
+	white-space: nowrap;
 }
 
 .action-link {

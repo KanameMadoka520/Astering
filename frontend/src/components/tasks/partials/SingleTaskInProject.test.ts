@@ -14,13 +14,16 @@ vi.mock('@/client/generated', () => sdk)
 vi.mock('@/message', () => ({error: vi.fn(), success: vi.fn()}))
 vi.mock('@/helpers/playPop', () => ({playPopSound: vi.fn()}))
 vi.mock('@/composables/useProjects', () => ({useProjects: () => ({projects: {}})}))
-vi.mock('@/composables/useCurrentProject', () => ({useCurrentProject: () => ({currentProject: {value: null}})}))
+// The base store probes the API on creation and would swap window.API_URL mid-test.
+vi.mock('@/helpers/checkAndSetApiUrl', () => ({checkAndSetApiUrl: vi.fn(async () => window.API_URL)}))
 vi.mock('vue-i18n', async importOriginal => ({
 	...(await importOriginal<typeof import('vue-i18n')>()),
 	useI18n: () => ({t: (key: string) => key}),
 }))
 
 import SingleTaskInProject from './SingleTaskInProject.vue'
+import {success} from '@/message'
+import {taskKeys} from '@/client/queries/tasks'
 
 const theTask = {id: 7, project_id: 1, title: 'Water the plants', done: true, is_favorite: false} as ITask
 
@@ -30,7 +33,7 @@ function deferred() {
 	return {promise, resolve}
 }
 
-function mountRow() {
+function mountRow(queryClient = new QueryClient({defaultOptions: {queries: {retry: false}}}), task: ITask = theTask) {
 	const router = createRouter({
 		history: createMemoryHistory(),
 		routes: [
@@ -39,9 +42,9 @@ function mountRow() {
 		],
 	})
 	return shallowMount(SingleTaskInProject, {
-		props: {theTask},
+		props: {theTask: task},
 		global: {
-			plugins: [createPinia(), router, [VueQueryPlugin, {queryClient: new QueryClient({defaultOptions: {queries: {retry: false}}})}]],
+			plugins: [createPinia(), router, [VueQueryPlugin, {queryClient}]],
 			directives: {tooltip: {}},
 			mocks: {$t: (key: string) => key},
 		},
@@ -88,5 +91,29 @@ describe('SingleTaskInProject', () => {
 		await flushPromises()
 
 		expect(wrapper.get('.task').classes()).not.toContain('is-loading')
+	})
+
+	it('brings an undone task back into the open lists and says so when Undo is used', async () => {
+		vi.mocked(success).mockClear()
+		const queryClient = new QueryClient({defaultOptions: {queries: {retry: false}}})
+		const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+		const openTask = {...theTask, done: false}
+		sdk.patchTasksRead
+			.mockResolvedValueOnce({data: {...openTask, done: true}})
+			.mockResolvedValueOnce({data: openTask})
+		const wrapper = mountRow(queryClient, openTask)
+
+		wrapper.getComponent({name: 'FancyCheckbox'}).vm.$emit('update:modelValue', true)
+		await vi.waitFor(() => expect(success).toHaveBeenCalledTimes(1))
+		const [, actions] = vi.mocked(success).mock.calls[0] as unknown as [unknown, {callback: () => void}[]]
+
+		// Home and Upcoming drop the done row, so the row itself is gone by the time Undo is clicked.
+		wrapper.unmount()
+		invalidate.mockClear()
+		actions[0].callback()
+		await vi.waitFor(() => expect(success).toHaveBeenCalledTimes(2))
+
+		expect(invalidate).toHaveBeenCalledWith(expect.objectContaining({queryKey: taskKeys.lists, refetchType: 'active'}))
+		expect(vi.mocked(success).mock.calls[1][0]).toEqual({message: 'task.undoneSuccess'})
 	})
 })

@@ -1,3 +1,4 @@
+import type {ClientRequestContext} from '@/client/requestContext'
 import {
 	queryOptions,
 	useMutation,
@@ -101,7 +102,7 @@ function settle(client: QueryClient, taskId: number) {
 	])
 }
 
-export function createCommentMutationOptions() {
+export function createCommentMutationOptions(owner?: ClientRequestContext) {
 	return contextMutationOptions({
 		mutationFn: async ({taskId, comment}: {
 			taskId: number,
@@ -143,10 +144,10 @@ export function createCommentMutationOptions() {
 			invalidateTaskMembership(client, taskId),
 		]),
 		successMessage: () => i18n.global.t('task.comment.addedSuccess'),
-	})
+	}, owner)
 }
 
-export function updateCommentMutationOptions() {
+export function updateCommentMutationOptions(owner?: ClientRequestContext) {
 	return contextMutationOptions({
 		mutationFn: async ({taskId, id, comment}: {
 			taskId: number,
@@ -168,10 +169,10 @@ export function updateCommentMutationOptions() {
 			}))
 		},
 		onSettled: ({taskId}, client) => client.invalidateQueries({queryKey: commentKeys.task(taskId)}),
-	})
+	}, owner)
 }
 
-export function deleteCommentMutationOptions() {
+export function deleteCommentMutationOptions(owner?: ClientRequestContext) {
 	return contextMutationOptions({
 		mutationFn: async ({taskId, id}: {
 			taskId: number,
@@ -199,17 +200,17 @@ export function deleteCommentMutationOptions() {
 		},
 		onSettled: ({taskId}, client) => settle(client, taskId),
 		successMessage: () => i18n.global.t('task.comment.deleteSuccess'),
-	})
+	}, owner)
 }
 
-export function useCreateCommentMutation() {
-	return useMutation(createCommentMutationOptions())
+export function useCreateCommentMutation(owner?: ClientRequestContext) {
+	return useMutation(createCommentMutationOptions(owner))
 }
 
-export function useUpdateCommentMutation() {
-	return useMutation(updateCommentMutationOptions())
+export function useUpdateCommentMutation(owner?: ClientRequestContext) {
+	return useMutation(updateCommentMutationOptions(owner))
 }
 
-export function useDeleteCommentMutation() {
-	return useMutation(deleteCommentMutationOptions())
+export function useDeleteCommentMutation(owner?: ClientRequestContext) {
+	return useMutation(deleteCommentMutationOptions(owner))
 }

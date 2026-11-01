@@ -2,44 +2,9 @@ import {useI18n} from 'vue-i18n'
 
 import type {TaskResponse} from '@/client/queries/tasks'
 import {useUpdateTaskMutation} from '@/client/queries/taskMutations'
-import {useTaskDragState} from '@/composables/useTaskDragState'
+import {findProjectIdAtPosition, useTaskDragState} from '@/composables/useTaskDragState'
 import {useProjects} from '@/composables/useProjects'
 import {success} from '@/message'
-
-/**
- * Finds a project ID from elements at a given mouse position.
- * Searches through elements under the mouse and their parents for data-project-id attribute.
- */
-function findProjectIdAtPosition(mouseX: number, mouseY: number): number | null {
-	// Validate coordinates are finite numbers (required by elementsFromPoint)
-	// This prevents errors on Firefox mobile where touch events may provide invalid coordinates
-	if (!Number.isFinite(mouseX) || !Number.isFinite(mouseY)) {
-		return null
-	}
-
-	const elementsUnderMouse = document.elementsFromPoint(mouseX, mouseY)
-
-	for (const el of elementsUnderMouse) {
-		if (!(el instanceof HTMLElement)) {
-			continue
-		}
-
-		const withProjectId =
-			el.dataset?.projectId != null
-				? el
-				: el.closest('[data-project-id]') as HTMLElement | null
-
-		const projectId = withProjectId?.dataset.projectId
-		if (projectId) {
-			const parsed = parseInt(projectId, 10)
-			if (!Number.isNaN(parsed)) {
-				return parsed
-			}
-		}
-	}
-
-	return null
-}
 
 export interface TaskDragToProjectResult {
 	moved: boolean

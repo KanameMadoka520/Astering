@@ -127,6 +127,10 @@
 									{{ t('compass.reader.readingTime', {minutes: readingMinutes}) }}
 								</span>
 								<span v-if="updatedBy">{{ t('compass.reader.by', {person: updatedBy}) }}</span>
+								<CompassVisibilityChip
+									v-if="space"
+									:team-id="space.team_id"
+								/>
 							</p>
 
 							<ul
@@ -345,6 +349,7 @@ import type {RouteLocationRaw} from 'vue-router'
 import {useElementSize} from '@vueuse/core'
 import CompassGlyph from '@/components/compass/base/CompassGlyph.vue'
 import CompassKindLabel from '@/components/compass/base/CompassKindLabel.vue'
+import CompassVisibilityChip from '@/components/compass/base/CompassVisibilityChip.vue'
 import CompassProse from '@/components/compass/base/CompassProse.vue'
 import CompassStateBadge from '@/components/compass/base/CompassStateBadge.vue'
 import CompassThemeScope from '@/components/compass/base/CompassThemeScope.vue'

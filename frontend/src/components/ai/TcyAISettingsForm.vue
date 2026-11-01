@@ -2,6 +2,7 @@
 import {computed, ref, watch} from 'vue'
 import {useEventListener} from '@vueuse/core'
 import {useI18n} from 'vue-i18n'
+import {onBeforeRouteLeave, onBeforeRouteUpdate, useRouter, type RouteLocationNormalized} from 'vue-router'
 import type {IconProp} from '@fortawesome/fontawesome-svg-core'
 
 import ModelPicker from './ModelPicker.vue'
@@ -52,6 +53,34 @@ const draft = ref<Settings>(initialDraft())
 const baseline = ref(JSON.stringify(initialDraft()))
 const baselineSettings = computed(() => JSON.parse(baseline.value) as Settings)
 const dirty = computed(() => JSON.stringify(draft.value) !== baseline.value)
+
+// A typed API key or base URL exists only in this draft: leaving asks first, and the route is followed only after
+// an explicit discard.
+const router = useRouter()
+const leaveTarget = ref<string | null>(null)
+let leaving = false
+function confirmLeave(to: RouteLocationNormalized) {
+	if (leaving || !dirty.value) return true
+	leaveTarget.value = to.fullPath
+	return false
+}
+onBeforeRouteLeave(confirmLeave)
+onBeforeRouteUpdate(confirmLeave)
+async function discardAndLeave() {
+	const target = leaveTarget.value
+	if (target === null) return
+	leaving = true
+	leaveTarget.value = null
+	const failure = await router.push(target)
+	// Another guard stopped the navigation: the draft is still here and still protected.
+	if (failure) leaving = false
+}
+useEventListener(window, 'beforeunload', (event: BeforeUnloadEvent) => {
+	if (!dirty.value) return
+	event.preventDefault()
+	// Older browsers only ask when a return value is set.
+	event.returnValue = ''
+})
 const saveError = ref('')
 const activeTab = ref<Tab>('chat')
 useEventListener(window, 'vikunja:ai-settings-tab', (event: Event) => {
@@ -264,26 +293,30 @@ function requestRemove(connection: AIConnection) {
 	if (persisted(connection.id)) pendingRemove.value = connection
 	else dropConnection(connection.id)
 }
+// The dialog stays open and busy while the request runs (Modal waits for the returned promise), so a failure is
+// reported where the removal was asked for, and not as an unsaved edit of the card.
+const removeError = ref('')
+function closeRemove() {
+	pendingRemove.value = null
+	removeError.value = ''
+}
 async function confirmRemove() {
 	const target = pendingRemove.value
 	if (!target || save.isPending.value) return
-	pendingRemove.value = null
 	const id = target.id
 	const payload = initialDraft()
 	payload.connections = payload.connections.filter(c => c.id !== id)
 	for (const role of ROLES) if (payload[role] === id) payload[role] = ''
-	savingPart.value = id
-	cardErrors.value[id] = ''
+	removeError.value = ''
 	try {
 		baseline.value = JSON.stringify(initialDraft(await save.mutateAsync(savePayload(payload))))
 	} catch (error) {
-		if (!isRequestContextAbort(error)) {
-			cardErrors.value[id] = error instanceof Error ? error.message : t('settingsDraft.failed')
+		if (!isRequestContextAbort(error) && pendingRemove.value === target) {
+			removeError.value = error instanceof Error ? error.message : t('settingsDraft.failed')
 		}
 		return
-	} finally {
-		savingPart.value = ''
 	}
+	if (pendingRemove.value === target) closeRemove()
 	dropConnection(id)
 }
 
@@ -1286,7 +1319,8 @@ function connectionStatus(c: AIConnection): {tone: Tone, icon: IconProp, text: s
 		<Modal
 			danger
 			:enabled="pendingRemove !== null"
-			@close="pendingRemove = null"
+			:confirm-label="t('tcymc.text.remove_connection')"
+			@close="closeRemove"
 			@submit="confirmRemove"
 		>
 			<template #header>
@@ -1297,6 +1331,27 @@ function connectionStatus(c: AIConnection): {tone: Tone, icon: IconProp, text: s
 					<strong>{{ pendingRemove.name || t('tcymc.text.new_model') }}</strong>
 				</p>
 				<p>{{ t('modelSettings.removeConfirm') }}</p>
+				<p
+					v-if="removeError"
+					class="remove-error"
+					role="alert"
+				>
+					{{ t('modelSettings.removeFailed') }} {{ removeError }}
+				</p>
+			</template>
+		</Modal>
+		<Modal
+			danger
+			:enabled="leaveTarget !== null"
+			:confirm-label="t('modelSettings.leaveDiscard')"
+			@close="leaveTarget = null"
+			@submit="discardAndLeave"
+		>
+			<template #header>
+				{{ t('modelSettings.leaveTitle') }}
+			</template>
+			<template #text>
+				<p>{{ t('modelSettings.leaveText') }}</p>
 			</template>
 		</Modal>
 	</div>

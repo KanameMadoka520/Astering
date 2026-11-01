@@ -1,4 +1,4 @@
-import {QueryClient} from '@tanstack/vue-query'
+import {onlineManager, QueryClient} from '@tanstack/vue-query'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
 import {error, success} from '@/message'
 
@@ -12,6 +12,7 @@ vi.mock('@/helpers/auth', () => ({
 vi.mock('@/helpers/apiUrl', () => ({getApiBaseUrl: () => '/api/v2/'}))
 
 import {contextMutationOptions} from './contextMutation'
+import {captureClientRequestContext} from '@/client/requestContext'
 
 let client: QueryClient
 beforeEach(() => {
@@ -209,4 +210,35 @@ describe('contextMutationOptions optimistic updates', () => {
 		expect(client.getQueryData(listKey)).toEqual(['before'])
 		expect(error).not.toHaveBeenCalled()
 	})
+})
+
+
+it('never starts an editor write under the account that replaced its original owner', async () => {
+ const owner = captureClientRequestContext()
+ const mutationFn = vi.fn(async () => 'saved')
+ const options = contextMutationOptions({mutationFn}, owner)
+ session.epoch++
+ await expect(client.getMutationCache().build(client, options).execute(1)).rejects.toMatchObject({name: 'AbortError'})
+ expect(mutationFn).not.toHaveBeenCalled()
+})
+
+
+it('fences an offline queued editor write before it resumes under a newer session', async () => {
+ const owner = captureClientRequestContext()
+ const mutationFn = vi.fn(async () => 'saved')
+ const mutation = client.getMutationCache().build(client, contextMutationOptions({mutationFn}, owner))
+ onlineManager.setOnline(false)
+ const result = mutation.execute(1)
+ try {
+  await Promise.resolve()
+  await Promise.resolve()
+  expect(mutation.state.isPaused).toBe(true)
+  session.epoch++
+  onlineManager.setOnline(true)
+  void mutation.continue().catch(() => {})
+  await expect(result).rejects.toMatchObject({name: 'AbortError'})
+  expect(mutationFn).not.toHaveBeenCalled()
+ } finally {
+  onlineManager.setOnline(true)
+ }
 })

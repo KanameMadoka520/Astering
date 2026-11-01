@@ -1,14 +1,20 @@
 <script setup lang="ts">
-import {computed} from 'vue'
+import {computed, ref} from 'vue'
 import {useQuery} from '@tanstack/vue-query'
 import {useDocumentVisibility} from '@vueuse/core'
 import {useI18n} from 'vue-i18n'
-import {systemStatusQuery} from '@/client/queries/systemStatus'
+import {SYSTEM_STATUS_DETAIL_INTERVAL, systemStatusQuery} from '@/client/queries/systemStatus'
 import {useBaseStore} from '@/stores/base'
 const {t} = useI18n({useScope: 'global'})
 const base = useBaseStore()
 const visibility = useDocumentVisibility()
-const query = useQuery(computed(() => systemStatusQuery(base.menuActive && visibility.value === 'visible')))
+const detailsOpen = ref(false)
+const query = useQuery(computed(() => systemStatusQuery(base.menuActive && visibility.value === 'visible', detailsOpen.value)))
+// Opening the details shows current numbers at once rather than up to a minute old ones.
+function toggleDetails(event: Event) {
+	detailsOpen.value = (event.target as HTMLDetailsElement).open
+	if (detailsOpen.value && Date.now() - query.dataUpdatedAt.value > SYSTEM_STATUS_DETAIL_INTERVAL) void query.refetch()
+}
 const data = computed(() => query.data.value)
 const app = computed(() => data.value?.application)
 const appDisk = computed(() => app.value?.storage?.files_bytes != null && app.value?.storage?.database_bytes != null
@@ -103,7 +109,10 @@ function sampledAt(value?: string | null) {
 					rel="noopener noreferrer"
 				>{{ data.version }}</a>
 			</div>
-			<details class="status-details">
+			<details
+				class="status-details"
+				@toggle="toggleDetails"
+			>
 				<summary>{{ t('systemStatus.measurement') }}</summary>
 				<p class="detail-group">
 					{{ t('systemStatus.host') }}

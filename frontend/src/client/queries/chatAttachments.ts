@@ -20,7 +20,7 @@ export function useUploadChatAttachment() {
 		mutationFn: async ({id, file, signal, headers}: {id: string, file: File, signal?: AbortSignal, headers?: Record<string, string>, quiet?: boolean}) => (await tcyAiAttachmentsUpload({path: {id}, body: {file}, signal, headers})).data,
 		onSettled: ({id}, client) => {
 			void invalidateDrive(client)
-			return Promise.all([client.invalidateQueries({queryKey: conversationKeys.detail(id)}), client.invalidateQueries({queryKey: conversationKeys.lists()})])
+			return Promise.all([client.invalidateQueries({queryKey: conversationKeys.detail(id), exact: true}), client.invalidateQueries({queryKey: conversationKeys.lists()})])
 		},
 		toastError: ({quiet}) => !quiet,
 	}))
@@ -30,7 +30,7 @@ export function useAttachDriveFileToChat() {
 		mutationFn: async ({id, fileId}: {id: string, fileId: number}) => (await tcyAiAttachmentsFromDrive({path: {id}, body: {file_id: fileId}})).data,
 		// The drive file gains a reference; cached file bytes and previews are unchanged.
 		onSettled: ({id}, client) => Promise.all([
-			client.invalidateQueries({queryKey: conversationKeys.detail(id)}),
+			client.invalidateQueries({queryKey: conversationKeys.detail(id), exact: true}),
 			client.invalidateQueries({queryKey: conversationKeys.lists()}),
 			invalidateDrive(client),
 		]),
@@ -40,7 +40,7 @@ export function useRemoveChatAttachment() {
 	return useMutation(contextMutationOptions({
 		mutationFn: async ({id, file}: {id: string, file: string}) => (await tcyAiAttachmentsRemove({path: {id, file}})).data,
 		// A Drive-backed draft loses its "chat draft" usage.
-		onSettled: ({id}, client) => Promise.all([client.invalidateQueries({queryKey: conversationKeys.detail(id)}), invalidateDrive(client)]),
+		onSettled: ({id}, client) => Promise.all([client.invalidateQueries({queryKey: conversationKeys.detail(id), exact: true}), invalidateDrive(client)]),
 	}))
 }
 export async function fetchConversationExport(id: string, format: 'json' | 'md' | 'zip', signal?: AbortSignal): Promise<Blob> {

@@ -168,15 +168,23 @@ test.describe('Home Page Task Overview', () => {
 
 		await page.goto('/')
 
-		await expect(page.locator('.home.app-content .content')).toContainText('Import your projects and tasks from other services into Vikunja:')
+		await expect(page.locator('.home.app-content .content')).toContainText('Import your projects and tasks from other services into vikunja-x:')
 	})
 
 	test('Should not show the cta buttons for new project when there are tasks', async ({authenticatedPage: page, apiContext}) => {
 		await seedTasks(apiContext)
 
+		// The import hint looks for a single task of its own once the list has loaded; before that answer it is absent
+		// anyway.
+		const hintChecked = page.waitForResponse(response => {
+			const url = new URL(response.url())
+			return response.request().method() === 'GET' && url.pathname.endsWith('/api/v2/tasks')
+				&& url.searchParams.get('per_page') === '1'
+		})
 		await page.goto('/')
 
-		await expect(page.locator('.home.app-content .content')).not.toContainText('You can create a new project for your new tasks:')
-		await expect(page.locator('.home.app-content .content')).not.toContainText('Or import your projects and tasks from other services into Vikunja:')
+		await expect(page.locator('[data-cy="showTasks"] .card .task').first()).toBeVisible()
+		expect((await hintChecked).ok()).toBe(true)
+		await expect(page.locator('.home.app-content .content')).not.toContainText('Import your projects and tasks from other services into vikunja-x:')
 	})
 })

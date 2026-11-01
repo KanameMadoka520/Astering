@@ -196,6 +196,65 @@ function primary(dialog: Element | null) {
 	return found
 }
 
+function deferred<T>() {
+	let resolve!: (value: T) => void
+	const promise = new Promise<T>(done => { resolve = done })
+	return {promise, resolve}
+}
+
+describe('EditTeam: confirmation targets across reused routes', () => {
+	beforeEach(() => {
+		sdk.teamsRead.mockImplementation(({path}: {path: {id: number}}) => Promise.resolve(team(
+			[{...ME, admin: true}, {...SAM, admin: false}],
+			{id: path.id, name: `Crew ${path.id}`},
+		)))
+	})
+
+	it.each(['remove', 'promote', 'leave', 'delete'] as const)('closes the %s confirmation on another team and ignores its stale submit', async action => {
+		await mountTeam()
+		const open = {
+			remove: 'Remove a user from the team', promote: 'Make Admin', leave: 'Leave team', delete: 'Delete the team',
+		}[action]
+		button(open).click()
+		await flushPromises()
+		if (action === 'delete') { acknowledge(); await flushPromises() }
+		const staleConfirm = primary(openDialog())
+		const mutation = action === 'delete' ? sdk.teamsDelete : action === 'promote' ? sdk.teamsMembersToggleAdmin : sdk.teamsMembersRemove
+
+		await router.push('/teams/8/edit')
+		await flushPromises()
+		expect(openDialog()).toBeNull()
+		staleConfirm.click()
+		await flushPromises()
+		expect(mutation).not.toHaveBeenCalled()
+
+		if (action === 'delete') {
+			button('Delete the team').click()
+			await flushPromises()
+			expect(openDialog()?.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked).toBe(false)
+		}
+	})
+
+	it.each(['leave', 'delete'] as const)('does not navigate away from a later team when an earlier %s finishes', async action => {
+		const request = deferred<unknown>()
+		const mutation = action === 'delete' ? sdk.teamsDelete : sdk.teamsMembersRemove
+		mutation.mockReturnValue(request.promise)
+		await mountTeam()
+		button(action === 'delete' ? 'Delete the team' : 'Leave team').click()
+		await flushPromises()
+		if (action === 'delete') { acknowledge(); await flushPromises() }
+		primary(openDialog()).click()
+		await flushPromises()
+		expect(mutation.mock.calls[0][0].path).toMatchObject(action === 'delete' ? {id: 3} : {team: 3, user: ME.username})
+
+		await router.push('/teams/8/edit')
+		await flushPromises()
+		request.resolve({data: {}})
+		await flushPromises()
+		expect(router.currentRoute.value.fullPath).toBe('/teams/8/edit')
+	})
+})
+
 describe('EditTeam: confirmations stay open until the change succeeds', () => {
 	it('keeps the delete dialog open when deleting fails and sends one request for a double click', async () => {
 		sdk.teamsDelete.mockRejectedValue(new Error('offline'))

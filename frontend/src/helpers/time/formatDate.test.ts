@@ -1,8 +1,11 @@
 import {beforeEach, describe, expect, it} from 'vitest'
 import {createPinia, setActivePinia} from 'pinia'
 
-import {dateIsValid, formatDate, formatDateSince, formatISO} from './formatDate'
+import {dateIsValid, formatDate, formatDateSince, formatDisplayDateFormat, formatISO} from './formatDate'
 import {useGlobalNow} from '@/composables/useGlobalNow'
+import {DATE_DISPLAY} from '@/constants/dateDisplay'
+import {i18n} from '@/i18n'
+import {TIME_FORMAT} from '@/constants/timeFormat'
 
 describe('dateIsValid', () => {
 	it.each([
@@ -68,5 +71,37 @@ describe('formatDateSince', () => {
 	it('returns a relative time for older dates', () => {
 		const {now} = useGlobalNow()
 		expect(formatDateSince(new Date(now.value.getTime() - 5 * 60_000))).toBe('5 minutes ago')
+	})
+})
+
+describe('formatDisplayDateFormat', () => {
+	it('builds a long date formatter once, not once per date', () => {
+		const Original = Intl.DateTimeFormat
+		let constructed = 0
+		Intl.DateTimeFormat = class extends Original {
+			constructor(...args: ConstructorParameters<typeof Original>) {
+				super(...args)
+				constructed++
+			}
+		} as typeof Intl.DateTimeFormat
+		const dates = Array.from({length: 50}, (_, day) => new Date(Date.UTC(2026, 0, day + 1, 9, 30)))
+
+		try {
+			const shown = dates.map(date => formatDisplayDateFormat(date, DATE_DISPLAY.WEEKDAY_DAY_MONTH_YEAR, TIME_FORMAT.HOURS_24))
+
+			expect(constructed).toBeLessThanOrEqual(1)
+			expect(new Set(shown).size).toBe(50)
+			expect(shown[0]).toBe(new Original(i18n.global.locale.value, {
+				weekday: 'long',
+				day: 'numeric',
+				month: 'long',
+				year: 'numeric',
+				hour: 'numeric',
+				minute: 'numeric',
+				hour12: false,
+			}).format(dates[0]))
+		} finally {
+			Intl.DateTimeFormat = Original
+		}
 	})
 })

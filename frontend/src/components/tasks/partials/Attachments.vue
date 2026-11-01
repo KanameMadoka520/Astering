@@ -272,7 +272,8 @@
 <script setup lang="ts">
 import DrivePicker from '@/components/drive/DrivePicker.vue'
 import {useAttachDriveMutation, type DriveEntry} from '@/client/queries/drive'
-import {ref, computed, nextTick, watch, onMounted, onBeforeUnmount, type ComponentPublicInstance} from 'vue'
+import {ref, computed, nextTick, watch, onBeforeUnmount, type ComponentPublicInstance} from 'vue'
+import {useTopModalDialog} from '@/composables/useTopModalDialog'
 import {useDropZone} from '@vueuse/core'
 
 import User from '@/components/misc/User.vue'
@@ -437,30 +438,10 @@ const showDropzone = computed(() =>
 // A <dialog> opened with showModal() (e.g. the Kanban task detail) renders in
 // the browser's top layer, so the full-screen dropzone overlay teleported to
 // <body> would paint behind it regardless of z-index. Teleport it into the
-// topmost open dialog instead, mirroring Notification.vue.
-const dropzoneTeleportTarget = ref<string | HTMLElement>('body')
-let dialogObserver: MutationObserver | null = null
-
-function syncDropzoneTeleportTarget() {
-	const dialogs = document.querySelectorAll<HTMLDialogElement>('dialog.modal-dialog[open]')
-	dropzoneTeleportTarget.value = dialogs.item(dialogs.length - 1) ?? 'body'
-}
-
-onMounted(() => {
-	syncDropzoneTeleportTarget()
-	dialogObserver = new MutationObserver(syncDropzoneTeleportTarget)
-	dialogObserver.observe(document.body, {
-		attributes: true,
-		attributeFilter: ['open'],
-		childList: true,
-		subtree: true,
-	})
-})
-
-onBeforeUnmount(() => {
-	dialogObserver?.disconnect()
-	dialogObserver = null
-})
+// topmost open dialog instead, mirroring Notification.vue. The shared tracker
+// only watches body's own children, not every change in the page.
+const {topModalDialog} = useTopModalDialog()
+const dropzoneTeleportTarget = computed<string | HTMLElement>(() => topModalDialog.value ?? 'body')
 
 watch(() => props.editEnabled, enabled => {
 	if (!enabled) {

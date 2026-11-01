@@ -128,12 +128,16 @@ async function changeBucket(bucket: IBucket) {
 		return
 	}
 
-	await moveMutation.mutateAsync({
-		project: props.task.project_id!,
-		view: kanbanView.value.id!,
-		bucket: bucket.id!,
-		task: props.task,
-	})
+	try {
+		await moveMutation.mutateAsync({
+			project: props.task.project_id!,
+			view: kanbanView.value.id!,
+			bucket: bucket.id!,
+			task: props.task,
+		})
+	} catch {
+		return // The task stays in its bucket; the mutation reports the error.
+	}
 
 	success({message: t('task.detail.bucketChangedSuccess')})
 }

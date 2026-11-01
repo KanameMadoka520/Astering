@@ -207,7 +207,7 @@ test.describe('Daily routines on the board', () => {
 		const card = page.locator('.kanban .bucket:nth-child(1) .tasks .task').filter({hasText: 'Feed the cat'})
 		await card.dragTo(page.locator('.kanban .bucket:nth-child(2) .tasks'))
 
-		await expect(page.getByText('Routines are not moved to the done bucket.')).toBeVisible()
+		await expect(page.locator('.global-notification')).toContainText('Routines are not moved to the done bucket.')
 		await expect(page.locator('.kanban .bucket:nth-child(1) .tasks')).toContainText('Feed the cat')
 		await expect(page.locator('.kanban .bucket:nth-child(2) .tasks')).not.toContainText('Feed the cat')
 		expect(writes).toEqual([])

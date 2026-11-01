@@ -24,7 +24,8 @@
 </template>
 
 <script setup lang="ts">
-import {ref, computed, onMounted, onUnmounted} from 'vue'
+import {ref, computed, watch} from 'vue'
+import {useIntervalFn} from '@vueuse/core'
 
 import BaseButton from '@/components/base/BaseButton.vue'
 import {useTimeTracking} from '@/composables/useTimeTracking'
@@ -35,7 +36,18 @@ const {activeTimer, hasActiveTimer} = useTimeTracking()
 const stopMutation = useStopTimerMutation()
 
 const now = ref(new Date())
-let interval: ReturnType<typeof setInterval> | undefined
+// The badge sits in the app header on every page; it ticks only while a timer runs.
+const {pause, resume} = useIntervalFn(() => {
+	now.value = new Date()
+}, 1000, {immediate: false})
+watch(hasActiveTimer, active => {
+	if (!active) {
+		pause()
+		return
+	}
+	now.value = new Date()
+	resume()
+}, {immediate: true})
 
 const elapsed = computed(() => {
 	const start = parseDateOrNull(activeTimer.value?.start_time)
@@ -63,18 +75,6 @@ async function stop() {
 		isStopping.value = false
 	}
 }
-
-onMounted(() => {
-	interval = setInterval(() => {
-		now.value = new Date()
-	}, 1000)
-})
-
-onUnmounted(() => {
-	if (interval !== undefined) {
-		clearInterval(interval)
-	}
-})
 </script>
 
 <style lang="scss" scoped>

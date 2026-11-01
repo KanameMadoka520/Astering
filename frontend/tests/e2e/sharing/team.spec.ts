@@ -17,7 +17,8 @@ test.describe('Team', () => {
 
 		const newTeamName = 'New Team'
 
-		await page.locator('a.button').filter({hasText: 'Create a team'}).click()
+		// The empty state repeats the link; use the one in the page header.
+		await page.locator('.page-header').getByRole('link', {name: 'Create a team', exact: true}).click()
 		await expect(page).toHaveURL(/\/teams\/new/)
 		await expect(page.getByText(sharesNothing)).toBeVisible()
 		await expect(page.locator('.card-header-title')).toContainText('Create a team')

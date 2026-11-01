@@ -1,7 +1,8 @@
 import {queryOptions, useMutation} from '@tanstack/vue-query'
 import {projectHistory, projectCompletion, type ProjectHistoryData} from '@/client/generated'
+import {i18n} from '@/i18n'
 import {contextMutationOptions} from './contextMutation'
-import {projectKeys} from './projects'
+import {mapProjectNavigationItem, projectKeys, type ProjectListResult, type ProjectResponse} from './projects'
 import {projectTimelineKeys} from './projectTimeline'
 
 export function projectHistoryQuery(query: NonNullable<ProjectHistoryData['query']>) {
@@ -20,11 +21,27 @@ export function useProjectCompletionMutation() {
 	return useMutation(contextMutationOptions({
 		mutationFn: async ({id, completed}: {id: number, completed: boolean}) =>
    (await projectCompletion({path: {project: id}, body: {completed}})).data!,
-		onSettled: ({id}, client) => Promise.all([
-			client.invalidateQueries({queryKey: projectKeys.list()}),
-			client.invalidateQueries({queryKey: projectKeys.detail(id)}),
-			client.invalidateQueries({queryKey: ['project-history']}),
-			client.invalidateQueries({queryKey: projectTimelineKeys.all}),
-		]),
+		// Only the completion flag changes, so the cached project is patched instead of reloading every list page.
+		onSuccess: (updated, {id, completed}, client) => {
+			const complete = (project: ProjectResponse) => ({
+				...project,
+				is_completed: updated.is_completed ?? completed,
+			})
+			client.setQueryData<ProjectListResult>(projectKeys.list(), current =>
+				current ? mapProjectNavigationItem(current, id, complete) : current,
+			)
+			client.setQueryData<ProjectResponse>(projectKeys.detail(id), current => current ? complete(current) : current)
+		},
+		// Started, not awaited: the dialog closes once the change is saved, and these views catch up by themselves.
+		onSettled: ({id}, client) => {
+			void Promise.all([
+				client.invalidateQueries({queryKey: projectKeys.list(), refetchType: 'none'}),
+				client.invalidateQueries({queryKey: projectKeys.detail(id)}),
+				client.invalidateQueries({queryKey: ['project-history']}),
+				client.invalidateQueries({queryKey: projectTimelineKeys.all}),
+			])
+			return Promise.resolve()
+		},
+		successMessage: () => i18n.global.t('project.edit.success'),
 	}))
 }

@@ -124,3 +124,32 @@ test('pages through more tokens than fit on one page', async ({authenticatedPage
 	await expect(page.locator('tbody tr')).toHaveCount(pageSize)
 	await expect(page.locator('nav.pagination')).toHaveCount(0)
 })
+
+test('keeps the delete dialog open when revoking a token fails', async ({authenticatedPage: page, apiContext, userToken}) => {
+	const response = await apiContext.post('/api/v2/tokens', {
+		headers: {Authorization: `Bearer ${userToken}`},
+		data: {title: 'Kept token', permissions: {tasks: ['read_all']}, expires_at: '2099-01-01T00:00:00Z'},
+	})
+	expect(response.ok()).toBe(true)
+	await page.route(/\/api\/v2\/tokens\/\d+$/, route => route.request().method() === 'DELETE'
+		? route.fulfill({status: 500, contentType: 'application/json', body: JSON.stringify({message: 'Server error'})})
+		: route.continue())
+	await page.goto('/user/settings/api-tokens')
+	await page.getByRole('button', {name: 'Delete', exact: true}).click()
+	const dialog = page.locator('dialog[open]')
+	await expect(dialog).toContainText('Are you sure you want to delete the token "Kept token"?')
+	await expect(dialog.locator('[data-cy="modalPrimary"]')).toHaveText('Delete token')
+	await dialog.locator('[data-cy="modalPrimary"]').click()
+	await expect(page.locator('.global-notification')).toBeVisible()
+	await expect(dialog).toBeVisible()
+	await expect(page.locator('tbody tr')).toHaveCount(1)
+})
+
+test('says the token list could not be loaded instead of showing it empty', async ({authenticatedPage: page}) => {
+	await page.route(/\/api\/v2\/tokens(\?.*)?$/, route => route.request().method() === 'GET'
+		? route.fulfill({status: 500, contentType: 'application/json', body: JSON.stringify({message: 'Server error'})})
+		: route.continue())
+	await page.goto('/user/settings/api-tokens')
+	await expect(page.locator('.load-error')).toContainText('This list couldn\'t be loaded, so it may not be empty.')
+	await expect(page.getByText('You have no API tokens yet.')).toHaveCount(0)
+})

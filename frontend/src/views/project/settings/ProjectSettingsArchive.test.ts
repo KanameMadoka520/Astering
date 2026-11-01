@@ -7,6 +7,7 @@ import {createMemoryHistory, createRouter, type Router} from 'vue-router'
 const sdk = vi.hoisted(() => ({
 	projectsList: vi.fn(),
 	projectsUpdate: vi.fn(),
+	projectsRead: vi.fn(),
 	userShow: vi.fn(),
 }))
 vi.mock('@/client/generated', () => sdk)
@@ -22,6 +23,7 @@ import testid from '@/directives/testid'
 import {i18n} from '@/i18n'
 import en from '@/i18n/lang/en.json'
 import {useAuthStore} from '@/stores/auth'
+import {useBaseStore} from '@/stores/base'
 
 const defaults = queryClient.getDefaultOptions()
 let wrapper: VueWrapper | undefined
@@ -51,6 +53,7 @@ beforeEach(() => {
 	i18n.global.locale.value = 'en'
 	useAuthStore().setSession({id: 1, username: 'me', type: AUTH_TYPES.USER, exp: 0})
 	sdk.userShow.mockReturnValue(new Promise(() => {}))
+	sdk.projectsRead.mockImplementation(({path}: {path: {id: number}}) => Promise.resolve({data: project(path.id)}))
 	errors = []
 	document.body.innerHTML = ''
 })
@@ -106,6 +109,25 @@ function errorMessages() {
 }
 
 describe('ProjectSettingsArchive', () => {
+	it('does not replace the current project or navigate after its route has been reused', async () => {
+		sdk.projectsList.mockResolvedValue(list([project(42), project(43)]))
+		let finish!: (value: unknown) => void
+		sdk.projectsUpdate.mockReturnValue(new Promise(resolve => { finish = resolve }))
+		await mountModal()
+		confirmButton().click()
+		await flushPromises()
+		expect(sdk.projectsUpdate.mock.calls[0][0].path).toEqual({id: 42})
+
+		await router.push('/projects/43/settings/archive')
+		await flushPromises()
+		useBaseStore().setCurrentProject({id: 43})
+		finish({data: project(42, {is_archived: true})})
+		await flushPromises()
+
+		expect(router.currentRoute.value.fullPath).toBe('/projects/43/settings/archive')
+		expect(useBaseStore().currentProjectId).toBe(43)
+	})
+
 	it('renders without the project being loaded', async () => {
 		sdk.projectsList.mockReturnValue(new Promise(() => {}))
 		await mountModal()

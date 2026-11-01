@@ -2,6 +2,7 @@
 import {computed, reactive, ref, watch} from 'vue'
 import {useNow} from '@vueuse/core'
 import {useI18n} from 'vue-i18n'
+import {useAronaPresenting} from '@/composables/useAronaPresentation'
 import type {Action, ModelStep, Operation} from '@/client/generated'
 import CacheUsage from '@/components/ai/CacheUsage.vue'
 import {toolLabels} from '@/components/ai/toolLabels'
@@ -38,9 +39,15 @@ const text = computed(() => {
 })
 const usage = computed(() => requestUsage(props.step.usage))
 
-// Only the streaming round's header ticks; every other round reads its saved duration.
+// Only the streaming round's header ticks, and only on screen; every other round reads its saved duration.
+const presenting = useAronaPresenting()
 const {now, pause, resume} = useNow({interval: 1000, controls: true})
-watch(() => props.streaming, value => value ? resume() : pause(), {immediate: true})
+watch(() => props.streaming && presenting.value, ticking => {
+	if (!ticking) return pause()
+	// Shown again after a pause, the clock reads the real time at once instead of a second later.
+	now.value = new Date()
+	resume()
+}, {immediate: true})
 const elapsed = computed(() => {
 	const started = props.step.started ? Date.parse(props.step.started) : NaN
 	if (props.streaming && Number.isFinite(started)) return Math.max(props.step.duration_ms ?? 0, now.value.getTime() - started)

@@ -82,6 +82,7 @@ import Done from '@/components/misc/Done.vue'
 import {useCopyToClipboard} from '@/composables/useCopyToClipboard'
 import {useDelayedLoading} from '@/composables/useDelayedLoading'
 import {useUpdateTaskMutation} from '@/client/queries/taskMutations'
+import {captureClientRequestContext, isClientRequestContextCurrent} from '@/client/requestContext'
 
 import type {Task as ITask} from '@/client/generated'
 import {getHexColor, getTaskIdentifier} from '@/helpers/task'
@@ -110,6 +111,8 @@ async function copyUrl() {
 
 const updateTask = useUpdateTaskMutation()
 const loading = useDelayedLoading(updateTask.isPending)
+// A title typed for one account is never sent once the session ended or another account signed in.
+const owner = captureClientRequestContext()
 
 const textIdentifier = computed(() => getTaskIdentifier(props.task))
 
@@ -158,11 +161,13 @@ function handleTitleInput(event: Event) {
 	titleHasChanges.value = target.textContent !== (props.task.title ?? '')
 }
 
-async function save(element: HTMLElement) {
+type TitleSaveOutcome = 'none' | 'saved' | 'failed'
+
+async function save(element: HTMLElement): Promise<TitleSaveOutcome> {
 	// An untouched heading has nothing to save, even if the server title changed while it had focus.
 	if (!titleHasChanges.value) {
 		showServerTitle()
-		return
+		return 'none'
 	}
 
 	const title = element.textContent ?? ''
@@ -172,17 +177,18 @@ async function save(element: HTMLElement) {
 		titleHasChanges.value = false
 		showServerTitle()
 		error({message: t('task.detail.titleRequired')})
-		return
+		return 'failed'
 	}
 
 	// We only want to save if the title was actually changed.
 	// so we only continue if the task title changed.
 	if (title === props.task.title) {
 		titleHasChanges.value = false
-		return
+		return 'none'
 	}
 
 	const taskId = props.task.id!
+	if (!isClientRequestContextCurrent(owner)) return 'failed'
 	try {
 		saving.value = true
 		// Only the title: the rest of this copy may be older than what the server holds.
@@ -190,7 +196,7 @@ async function save(element: HTMLElement) {
 			id: taskId,
 			title,
 		})
-		if (props.task.id !== taskId) return
+		if (props.task.id !== taskId) return 'saved'
 		emit('update:task', newTask)
 		// The heading picks up the saved title once the cache update reaches the task prop.
 		if (element.textContent === title) titleHasChanges.value = false
@@ -199,12 +205,22 @@ async function save(element: HTMLElement) {
 		setTimeout(() => {
 			showSavedMessage.value = false
 		}, 2000)
+		return 'saved'
 	} catch {
 		// The mutation already reported the failure; the typed title stays for another try.
+		return 'failed'
 	} finally {
 		saving.value = false
 	}
 }
+
+/** Saves a title that is still being typed (the save shortcut); 'none' when there was nothing to send. */
+function flush(): Promise<TitleSaveOutcome> {
+	const element = titleElement.value
+	return element ? save(element) : Promise.resolve('none')
+}
+
+defineExpose({flush})
 
 async function cancel(element: HTMLInputElement) {
 	titleHasChanges.value = false

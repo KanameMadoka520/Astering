@@ -1,11 +1,12 @@
-import {describe, it, expect, beforeEach, vi} from 'vitest'
+import {afterEach, describe, it, expect, beforeEach, vi} from 'vitest'
 import {mount} from '@vue/test-utils'
 
+const route = vi.hoisted(() => ({name: undefined as string | undefined, fullPath: '/projects/1/2'}))
 const push = vi.fn()
 vi.mock('vue-router', async (importOriginal) => ({
 	...await importOriginal<typeof import('vue-router')>(),
 	useRouter: () => ({push}),
-	useRoute: () => ({fullPath: '/projects/1/2'}),
+	useRoute: () => route,
 }))
 
 import TaskLinkView from './TaskLinkView.vue'
@@ -39,9 +40,14 @@ function mountView(isEditable: boolean) {
 	})
 }
 
+afterEach(() => window.history.replaceState(null, ''))
+
 describe('TaskLinkView', () => {
 	beforeEach(() => {
 		push.mockReset()
+		route.name = undefined
+		route.fullPath = '/projects/1/2'
+		window.history.replaceState(null, '')
 	})
 
 	it('opens the task as a modal over the current route when not editable', async () => {
@@ -62,5 +68,18 @@ describe('TaskLinkView', () => {
 		await wrapper.find('a').trigger('click')
 
 		expect(push).not.toHaveBeenCalled()
+	})
+
+	it.each(['/projects/1/2', undefined])('task-to-task links keep only the original backdrop %s', async backdropView => {
+		route.name = 'task.detail'
+		route.fullPath = '/tasks/1'
+		window.history.replaceState(backdropView ? {backdropView} : null, '')
+		const wrapper = mountView(false)
+		await wrapper.find('a').trigger('click')
+		expect(push).toHaveBeenCalledWith({
+			name: 'task.detail',
+			params: {id: 5},
+			state: backdropView ? {backdropView} : {},
+		})
 	})
 })

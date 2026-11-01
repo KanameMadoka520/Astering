@@ -522,6 +522,15 @@ export default Extension.create<FilterAutocompleteOptions>({
 							return false
 						}
 
+						// Escape only dismisses the suggestions. preventDefault cancels the Escape close request of a
+						// wrapping native <dialog> (new or edited filter, view form), which would drop the whole form.
+						if (event.key === 'Escape' && !event.isComposing) {
+							event.preventDefault()
+							event.stopPropagation()
+							hidePopup()
+							return true
+						}
+
 						// Forward key events to the component
 						if ((component as VueRenderer & {ref?: {onKeyDown?: (params: {event: KeyboardEvent}) => boolean}})?.ref?.onKeyDown) {
 							return (component as VueRenderer & {ref: {onKeyDown: (params: {event: KeyboardEvent}) => boolean}}).ref.onKeyDown({event})

@@ -31,6 +31,7 @@
 				<span class="compass-desk__back-text">{{ backLabel }}</span>
 			</RouterLink>
 			<div class="compass-desk__state">
+				<CompassVisibilityChip :team-id="space.team_id" />
 				<CompassSaveStatus
 					:state="saveState"
 					:saved-at="savedAt"
@@ -95,7 +96,7 @@
 							<XButton
 								variant="secondary"
 								:shadow="false"
-								@click="discardStale"
+								@click="askDiscardStale"
 							>
 								{{ t('compass.draft.discardMine') }}
 							</XButton>
@@ -114,7 +115,7 @@
 							variant="tertiary"
 							:shadow="false"
 							:aria-disabled="saving"
-							@click="discardRestored"
+							@click="askDiscardRestored"
 						>
 							{{ t('compass.draft.discard') }}
 						</XButton>
@@ -132,7 +133,7 @@
 						:space="space"
 						:busy="saving"
 						@keepMine="keepMine"
-						@takeLatest="takeLatest"
+						@takeLatest="askTakeLatest"
 					/>
 				</div>
 
@@ -492,28 +493,29 @@
 			</component>
 		</div>
 
+		<!-- Every way of throwing text away asks first: the bar's Discard, both draft banners and "use the latest". -->
 		<Modal
-			v-if="confirmingDiscard"
-			:aria-label="t('compass.editor.discardTitle')"
-			@close="confirmingDiscard = false"
+			v-if="discardDialog"
+			:aria-label="discardDialog.title"
+			@close="confirmingDiscard = null"
 		>
 			<Card
-				:title="t('compass.editor.discardTitle')"
+				:title="discardDialog.title"
 				:shadow="false"
 				:padding="false"
 				:show-close="true"
-				class="compass-desk__dialog has-text-start"
-				@close="confirmingDiscard = false"
+				class="compass-desk__dialog compass-desk__discard-dialog has-text-start"
+				@close="confirmingDiscard = null"
 			>
 				<p class="compass-desk__dialog-text">
-					{{ currentEntryId === 0 ? t('compass.editor.discardTextNew') : t('compass.editor.discardText') }}
+					{{ discardDialog.text }}
 				</p>
 				<template #footer>
 					<XButton
 						variant="secondary"
 						:shadow="false"
 						autofocus
-						@click="confirmingDiscard = false"
+						@click="confirmingDiscard = null"
 					>
 						{{ t('compass.leave.stay') }}
 					</XButton>
@@ -521,9 +523,10 @@
 						variant="primary"
 						danger
 						:shadow="false"
-						@click="discardChanges"
+						class="compass-desk__discard-confirm"
+						@click="confirmDiscard"
 					>
-						{{ t('compass.editor.discardConfirm') }}
+						{{ discardDialog.confirm }}
 					</XButton>
 				</template>
 			</Card>
@@ -585,6 +588,8 @@
 		<CompassLeaveDialog
 			v-if="leaving"
 			:store-failed="storeFailed"
+			:unsaved="dirty"
+			:uploading="images.pending.value"
 			@stay="answerLeave('stay')"
 			@keep="answerLeave('keep')"
 			@discard="answerLeave('discard')"
@@ -619,6 +624,7 @@ import {
 import CompassGlyph from '@/components/compass/base/CompassGlyph.vue'
 import CompassKindLabel from '@/components/compass/base/CompassKindLabel.vue'
 import CompassStateBadge from '@/components/compass/base/CompassStateBadge.vue'
+import CompassVisibilityChip from '@/components/compass/base/CompassVisibilityChip.vue'
 import CompassThemePicker from '@/components/compass/base/CompassThemePicker.vue'
 import DrivePicker from '@/components/drive/DrivePicker.vue'
 import Editor from '@/components/input/AsyncEditor'
@@ -705,6 +711,8 @@ const emit = defineEmits<{
 type DeskField = CompassLimitedField | 'content'
 type SaveMode = 'create' | 'update' | 'recreate'
 type LeaveChoice = 'stay' | 'keep' | 'discard'
+// What a confirmed discard throws away: the desk's changes, a restored or stale draft, or the writer's text for the latest version.
+type DiscardKind = 'changes' | 'restored' | 'stale' | 'latest'
 type DeskFailureNotice = {
 	kind: CompassDeskFailure
 	detail: string
@@ -851,7 +859,7 @@ const savedAt = ref<Date | null>(null)
 const attempted = ref(false)
 const failure = ref<DeskFailureNotice | null>(null)
 const conflict = ref<CompassEntry | null>(null)
-const confirmingDiscard = ref(false)
+const confirmingDiscard = ref<DiscardKind | null>(null)
 const leaving = ref(false)
 
 const wide = useMediaQuery('(min-width: 1024px)')
@@ -893,9 +901,11 @@ const backLabel = computed(() => currentEntryId.value > 0
 
 const saveState = computed<CompassSaveState>(() => {
 	if (saving.value) return 'saving'
+	if (dirty.value && storeFailed.value) return 'unstored'
+	if (dirty.value && (failure.value !== null || conflict.value !== null)) return 'failed'
+	// Saved text with pictures still on their way is not finished yet.
+	if (images.pending.value > 0) return 'uploading'
 	if (!dirty.value) return currentEntryId.value === 0 ? 'new' : 'saved'
-	if (storeFailed.value) return 'unstored'
-	if (failure.value !== null || conflict.value !== null) return 'failed'
 	return persistence.value === 'stored' ? 'stored' : 'dirty'
 })
 
@@ -1135,6 +1145,11 @@ async function keepMine() {
 	await focusSave()
 }
 
+function askTakeLatest() {
+	if (!conflict.value || saving.value) return
+	confirmingDiscard.value = 'latest'
+}
+
 async function takeLatest() {
 	const latest = conflict.value
 	if (!latest || saving.value) return
@@ -1172,11 +1187,51 @@ async function focusSave() {
 
 function askDiscard() {
 	if (saving.value || !dirty.value) return
-	confirmingDiscard.value = true
+	confirmingDiscard.value = 'changes'
+}
+
+function askDiscardRestored() {
+	if (saving.value) return
+	confirmingDiscard.value = 'restored'
+}
+
+function askDiscardStale() {
+	if (!staleDraft.value) return
+	confirmingDiscard.value = 'stale'
+}
+
+const discardDialog = computed(() => {
+	switch (confirmingDiscard.value) {
+		case 'changes': return {
+			title: t('compass.editor.discardTitle'),
+			text: currentEntryId.value === 0 ? t('compass.editor.discardTextNew') : t('compass.editor.discardText'),
+			confirm: t('compass.editor.discardConfirm'),
+		}
+		case 'restored':
+		case 'stale': return {
+			title: t('compass.draft.discardTitle'),
+			text: t('compass.draft.discardText'),
+			confirm: t('compass.draft.discard'),
+		}
+		case 'latest': return {
+			title: t('compass.conflict.takeLatestTitle'),
+			text: t('compass.conflict.takeLatestText'),
+			confirm: t('compass.conflict.takeLatest'),
+		}
+		default: return null
+	}
+})
+
+async function confirmDiscard() {
+	const kind = confirmingDiscard.value
+	confirmingDiscard.value = null
+	if (kind === 'changes') await discardChanges()
+	else if (kind === 'restored') await discardRestored()
+	else if (kind === 'stale') await discardStale()
+	else if (kind === 'latest') await takeLatest()
 }
 
 async function discardChanges() {
-	confirmingDiscard.value = false
 	fields.value = cloneCompassDraftFields(base.value.fields)
 	draft.clear()
 	failure.value = null
@@ -1241,12 +1296,19 @@ function staysOnDesk(to: RouteLocationNormalized): boolean {
 }
 
 async function confirmLeave(to: RouteLocationNormalized): Promise<boolean> {
-	if (staysOnDesk(to) || !dirty.value) return true
+	// Images still uploading are lost on leaving too, even when the text itself is saved.
+	if (staysOnDesk(to) || (!dirty.value && images.pending.value === 0)) return true
 	return askLeave()
 }
 
 onBeforeRouteLeave(to => confirmLeave(to))
 onBeforeRouteUpdate(to => confirmLeave(to))
+
+// Closing the tab cancels uploads as well; the draft composable only asks for unsaved text.
+useEventListener(window, 'beforeunload', (event: BeforeUnloadEvent) => {
+	if (images.pending.value === 0) return
+	event.preventDefault()
+})
 
 // ---------------------------------------------------------------------------
 // Keyboard and layout

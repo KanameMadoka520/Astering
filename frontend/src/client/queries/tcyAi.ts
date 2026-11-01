@@ -1,5 +1,3 @@
-import {i18n} from '@/i18n'
-const {t} = i18n.global
 import {queryOptions, useMutation, useQueryClient} from '@tanstack/vue-query'
 import {
 	tcyAiModels, tcyAiSettings, tcyAiSaveSettings, tcyAiTest, tcyAiRun, tcyAiTranscribe, tcyAiCleanup,
@@ -22,10 +20,15 @@ export function normalizeAISettings(s: TcyAiSettingsResponse): AISettings {
 }
 
 export function aiSettingsQuery() {
-	return queryOptions({queryKey: settingsKey, queryFn: async ({signal}): Promise<AISettings> => {
-		const s = (await tcyAiSettings({signal})).data
-		return normalizeAISettings(s)
-	}})
+	return queryOptions({
+		queryKey: settingsKey,
+		queryFn: async ({signal}): Promise<AISettings> => {
+			const s = (await tcyAiSettings({signal})).data
+			return normalizeAISettings(s)
+		},
+		// The settings page and the assistant each show their own error with a retry.
+		meta: {handlesError: true},
+	})
 }
 
 export function useSaveAISettings() {
@@ -36,7 +39,8 @@ export function useSaveAISettings() {
 			return normalizeAISettings((await tcyAiSaveSettings({body})).data)
 		},
 		onSuccess: data => { client.setQueryData(settingsKey, data) },
-		successMessage: () => t('tcymc.text.model_connections_and_feature_assignments_saved'),
+		// The form reports each save on the card or section it saved, so a toast would say it twice.
+		toastError: () => false,
 	}))
 }
 

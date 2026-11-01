@@ -159,22 +159,30 @@ describe('useTaskList sort handling for relevance ranking', () => {
 })
 
 describe('useTaskList error reporting', () => {
-	it('toasts a failing load instead of showing an empty list', async () => {
+	it('tells the view a load failed instead of handing it an empty list, without a toast on top', async () => {
 		sdk.projectViewTasksList.mockRejectedValueOnce(new Error('Server is on fire'))
 
-		await mountTaskList({})
-		await flushPromises()
+		const {taskList} = await mountRoutedTaskList()
 
-		expect(error).toHaveBeenCalledWith(expect.objectContaining({message: 'Server is on fire'}))
+		expect(taskList.loadFailed.value).toBe(true)
+		expect(taskList.loaded.value).toBe(false)
+		expect(error).not.toHaveBeenCalled()
 	})
 
-	it('stays silent when the request was aborted', async () => {
+	it('does not report an aborted request as a failure', async () => {
 		sdk.projectViewTasksList.mockRejectedValueOnce(new DOMException('aborted', 'AbortError'))
 
-		await mountTaskList({})
-		await flushPromises()
+		const {taskList} = await mountRoutedTaskList()
 
+		expect(taskList.loadFailed.value).toBe(false)
 		expect(error).not.toHaveBeenCalled()
+	})
+
+	it('only calls a successful load loaded', async () => {
+		const {taskList} = await mountRoutedTaskList()
+
+		expect(taskList.loaded.value).toBe(true)
+		expect(taskList.loadFailed.value).toBe(false)
 	})
 })
 

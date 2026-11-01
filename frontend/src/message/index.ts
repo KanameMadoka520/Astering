@@ -38,11 +38,23 @@ export interface Action {
 	callback: () => void,
 }
 
+// Time on screen (WCAG 2.2.1). A toast with an action such as Undo stays until it is used or closed, since a
+// keyboard or screen reader user needs time to reach it; problems stay long enough to be read. Hovering or focusing a
+// toast pauses its timer (Notification.vue).
+const SUCCESS_MS = 5_000
+const ERROR_MS = 10_000
+const UNTIL_CLOSED = -1
+
+function duration(actions: Action[], ms: number) {
+	return actions.length ? UNTIL_CLOSED : ms
+}
+
 export function error(e: unknown, actions: Action[] = []) {
 	notify({
 		type: 'error',
 		title: i18n.global.t('error.error'),
 		text: getErrorText(e),
+		duration: duration(actions, ERROR_MS),
 		ignoreDuplicates: true,
 		data: {
 			actions: actions,
@@ -55,6 +67,7 @@ export function success(e: unknown, actions: Action[] = []) {
 		type: 'success',
 		title: i18n.global.t('error.success'),
 		text: getErrorText(e),
+		duration: duration(actions, SUCCESS_MS),
 		ignoreDuplicates: true,
 		data: {
 			actions: actions,

@@ -65,7 +65,8 @@ test('removing a relation updates the board behind the detail dialog', async ({a
 	await expect(page.locator('.task-view')).toBeVisible()
 	await page.locator('.task-relations .remove').click()
 	const confirmation = page.getByRole('dialog', {name: 'Delete Task Relation', exact: true})
-	await confirmation.getByRole('button', {name: 'Do it!', exact: true}).click()
+	await expect(confirmation).toContainText('Child work')
+	await confirmation.locator('[data-cy="modalPrimary"]').click()
 	await expect(confirmation).not.toBeVisible()
 	// Close the task modal using Escape without reloading the board cache.
 	await page.keyboard.press('Escape')

@@ -7,10 +7,7 @@
 		<div class="compass-hero__layout">
 			<div class="compass-hero__identity">
 				<p class="compass-hero__eyebrow">
-					<span
-						class="compass-hero__visibility"
-						:title="visibilityHint"
-					>
+					<span class="compass-hero__visibility">
 						<Icon
 							:icon="isTeamSpace ? 'users' : 'lock'"
 							class="compass-hero__visibility-icon"
@@ -57,6 +54,27 @@
 						</span>
 					</template>
 				</p>
+				<!-- Who can open the space and where it is kept, readable by touch and keyboard (not a tooltip). -->
+				<details class="compass-hero__privacy d-print-none">
+					<summary class="compass-hero__privacy-summary">
+						{{ t('compass.hero.privacyTitle') }}
+					</summary>
+					<p class="compass-hero__privacy-text">
+						{{ visibilityHint }} {{ t('compass.space.storageNote') }}
+					</p>
+				</details>
+				<p
+					v-if="canWrite && newDraft"
+					class="compass-hero__draft d-print-none"
+				>
+					<span>{{ t('compass.hero.newDraft') }}</span>
+					<RouterLink
+						class="compass-hero__draft-link"
+						:to="{name: 'compass.entry.new', params: {spaceId: space.id}}"
+					>
+						{{ t('compass.hero.continueWriting') }}
+					</RouterLink>
+				</p>
 			</div>
 
 			<div
@@ -89,8 +107,9 @@
 </template>
 
 <script setup lang="ts">
-import {computed} from 'vue'
+import {computed, ref} from 'vue'
 import {useI18n} from 'vue-i18n'
+import {useEventListener} from '@vueuse/core'
 import XButton from '@/components/input/Button.vue'
 import Icon from '@/components/misc/Icon'
 import CompassSkyHeader from './CompassSkyHeader.vue'
@@ -101,7 +120,9 @@ import {
 	canWriteCompass,
 	type CompassSpace,
 } from '@/client/queries/compass'
+import {useCompassAccountNamespace} from '@/composables/useCompass'
 import {useTeam} from '@/composables/useTeams'
+import {compassDraftKey, loadCompassDraft} from '@/helpers/compass/drafts'
 import {formatDateLong, formatDisplayDate} from '@/helpers/time/formatDate'
 
 const props = defineProps<{
@@ -124,6 +145,17 @@ const visibilityHint = computed(() => isTeamSpace.value
 const canWrite = computed(() => canWriteCompass(props.space))
 const canAdmin = computed(() => canAdminCompass(props.space))
 const motto = computed(() => props.space.motto.trim())
+
+// A new entry started here and kept on this device for this account (the editor's "new" slot) is otherwise
+// only found by pressing Write again.
+const namespace = useCompassAccountNamespace()
+const storageChanges = ref(0)
+useEventListener(window, 'storage', () => storageChanges.value++)
+const newDraft = computed(() => {
+	void storageChanges.value
+	if (namespace.value === '') return null
+	return loadCompassDraft(compassDraftKey(namespace.value, props.space.id, 0), props.space.id, 0)
+})
 </script>
 
 <style lang="scss" scoped>
@@ -214,6 +246,59 @@ const motto = computed(() => props.space.motto.trim())
 
 .compass-hero__dot {
 	color: var(--compass-ink-faint);
+}
+
+.compass-hero__privacy {
+	max-inline-size: 36em;
+	color: var(--compass-ink-soft);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+}
+
+.compass-hero__privacy-summary {
+	display: inline-flex;
+	align-items: center;
+	min-block-size: var(--target-min);
+	color: var(--compass-ink-soft);
+	font-weight: var(--weight-medium);
+	cursor: pointer;
+
+	&:hover {
+		color: var(--compass-ink);
+	}
+
+	&:focus-visible {
+		@include focus-ring;
+	}
+}
+
+.compass-hero__privacy-text {
+	margin-block-start: var(--space-1);
+}
+
+.compass-hero__draft {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0 var(--space-2);
+	color: var(--compass-ink);
+	font-size: var(--text-sm);
+}
+
+.compass-hero__draft-link {
+	display: inline-flex;
+	align-items: center;
+	min-block-size: var(--target-min);
+	color: var(--compass-accent);
+	font-weight: var(--weight-medium);
+
+	&:hover {
+		text-decoration: underline;
+	}
+
+	&:focus-visible {
+		@include focus-ring;
+	}
 }
 
 .compass-hero__actions {

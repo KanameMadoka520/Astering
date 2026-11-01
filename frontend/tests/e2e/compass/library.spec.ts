@@ -122,7 +122,8 @@ test.describe('Compass library', () => {
 		await expect(kinds).toHaveCount(5)
 		await expect(kinds.first()).toContainText('Principle')
 		await expect(kinds.first()).toContainText('What you hold to, whatever happens.')
-		await expect(welcome).toContainText('Personal spaces are visible only to you.')
+		await expect(welcome).toContainText('A personal space is private: other accounts can\'t open it in vikunja-x, admins included.')
+		await expect(welcome).toContainText('without end-to-end encryption, so whoever operates the server could access it. Compass content is not sent to Arona automatically.')
 		await expect(welcome).toContainText('This creates a private space named “Compass”')
 		await expect(welcome.getByRole('link', {name: 'Customize or share with a team…'})).toHaveAttribute('href', /\/compass\/new$/)
 		// Nothing exists until the user asks for it.

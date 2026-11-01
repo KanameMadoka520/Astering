@@ -15,7 +15,7 @@ import {useQuery} from '@tanstack/vue-query'
 import {sessionsQuery, useDeleteSessionMutation} from '@/client/queries/sessions'
 import {normalizePageNumber} from '@/client/queries/pagination'
 import type {Session} from '@/client/generated'
-import ErrorMessage from '@/components/misc/Error.vue'
+import LoadError from '@/components/misc/state/LoadError.vue'
 import Pagination from '@/components/misc/Pagination.vue'
 import PageHeader from '@/components/misc/state/PageHeader.vue'
 
@@ -24,7 +24,8 @@ useTitle(() => `${t('user.settings.sessions.title')} - ${t('user.settings.title'
 
 const authStore = useAuthStore()
 const page = useRouteQuery('page', '1', {transform: normalizePageNumber})
-const sessionQuery = useQuery(computed(() => sessionsQuery(page.value)))
+// The page shows its own load error: an unknown list must not read as "no other sessions".
+const sessionQuery = useQuery(computed(() => ({...sessionsQuery(page.value), meta: {handlesError: true}})))
 const sessions = computed(() => sessionQuery.data.value?.items ?? [])
 const totalPages = computed(() => sessionQuery.data.value?.total_pages ?? 0)
 useClampedPage(page, sessionQuery)
@@ -39,13 +40,15 @@ function confirmDelete(session: Session) {
 	showDeleteModal.value = true
 }
 
+// The dialog stays open (and busy) until the session is revoked; a failure leaves it open to retry or cancel.
 async function deleteSession() {
-	if (deleteMutation.isPending.value) return
-	if (!sessionToDelete.value?.id) return
+	const session = sessionToDelete.value
+	if (deleteMutation.isPending.value || !session?.id) return
 
 	try {
-		await deleteMutation.mutateAsync(sessionToDelete.value.id)
+		await deleteMutation.mutateAsync(session.id)
 	} catch { return }
+	if (sessionToDelete.value?.id !== session.id) return
 	showDeleteModal.value = false
 	sessionToDelete.value = null
 }
@@ -58,7 +61,11 @@ async function deleteSession() {
 			:description="$t('user.settings.sessions.description')"
 		/>
 		<Card :loading="sessionQuery.isPending.value">
-			<ErrorMessage v-if="sessionQuery.isError.value" />
+			<LoadError
+				v-if="sessionQuery.isError.value && !sessionQuery.data.value"
+				:message="$t('user.settings.accessLoadError')"
+				:retry="() => sessionQuery.refetch()"
+			/>
 
 			<div
 				v-if="sessions.length > 0"
@@ -100,7 +107,7 @@ async function deleteSession() {
 									class="is-small"
 									@click="confirmDelete(session)"
 								>
-									{{ $t('misc.delete') }}
+									{{ $t('user.settings.sessions.revoke') }}
 								</XButton>
 							</td>
 						</tr>
@@ -108,7 +115,7 @@ async function deleteSession() {
 				</table>
 			</div>
 
-			<p v-else-if="!sessionQuery.isPending.value && !sessionQuery.isError.value">
+			<p v-else-if="sessionQuery.isSuccess.value">
 				{{ $t('user.settings.sessions.noOtherSessions') }}
 			</p>
 
@@ -120,14 +127,18 @@ async function deleteSession() {
 			<Modal
 				danger
 				:enabled="showDeleteModal"
+				:confirm-label="$t('user.settings.sessions.delete.confirm')"
 				@close="showDeleteModal = false"
-				@submit="deleteSession()"
+				@submit="deleteSession"
 			>
 				<template #header>
 					{{ $t('user.settings.sessions.delete.header') }}
 				</template>
 
 				<template #text>
+					<p v-if="sessionToDelete">
+						<strong>{{ $t('user.settings.sessions.delete.subject', {device: sessionToDelete.device_info, ip: sessionToDelete.ip_address}) }}</strong>
+					</p>
 					<p>
 						{{ $t('user.settings.sessions.delete.text') }}
 					</p>

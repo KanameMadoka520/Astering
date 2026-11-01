@@ -73,6 +73,7 @@ const project = computed(() => projectList.projects[projectId.value])
 // What gets deleted is fixed once the project is known: the delete removes the project and everything inside it
 // from the list as soon as it starts, which would otherwise blank the title and shrink the count mid-request.
 const target = ref<{id: number, title: string, ids: number[]} | null>(null)
+watch(projectId, () => { target.value = null }, {flush: 'sync'})
 watch([project, () => projectList.projectsArray], ([current]) => {
 	if (current && target.value?.id !== current.id) {
 		target.value = {
@@ -119,9 +120,10 @@ const isDeleting = ref(false)
 
 async function deleteProject() {
 	const id = target.value?.id
-	if (!id || isDeleting.value) {
+	if (!id || id !== projectId.value || isDeleting.value) {
 		return
 	}
+	const origin = router.currentRoute.value
 	isDeleting.value = true
 	try {
 		await deleteMutation.mutateAsync(id)
@@ -131,7 +133,7 @@ async function deleteProject() {
 	} finally {
 		isDeleting.value = false
 	}
-	if (alive.value) {
+	if (alive.value && projectId.value === id && router.currentRoute.value === origin) {
 		await router.push({name: 'home'})
 	}
 }

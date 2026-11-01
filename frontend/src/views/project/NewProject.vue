@@ -16,7 +16,6 @@
 			name="projectTitle"
 			:error="showError && project.title === '' ? $t('project.create.addTitleRequired') : null"
 			@keyup.enter="createProject()"
-			@keyup.esc="goBack()"
 		/>
 		<FormField
 			v-if="projectList.hasProjects"
@@ -49,7 +48,6 @@ import FormField from '@/components/input/FormField.vue'
 
 import {useTitle} from '@/composables/useTitle'
 import {useProjects} from '@/composables/useProjects'
-import {useGoBack} from '@/composables/useGoBack'
 import ProjectSearch from '@/components/tasks/partials/ProjectSearch.vue'
 import ParentAccessNote from '@/components/sharing/ParentAccessNote.vue'
 import {PERMISSIONS} from '@/constants/permissions'
@@ -61,7 +59,6 @@ const props = defineProps<{
 
 const {t} = useI18n({useScope: 'global'})
 const router = useRouter()
-const goBack = useGoBack()
 const createMutation = useCreateProjectMutation()
 
 useTitle(() => t('project.create.header'))

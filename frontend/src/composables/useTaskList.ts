@@ -11,7 +11,6 @@ import {
 import {normalizePageNumber} from '@/client/queries/pagination'
 import {isRequestContextAbort} from '@/client/requestContext'
 import {useTasks} from '@/composables/useTasks'
-import {error} from '@/message'
 import {useAuthStore} from '@/stores/auth'
 import {useViewFiltersStore} from '@/stores/viewFilters'
 
@@ -215,13 +214,14 @@ export function useTaskList(
 		page,
 		// Scope updates before the restore decision is made; hold the fetch until then.
 		enabled: () => !pendingQueryRestore.value && projectViewId.value === syncedViewId.value,
+		// The views show a failed load in place, so it is never mistaken for an empty project.
+		handlesError: true,
 	})
 	const loading = query.isFetching
 	const {tasks, totalPages} = query
-
-	watch(query.error, cause => {
-		if (cause && !isRequestContextAbort(cause)) error(cause)
-	})
+	const loadFailed = computed(() => query.isError.value && !isRequestContextAbort(query.error.value))
+	// Only a successful load may be called empty.
+	const loaded = computed(() => query.isSuccess.value)
 
 	async function loadTasks() {
 		await query.refetch()
@@ -231,6 +231,8 @@ export function useTaskList(
 	return {
 		tasks,
 		loading,
+		loadFailed,
+		loaded,
 		totalPages,
 		currentPage: page,
 		loadTasks,

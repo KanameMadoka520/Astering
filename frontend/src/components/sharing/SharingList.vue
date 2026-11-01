@@ -1,7 +1,7 @@
 <template>
 	<section
 		class="sharing-section"
-		:aria-busy="status === 'pending' || undefined"
+		:aria-busy="status === 'pending' || status === 'refreshing' || undefined"
 	>
 		<h3 class="sharing-title">
 			{{ $t('project.share.userTeam.shared', {type: typeNames}) }}
@@ -154,10 +154,17 @@
 		/>
 
 		<p
-			v-else-if="identifiedShares.length === 0"
+			v-else-if="identifiedShares.length === 0 && status === 'success'"
 			class="sharing-empty"
 		>
 			{{ $t('project.share.userTeam.notShared', {type: typeNames}) }}
+		</p>
+		<p
+			v-else-if="identifiedShares.length === 0 && status === 'refreshing'"
+			class="sharing-empty"
+			role="status"
+		>
+			{{ $t('project.share.access.checking') }}
 		</p>
 
 		<Modal

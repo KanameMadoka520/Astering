@@ -13,6 +13,7 @@ import {
 	parseCompassImageDimension,
 	parseCompassImageId,
 } from '@/helpers/compass/images'
+import {whenNearViewport} from '@/composables/useNearViewport'
 
 export type CompassImageNodeAttributes = {
 	fileId: number | null
@@ -46,6 +47,9 @@ class CompassImageView implements NodeView {
 	private fileId: number | null = null
 	private url: string | null = null
 	private disposed = false
+	// A long body does not download every picture on opening; each one starts once the writer scrolls near it.
+	private near = false
+	private stopWaiting: (() => void) | null = null
 
 	constructor(private node: ProseMirrorNode, private options: CompassImageExtensionOptions) {
 		this.dom = document.createElement('figure')
@@ -82,7 +86,23 @@ class CompassImageView implements NodeView {
 		}
 		this.caption.textContent = title
 		this.caption.hidden = title === ''
-		if (attrs.fileId !== this.fileId) void this.load(attrs.fileId)
+		if (attrs.fileId !== this.fileId) this.show(attrs.fileId)
+	}
+
+	private show(fileId: number | null) {
+		if (this.near || fileId === null) {
+			void this.load(fileId)
+			return
+		}
+		this.release()
+		this.fileId = fileId
+		this.image.removeAttribute('src')
+		this.setState('loading')
+		this.stopWaiting ??= whenNearViewport(this.dom, () => {
+			this.near = true
+			this.stopWaiting = null
+			if (!this.disposed) void this.load(this.fileId)
+		})
 	}
 
 	private release() {
@@ -150,6 +170,7 @@ class CompassImageView implements NodeView {
 
 	destroy() {
 		this.disposed = true
+		this.stopWaiting?.()
 		this.release()
 	}
 }

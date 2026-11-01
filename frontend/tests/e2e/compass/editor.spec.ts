@@ -153,6 +153,7 @@ test.describe('Compass editor', () => {
 			.toBeAttached()
 		await expect(d.root.getByRole('link', {name: 'Back to Field notes', exact: true})).toBeVisible()
 		await expect(d.status).toHaveText('Not saved yet')
+		await expect(d.root.locator('.compass-desk__bar .compass-visibility-chip')).toContainText('Only you')
 		await expect(d.discard).toHaveCount(0)
 		await expect(d.root.getByRole('complementary', {name: 'Details'})).toBeVisible()
 		await expect(d.root.getByRole('radio', {name: 'Principle', exact: true})).toBeChecked()
@@ -476,6 +477,15 @@ test.describe('Compass editor', () => {
 		})
 
 		await d.root.getByRole('button', {name: 'Discard draft', exact: true}).click()
+		// One click is not enough to lose a whole draft: it asks first, and Keep editing leaves it alone.
+		const confirmDiscard = page.getByRole('dialog', {name: 'Discard the draft?'})
+		await expect(confirmDiscard).toContainText('The draft kept on this device will be removed')
+		await confirmDiscard.getByRole('button', {name: 'Keep editing', exact: true}).click()
+		await expect(confirmDiscard).toBeHidden()
+		await expect(d.title).toHaveValue('Notes on patience, again')
+		expect(await draftKeys(page)).toHaveLength(1)
+		await d.root.getByRole('button', {name: 'Discard draft', exact: true}).click()
+		await confirmDiscard.getByRole('button', {name: 'Discard draft', exact: true}).click()
 		await expect(d.root.locator('.compass-desk__notice > p').filter({hasText: RESTORED})).toHaveCount(0)
 		await expect(d.title).toHaveValue('Notes on patience')
 		await expect(d.body).toContainText('Wait for the second thought.')
@@ -532,6 +542,7 @@ test.describe('Compass editor', () => {
 		const d = desk(page)
 
 		await d.root.getByRole('button', {name: 'Discard my draft', exact: true}).click()
+		await page.getByRole('dialog', {name: 'Discard the draft?'}).getByRole('button', {name: 'Discard draft', exact: true}).click()
 		await expect(d.sheet).toHaveJSProperty('inert', false)
 		await expect(d.root.getByText(/^You have a draft on this device/)).toHaveCount(0)
 		await expect(d.title).toHaveValue('Letters to myself')
@@ -603,6 +614,95 @@ test.describe('Compass editor', () => {
 			title: 'Slow mornings',
 			revision: 1,
 		})
+	})
+
+	test('a draft kept on this device is offered again from the reader and from the space', async ({
+		authenticatedPage: page,
+		apiContext,
+		userToken,
+	}) => {
+		const space = await createCompassSpace(apiContext, userToken, {title: 'Margins'})
+		const entry = await createCompassEntry(apiContext, userToken, space.id, {title: 'Slow mornings'})
+		const d = desk(page)
+		const dialog = page.getByRole('dialog', {name: 'Leave without saving?'})
+		const actions = page.getByRole('group', {name: 'Entry actions'})
+
+		await page.goto(`/compass/entries/${entry.id}`)
+		await expect(actions.getByRole('link', {name: 'Edit', exact: true})).toBeVisible()
+		await expect(page.getByText(/^Unsaved changes on this device/)).toHaveCount(0)
+
+		await page.goto(`/compass/entries/${entry.id}/edit`)
+		await d.title.fill('Slow mornings, kept')
+		await d.root.getByRole('link', {name: 'Back to the entry', exact: true}).click()
+		await dialog.getByRole('button', {name: 'Leave and keep the draft', exact: true}).click()
+		await expect(page).toHaveURL(new RegExp(`/compass/entries/${entry.id}$`))
+		const continueDraft = actions.getByRole('link', {name: 'Continue draft', exact: true})
+		await expect(continueDraft).toBeVisible()
+		await expect(actions.getByText(/^Unsaved changes on this device since /)).toBeVisible()
+		await continueDraft.click()
+		await expect(d.title).toHaveValue('Slow mornings, kept')
+		await d.root.getByRole('link', {name: 'Back to the entry', exact: true}).click()
+		await dialog.getByRole('button', {name: 'Leave and keep the draft', exact: true}).click()
+		await expect(page).toHaveURL(new RegExp(`/compass/entries/${entry.id}$`))
+
+		// A new entry started in the space and kept unsaved.
+		await page.goto(`/compass/spaces/${space.id}/write`)
+		await d.title.fill('Half a thought')
+		await expect.poll(async () => (await draftKeys(page)).some(key => key.endsWith(`:${space.id}:new`))).toBe(true)
+		await d.root.getByRole('link', {name: 'Back to Margins', exact: true}).click()
+		await dialog.getByRole('button', {name: 'Leave and keep the draft', exact: true}).click()
+		await expect(page).toHaveURL(new RegExp(`/compass/spaces/${space.id}$`))
+		await expect(page.getByText('An unsaved new entry is waiting on this device.')).toBeVisible()
+		await page.getByRole('link', {name: 'Continue writing', exact: true}).click()
+		await expect(d.title).toHaveValue('Half a thought')
+	})
+
+	test('images still uploading keep the status from saying Saved and make leaving ask', async ({
+		authenticatedPage: page,
+		apiContext,
+		userToken,
+	}) => {
+		const space = await createCompassSpace(apiContext, userToken, {title: 'Pictures'})
+		const entry = await createCompassEntry(apiContext, userToken, space.id, {title: 'A walk', content: '<p>Along the river.</p>'})
+		await page.goto(`/compass/entries/${entry.id}/edit`)
+		const d = desk(page)
+		await expect(d.status).toHaveText('Saved')
+		const png = await page.evaluate(() => {
+			const canvas = document.createElement('canvas')
+			canvas.width = 48
+			canvas.height = 32
+			const context = canvas.getContext('2d')!
+			context.fillStyle = '#267ac4'
+			context.fillRect(0, 0, canvas.width, canvas.height)
+			return canvas.toDataURL('image/png').split(',')[1]
+		})
+		let releaseUpload!: () => void
+		const uploadGate = new Promise<void>(resolve => { releaseUpload = resolve })
+		await page.route('**/api/v2/drive/files', async route => {
+			if (route.request().method() !== 'POST') return route.continue()
+			await uploadGate
+			return route.continue()
+		})
+		try {
+			await d.body.click()
+			await d.root.locator('.compass-desk__media input[type=file]').setInputFiles({
+				name: 'river.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64'),
+			})
+			await page.getByRole('dialog', {name: 'Choose how to upload images'}).getByRole('button', {name: 'Upload images', exact: true}).click()
+			await expect(d.status).toHaveText('Images still uploading…')
+
+			await d.root.getByRole('link', {name: 'Back to the entry', exact: true}).click()
+			const leave = page.getByRole('dialog', {name: 'Leave while images upload?'})
+			await expect(leave).toContainText('1 image is still uploading and will be cancelled if you leave.')
+			await expect(leave.getByRole('button', {name: 'Discard changes and leave', exact: true})).toHaveCount(0)
+			await leave.getByRole('button', {name: 'Keep editing', exact: true}).click()
+			await expect(leave).toBeHidden()
+			await expect(page).toHaveURL(new RegExp(`/compass/entries/${entry.id}/edit$`))
+		} finally {
+			releaseUpload()
+		}
+		await expect(d.root.locator('.compass-editor-image img')).toHaveCount(1)
+		await expect(d.status).not.toHaveText('Images still uploading…')
 	})
 
 	test('“Discard changes” asks first, then returns to the saved version', async ({
@@ -707,7 +807,7 @@ test.describe('Compass editor', () => {
 		await expect(d.root.locator('.compass-desk__notice > p').filter({hasText: RESTORED})).toHaveCount(0)
 	})
 
-	test('a teammate’s newer version names them; “Use the latest version” replaces the desk', async ({
+	test('a teammate’s newer version names them; using the latest version asks, then replaces the desk', async ({
 		authenticatedPage: page,
 		apiContext,
 		userToken,
@@ -737,6 +837,7 @@ test.describe('Compass editor', () => {
 
 		const d = desk(page)
 		await expect(d.title).toHaveValue('How we review work')
+		await expect(d.root.locator('.compass-desk__bar .compass-visibility-chip')).toContainText('Shared with Studio')
 		await d.title.fill('How I would review work')
 		await updateCompassEntry(apiContext, teammateToken, entry.id, {
 			title: 'How we review work together',
@@ -756,7 +857,16 @@ test.describe('Compass editor', () => {
 		await expect(latest).toContainText('Weekly, in person, with notes.')
 		await expect(d.title).toHaveValue('How I would review work')
 
-		await panel.getByRole('button', {name: 'Use the latest version', exact: true}).click()
+		await expect(panel).toContainText('Using the latest version removes it.')
+		await panel.getByRole('button', {name: 'Discard my text and use the latest', exact: true}).click()
+		const confirmLatest = page.getByRole('dialog', {name: 'Discard your text and use the latest version?'})
+		await expect(confirmLatest).toContainText('your draft on this device will be removed')
+		await confirmLatest.getByRole('button', {name: 'Keep editing', exact: true}).click()
+		await expect(confirmLatest).toBeHidden()
+		await expect(d.title).toHaveValue('How I would review work')
+		await expect(latest).toBeVisible()
+		await panel.getByRole('button', {name: 'Discard my text and use the latest', exact: true}).click()
+		await confirmLatest.getByRole('button', {name: 'Discard my text and use the latest', exact: true}).click()
 		await expect(latest).toHaveCount(0)
 		await expect(d.title).toHaveValue('How we review work together')
 		await expect(d.title).toBeFocused()

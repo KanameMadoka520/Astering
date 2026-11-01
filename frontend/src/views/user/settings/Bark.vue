@@ -6,11 +6,13 @@ import {barkQuery, useSaveBark, useTestBark} from '@/client/queries/bark'
 import type {BarkSaveData} from '@/client/generated'
 import {useTitle} from '@/composables/useTitle'
 import Message from '@/components/misc/Message.vue'
+import LoadError from '@/components/misc/state/LoadError.vue'
 import PageHeader from '@/components/misc/state/PageHeader.vue'
 defineOptions({name: 'BarkSettingsPage'})
 const {t} = useI18n({useScope: 'global'})
 useTitle(() => `${t('bark.title')} - ${t('user.settings.title')}`)
-const query = useQuery(barkQuery())
+// The page shows its own load error; the 10s poll would otherwise toast it again every time.
+const query = useQuery({...barkQuery(), meta: {handlesError: true}})
 const draft = ref<BarkSaveData['body']>()
 const baseline = ref('')
 const dirty = computed(() => JSON.stringify(draft.value) !== baseline.value)
@@ -43,17 +45,16 @@ const endpoint = computed(() => (draft.value?.server_url ?? '').replace(/\/+$/, 
 			:description="t('bark.intro')"
 		/>
 		<div class="settings-sections">
-			<Card>
+			<Card :loading="query.isPending.value">
 				<Message class="mbe-4">
 					{{ t('bark.reminderHint') }}
 				</Message>
-				<Message
-					v-if="query.isError.value"
-					variant="danger"
+				<LoadError
+					v-if="query.isError.value && !query.data.value"
 					class="mbe-4"
-				>
-					{{ t('bark.loadFailed') }}
-				</Message>
+					:message="t('bark.loadFailed')"
+					:retry="() => query.refetch()"
+				/>
 				<form
 					v-if="draft"
 					class="bark-settings"
@@ -199,8 +200,22 @@ const endpoint = computed(() => (draft.value?.server_url ?? '').replace(/\/+$/, 
 				<p class="settings-field__hint mbe-3">
 					{{ t('bark.acceptedHint') }}
 				</p>
+				<!-- "No deliveries yet" only once the history loaded: while loading or after a failure it is unknown. -->
 				<p
-					v-if="!query.data.value?.deliveries?.length"
+					v-if="!query.data.value && query.isPending.value"
+					class="bark-empty"
+					role="status"
+				>
+					{{ t('misc.loading') }}
+				</p>
+				<p
+					v-else-if="!query.data.value"
+					class="bark-empty"
+				>
+					{{ t('bark.deliveriesUnknown') }}
+				</p>
+				<p
+					v-else-if="!query.data.value.deliveries?.length"
 					class="bark-empty"
 				>
 					{{ t('bark.empty') }}

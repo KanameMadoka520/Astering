@@ -38,7 +38,13 @@
 						@tasksAdded="updateTaskList"
 					/>
 
-					<Nothing v-if="ctaVisible && tasks.length === 0 && !loading">
+					<LoadError
+						v-if="loadFailed"
+						class="list-view__load-error"
+						:message="$t('project.tasksLoadError')"
+						:retry="loadTasks"
+					/>
+					<Nothing v-else-if="ctaVisible && loaded && tasks.length === 0 && !loading">
 						{{ $t('project.list.empty') }}
 						<XButton
 							v-if="(project?.id ?? 0) > 0 && canWrite"
@@ -114,6 +120,7 @@ import AddTask from '@/components/tasks/AddTask.vue'
 import SingleTaskInProject from '@/components/tasks/partials/SingleTaskInProject.vue'
 import FilterPopup from '@/components/project/partials/FilterPopup.vue'
 import Nothing from '@/components/misc/Nothing.vue'
+import LoadError from '@/components/misc/state/LoadError.vue'
 import Pagination from '@/components/misc/Pagination.vue'
 import SortPopup from '@/components/project/partials/SortPopup.vue'
 
@@ -150,6 +157,8 @@ const drag = ref(false)
 const {
 	tasks: allTasks,
 	loading,
+	loadFailed,
+	loaded,
 	totalPages,
 	currentPage,
 	loadTasks,
@@ -383,6 +392,10 @@ onBeforeUnmount(() => {
 
 .list-view__add-task {
 	padding: var(--space-3) var(--space-3) 0;
+}
+
+.list-view__load-error {
+	margin: var(--space-3);
 }
 
 .link-share-view .card {

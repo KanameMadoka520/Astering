@@ -491,3 +491,95 @@ describe('install / uninstall (sequence handling)', () => {
 		expect(clickB).not.toHaveBeenCalled()
 	})
 })
+
+describe('shortcuts while a dialog is open', () => {
+	let page: HTMLButtonElement
+	let inDialog: HTMLButtonElement
+	let dialog: HTMLDialogElement
+
+	beforeEach(() => {
+		page = document.createElement('button')
+		document.body.append(page)
+		dialog = document.createElement('dialog')
+		dialog.className = 'modal-dialog'
+		inDialog = document.createElement('button')
+		dialog.append(inDialog)
+		document.body.append(dialog)
+		dialog.setAttribute('open', '')
+	})
+
+	afterEach(() => {
+		uninstall(page)
+		uninstall(inDialog)
+		document.body.innerHTML = ''
+	})
+
+	it('does not click a plain-key shortcut on the page behind the dialog', () => {
+		const click = vi.fn()
+		page.addEventListener('click', click)
+		install(page, 'KeyT')
+
+		const event = fireKeydown('KeyT')
+
+		expect(click).not.toHaveBeenCalled()
+		expect(event.defaultPrevented).toBe(false)
+	})
+
+	it('does not start a sequence on the page behind the dialog', () => {
+		const click = vi.fn()
+		page.addEventListener('click', click)
+		install(page, 'KeyG KeyO')
+
+		fireKeydown('KeyG')
+		fireKeydown('KeyO')
+
+		expect(click).not.toHaveBeenCalled()
+	})
+
+	it('keeps g-sequence navigation behind the task detail dialog, but not single keys', () => {
+		dialog.classList.add('task-detail-view-modal')
+		const navigate = vi.fn()
+		const plain = vi.fn()
+		page.addEventListener('click', navigate)
+		inDialog.addEventListener('click', plain)
+		const behindPlain = document.createElement('button')
+		document.body.append(behindPlain)
+		const behindPlainClick = vi.fn()
+		behindPlain.addEventListener('click', behindPlainClick)
+		install(page, 'KeyG KeyU')
+		install(behindPlain, 'KeyT')
+
+		fireKeydown('KeyG')
+		fireKeydown('KeyU')
+		fireKeydown('KeyT')
+
+		expect(navigate).toHaveBeenCalledTimes(1)
+		expect(behindPlainClick).not.toHaveBeenCalled()
+		uninstall(behindPlain)
+	})
+
+	it('still runs shortcuts inside the dialog and deliberate modifier shortcuts anywhere', () => {
+		const inside = vi.fn()
+		const behind = vi.fn()
+		inDialog.addEventListener('click', inside)
+		page.addEventListener('click', behind)
+		install(inDialog, 'KeyT')
+		install(page, 'Control+KeyK')
+
+		fireKeydown('KeyT')
+		fireKeydown('KeyK', {ctrlKey: true})
+
+		expect(inside).toHaveBeenCalledTimes(1)
+		expect(behind).toHaveBeenCalledTimes(1)
+	})
+
+	it('treats every element inside an editable region as a text field', () => {
+		const editor = document.createElement('div')
+		editor.contentEditable = 'true'
+		const paragraph = document.createElement('p')
+		editor.append(paragraph)
+		document.body.append(editor)
+
+		expect(isFormField(paragraph)).toBe(true)
+	})
+})

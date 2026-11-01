@@ -7,14 +7,24 @@
 		<BaseButton
 			v-if="canEdit"
 			class="compass-tool"
+			:class="{'has-draft': keptDraft}"
 			:to="{name: 'compass.entry.edit', params: {entryId: entry.id}}"
+			:aria-describedby="keptDraft ? draftNoteId : undefined"
 		>
 			<Icon
 				icon="pen"
 				aria-hidden="true"
 			/>
-			<span class="compass-tool__label">{{ t('compass.actions.edit') }}</span>
+			<span class="compass-tool__label">{{ keptDraft ? t('compass.actions.continueDraft') : t('compass.actions.edit') }}</span>
 		</BaseButton>
+		<!-- Text kept on this device is otherwise only found by opening the editor again. -->
+		<span
+			v-if="canEdit && keptDraft"
+			:id="draftNoteId"
+			class="compass-actions__status compass-actions__draft"
+		>
+			{{ draftNote }}
+		</span>
 
 		<BaseButton
 			v-if="canPin"
@@ -222,8 +232,9 @@
 </template>
 
 <script setup lang="ts">
-import {computed, nextTick, onBeforeUnmount, ref, useTemplateRef} from 'vue'
+import {computed, nextTick, onBeforeUnmount, ref, useId, useTemplateRef} from 'vue'
 import {useI18n} from 'vue-i18n'
+import {useEventListener} from '@vueuse/core'
 import BaseButton from '@/components/base/BaseButton.vue'
 import CompassPermanentDeleteDialog from '@/components/compass/base/CompassPermanentDeleteDialog.vue'
 import Dropdown from '@/components/misc/Dropdown.vue'
@@ -239,7 +250,10 @@ import {
 	downloadCompassFile,
 	downloadCompassMarkdown,
 } from '@/helpers/compass/exportMarkdown'
+import {compassDraftKey, loadCompassDraft} from '@/helpers/compass/drafts'
 import {compassImageIds} from '@/helpers/compass/images'
+import {formatDateShort} from '@/helpers/time/formatDate'
+import {useCompassAccountNamespace} from '@/composables/useCompass'
 import {pendingCompassImages, waitForCompassImages} from '@/helpers/compass/imageUrls'
 import {isRequestContextAbort} from '@/client/requestContext'
 import {ZipTooLargeError} from '@/helpers/zipStore'
@@ -279,6 +293,25 @@ const moreTrigger = useTemplateRef<InstanceType<typeof BaseButton>>('moreTrigger
 const exportTrigger = useTemplateRef<InstanceType<typeof BaseButton>>('exportTrigger')
 
 const canEdit = computed(() => canWrite.value && props.entry.state !== 'trashed')
+
+// A draft of this entry kept on this device for this account, the same slot the editor restores from.
+const namespace = useCompassAccountNamespace()
+const draftNoteId = useId()
+// Storage is not reactive; another tab writing or removing the draft bumps this.
+const storageChanges = ref(0)
+useEventListener(window, 'storage', () => storageChanges.value++)
+const keptDraft = computed(() => {
+	void storageChanges.value
+	if (namespace.value === '') return null
+	const {space_id: spaceId, id} = props.entry
+	return loadCompassDraft(compassDraftKey(namespace.value, spaceId, id), spaceId, id)
+})
+const draftNote = computed(() => {
+	const time = formatDateShort(keptDraft.value?.savedAt ?? '')
+	return time === ''
+		? t('compass.reader.draftWaiting')
+		: t('compass.reader.draftWaitingSince', {time})
+})
 const canPin = computed(() => canWrite.value && props.entry.state === 'active')
 
 function togglePin() {
@@ -450,6 +483,11 @@ onBeforeUnmount(() => {
 		&[aria-expanded='true'] {
 			background-color: var(--surface-active);
 			color: var(--compass-ink);
+		}
+
+		// Also visible on phones, where the label is hidden.
+		&.has-draft {
+			color: var(--compass-accent);
 		}
 
 		&.is-pressed {

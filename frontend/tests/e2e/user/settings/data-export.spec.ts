@@ -4,6 +4,12 @@ import {gotoUserSettings} from '../../../support/userSettings'
 import {TEST_PASSWORD} from '../../../support/constants'
 
 test.describe('Data export', () => {
+	test('says what the export leaves out', async ({authenticatedPage: page}) => {
+		await gotoUserSettings(page, 'data-export')
+		await expect(page.locator('.settings-page')).toContainText('Not included: Compass writing')
+		await expect(page.locator('.settings-page')).toContainText('Arona conversations')
+	})
+
 	test('requests and downloads a stored export', async ({authenticatedPage: page, apiContext, userToken}) => {
 		await gotoUserSettings(page, 'data-export')
 		await page.locator('#currentPasswordDataExport').fill(TEST_PASSWORD)
@@ -19,7 +25,7 @@ test.describe('Data export', () => {
 		}, {timeout: 30000}).toBeGreaterThan(0)
 		await page.reload()
 		await page.getByRole('link', {name: 'Download', exact: true}).click()
-		await expect(page.getByRole('heading', {name: 'Download your exported Vikunja data', exact: true})).toBeVisible()
+		await expect(page.getByRole('heading', {name: 'Download your exported vikunja-x data', exact: true})).toBeVisible()
 		await page.locator('#currentPasswordDataExport').fill(TEST_PASSWORD)
 		const downloaded = page.waitForEvent('download')
 		await page.getByRole('button', {name: 'Download', exact: true}).click()

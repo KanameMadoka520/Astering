@@ -111,7 +111,8 @@ export function useProjectAccess(project: MaybeRefOrGetter<ProjectResponse | und
 
 	// Sources are nearest first; the owner of a parent project is an admin there.
 	function inheritedUser(userId: number): InheritedGrant | null {
-		return strongestInheritedGrant(sources.value.flatMap(source => {
+		if (listStatus.value !== 'success') return null
+		return strongestInheritedGrant(sources.value.filter(source => source.status === 'success').flatMap(source => {
 			if (source.parent.owner?.id === userId) {
 				return [{parent: source.parent, permission: PERMISSIONS.ADMIN}]
 			}
@@ -121,7 +122,8 @@ export function useProjectAccess(project: MaybeRefOrGetter<ProjectResponse | und
 	}
 
 	function inheritedTeam(teamId: number): InheritedGrant | null {
-		return strongestInheritedGrant(sources.value.flatMap(source => {
+		if (listStatus.value !== 'success') return null
+		return strongestInheritedGrant(sources.value.filter(source => source.status === 'success').flatMap(source => {
 			const share = source.teams.find(team => team.id === teamId)
 			return share ? [{parent: source.parent, permission: normalizeSharePermission(share.permission)}] : []
 		}))

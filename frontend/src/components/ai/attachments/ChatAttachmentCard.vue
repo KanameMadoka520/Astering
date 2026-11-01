@@ -4,12 +4,21 @@ import {useQuery} from '@tanstack/vue-query'
 import {useI18n} from 'vue-i18n'
 import type {ChatAttachment} from '@/client/generated'
 import {chatAttachmentQuery, fetchChatAttachment} from '@/client/queries/chatAttachments'
+import {useNearViewport} from '@/composables/useNearViewport'
 import {saveChatBlob, chatBytes} from '../export/files'
 const props = defineProps<{conversationId: string, file: ChatAttachment, removable?: boolean, disabled?: boolean}>()
 defineEmits<{remove: [id: string]}>()
 const {t} = useI18n({useScope: 'global'})
 const isImage = computed(() => /^image\/(png|jpeg|gif|webp)$/.test(props.file.mime || ''))
-const blob = useQuery(computed(() => chatAttachmentQuery(props.conversationId, props.file.id!, isImage.value && !props.file.missing)))
+const card = ref<HTMLElement>()
+// A long history mounts every turn: only cards near the visible part of the thread download their original image.
+// Bytes already in the cache show at once, and the download button fetches on its own.
+const near = useNearViewport(card)
+const blob = useQuery(computed(() => chatAttachmentQuery(
+	props.conversationId,
+	props.file.id!,
+	isImage.value && !props.file.missing && near.value,
+)))
 const inDrive = computed(() => Boolean(props.file.drive_file_id))
 const missing = computed(() => { const error = blob.error.value as {status?: number, response?: {status?: number}} | null; return props.file.missing || error?.status === 404 || error?.response?.status === 404 })
 const url = ref('')
@@ -27,6 +36,7 @@ async function download() {
 
 <template>
 	<figure
+		ref="card"
 		class="chat-file"
 		:data-file-id="file.id"
 	>

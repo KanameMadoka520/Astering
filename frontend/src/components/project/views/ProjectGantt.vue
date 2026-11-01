@@ -43,6 +43,12 @@
 					:padding="false"
 					class="has-overflow"
 				>
+					<LoadError
+						v-if="loadFailed"
+						class="gantt-load-error"
+						:message="$t('project.tasksLoadError')"
+						:retry="loadTasks"
+					/>
 					<GanttChart
 						:filters="filters"
 						:tasks="tasks"
@@ -72,6 +78,7 @@ import DateRangeInput from '@/components/input/DateRangeInput.vue'
 import ProjectWrapper from '@/components/project/ProjectWrapper.vue'
 import FancyCheckbox from '@/components/input/FancyCheckbox.vue'
 import TaskForm from '@/components/tasks/TaskForm.vue'
+import LoadError from '@/components/misc/state/LoadError.vue'
 
 import GanttChart from '@/components/gantt/GanttChart.vue'
 import {useGanttFilters} from '../../../views/project/helpers/useGanttFilters'
@@ -103,6 +110,8 @@ const {
 	setDefaultFilters,
 	tasks,
 	isLoading,
+	loadFailed,
+	loadTasks,
 	addTask,
 	updateTask,
 } = useGanttFilters(route, projectId, viewId)
@@ -141,6 +150,10 @@ const dateRange = computed({
 .gantt-chart-container {
 	position: relative;
 	padding-block-end: var(--space-4);
+}
+
+.gantt-load-error {
+	margin: var(--space-3);
 }
 
 .gantt-options {

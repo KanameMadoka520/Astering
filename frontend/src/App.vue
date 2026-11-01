@@ -1,5 +1,5 @@
 <template>
-	<Ready :preserve-content-offline="showAuthLayout && String(route.name ?? '').startsWith('compass.')">
+	<Ready>
 		<RouterView v-if="route.name === 'tcy-public'" />
 		<template v-else-if="isQuickAddMode && authStore.authUser">
 			<QuickAddOverlay />

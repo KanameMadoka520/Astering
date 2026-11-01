@@ -1,3 +1,4 @@
+import type {ClientRequestContext} from '@/client/requestContext'
 import {queryOptions, useMutation, type QueryClient} from '@tanstack/vue-query'
 import {driveList, driveUpload, driveChange, driveAttach, driveCover, driveDownload, drivePreview, driveUsages} from '@/client/generated'
 import type {DriveListData, DriveChangeWritable, DriveFile} from '@/client/generated'
@@ -71,12 +72,12 @@ export function useChangeDriveMutation() {
 		onSettled: ({body}, client) => body.action === 'purge' ? client.invalidateQueries({queryKey: [...driveKeys, 'list']}) : invalidateDrive(client),
 	}))
 }
-export function useAttachDriveMutation() {
+export function useAttachDriveMutation(owner?: ClientRequestContext) {
 	return useMutation(contextMutationOptions({
 		mutationFn: async ({file, taskId}: {file: DriveEntry, taskId: number}) => (await driveAttach({path: {file: file.file_id}, body: {revision: file.revision, task_id: taskId}}).catch(translatedDriveError)).data,
 		onSuccess: (attachment, {taskId}, client) => mapTaskEverywhere(client, taskId, task => ({...task, attachments: [...task.attachments.filter(a => a.id !== attachment.id), attachment]})),
 		onSettled: ({taskId}, client) => Promise.all([invalidateTaskMembership(client, taskId), invalidateDrive(client)]),
-	}))
+	}, owner))
 }
 export function useDriveCoverMutation() {
 	return useMutation(contextMutationOptions({
@@ -90,11 +91,13 @@ export function useDriveCoverMutation() {
 	}))
 }
 
-// A failed preview falls back to the file icon instead of toasting once per card.
+// A failed preview falls back to the file icon instead of toasting once per card. A file's preview never changes
+// (invalidateDrive leaves previews alone), so a cached one is never fetched again.
 export function drivePreviewQuery(id: number) {
 	return queryOptions({
 		queryKey: [...driveKeys, 'preview', id],
 		queryFn: async ({signal}) => expectBlob((await drivePreview({path: {file: id}, parseAs: 'blob', signal})).data, 'Drive preview'),
+		staleTime: Infinity,
 		gcTime: 60_000,
 		retry: false,
 		meta: {handlesError: true},

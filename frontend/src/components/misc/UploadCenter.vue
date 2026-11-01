@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import {computed, watch, ref, nextTick, onBeforeUnmount, onMounted, useId} from 'vue'
+import {computed, watch, ref, nextTick, onBeforeUnmount, useId} from 'vue'
 import UploadProgressRow from './UploadProgressRow.vue'
 import {useI18n} from 'vue-i18n'
 import {imagePrompt, uploads, uploadsExpanded, type ImageChoice} from '@/helpers/uploadTransport'
+import {useTopModalDialog} from '@/composables/useTopModalDialog'
 const {t} = useI18n({useScope: 'global'})
 const dialog = ref<HTMLDialogElement>()
 const mode = ref<'original' | 'webp'>('original')
@@ -24,23 +25,8 @@ onBeforeUnmount(() => clearTimeout(collapseTimer))
 const rowsId = useId()
 const activeCount = () => rows.value.filter(row => !['done', 'error', 'cancelled'].includes(row.stage)).length
 // Open modal dialogs sit in the top layer; the panel follows them so task uploads stay visible.
-const portal = ref<string | HTMLElement>('body')
-let dialogObserver: MutationObserver | undefined
-function syncPortal() {
-	const dialogs = document.querySelectorAll<HTMLDialogElement>('dialog.modal-dialog[open]')
-	portal.value = dialogs.item(dialogs.length - 1) ?? 'body'
-}
-onMounted(() => {
-	syncPortal()
-	dialogObserver = new MutationObserver(syncPortal)
-	dialogObserver.observe(document.body, {
-		attributes: true,
-		attributeFilter: ['open'],
-		childList: true,
-		subtree: true,
-	})
-})
-onBeforeUnmount(() => dialogObserver?.disconnect())
+const {topModalDialog} = useTopModalDialog()
+const portal = computed<string | HTMLElement>(() => topModalDialog.value ?? 'body')
 const inDialog = computed(() => portal.value !== 'body')
 // A dialog shows its own result, and its footer actions must stay reachable: once the uploads in it
 // are done and the panel has collapsed, it steps aside until the dialog closes. Failures stay.

@@ -86,32 +86,6 @@ export const KEYBOARD_SHORTCUTS: ShortcutGroup[] = [
 		],
 	},
 	{
-		title: 'keyboardShortcuts.project.title',
-		available: (route) => (route.name as string)?.startsWith('project.'),
-		shortcuts: [
-			{
-				title: 'keyboardShortcuts.project.switchToListView',
-				keys: ['g', 'l'],
-				combination: 'then',
-			},
-			{
-				title: 'keyboardShortcuts.project.switchToGanttView',
-				keys: ['g', 'g'],
-				combination: 'then',
-			},
-			{
-				title: 'keyboardShortcuts.project.switchToTableView',
-				keys: ['g', 't'],
-				combination: 'then',
-			},
-			{
-				title: 'keyboardShortcuts.project.switchToKanbanView',
-				keys: ['g', 'k'],
-				combination: 'then',
-			},
-		],
-	},
-	{
 		title: 'keyboardShortcuts.gantt.title',
 		available: (route) => route.name === 'project.view',
 		shortcuts: [

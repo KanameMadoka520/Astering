@@ -1,3 +1,4 @@
+import {captureDraftLease} from '@/helpers/draftScope'
 import {
 	computed,
 	onScopeDispose,
@@ -71,8 +72,12 @@ export function useCompassEntryDraft(options: CompassEntryDraftOptions) {
 	// Drafts belong to the account that opened the page. A later account switch remounts the desk, and
 	// whatever is still pending goes to the account that typed it, never to the next one.
 	const owner = ref(toValue(options.namespace))
+	let lease = captureDraftLease(toValue(options.namespace))
 	watch(() => toValue(options.namespace), namespace => {
-		if (owner.value === '') owner.value = namespace
+		if (owner.value === '') {
+			owner.value = namespace
+			lease = captureDraftLease(namespace)
+		}
 	})
 
 	function keyFor(id: number): string {
@@ -116,7 +121,7 @@ export function useCompassEntryDraft(options: CompassEntryDraftOptions) {
 
 	function removeAt(id: number) {
 		const key = keyFor(id)
-		if (key !== '') clearCompassDraft(key)
+		if (key !== '') clearCompassDraft(key, lease)
 	}
 
 	/** Writes the changes now. Returns false when they could only be kept in this tab's memory. */
@@ -136,7 +141,7 @@ export function useCompassEntryDraft(options: CompassEntryDraftOptions) {
 			baseRevision: toValue(options.base).revision,
 			savedAt: new Date().toISOString(),
 			fields: cloneCompassDraftFields(fields.value),
-		})
+		}, lease)
 		storeFailed.value = !ok
 		persistence.value = 'stored'
 		return ok

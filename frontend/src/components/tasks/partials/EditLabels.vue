@@ -84,10 +84,14 @@ const {t} = useI18n({useScope: 'global'})
 const labels = ref<Label[]>([])
 const query = ref('')
 
+function labelsFromModel() {
+	return Array.from(new Map((props.modelValue ?? []).map(label => [label.id, label])).values())
+}
+
 watch(
 	() => props.modelValue,
-	(value) => {
-		labels.value = Array.from(new Map((value ?? []).map(label => [label.id, label])).values())
+	() => {
+		labels.value = labelsFromModel()
 	},
 	{
 		immediate: true,
@@ -117,16 +121,27 @@ async function addLabel(label: Label, showNotification = true) {
 		return
 	}
 
-	await addLabelMutation.mutateAsync({label: {...label, id: label.id!}, taskId: props.taskId})
+	try {
+		await addLabelMutation.mutateAsync({label: {...label, id: label.id!}, taskId: props.taskId})
+	} catch {
+		// The picker already shows the chip; take it away again so it doesn't look saved. The mutation reports the error.
+		labels.value = labelsFromModel()
+		return false
+	}
 	labels.value = Array.from(new Map(labels.value.map(label => [label.id, label])).values())
 	if (showNotification) {
 		success({message: t('task.label.addSuccess')})
 	}
+	return true
 }
 
 async function removeLabel(label: Label) {
 	if (props.taskId !== 0) {
-		await removeLabelMutation.mutateAsync({label: {...label, id: label.id!}, taskId: props.taskId})
+		try {
+			await removeLabelMutation.mutateAsync({label: {...label, id: label.id!}, taskId: props.taskId})
+		} catch {
+			return // The label stays; the mutation reports the error.
+		}
 	}
 
 	const idx = labels.value.findIndex(l => l.id === label.id)
@@ -142,11 +157,16 @@ async function createAndAddLabel(title: string) {
 		return
 	}
 
-	const newLabel = await createLabelMutation.mutateAsync({
-		title,
-		hex_color: getRandomColorHex(),
-	})
-	await addLabel(newLabel, false)
+	let newLabel: Label
+	try {
+		newLabel = await createLabelMutation.mutateAsync({
+			title,
+			hex_color: getRandomColorHex(),
+		})
+	} catch {
+		return // The mutation reports the error.
+	}
+	if (!await addLabel(newLabel, false)) return
 	success({message: t('task.label.addCreateSuccess')})
 }
 </script>

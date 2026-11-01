@@ -124,7 +124,10 @@
 					tabindex="-1"
 					aria-live="polite"
 				>
-					{{ t('drive.stats', {count: total, size: formatSize(query.data.value?.bytes ?? 0)}) }}
+					<!-- Only real numbers: nothing while loading, after a failed load or while switching to the recycle bin. -->
+					<template v-if="query.data.value">
+						{{ t('drive.stats', {count: total, size: formatSize(query.data.value.bytes ?? 0)}) }}
+					</template>
 				</p>
 				<div
 					class="drive-view-toggle"
@@ -162,10 +165,10 @@
 				class="drive-upload-status"
 				role="status"
 			>
-				<span>{{ t('drive.uploadCount', {count: batchUploaded, total: batchTotal}) }}</span>
+				<span>{{ batchSummary }}</span>
 				<progress
 					class="drive-upload-progress"
-					:value="batchUploaded"
+					:value="batchUploaded + batchFailed.length"
 					:max="batchTotal"
 					aria-hidden="true"
 				/>
@@ -179,6 +182,45 @@
 					{{ t('misc.cancel') }}
 				</XButton>
 			</div>
+			<div
+				v-if="!batchActive && batchFailed.length"
+				class="drive-upload-failed"
+				role="alert"
+			>
+				<p>{{ t('drive.uploadFailed', {count: batchFailed.length}, batchFailed.length) }}</p>
+				<ul>
+					<li
+						v-for="(failure, index) in batchFailed"
+						:key="index"
+					>
+						<span class="drive-upload-failed-name">{{ failure.file.name }}</span>
+						<span
+							v-if="failure.reason"
+							class="drive-muted"
+						> · {{ failure.reason }}</span>
+					</li>
+				</ul>
+				<XButton
+					variant="secondary"
+					class="is-small"
+					:shadow="false"
+					:disabled="busy"
+					@click="retryFailedUploads"
+				>
+					{{ t('drive.retryFailed') }}
+				</XButton>
+			</div>
+			<p
+				v-if="dropRejected"
+				class="drive-note"
+				role="status"
+			>
+				<Icon
+					icon="circle-info"
+					class="drive-note-icon"
+				/>
+				<span>{{ t('drive.dropRejected') }}</span>
+			</p>
 			<LoadError
 				v-if="query.isError.value"
 				:message="t('drive.loadError')"
@@ -355,10 +397,10 @@
 			aria-hidden="true"
 		>
 			<Icon icon="cloud-upload-alt" />
-			<span>{{ t('task.attachment.drop') }}</span>
+			<span>{{ batchActive ? t('drive.dropBusy') : t('task.attachment.drop') }}</span>
 		</div>
 		<Modal
-			class="drive-dialog"
+			class="drive-dialog drive-details-dialog"
 			:enabled="selected !== null"
 			:wide="true"
 			:aria-label="t('drive.details')"
@@ -426,7 +468,7 @@
 								v-model="name"
 								class="input"
 								maxlength="255"
-								:disabled="trash"
+								:disabled="selectedTrashed"
 							>
 						</label>
 						<label class="drive-field">
@@ -435,7 +477,7 @@
 								v-model="editCategory"
 								class="input"
 								maxlength="120"
-								:disabled="trash"
+								:disabled="selectedTrashed"
 								:placeholder="t('drive.categoryHint')"
 								:list="categoryListId"
 							>
@@ -451,7 +493,7 @@
 							<input
 								v-model="editPinned"
 								type="checkbox"
-								:disabled="trash"
+								:disabled="selectedTrashed"
 							>
 							<span>{{ t('drive.pin') }}</span>
 						</label>
@@ -498,7 +540,7 @@
 							</p>
 						</section>
 						<p
-							v-if="trash && usageCount"
+							v-if="selectedTrashed && usageCount"
 							class="drive-note"
 						>
 							<Icon
@@ -545,7 +587,7 @@
 						class="drive-detail-actions-start"
 					>
 						<XButton
-							v-if="trash"
+							v-if="selectedTrashed"
 							danger
 							:shadow="false"
 							:disabled="!usagesReady || usageCount > 0"
@@ -573,7 +615,7 @@
 							{{ t('misc.cancel') }}
 						</XButton>
 						<XButton
-							v-if="action === 'edit' && !trash"
+							v-if="action === 'edit' && !selectedTrashed"
 							:shadow="false"
 							:loading="change.isPending.value"
 							:disabled="!name.trim()"
@@ -591,6 +633,41 @@
 							@click="apply(action)"
 						>
 							{{ action === 'purge' ? t('drive.purge') : t('drive.moveToTrash') }}
+						</XButton>
+					</div>
+				</footer>
+			</div>
+		</Modal>
+		<Modal
+			class="drive-dialog drive-leave-dialog"
+			:enabled="leaveTarget !== null"
+			:aria-label="t('drive.leave.title')"
+			@close="stayForUploads"
+			@opened="focusLeaveStay"
+		>
+			<div class="drive-details drive-leave">
+				<header class="drive-details-heading">
+					<h2>{{ t('drive.leave.title') }}</h2>
+				</header>
+				<p class="drive-leave-text">
+					{{ t('drive.leave.text') }}
+				</p>
+				<footer class="drive-detail-actions">
+					<div class="drive-detail-actions-end">
+						<XButton
+							variant="secondary"
+							:shadow="false"
+							data-leave-stay
+							@click="stayForUploads"
+						>
+							{{ t('drive.leave.stay') }}
+						</XButton>
+						<XButton
+							danger
+							:shadow="false"
+							@click="leaveAndCancelUploads"
+						>
+							{{ t('drive.leave.leave') }}
 						</XButton>
 					</div>
 				</footer>
@@ -616,7 +693,10 @@ import {
 	type DriveEntry,
 } from '@/client/queries/drive'
 import {runUploadQueue} from '@/helpers/uploadQueue'
-import {error} from '@/message'
+import {chooseImageBatch, type ImageBatch} from '@/helpers/uploadTransport'
+import {isRequestContextAbort} from '@/client/requestContext'
+import {useUnsavedLeaveGuard} from '@/composables/useUnsavedLeaveGuard'
+import {error, getErrorText} from '@/message'
 import Modal from '@/components/misc/Modal.vue'
 import EmptyState from '@/components/misc/state/EmptyState.vue'
 import LoadError from '@/components/misc/state/LoadError.vue'
@@ -723,9 +803,16 @@ function cardDate(file: DriveEntry) {
 	return trash.value ? file.trashed_at : file.file?.created
 }
 
+type UploadFailure = {file: File, reason: string}
+
 const batchActive = ref(false)
 const batchUploaded = ref(0)
 const batchTotal = ref(0)
+// Files of the last batch that did not reach Drive, with the reason, so they can be named and sent again.
+const batchFailed = ref<UploadFailure[]>([])
+const batchCancelled = ref(false)
+// A drop while a batch runs is not queued; the page says so instead of silently ignoring it.
+const dropRejected = ref(false)
 let uploadController: AbortController | undefined
 onBeforeUnmount(() => uploadController?.abort())
 const upload = useUploadDriveMutation()
@@ -734,25 +821,80 @@ const input = ref<HTMLInputElement | null>(null)
 const root = ref<HTMLElement | null>(null)
 const summary = ref<HTMLElement | null>(null)
 
+const batchSummary = computed(() => batchCancelled.value
+	? t('drive.uploadCancelled', {count: batchUploaded.value, total: batchTotal.value})
+	: t('drive.uploadCount', {count: batchUploaded.value, total: batchTotal.value}))
+
+// Leaving the page cancels the uploads that have not finished (the queue lives in this page), so ask first.
+const {leaveTarget, stay: stayForUploads, discardAndLeave: leaveAndCancelUploads} = useUnsavedLeaveGuard(batchActive)
+
+function focusLeaveStay() {
+	document.querySelector<HTMLElement>('.drive-leave [data-leave-stay]')?.focus()
+}
+
+type ViewState = {search: string, category: string, pinned: boolean, trash: boolean}
+
+function viewState(): ViewState {
+	return {search: search.value, category: category.value, pinned: pinned.value, trash: trash.value}
+}
+
+function sameView(before: ViewState) {
+	const now = viewState()
+	return now.search === before.search && now.category === before.category && now.pinned === before.pinned && now.trash === before.trash
+}
+
+/** One upload; a failure is kept for the list below instead of a toast, a cancel still stops the queue. */
+async function uploadOne(file: File, signal: AbortSignal, headers: Record<string, string>) {
+	try {
+		await upload.mutateAsync({file, signal, headers, quiet: true})
+		return true
+	} catch (cause) {
+		if (signal.aborted || isRequestContextAbort(cause)) throw cause
+		batchFailed.value = [...batchFailed.value, {file, reason: getErrorText(cause)}]
+		return false
+	}
+}
+
 async function uploadFiles(chosen: File[]) {
 	if (batchActive.value || props.busy || !chosen.length) return
-	uploadController = new AbortController()
+	const controller = new AbortController()
+	uploadController = controller
 	batchActive.value = true
 	batchUploaded.value = 0
 	batchTotal.value = chosen.length
+	batchFailed.value = []
+	batchCancelled.value = false
+	dropRejected.value = false
+	const before = viewState()
+	let batch: ImageBatch | null = null
 	try {
-		await runUploadQueue(chosen, uploadController.signal,
-			(file, signal) => upload.mutateAsync({file, signal}),
-			() => {
-				batchUploaded.value++
-				clearFilters()
-				trash.value = false
-			},
-		)
+		// One image-format question for the whole selection. Cancelling it cancels the whole upload, as the
+		// question's own Cancel says; nothing is uploaded behind the user's back.
+		batch = await chooseImageBatch(chosen, controller.signal)
+		const headers = batch?.headers() ?? {}
+		if (batch) {
+			await runUploadQueue(chosen, controller.signal,
+				(file, signal) => uploadOne(file, signal, headers),
+				uploaded => {
+					if (uploaded) batchUploaded.value++
+				},
+			)
+		}
+		batchCancelled.value = batchUploaded.value + batchFailed.value.length < chosen.length
 	} finally {
+		batch?.release()
 		batchActive.value = false
 		if (input.value) input.value.value = ''
 	}
+	// Show the new files once, unless the user moved to other filters or the recycle bin meanwhile.
+	if (batchUploaded.value && sameView(before)) {
+		clearFilters()
+		trash.value = false
+	}
+}
+
+function retryFailedUploads() {
+	void uploadFiles(batchFailed.value.map(failure => failure.file))
 }
 
 function uploadChosenFiles() {
@@ -760,10 +902,17 @@ function uploadChosenFiles() {
 }
 
 // Only the page accepts drops: inside the picker the task page's own attachment drop zone stays in charge.
+// The drop stays accepted during a batch (otherwise the browser would open the file instead of this page);
+// the hint and the note say the files were not added.
 const {isOverDropZone} = useDropZone(() => props.picker ? null : root.value, {
 	checkValidity: items => Array.from(items).some(item => item.kind === 'file'),
 	onDrop: dropped => {
-		if (dropped?.length) void uploadFiles(dropped)
+		if (!dropped?.length) return
+		if (batchActive.value) {
+			dropRejected.value = true
+			return
+		}
+		void uploadFiles(dropped)
 	},
 })
 
@@ -771,6 +920,16 @@ const selected = ref<DriveEntry | null>(null)
 const name = ref('')
 const editCategory = ref('')
 const editPinned = ref(false)
+// The values the edit fields were filled with, to tell the user's own changes from a refreshed file.
+let seeded = {name: '', category: '', pinned: false}
+
+function isTrashed(file: DriveEntry | null) {
+	if (!file) return false
+	// Go sends a missing time as year 1.
+	return Boolean(file.purging) || (file.trashed_at ? new Date(file.trashed_at).getTime() > 0 : false)
+}
+// The dialog follows the file it shows, not the list behind it (an upload may switch that list).
+const selectedTrashed = computed(() => isTrashed(selected.value))
 const action = ref<DetailAction>('edit')
 const confirmed = ref(false)
 const confirmName = ref('')
@@ -804,14 +963,41 @@ const canConfirm = computed(() => {
 	return usageCount.value === 0 || confirmed.value
 })
 
+function fieldsOf(file: DriveEntry) {
+	return {name: file.file?.name ?? '', category: file.category, pinned: file.pinned}
+}
+
 function inspect(file: DriveEntry, mode: DetailAction = 'edit') {
 	selected.value = file
-	name.value = file.file?.name ?? ''
-	editCategory.value = file.category
-	editPinned.value = file.pinned
+	seeded = fieldsOf(file)
+	name.value = seeded.name
+	editCategory.value = seeded.category
+	editPinned.value = seeded.pinned
 	action.value = mode
 	confirmed.value = false
 	confirmName.value = ''
+}
+
+// After a refresh (another window changed the file), fields the user left alone take the new values, so a
+// retry does not write the old ones back over the other change; the user's own edits stay.
+function reseed(file: DriveEntry) {
+	const fresh = fieldsOf(file)
+	if (name.value === seeded.name) name.value = fresh.name
+	if (editCategory.value === seeded.category) editCategory.value = fresh.category
+	if (editPinned.value === seeded.pinned) editPinned.value = fresh.pinned
+	seeded = fresh
+	selected.value = file
+}
+
+// The card that opened the dialog is gone after a trash or purge; once the dialog has closed, keep keyboard
+// focus in Drive instead of on <body> or the top of the page.
+async function focusSummaryAfterDialog() {
+	const deadline = performance.now() + 1000
+	while (document.querySelector('dialog.drive-details-dialog') && performance.now() < deadline) {
+		await new Promise(resolve => setTimeout(resolve, 50))
+	}
+	const active = document.activeElement
+	if (!active || !active.isConnected || active === document.body || active.id === 'main-content') summary.value?.focus()
 }
 
 function closeDetails() {
@@ -871,9 +1057,12 @@ async function apply(mode: DriveChangeWritable['action']) {
 	if (selected.value !== file) return
 	if (result) {
 		selected.value = null
+		if (mode !== 'edit') await focusSummaryAfterDialog()
 		return
 	}
-	selected.value = files.value.find(f => f.file_id === file.file_id) ?? null
+	const refreshed = files.value.find(f => f.file_id === file.file_id)
+	if (refreshed) reseed(refreshed)
+	else selected.value = null
 	confirmed.value = false
 	confirmName.value = ''
 }
@@ -1093,6 +1282,36 @@ async function download(file: DriveEntry) {
 .drive-note {
 	flex-wrap: nowrap;
 	align-items: baseline;
+}
+
+.drive-upload-failed {
+	display: grid;
+	justify-items: start;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-4) var(--space-3);
+	border: 1px solid var(--border-subtle);
+	border-inline-start: 3px solid var(--danger);
+	border-radius: var(--radius-md);
+	background: var(--tint-danger);
+	color: var(--text-primary);
+	font-size: var(--text-md);
+
+	p,
+	ul {
+		margin: 0;
+	}
+
+	ul {
+		display: grid;
+		gap: var(--space-1);
+		padding-inline-start: var(--space-4);
+		list-style: disc;
+	}
+}
+
+.drive-upload-failed-name {
+	font-weight: var(--weight-medium);
+	overflow-wrap: anywhere;
 }
 
 .drive-note-icon {
@@ -1623,6 +1842,11 @@ async function download(file: DriveEntry) {
 	border-end-start-radius: calc(var(--radius-lg) - 1px);
 	border-end-end-radius: calc(var(--radius-lg) - 1px);
 	background: var(--surface-raised);
+}
+
+.drive-leave-text {
+	margin: 0;
+	padding: var(--space-4) var(--space-5);
 }
 
 .drive-detail-actions-start,

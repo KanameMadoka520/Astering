@@ -134,7 +134,7 @@
 							@update:modelValue="toggleTaskDone({...task, done: $event})"
 						/>
 						<RouterLink
-							:to="{ name: route.name as string, params: { id: task.id }, state: { backdropView: route.fullPath } }"
+							:to="{ name: route.name as string, params: { id: task.id }, state: taskModalNavigationState(route) }"
 							:class="{ 'is-strikethrough': task.done}"
 						>
 							<span
@@ -158,7 +158,8 @@
 						:aria-label="$t('task.relation.delete')"
 						@click="setRelationToDelete({
 							relation_kind: rts.kind,
-							other_task_id: task.id
+							other_task_id: task.id,
+							title: task.title,
 						})"
 					>
 						<Icon icon="trash-alt" />
@@ -176,18 +177,16 @@
 		<Modal
 			:enabled="relationToDelete !== undefined"
 			danger
+			:confirm-label="$t('task.relation.deleteConfirm')"
 			@close="relationToDelete = undefined"
-			@submit="removeTaskRelation()"
+			@submit="removeTaskRelation"
 		>
 			<template #header>
 				<span>{{ $t('task.relation.delete') }}</span>
 			</template>
 
 			<template #text>
-				<p>
-					{{ $t('task.relation.deleteText1') }}<br>
-					<strong class="delete-warning">{{ $t('misc.cannotBeUndone') }}</strong>
-				</p>
+				<p>{{ $t('task.relation.deleteText', {task: relationToDelete?.title ?? ''}) }}</p>
 			</template>
 		</Modal>
 	</div>
@@ -197,13 +196,13 @@
 import {ref, reactive, computed} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {useRoute} from 'vue-router'
+import {taskModalNavigationState} from '@/helpers/taskModal'
 
 import {useTasks} from '@/composables/useTasks'
 import {useDelayedLoading} from '@/composables/useDelayedLoading'
 import {useCreateTaskRelationMutation, useDeleteTaskRelationMutation, useUpdateTaskMutation} from '@/client/queries/taskMutations'
 import {createTaskDraft, getTaskIdentifier} from '@/helpers/task'
 import type {Task as ITask} from '@/client/generated'
-import type {TaskRelation as ITaskRelation} from '@/client/generated'
 import {RELATION_KINDS, type IRelationKind} from '@/types/IRelationKind'
 
 
@@ -326,29 +325,33 @@ async function addTaskRelation() {
 	}, 2000)
 }
 
-const relationToDelete = ref<Partial<ITaskRelation>>()
+type RelationToDelete = {relation_kind: IRelationKind, other_task_id?: number, title?: string}
 
-function setRelationToDelete(relation: Partial<ITaskRelation>) {
+const relationToDelete = ref<RelationToDelete>()
+
+function setRelationToDelete(relation: RelationToDelete) {
 	relationToDelete.value = relation
 }
 
+// The dialog stays open while the request runs and after a failure (the mutation reports it), so the
+// relation is never shown as removed when it is not; it only closes once this exact relation is gone.
 async function removeTaskRelation() {
 	const relation = relationToDelete.value
-	if (!relation || !relation.relation_kind || !relation.other_task_id) {
+	if (!relation) return
+	if (!relation.other_task_id) {
 		relationToDelete.value = undefined
 		return
 	}
 	try {
-		const relationKind = relation.relation_kind
-		await deleteRelation.mutateAsync({relationKind, task: props.taskId!, otherTask: relation.other_task_id})
-
-		saved.value = true
-		setTimeout(() => {
-			saved.value = false
-		}, 2000)
-	} finally {
-		relationToDelete.value = undefined
+		await deleteRelation.mutateAsync({relationKind: relation.relation_kind, task: props.taskId, otherTask: relation.other_task_id})
+	} catch {
+		return
 	}
+	if (relationToDelete.value === relation) relationToDelete.value = undefined
+	saved.value = true
+	setTimeout(() => {
+		saved.value = false
+	}, 2000)
 }
 
 function openNewRelationForm() {

@@ -1,3 +1,4 @@
+import type {DraftLease} from '@/helpers/draftScope'
 import {
 	isCompassEntryTheme,
 	isCompassKind,
@@ -105,12 +106,12 @@ export function loadCompassDraft(key: string, spaceId: number, entryId: number):
 }
 
 /** Returns false when the browser refused to persist it; the copy then only lives for this session. */
-export function saveCompassDraft(key: string, draft: CompassDraft): boolean {
-	return writeCompassStorage(key, JSON.stringify(draft))
+export function saveCompassDraft(key: string, draft: CompassDraft, lease?: DraftLease): boolean {
+	return writeCompassStorage(key, JSON.stringify(draft), lease)
 }
 
-export function clearCompassDraft(key: string) {
-	removeCompassStorage(key)
+export function clearCompassDraft(key: string, lease?: DraftLease) {
+	removeCompassStorage(key, lease)
 }
 
 export function hasCompassDraft(key: string): boolean {

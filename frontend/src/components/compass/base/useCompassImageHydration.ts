@@ -2,16 +2,20 @@ import {onBeforeUnmount, watch, type Ref} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {
 	COMPASS_IMAGE_STATE,
+	deferCompassImage,
 	fetchCompassImageUrl,
 	releaseCompassImageUrl,
 	type CompassImageState,
 } from '@/helpers/compass/imageUrls'
 import {COMPASS_IMAGE_ATTRIBUTE, readCompassImage, type CompassImageRef} from '@/helpers/compass/images'
+import {useNearViewportRoot, whenNearViewport} from '@/composables/useNearViewport'
 
 /**
  * Fills the src of every body image rendered under `root` from the space's authorized image route.
  * The markup itself never carries a URL. Each render gets fresh blob: urls, released when the markup
  * changes or the view goes away. A failed image keeps its frame and says why it is missing.
+ * Images load as the reader comes near them, so an entry with many photos does not download them all at once;
+ * printing loads the rest first (waitForCompassImages).
  */
 export function useCompassImageHydration(
 	root: Ref<HTMLElement | null | undefined>,
@@ -19,11 +23,15 @@ export function useCompassImageHydration(
 	html: () => string,
 ) {
 	const {t} = useI18n({useScope: 'global'})
+	const scrollRoot = useNearViewportRoot()
 	let urls: string[] = []
+	let waiting: (() => void)[] = []
 	let generation = 0
 
 	function releaseAll() {
 		generation++
+		waiting.forEach(stop => stop())
+		waiting = []
 		urls.forEach(releaseCompassImageUrl)
 		urls = []
 	}
@@ -85,8 +93,20 @@ export function useCompassImageHydration(
 				markMissing(image, ref.alt)
 				return
 			}
-			setState(image, 'loading')
-			void load(image, space, ref, current)
+			setState(image, 'deferred')
+			const start = () => {
+				stop()
+				if (current !== generation || !image.isConnected) return
+				setState(image, 'loading')
+				void load(image, space, ref, current)
+			}
+			const forget = deferCompassImage(image, start)
+			const unobserve = whenNearViewport(image, start, {root: scrollRoot()})
+			const stop = () => {
+				forget()
+				unobserve()
+			}
+			waiting.push(stop)
 		})
 	}
 

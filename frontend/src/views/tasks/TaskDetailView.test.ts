@@ -28,6 +28,7 @@ import EditLabels from '@/components/tasks/partials/EditLabels.vue'
 import PercentDoneSelect from '@/components/tasks/partials/PercentDoneSelect.vue'
 import Datepicker from '@/components/input/Datepicker.vue'
 import LoadError from '@/components/misc/state/LoadError.vue'
+import BaseButton from '@/components/base/BaseButton.vue'
 import TaskDetailView from './TaskDetailView.vue'
 
 enableAutoUnmount(afterEach)
@@ -201,6 +202,30 @@ describe('TaskDetailView live updates', () => {
 		await flushPromises()
 
 		expect(dueDatePicker(wrapper).element.closest('.column')?.hasAttribute('aria-busy')).toBe(false)
+	})
+
+	it('says which field was not saved, retries it, and clears the notice once it is saved', async () => {
+		sdk.patchTasksRead.mockRejectedValueOnce(new Error('Server error'))
+		const wrapper = await mountDetail()
+
+		dueDatePicker(wrapper).vm.$emit('update:modelValue', new Date('2024-02-02T10:00:00Z'))
+		dueDatePicker(wrapper).vm.$emit('closeOnChange')
+		await flushPromises()
+
+		const notice = wrapper.find('.task-fields-not-saved')
+		expect(notice.exists()).toBe(true)
+		expect(notice.attributes('role')).toBe('alert')
+		expect(notice.text()).toContain('task.detail.fieldsNotSaved')
+
+		sdk.patchTasksRead.mockResolvedValueOnce({data: serverTask(1, {due_date: '2024-02-02T10:00:00Z'})})
+		await notice.findComponent(BaseButton).vm.$emit('click')
+		await flushPromises()
+
+		expect(sdk.patchTasksRead).toHaveBeenCalledTimes(2)
+		expect(sdk.patchTasksRead.mock.calls[1][0]).toEqual(expect.objectContaining({
+			body: expect.arrayContaining([expect.objectContaining({path: '/due_date'})]),
+		}))
+		expect(wrapper.find('.task-fields-not-saved').exists()).toBe(false)
 	})
 
 	it('shows an inline error with retry when the first load fails', async () => {

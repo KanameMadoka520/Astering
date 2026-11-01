@@ -10,7 +10,10 @@
 		@primary="save"
 		@tertiary="$router.push({ name: 'filter.settings.delete', params: { projectId } })"
 	>
-		<ErrorMessage v-if="loadError" />
+		<ErrorMessage
+			v-if="loadError"
+			:retry="retryLoad"
+		/>
 		<form
 			v-else
 			@submit.prevent="save()"
@@ -83,6 +86,7 @@ const {
 	filter,
 	isLoading,
 	error: loadError,
+	retry: retryLoad,
 	titleValid,
 	markTitleTouched,
 } = useSavedFilter(() => props.projectId)

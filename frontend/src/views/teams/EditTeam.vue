@@ -197,7 +197,7 @@
 					icon="sign-out-alt"
 					:shadow="false"
 					class="team-danger-zone__leave"
-					@click="showLeaveModal = true"
+					@click="openLeaveModal"
 				>
 					{{ $t('team.edit.leave.title') }}
 				</XButton>
@@ -220,7 +220,7 @@
 			:loading="leaveMutation.isPending.value"
 			:confirm-label="$t('team.edit.leave.title')"
 			danger
-			@close="showLeaveModal = false"
+			@close="closeLeaveModal"
 			@submit="leave()"
 		>
 			<template #header>
@@ -367,7 +367,7 @@
 </template>
 
 <script lang="ts" setup>
-import {computed, ref} from 'vue'
+import {computed, ref, watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {useRoute, useRouter} from 'vue-router'
 import {useQuery} from '@tanstack/vue-query'
@@ -384,12 +384,14 @@ import {useTeam} from '@/composables/useTeams'
 import {useUserSearch} from '@/composables/useUserSearch'
 import {PERMISSIONS} from '@/constants/permissions'
 import {useTitle} from '@/composables/useTitle'
+import {useIsAlive} from '@/composables/useIsAlive'
 import {useAuthStore} from '@/stores/auth'
 import type {User as ApiUser, TeamUser, TeamWritable} from '@/client/generated'
 
 const authStore = useAuthStore()
 const route = useRoute()
 const router = useRouter()
+const alive = useIsAlive()
 const {t, locale} = useI18n({useScope: 'global'})
 const teamId = computed(() => Number(route.params.id))
 const {data: team, isFetching, isPending, isError, refetch} = useTeam(teamId)
@@ -402,7 +404,7 @@ const sortedMembers = computed(() => [...members.value].sort((a, b) => getDispla
 const ownMembership = computed(() => members.value.find(member => member.id === userInfo.value?.id))
 // The server refuses to remove a team's last member.
 const isOnlyMember = computed(() => members.value.length === 1 && ownMembership.value !== undefined)
-// The server lets the last admin leave, which leaves a team nobody can manage.
+// The server requires at least one admin to remain; the dialog explains how to hand over first.
 const isOnlyAdmin = computed(() => Boolean(ownMembership.value?.admin)
 	&& members.value.length > 1
 	&& members.value.filter(member => member.admin).length === 1)
@@ -427,9 +429,30 @@ const showDeleteModal = ref(false)
 const deleteAcknowledged = ref(false)
 const showAcknowledgeError = ref(false)
 const showLeaveModal = ref(false)
+// A confirmation belongs to the team where it was opened, even while Vue reuses this route component.
+const confirmationTeamId = ref<number | null>(null)
 const showMustSelectUserError = ref(false)
 const title = computed(() => t('team.edit.title', {team: team.value?.name ?? ''}))
 useTitle(title)
+
+watch(teamId, () => {
+	confirmationTeamId.value = null
+	memberToDelete.value = null
+	memberToPromote.value = null
+	removalName.value = ''
+	promotionName.value = ''
+	showDeleteModal.value = false
+	showLeaveModal.value = false
+	deleteAcknowledged.value = false
+	showAcknowledgeError.value = false
+	newMember.value = null
+	userSearch.value = ''
+	showMustSelectUserError.value = false
+}, {flush: 'sync'})
+
+function isCurrentTeamRequest(id: number, origin: typeof router.currentRoute.value) {
+	return alive.value && teamId.value === id && router.currentRoute.value === origin
+}
 
 // Team Compass spaces go with the team: deleting it deletes them, leaving it ends access to them.
 const compassQuery = useQuery(computed(() => ({...compassSpacesQuery(), enabled: showDeleteModal.value || showLeaveModal.value})))
@@ -453,6 +476,7 @@ function save(draft: Required<TeamWritable>) {
 }
 
 function openDeleteModal() {
+	confirmationTeamId.value = teamId.value
 	deleteAcknowledged.value = false
 	showAcknowledgeError.value = false
 	showDeleteModal.value = true
@@ -460,55 +484,75 @@ function openDeleteModal() {
 
 function closeDeleteModal() {
 	showDeleteModal.value = false
+	confirmationTeamId.value = null
+}
+
+function openLeaveModal() {
+	confirmationTeamId.value = teamId.value
+	showLeaveModal.value = true
+}
+
+function closeLeaveModal() {
+	showLeaveModal.value = false
+	confirmationTeamId.value = null
 }
 
 async function deleteTeam() {
+	const id = confirmationTeamId.value
+	if (!showDeleteModal.value || id === null || id !== teamId.value || deleting) return
 	if (!deleteAcknowledged.value) {
 		showAcknowledgeError.value = true
 		return
 	}
-	if (deleting) return
+	const origin = router.currentRoute.value
 	deleting = true
 	try {
-		await deleteMutation.mutateAsync(teamId.value)
+		await deleteMutation.mutateAsync(id)
 	} catch {
 		return
 	} finally {
 		deleting = false
 	}
-	showDeleteModal.value = false
-	await router.push({name: 'teams.index'})
+	if (isCurrentTeamRequest(id, origin)) {
+		closeDeleteModal()
+		await router.push({name: 'teams.index'})
+	}
 }
 
 function openMemberRemoval(member: TeamUser) {
+	confirmationTeamId.value = teamId.value
 	removalName.value = getDisplayName(member)
 	memberToDelete.value = member
 }
 
 async function deleteMember() {
 	const member = memberToDelete.value
-	if (!member?.username || removing) return
+	const id = confirmationTeamId.value
+	if (!member?.username || id === null || id !== teamId.value || removing) return
+	const origin = router.currentRoute.value
 	removing = true
 	try {
-		await removeMemberMutation.mutateAsync({teamId: teamId.value, username: member.username})
+		await removeMemberMutation.mutateAsync({teamId: id, username: member.username})
 	} catch {
 		return
 	} finally {
 		removing = false
 	}
-	if (memberToDelete.value === member) memberToDelete.value = null
+	if (isCurrentTeamRequest(id, origin) && memberToDelete.value === member) memberToDelete.value = null
 }
 
 async function addUser() {
 	showMustSelectUserError.value = !newMember.value?.username
 	if (!newMember.value?.username || addMemberMutation.isPending.value) return
 	const member = newMember.value
+	const id = teamId.value
+	const origin = router.currentRoute.value
 	try {
-		await addMemberMutation.mutateAsync({teamId: teamId.value, username: member.username!})
+		await addMemberMutation.mutateAsync({teamId: id, username: member.username!})
 	} catch {
 		return
 	}
-	if (newMember.value === member) {
+	if (isCurrentTeamRequest(id, origin) && newMember.value === member) {
 		newMember.value = null
 		userSearch.value = ''
 	}
@@ -527,6 +571,7 @@ function isRemovingMember(member: TeamUser) {
 function toggleUserType(member: TeamUser) {
 	if (!member.username) return
 	if (!member.admin) {
+		confirmationTeamId.value = teamId.value
 		promotionName.value = getDisplayName(member)
 		memberToPromote.value = member
 		return
@@ -536,16 +581,18 @@ function toggleUserType(member: TeamUser) {
 
 async function promote() {
 	const member = memberToPromote.value
-	if (!member?.username || promoting) return
+	const id = confirmationTeamId.value
+	if (!member?.username || id === null || id !== teamId.value || promoting) return
+	const origin = router.currentRoute.value
 	promoting = true
 	try {
-		await toggleAdminMutation.mutateAsync({teamId: teamId.value, username: member.username})
+		await toggleAdminMutation.mutateAsync({teamId: id, username: member.username})
 	} catch {
 		return
 	} finally {
 		promoting = false
 	}
-	if (memberToPromote.value === member) memberToPromote.value = null
+	if (isCurrentTeamRequest(id, origin) && memberToPromote.value === member) memberToPromote.value = null
 }
 
 function findUser(query: string) {
@@ -553,17 +600,21 @@ function findUser(query: string) {
 }
 
 async function leave() {
-	if (!userInfo.value?.username || leaving) return
+	const id = confirmationTeamId.value
+	if (!showLeaveModal.value || !userInfo.value?.username || id === null || id !== teamId.value || leaving) return
+	const origin = router.currentRoute.value
 	leaving = true
 	try {
-		await leaveMutation.mutateAsync({teamId: teamId.value, username: userInfo.value.username})
+		await leaveMutation.mutateAsync({teamId: id, username: userInfo.value.username})
 	} catch {
 		return
 	} finally {
 		leaving = false
 	}
-	showLeaveModal.value = false
-	await router.push({name: 'home'})
+	if (isCurrentTeamRequest(id, origin)) {
+		closeLeaveModal()
+		await router.push({name: 'home'})
+	}
 }
 </script>
 

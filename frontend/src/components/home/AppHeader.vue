@@ -33,6 +33,18 @@
 				{{ currentProject.title === '' ? $t('misc.loading') : getProjectTitle(currentProject) }}
 			</span>
 
+			<RouterLink
+				v-if="accessHint"
+				:to="{name: 'project.settings.share', params: {projectId: currentProject.id}}"
+				class="project-access-link"
+				:aria-label="accessLinkLabel"
+			>
+				<ProjectAccessBadge
+					:project="currentProject"
+					:compact="compactAccessBadge"
+				/>
+			</RouterLink>
+
 			<BaseButton
 				v-if="!isEditorContentEmpty(currentProject.description)"
 				:to="{ name: 'project.info', params: { projectId: currentProject.id } }"
@@ -83,7 +95,7 @@
 				<Icon :icon="['far', 'circle-question']" />
 			</BaseButton>
 			<Notifications />
-			<Dropdown>
+			<Dropdown ref="accountMenu">
 				<template #trigger="{ toggleOpen, open }">
 					<BaseButton
 						class="username-dropdown-trigger"
@@ -137,19 +149,19 @@
 				</DropdownItem>
 				<DropdownItem
 					icon="code"
-					@click="openDiagnostics"
+					@click="accountMenu?.closeMenu({focusTrigger: true}); openDiagnostics()"
 				>
 					{{ t('debug.title') }}<span v-if="diagnostics.length"> ({{ diagnostics.length }})</span>
 				</DropdownItem>
 				<DropdownItem
 					icon="compass"
-					@click="tour.show()"
+					@click="accountMenu?.closeMenu({focusTrigger: true}); tour.show()"
 				>
 					{{ t('tour.open') }}
 				</DropdownItem>
 				<DropdownItem
 					icon="keyboard"
-					@click="baseStore.setKeyboardShortcutsActive(true)"
+					@click="accountMenu?.closeMenu({focusTrigger: true}); baseStore.setKeyboardShortcutsActive(true)"
 				>
 					{{ $t('keyboardShortcuts.title') }}
 				</DropdownItem>
@@ -161,17 +173,18 @@
 				</DropdownItem>
 				<DropdownItem
 					icon="sign-out-alt"
-					@click="authStore.logout()"
+					@click="accountMenu?.closeMenu({focusTrigger: true}); logoutDialog?.request()"
 				>
 					{{ $t('user.auth.logout') }}
 				</DropdownItem>
 			</Dropdown>
 		</div>
+		<LogoutDialog ref="logoutDialog" />
 	</header>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import {diagnostics, openDiagnostics} from '@/helpers/diagnostics'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -190,6 +203,8 @@ import ColorBubble from '@/components/misc/ColorBubble.vue'
 import MenuButton from '@/components/home/MenuButton.vue'
 import OpenQuickActions from '@/components/misc/OpenQuickActions.vue'
 import UserAvatar from '@/components/misc/UserAvatar.vue'
+import LogoutDialog from '@/components/home/LogoutDialog.vue'
+import ProjectAccessBadge from '@/components/sharing/ProjectAccessBadge.vue'
 
 import { getProjectTitle } from '@/helpers/getProjectTitle'
 import { isEditorContentEmpty } from '@/helpers/editorContentEmpty'
@@ -200,6 +215,9 @@ import { useConfigStore } from '@/stores/config'
 import { useAuthStore } from '@/stores/auth'
 import {useCurrentProject} from '@/composables/useCurrentProject'
 import {useSidebarResize} from '@/composables/useSidebarResize'
+import {useProjects} from '@/composables/useProjects'
+import {projectAccessHint} from '@/helpers/projectAccess'
+import {useMediaQuery} from '@vueuse/core'
 
 const baseStore = useBaseStore()
 const tour = useGuidedTourStore()
@@ -224,6 +242,29 @@ const pageTitle = computed(() => {
 })
 
 const authStore = useAuthStore()
+
+// Who else can open the current project, as far as the project list proves it (collab's badge). An own project in an
+// own tree shows nothing; the link leads to the share page, which every member can read.
+const projectList = useProjects()
+const accessHint = computed(() => authStore.authUser && currentProject.value
+	? projectAccessHint(projectList.projects, currentProject.value, authStore.info?.id)
+	: null)
+const accessLinkLabel = computed(() => {
+	const hint = accessHint.value
+	if (!hint) return ''
+	const badge = hint.kind === 'sharedWithYou'
+		? t('project.share.badge.sharedWithYou', {name: hint.ownerName})
+		: t('project.share.badge.inSharedParent')
+	return t('project.share.badge.viewAccess', {badge})
+})
+// Icon only where the header also hides the username.
+const compactAccessBadge = useMediaQuery('(max-width: 1023px)')
+
+const logoutDialog = ref<InstanceType<typeof LogoutDialog> | null>(null)
+
+// The account menu lives in the header, which stays mounted: it closes once one of its links opened a page.
+const accountMenu = ref<InstanceType<typeof Dropdown> | null>(null)
+watch(() => route.fullPath, () => accountMenu.value?.closeMenu())
 
 const configStore = useConfigStore()
 const imprintUrl = computed(() => configStore.legal.imprint_url)
@@ -382,6 +423,28 @@ const adminPanelEnabled = computed(() => configStore.isProFeatureEnabled(PRO_FEA
 .project-title-dropdown {
 	display: flex;
 	flex-shrink: 0;
+}
+
+.project-access-link {
+	display: inline-flex;
+	align-items: center;
+	flex: 0 1 auto;
+	min-inline-size: 0;
+	max-inline-size: 16rem;
+	block-size: var(--navbar-button-size);
+	padding-inline: var(--space-2);
+	border-radius: $radius;
+	color: var(--text-secondary);
+
+	&:hover {
+		background-color: var(--surface-hover);
+	}
+
+	@media (pointer: coarse) {
+		justify-content: center;
+		min-inline-size: var(--target-min);
+		min-block-size: var(--target-min);
+	}
 }
 
 .project-title-button {

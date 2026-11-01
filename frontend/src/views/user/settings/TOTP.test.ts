@@ -1,6 +1,8 @@
 import {VueQueryPlugin} from '@tanstack/vue-query'
 import {queryClient} from '@/client/queryClient'
 import {accountKeys} from '@/client/queries/account'
+import {totpKeys} from '@/client/queries/totp'
+import {error as toastError} from '@/message'
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest'
 import {mount, flushPromises, type VueWrapper} from '@vue/test-utils'
 import {setActivePinia, createPinia} from 'pinia'
@@ -167,5 +169,33 @@ describe('TOTP settings', () => {
 		await flushPromises()
 		expect(qrcode).not.toHaveBeenCalled()
 		expect(errors).toEqual([])
+	})
+
+	it('says the status could not be checked instead of showing a blank card', async () => {
+		queryClient.setQueryDefaults(totpKeys.current, {retry: false})
+		get.mockRejectedValue({status: 500, message: 'Server error'})
+
+		const w = await mountAndSettle()
+
+		expect(w.find('[role="alert"]').text()).toContain("Couldn't check whether two-factor authentication is on.")
+		expect(w.text()).not.toContain('Enroll')
+		expect(toastError).not.toHaveBeenCalled()
+		get.mockResolvedValueOnce({data: {enabled: true}})
+		await w.find('[role="alert"] button').trigger('click')
+		await flushPromises()
+		expect(w.text()).toContain("You've successfully set up two factor authentication!")
+		queryClient.setQueryDefaults(totpKeys.current, {retry: 1})
+	})
+
+	it('does not keep the password in the mutation cache after a failed enable', async () => {
+		get.mockResolvedValue({data: {secret: 'SHAREDSECRET', enabled: false, url: 'otpauth://totp/x'}})
+		enable.mockRejectedValueOnce({status: 412, message: 'Invalid passcode'})
+
+		const w = await mountAndSettle()
+		await w.findAll('button').find(b => b.text() === 'Confirm')!.trigger('click')
+		await flushPromises()
+
+		expect(enable).toHaveBeenCalledTimes(1)
+		await vi.waitFor(() => expect(queryClient.getMutationCache().getAll()).toEqual([]))
 	})
 })

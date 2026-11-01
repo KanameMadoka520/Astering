@@ -3,7 +3,7 @@ import {computed, onMounted, onBeforeUnmount, ref, watch, nextTick, useId} from 
 import {useI18n} from 'vue-i18n'
 import {useRoute, useRouter} from 'vue-router'
 import {useQuery, useQueryClient} from '@tanstack/vue-query'
-import {useMediaQuery} from '@vueuse/core'
+import {useDocumentVisibility, useMediaQuery} from '@vueuse/core'
 import {audioChatFile} from '@/helpers/tcyAudio'
 import {useConversationEvents} from '@/client/queries/conversationEvents'
 import {aiSettingsQuery, useCleanupAI, useTranscribeAI} from '@/client/queries/tcyAi'
@@ -17,7 +17,7 @@ import ConversationMenu from '@/components/ai/ConversationMenu.vue'
 import AronaAvatar from '@/components/ai/AronaAvatar.vue'
 import AronaWelcome from '@/components/ai/AronaWelcome.vue'
 import {suggestionOptions, suggestionProfileSwitch, type WelcomeSuggestion} from '@/components/ai/welcomeSuggestions'
-import ChatTurnCard from '@/components/ai/ChatTurnCard.vue'
+import ChatThread from '@/components/ai/ChatThread.vue'
 import ChatAttachmentCard from '@/components/ai/attachments/ChatAttachmentCard.vue'
 import ChatUploadTray from '@/components/ai/attachments/ChatUploadTray.vue'
 import AttachMenu from '@/components/ai/attachments/AttachMenu.vue'
@@ -33,15 +33,18 @@ import {
 	conversationQuery,
 	conversationKeys,
 	promptQuery,
+	endAgentRun,
 	useAgentReceiptRefresh,
 	useCreateConversation,
+	useLiveAgentRun,
 	useConversationAction,
 	useSendConversation,
 	useReviewConversation,
 } from '@/client/queries/tcyConversations'
 import {useProjects} from '@/composables/useProjects'
+import {provideAronaPresenting, usePresentedSnapshot} from '@/composables/useAronaPresentation'
 import {useTitle} from '@/composables/useTitle'
-import type {ChatTurn, ReviewInput, ConversationSummary} from '@/client/generated'
+import type {ChatAttachment, ChatTurn, ReviewInput, ConversationSummary} from '@/client/generated'
 import {openDiagnostics, openCompactDiagnostic} from '@/helpers/diagnostics'
 import {captureClientRequestContext, isClientRequestContextCurrent, isRequestContextAbort} from '@/client/requestContext'
 
@@ -50,19 +53,26 @@ const props = withDefaults(defineProps<{
 	conversationId?: string,
 	contextProjectId?: number,
 	contextTaskId?: number,
+	// False while the floating panel is minimized.
+	presenting?: boolean,
 }>(), {
 	embedded: false,
 	conversationId: '',
 	contextProjectId: 0,
 	contextTaskId: 0,
+	presenting: true,
 })
 const emit = defineEmits<{
 	'update:conversationId': [id: string],
 	activity: [running: boolean],
+	// A paused turn waits for the user's review, answer or budget decision.
+	attention: [waiting: boolean],
 	navigationBusy: [busy: boolean],
 }>()
 const {t} = useI18n({useScope: 'global'})
 
+const NO_TURNS: readonly ChatTurn[] = []
+const NO_FILES: readonly ChatAttachment[] = []
 const promptID = useId()
 const composerInput = ref<HTMLTextAreaElement>()
 if (!props.embedded) useTitle(() => t('tcymc.text.ai_task_assistant'))
@@ -97,10 +107,39 @@ function stillHere(location?: string) {
 watch(contextProject, (value, old) => {
 	if (projectID.value === old || projectID.value === 0) projectID.value = value
 }, {immediate: true})
-const events = useConversationEvents(chatID)
+const documentVisibility = useDocumentVisibility()
+// Whether the conversation is on screen. Only then do streamed frames render; the query cache keeps filling.
+const presenting = computed(() => props.presenting && documentVisibility.value === 'visible')
+provideAronaPresenting(presenting)
+// Set by a watch below, once the conversation is known: a ref, because the stream reads it right away.
+const liveWork = ref(false)
+// An idle conversation nobody looks at needs no stream (the server re-reads it every few seconds for one).
+// Running work keeps it, so receipts still apply while the panel is minimized or the tab is hidden.
+const events = useConversationEvents(() => presenting.value || liveWork.value ? chatID.value : '')
 // Polls only a running or compacting conversation, and only while the event stream is not live.
 const current = useQuery(computed(() => conversationQuery(chatID.value, events.connected.value)))
+// Live state for logic; the template reads the narrow computeds below, so a streamed delta does not re-render
+// this whole view.
 const active = computed(() => current.data.value)
+const hasConversation = computed(() => Boolean(active.value))
+// Deleted here or on another device, or no longer readable: a retry cannot bring it back, so start a new chat.
+watch(() => current.error.value, async cause => {
+	const status = (cause as {status?: number} | null)?.status
+	const id = chatID.value
+	if (!id || (status !== 403 && status !== 404)) return
+	endAgentRun(queryClient, id)
+	showNotice(t('assistantUI.conversationGone'))
+	await navigateConversation('')
+	// Once nothing shows it: a later visit asks the server again instead of showing this error.
+	queryClient.removeQueries({queryKey: conversationKeys.detail(id), exact: true})
+})
+const conversationTitle = computed(() => active.value?.title || t('chat.untitled'))
+const archived = computed(() => Boolean(active.value?.archived))
+const storage = computed(() => active.value?.storage)
+const compacting = computed(() => Boolean(active.value?.compacting))
+const compactError = computed(() => active.value?.compact_error || '')
+const compactProgress = computed(() => active.value?.compact_progress)
+const compactText = computed(() => active.value?.compact_text || '')
 // Task, project and label caches follow the receipts of successful write tools, once per receipt; while
 // this view shows a conversation the app-level run observer leaves it alone.
 useAgentReceiptRefresh(active)
@@ -113,8 +152,19 @@ const visibleTurns = computed(() => {
 		&& !turns.some(turn => turn.request_id === pending.turn.request_id)
 	return showPending ? [...turns, pending.turn] : turns
 })
+const hasTurns = computed(() => visibleTurns.value.length > 0)
+// Without a chat, or once an open chat has loaded without turns; not while one is still loading.
+const showWelcome = computed(() => !hasTurns.value && (!chatID.value || hasConversation.value))
+// What the thread renders: frozen while hidden, and the latest turns at once when shown again.
+const shownTurns = usePresentedSnapshot(visibleTurns, presenting)
+const readShownTurns = () => shownTurns.value ?? NO_TURNS
 const canCompact = computed(() => (active.value?.turns?.length ?? 0) > (active.value?.compactions?.at(-1)?.through ?? 0))
 const activeRun = computed(() => Boolean(active.value?.compacting || active.value?.turns?.some(turn => turn.status === 'running')))
+watch(() => activeRun.value || Boolean(pendingMessage.value), value => { liveWork.value = value }, {immediate: true})
+// The history polls only while a listed conversation runs; the end of this one's run shows there at once.
+watch([chatID, activeRun], ([id, running], [previousID, wasRunning]) => {
+	if (id === previousID && wasRunning && !running) void queryClient.invalidateQueries({queryKey: conversationKeys.lists()})
+})
 const lastCompaction = computed(() => active.value?.compactions?.at(-1))
 const hasStatusChips = computed(() => contextTaskID.value > 0
 	|| Boolean(active.value?.archived || active.value?.storage || active.value?.compactions?.length))
@@ -180,7 +230,7 @@ const driveOpen = ref(false)
 // mutation is pending, and a second pick in a new chat would create another conversation.
 const drivePicking = ref(false)
 const chatUploads = useChatAttachmentUploads({resolveConversation})
-const draftFiles = computed(() => active.value?.draft_attachments ?? [])
+const draftFiles = computed(() => active.value?.draft_attachments ?? NO_FILES)
 const imageModel = computed(() => {
 	const model = chatModels.value.find(c => c.id === selectedConnection.value)
 	return (model?.resolved?.input_types ?? model?.input_types ?? []).includes('image')
@@ -306,11 +356,46 @@ const historyDialog = ref<{kind: 'rename' | 'delete', conversation: Conversation
 const newTitle = ref('')
 const showSystemPrompt = ref(false)
 const thread = ref<HTMLElement>()
+const threadElement = () => thread.value
 const stickToBottom = ref(true)
-const drafts = new Map<string, string>()
+// Unsent requests per conversation, for the tab: Expand opens the full page in a new view, and leaving /ai
+// unmounts it. The map covers browsers without session storage.
+const memoryDrafts = new Map<string, string>()
+function draftStorageKey(id: string) {
+	const context = captureClientRequestContext()
+	return `tcy-ai-draft:${JSON.stringify([context.apiBaseUrl, context.identity, id])}`
+}
+function readDraft(id: string) {
+	try {
+		return sessionStorage.getItem(draftStorageKey(id)) ?? memoryDrafts.get(id) ?? ''
+	} catch {
+		return memoryDrafts.get(id) ?? ''
+	}
+}
+function writeDraft(id: string, text: string) {
+	if (text) memoryDrafts.set(id, text)
+	else memoryDrafts.delete(id)
+	try {
+		if (text) sessionStorage.setItem(draftStorageKey(id), text)
+		else sessionStorage.removeItem(draftStorageKey(id))
+	} catch { /* The map above keeps it while this view lives. */ }
+}
 const transcribe = useTranscribeAI()
 const cleanup = useCleanupAI()
-const prompt = ref('')
+// Seeded once; a change of chat swaps the text in selectConversation or moves it in the watch below.
+// eslint-disable-next-line vue/no-ref-object-reactivity-loss
+const prompt = ref(readDraft(chatID.value))
+// Synchronous, so text is filed under the conversation it was typed in even when the chat changes right after.
+watch(prompt, text => writeDraft(chatID.value, text), {flush: 'sync'})
+let switchingChat = false
+// Any other change of chat on this page (a chat created for this text by a first upload or send, a deleted chat,
+// the browser's back button) keeps the composer text, so its draft moves along. Leaving /ai clears the chat query
+// too, and keeps the draft where it is.
+watch(chatID, (id, previous) => {
+	if (switchingChat || !stillHere()) return
+	writeDraft(previous, '')
+	writeDraft(id, prompt.value)
+}, {flush: 'sync'})
 const mode = ref<'read' | 'write'>('read')
 const allowDelete = ref(false)
 const approval = ref<'smart' | 'review' | 'auto'>('smart')
@@ -379,8 +464,9 @@ function optionsStorageKey(id: string) {
 function saveOptions(id: string, options: AssistantOptions, profile: string) {
 	try { sessionStorage.setItem(optionsStorageKey(id), JSON.stringify({options, profile})) } catch { /* The server still retains sent configurations. */ }
 }
-watch([() => preferences.data.value, active, chatID], ([value, conversation, id]) => {
-	if (!value || initializedChat.value === id || (id && conversation?.id !== id)) return
+// Without saved preferences (none loaded, or loading failed) the built-in defaults apply, so the composer works.
+watch([() => preferences.data.value, () => preferences.isError.value, active, chatID], ([value, failed, conversation, id]) => {
+	if ((!value && !failed) || initializedChat.value === id || (id && conversation?.id !== id)) return
 	let saved: {options: AssistantOptions, profile: string} | undefined
 	try {
 		const candidate = JSON.parse(sessionStorage.getItem(optionsStorageKey(id)) || 'null')
@@ -388,8 +474,8 @@ watch([() => preferences.data.value, active, chatID], ([value, conversation, id]
 		if (candidate && validOptions(candidate.options) && ['read', 'write'].includes(candidate.options.mode)) saved = {options: normalizeOptions(candidate.options), profile: candidate.profile}
 	} catch { /* Ignore unavailable or obsolete browser preferences. */ }
 	const last = conversation?.turns?.at(-1)?.result?.configuration
-	const defaultID = value.default_profile || 'ask'
-	const custom = value.profiles?.find(p => p.id === defaultID)
+	const defaultID = value?.default_profile || 'ask'
+	const custom = value?.profiles?.find(p => p.id === defaultID)
 	const options = saved?.options ?? (last ? normalizeOptions(last) : custom ? normalizeOptions(custom.options) : profileOptions(defaultID))
 	if (contextProject.value) options.project_id = contextProject.value
 	applyOptions(options, saved?.profile ?? (last ? '' : defaultID), false)
@@ -429,9 +515,26 @@ watch([activeRun, editingBusy], ([running, editing]) => {
 	emit('activity', running || editing)
 	emit('navigationBusy', editing)
 }, {immediate: true})
+watch(() => Boolean(paused.value) && !activeRun.value, waiting => emit('attention', waiting), {immediate: true})
 const hasAssistant = computed(() => chatModels.value.some(c => c.id === selectedConnection.value))
-const needsSetup = computed(() => !hasAssistant.value && !settings.isPending.value)
+// A failed load is not a missing setup: it shows its own error and retry.
+const needsSetup = computed(() => settings.isSuccess.value && !hasAssistant.value)
+const settingsFailed = computed(() => settings.isError.value && !settings.data.value)
+const preferencesFailed = computed(() => preferences.isError.value && !preferences.data.value)
+// The server runs one model job per account. Sending elsewhere meanwhile would create a chat and then be refused.
+const liveRun = useLiveAgentRun()
+const runningElsewhere = computed(() => Boolean(liveRun.value) && liveRun.value !== chatID.value)
+// Reads the cache only; the app-level run observer keeps that conversation current.
+const liveConversation = useQuery(computed(() => ({
+	...conversationQuery(runningElsewhere.value ? liveRun.value : ''),
+	enabled: false,
+})))
+const liveRunTitle = computed(() => liveConversation.data.value?.title || t('chat.untitled'))
 const liveStatus = computed(() => t(events.connected.value ? 'flow.liveConnected' : 'flow.reconnecting'))
+// Only a running or compacting conversation is polled while the stream reconnects.
+const liveLabel = computed(() => t(events.connected.value
+	? 'assistantUI.statusLive'
+	: activeRun.value ? 'assistantUI.statusPolling' : 'assistantUI.statusReconnecting'))
 const hasSpeech = computed(() => Boolean(settings.data.value?.transcription))
 const nextProjectTitle = computed(() => projectID.value
 	? projectList.projectsArray.find(p => p.id === projectID.value)?.title || `#${projectID.value}`
@@ -441,21 +544,28 @@ let stream: MediaStream | undefined
 let timer: ReturnType<typeof setInterval> | undefined
 let disposed = false
 
-// Only turns appended to the open conversation fade in; opening or switching a chat renders at once.
+// Only turns appended to the open conversation fade in; opening or switching a chat renders at once, and so does
+// catching up with turns that arrived while the panel was minimized.
 const revealTurns = ref(false)
 let revealFrame = 0
-watch(chatID, () => { revealTurns.value = false })
-watch([chatID, () => !chatID.value || active.value?.id === chatID.value], ([, ready]) => {
+watch([chatID, presenting], ([, shown]) => {
+	if (shown) revealTurns.value = false
+})
+watch([chatID, presenting, () => !chatID.value || active.value?.id === chatID.value], ([, shown, ready]) => {
 	cancelAnimationFrame(revealFrame)
-	if (ready) revealFrame = requestAnimationFrame(() => { revealTurns.value = true })
+	if (shown && ready) revealFrame = requestAnimationFrame(() => { revealTurns.value = true })
 }, {immediate: true, flush: 'post'})
 onBeforeUnmount(() => cancelAnimationFrame(revealFrame))
 
 async function selectConversation(id: string) {
 	if (editingBusy.value) return
-	drafts.set(chatID.value, prompt.value)
-	await navigateConversation(id)
-	prompt.value = drafts.get(id) ?? ''
+	switchingChat = true
+	try {
+		await navigateConversation(id)
+	} finally {
+		switchingChat = false
+	}
+	prompt.value = readDraft(id)
 	original.value = ''
 	if (historyOverlay.value) sidebarOpen.value = false
 	stickToBottom.value = true
@@ -481,6 +591,7 @@ async function applySuggestion(suggestion: WelcomeSuggestion) {
 
 async function submit() {
 	if ((!prompt.value.trim() && !draftFiles.value.length) || busy.value || !hasAssistant.value || imageMismatch.value) return
+	if (runningElsewhere.value) return
 	if (searchMode.value === 'required' && !canSearch.value) {
 		showNotice(t('webSearch.configureFirst'))
 		return
@@ -534,10 +645,7 @@ async function submit() {
 			await navigateConversation(target)
 		}
 		await send.mutateAsync({id: target, body: request})
-		if (chatID.value === target && !prompt.value) {
-			drafts.delete(target)
-			original.value = ''
-		}
+		if (chatID.value === target && !prompt.value) original.value = ''
 	} catch (e) {
 		if (isRequestContextAbort(e) || !isClientRequestContextCurrent(requestContext)) return
 		if (chatID.value === target && !prompt.value) prompt.value = originalPrompt
@@ -563,7 +671,20 @@ async function manage(kind: 'stop' | 'compact' | 'fork', turnId?: string) {
 	} catch { return }
 }
 
-const currentSummary = computed<ConversationSummary>(() => ({...active.value, running: activeRun.value}))
+// Kept while the menu's fields stay the same: the conversation object itself changes with every streamed delta.
+const currentSummary = computed<ConversationSummary>(previous => {
+	const conversation = active.value
+	const next: ConversationSummary = {
+		id: conversation?.id,
+		parent_id: conversation?.parent_id,
+		title: conversation?.title,
+		pinned: conversation?.pinned,
+		archived: conversation?.archived,
+		running: activeRun.value,
+	}
+	const keys = Object.keys(next) as (keyof ConversationSummary)[]
+	return previous && keys.every(key => previous[key] === next[key]) ? previous : next
+})
 async function historyAction(kind: string, conversation: ConversationSummary) {
 	if (!conversation.id || action.isPending.value) return
 	if (kind === 'rename' || kind === 'delete') {
@@ -595,7 +716,7 @@ async function confirmHistoryAction() {
 		await action.mutateAsync({id, action: target.kind, title: newTitle.value.trim()})
 		if (historyDialog.value === target) historyDialog.value = undefined
 		if (target.kind === 'delete') {
-			drafts.delete(id)
+			writeDraft(id, '')
 			if (chatID.value === id && stillHere()) {
 				prompt.value = ''
 				await navigateConversation('')
@@ -691,7 +812,7 @@ function jumpToLatest() {
 	stickToBottom.value = true
 	thread.value?.scrollTo({top: thread.value.scrollHeight, behavior: 'instant'})
 }
-watch([visibleTurns, () => active.value?.turns?.at(-1)?.result], followOutput, {flush: 'post'})
+watch([shownTurns, () => shownTurns.value?.at(-1)?.result], followOutput, {flush: 'post'})
 // Throttled Markdown, decoded images and opened details grow the thread without a data change.
 const threadContent = ref<HTMLElement>()
 let contentObserver: ResizeObserver | undefined
@@ -851,7 +972,7 @@ onBeforeUnmount(() => {
 						<h1 v-if="!embedded">
 							{{ t('tcymc.text.ai_task_assistant') }}
 						</h1>
-						<template v-else-if="!active">
+						<template v-else-if="!hasConversation">
 							<strong class="panel-title">{{ t('floatingArona.title') }}</strong>
 							<span class="panel-hint">{{ t('floatingArona.context') }}</span>
 						</template>
@@ -872,7 +993,7 @@ onBeforeUnmount(() => {
 								<span
 									class="live-label"
 									aria-hidden="true"
-								>{{ t(events.connected.value ? 'assistantUI.statusLive' : 'assistantUI.statusPolling') }}</span>
+								>{{ liveLabel }}</span>
 								<span class="is-sr-only">{{ liveStatus }}</span>
 								<span
 									class="live-separator"
@@ -885,13 +1006,13 @@ onBeforeUnmount(() => {
 				</div>
 			</div>
 			<div
-				v-if="active"
+				v-if="hasConversation"
 				class="conversation-toolbar"
 			>
 				<strong
 					class="conversation-title"
-					:title="active.title || t('chat.untitled')"
-				>{{ active.title || t('chat.untitled') }}</strong>
+					:title="conversationTitle"
+				>{{ conversationTitle }}</strong>
 				<ConversationMenu
 					:conversation="currentSummary"
 					current
@@ -979,7 +1100,7 @@ onBeforeUnmount(() => {
 				:aria-label="t('tcymc.text.assistant_conversation')"
 			>
 				<LoadError
-					v-if="chatID && current.isError.value && !active"
+					v-if="chatID && current.isError.value && !hasConversation"
 					class="chat-error"
 					:message="t('chat.loadFailed')"
 					:retry="() => current.refetch()"
@@ -997,7 +1118,7 @@ onBeforeUnmount(() => {
 						</RouterLink>
 					</p>
 					<div
-						v-if="active?.archived"
+						v-if="archived"
 						class="status-chip archived-notice"
 					>
 						<Icon icon="archive" /><span>{{ t('chatHistory.archivedNotice') }}</span><button
@@ -1010,17 +1131,17 @@ onBeforeUnmount(() => {
 						</button>
 					</div>
 					<details
-						v-if="active?.storage"
+						v-if="storage"
 						class="status-chip conversation-storage"
 					>
-						<summary>{{ t('chatFiles.storageLine', {bytes: chatBytes(active.storage.total_bytes), count: active.storage.attachment_count}) }}</summary>
-						<p>{{ t('chatFiles.storageDetail', {record: chatBytes(active.storage.record_bytes), files: chatBytes(active.storage.attachment_bytes)}) }}</p>
+						<summary>{{ t('chatFiles.storageLine', {bytes: chatBytes(storage.total_bytes), count: storage.attachment_count}) }}</summary>
+						<p>{{ t('chatFiles.storageDetail', {record: chatBytes(storage.record_bytes), files: chatBytes(storage.attachment_bytes)}) }}</p>
 						<p>{{ t('chatFiles.storageHint') }}</p>
-						<p v-if="active.storage.drive_attachment_count">
-							{{ t('chatFiles.storageDrive', {count: active.storage.drive_attachment_count, bytes: chatBytes(active.storage.drive_attachment_bytes)}) }}
+						<p v-if="storage.drive_attachment_count">
+							{{ t('chatFiles.storageDrive', {count: storage.drive_attachment_count, bytes: chatBytes(storage.drive_attachment_bytes)}) }}
 						</p>
-						<p v-if="active.storage.missing_count">
-							{{ t('chatFiles.missingCount', {count: active.storage.missing_count}) }}
+						<p v-if="storage.missing_count">
+							{{ t('chatFiles.missingCount', {count: storage.missing_count}) }}
 						</p>
 					</details>
 					<details
@@ -1040,31 +1161,31 @@ onBeforeUnmount(() => {
 					</details>
 				</div>
 				<section
-					v-if="active?.compacting || active?.compact_error || active?.compact_progress"
+					v-if="compacting || compactError || compactProgress"
 					class="compact-progress"
-					:class="{'has-error': Boolean(active.compact_error)}"
+					:class="{'has-error': Boolean(compactError)}"
 					role="status"
 				>
-					<strong>{{ active.compacting ? t('flow.compacting') : active.compact_error ? t('flow.compactFailed') : t('flow.compactDone') }}</strong>
-					<p v-if="active.compact_progress">
-						{{ t('flow.compactBatch', {batch: active.compact_progress.batch, total: active.compact_progress.batches, attempt: active.compact_progress.attempt}) }}
-						· {{ t('chat.totalTokens') }}: {{ active.compact_progress.usage?.reported ? (active.compact_progress.usage.input ?? 0) + (active.compact_progress.usage.output ?? 0) : t('chat.unavailable') }}
-						· {{ t('chat.seconds', {value: ((active.compact_progress.duration_ms ?? 0) / 1000).toFixed(1)}) }}
+					<strong>{{ compacting ? t('flow.compacting') : compactError ? t('flow.compactFailed') : t('flow.compactDone') }}</strong>
+					<p v-if="compactProgress">
+						{{ t('flow.compactBatch', {batch: compactProgress.batch, total: compactProgress.batches, attempt: compactProgress.attempt}) }}
+						· {{ t('chat.totalTokens') }}: {{ compactProgress.usage?.reported ? (compactProgress.usage.input ?? 0) + (compactProgress.usage.output ?? 0) : t('chat.unavailable') }}
+						· {{ t('chat.seconds', {value: ((compactProgress.duration_ms ?? 0) / 1000).toFixed(1)}) }}
 					</p>
 					<progress
-						v-if="active.compacting"
+						v-if="compacting"
 						:aria-label="t('flow.compacting')"
 					/>
-					<p v-if="active.compact_error">
-						{{ active.compact_error }}
+					<p v-if="compactError">
+						{{ compactError }}
 					</p>
-					<details v-if="active.compacting && active.compact_text">
+					<details v-if="compacting && compactText">
 						<summary>{{ t('flow.compactDraft') }}</summary>
-						<pre>{{ active.compact_text }}</pre>
+						<pre>{{ compactText }}</pre>
 					</details>
 					<div class="compact-actions">
 						<button
-							v-if="active.compact_error && !busy && canCompact"
+							v-if="compactError && !busy && canCompact"
 							type="button"
 							class="text-button"
 							@click="manage('compact')"
@@ -1074,7 +1195,7 @@ onBeforeUnmount(() => {
 						<button
 							type="button"
 							class="text-button"
-							@click="openCompactDiagnostic(active)"
+							@click="active && openCompactDiagnostic(active)"
 						>
 							{{ t('flow.compactDiagnostics') }}
 						</button>
@@ -1094,8 +1215,27 @@ onBeforeUnmount(() => {
 					@keydown="threadKeydown"
 					@click.capture="markInteraction"
 				>
+					<div
+						v-if="chatID && current.isPending.value"
+						class="thread-skeleton"
+						role="status"
+					>
+						<span class="is-sr-only">{{ t('assistantUI.loadingConversation') }}</span>
+						<span
+							class="skeleton-bubble is-request"
+							aria-hidden="true"
+						/>
+						<span
+							class="skeleton-bubble"
+							aria-hidden="true"
+						/>
+						<span
+							class="skeleton-bubble is-short"
+							aria-hidden="true"
+						/>
+					</div>
 					<AronaWelcome
-						v-if="!visibleTurns.length"
+						v-if="showWelcome"
 						:needs-setup="needsSetup"
 						:disabled="!optionsReady"
 						@choose="applySuggestion"
@@ -1105,26 +1245,21 @@ onBeforeUnmount(() => {
 						ref="threadContent"
 						class="conversation-content"
 					>
-						<TransitionGroup
-							name="message-reveal"
-							:css="revealTurns"
-						>
-							<ChatTurnCard
-								v-for="turn in visibleTurns"
-								:key="turn.request_id || turn.id"
-								:turn="turn"
-								:sending="turn === pendingMessage?.turn"
-								:conversation-id="chatID"
-								:busy="busy"
-								:review-busy="review.isPending.value || action.isPending.value"
-								@review="reviewOperation"
-								@fork="manage('fork', $event)"
-							/>
-						</TransitionGroup>
+						<ChatThread
+							:read-turns="readShownTurns"
+							:pending-turn="pendingMessage?.turn"
+							:conversation-id="chatID"
+							:busy="busy"
+							:review-busy="review.isPending.value || action.isPending.value"
+							:reveal="revealTurns"
+							:scroll-root="threadElement"
+							@review="reviewOperation"
+							@fork="manage('fork', $event)"
+						/>
 					</div>
 				</div>
 				<div
-					v-if="needsSetup && visibleTurns.length"
+					v-if="needsSetup && hasTurns"
 					class="setup-note"
 				>
 					<RouterLink to="/user/settings/ai">
@@ -1133,7 +1268,7 @@ onBeforeUnmount(() => {
 				</div>
 				<div class="composer-dock">
 					<XButton
-						v-if="!stickToBottom && active?.turns?.length"
+						v-if="!stickToBottom && hasTurns"
 						class="jump-latest is-small"
 						variant="secondary"
 						icon="arrow-down"
@@ -1142,6 +1277,35 @@ onBeforeUnmount(() => {
 					>
 						{{ t('flow.jumpLatest') }}
 					</XButton>
+					<LoadError
+						v-if="settingsFailed"
+						class="composer-load-error"
+						:message="t('assistantUI.settingsLoadFailed')"
+						:retry="() => settings.refetch()"
+					/>
+					<LoadError
+						v-if="preferencesFailed"
+						class="composer-load-error"
+						:message="t('assistantUI.preferencesLoadFailed')"
+						:retry="() => preferences.refetch()"
+					/>
+					<p
+						v-if="runningElsewhere && !activeRun"
+						class="paused-notice running-elsewhere"
+						role="status"
+					>
+						<span>{{ t('assistantUI.runningElsewhere', {title: liveRunTitle}) }}</span>
+						<XButton
+							variant="secondary"
+							class="is-small"
+							icon="arrow-right"
+							:shadow="false"
+							:aria-disabled="editingBusy"
+							@click="!editingBusy && selectConversation(liveRun)"
+						>
+							{{ t('assistantUI.openRunning') }}
+						</XButton>
+					</p>
 					<p
 						v-if="paused"
 						class="paused-notice"
@@ -1396,7 +1560,7 @@ onBeforeUnmount(() => {
 								class="send"
 								icon-only
 								type="submit"
-								:aria-disabled="busy || !hasAssistant || (!prompt.trim() && !draftFiles.length) || imageMismatch"
+								:aria-disabled="busy || !hasAssistant || runningElsewhere || (!prompt.trim() && !draftFiles.length) || imageMismatch"
 							>
 								<span class="is-sr-only">{{ send.isPending.value ? t('chat.sending') : t('tcymc.text.send_request') }}</span>
 							</XButton>
@@ -1979,17 +2143,6 @@ summary {
 	}
 }
 
-.message-reveal-enter-active {
-	transition:
-		opacity var(--motion-base) var(--ease-enter),
-		transform var(--motion-base) var(--ease-enter);
-}
-
-.message-reveal-enter-from {
-	opacity: 0;
-	transform: translateY(var(--space-1));
-}
-
 // Composer
 .composer-dock {
 	position: relative;
@@ -2023,6 +2176,41 @@ summary {
 
 	span {
 		flex: 1 1 14rem;
+	}
+}
+
+// Information, not a problem: the send waits for the other conversation.
+.running-elsewhere {
+	border-inline-start-color: var(--info);
+	background: var(--tint-info);
+}
+
+.composer-load-error {
+	margin-block-end: var(--space-2);
+}
+
+// Static on purpose: a placeholder for the turns, without motion.
+.thread-skeleton {
+	display: grid;
+	gap: var(--space-4);
+}
+
+.skeleton-bubble {
+	display: block;
+	inline-size: 100%;
+	block-size: 4.5rem;
+	border-radius: var(--radius-lg);
+	background: var(--surface-active);
+
+	&.is-request {
+		justify-self: end;
+		inline-size: min(60%, 24rem);
+		block-size: 2.5rem;
+	}
+
+	&.is-short {
+		inline-size: 70%;
+		block-size: 2.5rem;
 	}
 }
 
@@ -2507,12 +2695,6 @@ summary {
 
 	.enter-hint {
 		display: none;
-	}
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.message-reveal-enter-active {
-		transition: none;
 	}
 }
 

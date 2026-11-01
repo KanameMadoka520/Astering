@@ -19,6 +19,8 @@
 			<div
 				ref="body"
 				class="p-4"
+				@input.capture="markTouched"
+				@change.capture="markTouched"
 			>
 				<slot />
 			</div>
@@ -56,14 +58,20 @@
 				</slot>
 			</template>
 		</Card>
+		<UnsavedLeaveDialog
+			:open="confirmingDiscard"
+			@stay="confirmingDiscard = false"
+			@discard="discard"
+		/>
 	</Modal>
 </template>
 
 <script setup lang="ts">
 import type {IconProp} from '@fortawesome/fontawesome-svg-core'
 
-import {computed, ref, toRef, watch, type PropType} from 'vue'
+import {computed, ref, toRef, useSlots, watch, type PropType} from 'vue'
 
+import UnsavedLeaveDialog from '@/components/misc/UnsavedLeaveDialog.vue'
 import {useGoBack} from '@/composables/useGoBack'
 
 const props = defineProps({
@@ -75,6 +83,9 @@ const props = defineProps({
 	tertiary: {type: String, default: ''},
 	wide: {type: Boolean, default: false},
 	loading: {type: Boolean, default: undefined},
+	// Whether the form holds unsaved edits. Without it, a form dialog counts as edited once the user typed in or
+	// changed one of its fields; dialogs without a primary action (they apply each change right away) never ask.
+	dirty: {type: Boolean, default: undefined},
 })
 
 const emit = defineEmits<{
@@ -101,9 +112,29 @@ watch(
 
 const isBusy = computed(() => props.primaryDisabled || currentLoading.value)
 
+const slots = useSlots()
+const touched = ref(false)
+const confirmingDiscard = ref(false)
+const isDirty = computed(() => props.dirty ?? (props.hasPrimaryAction && !slots.footer && touched.value))
+
+// Only what the user does counts: values the view loads into the fields after opening do not fire these events.
+function markTouched() {
+	touched.value = true
+}
+
 // Leaving while the request runs would navigate away from a save that is still being decided.
+// Escape, the backdrop, × and Cancel all come here, so none of them drops typed changes without asking.
 function cancel() {
-	if (currentLoading.value) return
+	if (currentLoading.value || confirmingDiscard.value) return
+	if (isDirty.value) {
+		confirmingDiscard.value = true
+		return
+	}
+	goBack()
+}
+
+function discard() {
+	confirmingDiscard.value = false
 	goBack()
 }
 

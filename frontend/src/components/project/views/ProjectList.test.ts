@@ -40,6 +40,8 @@ vi.mock('vue-i18n', async importOriginal => ({
 }))
 
 import ProjectList from './ProjectList.vue'
+import LoadError from '@/components/misc/state/LoadError.vue'
+import Nothing from '@/components/misc/Nothing.vue'
 
 function makeTask(id: number, position: number): ITask {
 	return {id, title: `Task ${id}`, position} as ITask
@@ -128,5 +130,23 @@ describe('ProjectList', () => {
 		await flushPromises()
 
 		expect(updatePosition).not.toHaveBeenCalled()
+	})
+
+	it('says the tasks could not be loaded instead of calling the project empty', async () => {
+		sdk.projectViewTasksList.mockRejectedValueOnce(new Error('Server error'))
+		const wrapper = await mountList()
+
+		const loadError = wrapper.findComponent(LoadError)
+		expect(loadError.exists()).toBe(true)
+		expect(loadError.props('message')).toBe('project.tasksLoadError')
+		expect(wrapper.findComponent(Nothing).exists()).toBe(false)
+	})
+
+	it('calls the project empty only after a successful load', async () => {
+		sdk.projectViewTasksList.mockResolvedValueOnce({data: {items: [], page: 1, total_pages: 0}})
+		const wrapper = await mountList()
+
+		expect(wrapper.findComponent(Nothing).exists()).toBe(true)
+		expect(wrapper.findComponent(LoadError).exists()).toBe(false)
 	})
 })

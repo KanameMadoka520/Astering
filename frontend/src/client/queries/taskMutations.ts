@@ -25,7 +25,7 @@ import {
 	type JsonPatchOp,
 	type Bucket,
 } from '@/client/generated'
-import {assertClientRequestContext, captureClientRequestContext, isRequestContextAbort} from '@/client/requestContext'
+import {assertClientRequestContext, captureClientRequestContext, isRequestContextAbort, type ClientRequestContext} from '@/client/requestContext'
 import {contextMutationOptions} from './contextMutation'
 import {normalizeTask, taskKeys, type PaginatedTaskResponse, type TaskFilterParams, type TaskResponse} from './tasks'
 import {bucketKeys, kanbanKeys, normalizeBucket, type BoardData} from './kanban'
@@ -210,7 +210,7 @@ export function createTaskMutationOptions() {
 // When each save started, keyed by its input, so its answer can tell which server writes came later.
 const saveMarks = new WeakMap<object, number>()
 
-export function updateTaskMutationOptions(optimistic = false) {
+export function updateTaskMutationOptions(optimistic = false, owner?: ClientRequestContext) {
 	return contextMutationOptions({
 		mutationFn: async (task: Task & Required<Pick<Task, 'id'>>) => {
 			saveMarks.set(task, serverWriteMark())
@@ -230,7 +230,7 @@ export function updateTaskMutationOptions(optimistic = false) {
 			reconcileDoneBuckets(client, normalizeTask({...task, id: input.id}))
 		},
 		onSettled: ({id}, client) => invalidateTaskMembership(client, id),
-	})
+	}, owner)
 }
 
 export function deleteTaskMutationOptions() {
@@ -501,8 +501,8 @@ export function useCreateTaskMutation() {
 	return useMutation(createTaskMutationOptions())
 }
 
-export function useUpdateTaskMutation(optimistic = false) {
-	return useMutation(updateTaskMutationOptions(optimistic))
+export function useUpdateTaskMutation(optimistic = false, owner?: ClientRequestContext) {
+	return useMutation(updateTaskMutationOptions(optimistic, owner))
 }
 
 export function useDeleteTaskMutation() {

@@ -224,6 +224,27 @@ describe('auth store logout query lifecycle', () => {
 		expect(queryClientClearMock.mock.invocationCallOrder[0]).toBeLessThan(routerPushMock.mock.invocationCallOrder[0])
 	})
 
+	it('clears a cache left behind when there were no session claims', async () => {
+		const store = useAuthStore()
+		queryClientClearMock.mockReset()
+
+		await store.logout()
+
+		expect(queryClientClearMock).toHaveBeenCalledOnce()
+	})
+
+	it('clears cached server data when decoded claims have no identity', async () => {
+		const store = useAuthStore()
+		const payload = btoa(JSON.stringify({exp: Math.floor(Date.now() / 1000) + 3600}))
+		getTokenMock.mockReturnValueOnce(`header.${payload}.signature`)
+		await store.checkAuth()
+		queryClientClearMock.mockReset()
+
+		await store.logout()
+
+		expect(queryClientClearMock).toHaveBeenCalledOnce()
+	})
+
 	it('clears browser data after reactive logout cleanup', async () => {
 		const store = useAuthStore()
 		store.setAuthenticated(true)
@@ -236,10 +257,11 @@ describe('auth store logout query lifecycle', () => {
 		localStorage.setItem('projectHistory', '[{"id":1}]')
 
 		const events: string[] = []
-		const clear = localStorage.clear.bind(localStorage)
-		const clearSpy = vi.spyOn(localStorage, 'clear').mockImplementation(() => {
-			events.push('storage')
-			clear()
+		// Logout removes non-draft keys one by one (account-scoped drafts survive), so watch the removal itself.
+		const removeItem = localStorage.removeItem.bind(localStorage)
+		const removeSpy = vi.spyOn(localStorage, 'removeItem').mockImplementation(key => {
+			if (key === 'projectHistory') events.push('storage')
+			removeItem(key)
 		})
 		queryClientClearMock.mockImplementation(() => {
 			events.push(`query:${store.authenticated}`)
@@ -247,7 +269,7 @@ describe('auth store logout query lifecycle', () => {
 		})
 
 		await store.logout()
-		clearSpy.mockRestore()
+		removeSpy.mockRestore()
 
 		expect(events).toEqual(['query:false', 'storage'])
 		expect(localStorage.getItem('projectHistory')).toBeNull()

@@ -162,9 +162,40 @@ describe.each(['user', 'team'] as const)('%s share list', kind => {
 		expect(wrapper!.text()).not.toMatch(/Not shared/)
 		expect(wrapper!.find('[role="alert"]').exists()).toBe(true)
 	})
+
+	it('does not claim an old empty list is current while refreshing', async () => {
+		queryClient.setQueryData(projectShareKeys[noun](child.id), [], {updatedAt: 0})
+		list.mockReturnValue(never())
+		mountSharing(kind)
+		await flushPromises()
+
+		expect(list).toHaveBeenCalled()
+		expect(wrapper!.text()).not.toContain(`Not shared directly with any ${noun} yet.`)
+		expect(wrapper!.find('[role="status"]').exists()).toBe(true)
+	})
 })
 
 describe('removing a direct share', () => {
+	it.each(['user', 'team'] as const)('does not promise inherited %s access after the parent refresh fails', async kind => {
+		const {list, noun} = kinds[kind]
+		const grant = kind === 'user'
+			? {id: 9, username: 'sam', permission: 1}
+			: {id: 5, name: 'Ops', permission: 1}
+		queryClient.setQueryData(projectShareKeys[noun](parent.id), [grant], {updatedAt: 0})
+		list.mockImplementation(({path}: {path: {project: number}}) => path.project === parent.id
+			? Promise.reject(new Error('offline'))
+			: Promise.resolve(page([grant])))
+		mountSharing(kind)
+		await flushPromises()
+
+		buttonNamed(`Remove this ${kind}`).click()
+		await flushPromises()
+
+		const text = document.querySelector('dialog.modal-dialog:not([data-closing])')?.textContent ?? ''
+		expect(text).not.toContain('keeps at least')
+		expect(text).toContain('If they can also open it through a parent project')
+	})
+
 	it('says when the user keeps access through a parent project', async () => {
 		sdk.projectUsersList.mockImplementation(({path}: {path: {project: number}}) => Promise.resolve(page(path.project === child.id
 			? [{id: 9, username: 'sam', permission: 0}]

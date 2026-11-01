@@ -609,9 +609,17 @@ for (const width of [1440, 390, 320]) {
   await page.getByRole('menuitem', {name: 'Unarchive', exact: true}).click()
   await expect(row()).toHaveCount(0)
   await page.getByRole('button', {name: 'Chats', exact: true}).click()
+  // The list shown until the debounced search runs may be the cached one, so wait for the search itself.
+  const searched = page.waitForResponse(response => {
+   const url = new URL(response.url())
+   return response.request().method() === 'GET' && url.pathname.endsWith('/ai/conversations')
+    && url.searchParams.get('q') === 'needle' && url.searchParams.get('scope') === 'all'
+  })
   await page.getByRole('searchbox', {name: 'Search chats'}).fill('needle')
-  await expect(page.locator('.history-link')).toHaveCount(1)
-  await expect(page.locator('.history-link')).toContainText('Planning one')
+  await searched
+  // Only the chat whose message holds the needle, and only under the results heading.
+  await expect(page.getByRole('region', {name: 'Search results'}).locator('.history-link')).toHaveText(['Planning one'])
+  await expect(row()).toHaveCount(0)
   await page.getByRole('searchbox', {name: 'Search chats'}).fill('')
   await expect(row()).toBeVisible()
   await row().getByRole('button', {name: 'Options for Renamed second'}).click()

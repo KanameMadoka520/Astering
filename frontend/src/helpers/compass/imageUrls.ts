@@ -3,7 +3,27 @@ import {compassImageQuery} from '@/client/queries/compass'
 import {assertClientRequestContext, captureClientRequestContext} from '@/client/requestContext'
 
 export const COMPASS_IMAGE_STATE = 'data-compass-state'
-export type CompassImageState = 'loading' | 'ready' | 'failed'
+// 'deferred': far below what the reader sees, it waits until they scroll near it or the entry is printed.
+export type CompassImageState = 'deferred' | 'loading' | 'ready' | 'failed'
+
+const deferredImages = new Map<Element, () => void>()
+
+/** Registers how to start an image that waits for the reader. Returns a function that forgets it again. */
+export function deferCompassImage(image: Element, start: () => void): () => void {
+	deferredImages.set(image, start)
+	return () => {
+		if (deferredImages.get(image) === start) deferredImages.delete(image)
+	}
+}
+
+/** Starts every waiting image under `root` at once; printing needs them all. */
+export function loadDeferredCompassImages(root: ParentNode = document) {
+	for (const [image, start] of [...deferredImages]) {
+		if (!(root as Node).contains(image)) continue
+		deferredImages.delete(image)
+		start()
+	}
+}
 
 /**
  * A blob: url for one image, owned by the caller and nobody else: release it with releaseCompassImageUrl.
@@ -47,9 +67,9 @@ export async function measureCompassImage(blob: Blob): Promise<{width: number, h
 	}
 }
 
-/** Body images under `root` still on their way. */
+/** Body images under `root` still on their way, including those waiting for the reader. */
 export function pendingCompassImages(root: ParentNode = document): number {
-	return root.querySelectorAll(`img[${COMPASS_IMAGE_STATE}="loading"]`).length
+	return root.querySelectorAll(`img[${COMPASS_IMAGE_STATE}="loading"], img[${COMPASS_IMAGE_STATE}="deferred"]`).length
 }
 
 /**
@@ -57,6 +77,7 @@ export function pendingCompassImages(root: ParentNode = document): number {
  * nothing is still loading; printing waits for this so paper never shows empty frames.
  */
 export function waitForCompassImages(root: ParentNode = document, timeout = 15_000): Promise<boolean> {
+	loadDeferredCompassImages(root)
 	if (pendingCompassImages(root) === 0) return Promise.resolve(true)
 	return new Promise(resolve => {
 		const observer = new MutationObserver(() => {

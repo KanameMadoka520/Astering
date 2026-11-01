@@ -545,6 +545,8 @@ export function useCompassImageEditing(spaceId: number) {
 		source,
 		items: computed(() => list.value),
 		running: computed(() => running.value),
+		// Images still on their way into the body; leaving the desk cancels them.
+		pending: computed(() => list.value.filter(item => item.state === 'queued' || item.state === 'uploading').length),
 		unavailable: computed(() => unavailable.value),
 		notice,
 		driveOpen,

@@ -44,7 +44,7 @@ import {parseDateOrNull} from '@/helpers/parseDateOrNull'
 
 import BaseButton from '@/components/base/BaseButton.vue'
 import ReminderDetail from '@/components/tasks/partials/ReminderDetail.vue'
-import {useNow} from '@vueuse/core'
+import {useGlobalNow} from '@/composables/useGlobalNow'
 
 const props = withDefaults(defineProps<{
 	modelValue?: ITaskReminder[],
@@ -64,7 +64,8 @@ const emit = defineEmits<{
 
 const reminders = ref<ITaskReminder[]>([])
 
-const now = useNow({interval: 1000})
+// Overdue styling follows the shared minute clock: one timer for the app, not a re-render of the list every second.
+const {now} = useGlobalNow()
 
 function isOverdue(reminder: ITaskReminder): boolean {
 	const date = parseDateOrNull(reminder.reminder)

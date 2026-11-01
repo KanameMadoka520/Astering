@@ -50,7 +50,7 @@
 					class="tasktext__context"
 				>
 					<ColorBubble
-						v-if="projectColor !== '' && currentProject?.id !== task.project_id"
+						v-if="projectColor !== '' && baseStore.currentProjectId !== task.project_id"
 						:color="projectColor"
 						class="tasktext__project-color"
 					/>
@@ -236,7 +236,7 @@
 </template>
 
 <script setup lang="ts">
-import {ref, watch, onMounted, computed} from 'vue'
+import {ref, watch, computed} from 'vue'
 import {useI18n} from 'vue-i18n'
 
 import {getHexColor} from '@/helpers/task'
@@ -263,10 +263,10 @@ import {formatDisplayDate, formatISO, formatDateLong} from '@/helpers/time/forma
 import {success} from '@/message'
 
 import {useProjects} from '@/composables/useProjects'
-import {useCurrentProject} from '@/composables/useCurrentProject'
 import {useUpdateTaskMutation, useFavoriteTaskMutation} from '@/client/queries/taskMutations'
+import {taskKeys} from '@/client/queries/tasks'
+import {useQueryClient} from '@tanstack/vue-query'
 import AssigneeList from '@/components/tasks/partials/AssigneeList.vue'
-import {useIntervalFn} from '@vueuse/core'
 import {playPopSound} from '@/helpers/playPop'
 import {isEditorContentEmpty} from '@/helpers/editorContentEmpty'
 import {TASK_REPEAT_MODES} from '@/types/IRepeatMode'
@@ -275,6 +275,7 @@ import {useDelayedLoading} from '@/composables/useDelayedLoading'
 import {dueGroupOf} from '@/helpers/workspaceTasks'
 import {resolveUserTimezone} from '@/helpers/time/userTimezone'
 import {useAuthStore} from '@/stores/auth'
+import {useBaseStore} from '@/stores/base'
 import {useRoutineCheckIn} from '@/composables/useRoutineCheckIn'
 import {routineOf, routineStatus} from '@/helpers/taskRoutine'
 
@@ -315,6 +316,7 @@ const isRepeating = computed(() => (task.value.repeat_after ?? 0) > 0
 		&& task.value.repeat_mode === TASK_REPEAT_MODES.REPEAT_MODE_MONTH))
 
 const projectList = useProjects()
+const queryClient = useQueryClient()
 const updateTask = useUpdateTaskMutation(true)
 const favoriteTask = useFavoriteTaskMutation()
 const routineCheckIn = useRoutineCheckIn()
@@ -324,12 +326,12 @@ const isLoading = useDelayedLoading(() => updateTask.isPending.value || favorite
 const project = computed(() => projectList.projects[task.value.project_id ?? 0])
 const projectColor = computed(() => project.value?.hex_color ?? '')
 
-const {currentProject} = useCurrentProject()
+const baseStore = useBaseStore()
 
 // Overviews always name the project; inside a project only tasks from elsewhere (saved filters,
-// favourites) do.
+// favourites) do. The id is enough: no project request per row.
 const showProjectContext = computed(() => Boolean(project.value) && (props.showProject
-	|| currentProject.value?.id !== task.value.project_id))
+	|| baseStore.currentProjectId !== task.value.project_id))
 
 const checkboxLabel = computed(() => {
 	const label = isRoutine.value
@@ -359,23 +361,13 @@ const taskDetailRoute = computed(() => ({
 	// state: { backdropView: router.currentRoute.value.fullPath },
 }))
 
-function updateDueDate() {
-	if (!task.value.due_date) {
-		return
-	}
-
-	dueDateFormatted.value = formatDisplayDate(task.value.due_date)
-}
-
-const dueDateFormatted = ref('')
-useIntervalFn(updateDueDate, 60_000, {
-	immediateCallback: true,
-})
-onMounted(updateDueDate)
-
-watch(() => task.value.due_date, updateDueDate)
-
 const {now} = useGlobalNow()
+
+// Relative dates ("in 2 hours") follow the shared minute clock: one timer for all rows, not one per row.
+const dueDateFormatted = computed(() => {
+	void now.value
+	return task.value.due_date ? formatDisplayDate(task.value.due_date) : ''
+})
 
 // An enabled routine is checked in for today instead of being marked done; task.done never moves with it.
 const routine = computed(() => routineOf(task.value))
@@ -428,9 +420,11 @@ async function markAsDone(checked: boolean, wasReverted: boolean = false) {
 		const newTask = await updatePromise
 		if (!newTask) return
 
-		updateDueDate()
-
 		if (wasReverted) {
+			// The list may have dropped this row already (Home and Upcoming hide done tasks), so it cannot tell
+			// its parent; refresh the open task lists so the task comes back, and confirm the undo.
+			void queryClient.invalidateQueries({queryKey: taskKeys.lists, refetchType: 'active'})
+			success({message: checked ? t('task.doneSuccess') : t('task.undoneSuccess')})
 			return
 		}
 
@@ -468,7 +462,12 @@ function undoDone(checked: boolean) {
 }
 
 async function toggleFavorite() {
-	const updated = await favoriteTask.mutateAsync({...task.value, id: task.value.id!})
+	let updated
+	try {
+		updated = await favoriteTask.mutateAsync({...task.value, id: task.value.id!})
+	} catch {
+		return // The star stays as it was; the mutation reports the error.
+	}
 	emit('taskUpdated', updated)
 }
 

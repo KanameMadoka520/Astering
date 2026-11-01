@@ -9,6 +9,21 @@ import {BucketFactory} from '../../factories/bucket'
 import {createTasksWithPriorities, createTasksWithSearch} from '../../support/filterTestHelpers'
 
 test.describe('Project View List', () => {
+	test('Says the tasks could not be loaded instead of calling the project empty', async ({authenticatedPage: page}) => {
+		await createProjects(1)
+		await page.route(/\/projects\/1\/views\/1\/tasks/, route => route.fulfill({status: 500, contentType: 'application/json', body: JSON.stringify({message: 'Server error'})}))
+		await page.goto('/projects/1/1')
+		await expect(page.locator('.load-error')).toContainText('The tasks couldn\'t be loaded.')
+		await expect(page.getByText('This project is currently empty.')).toHaveCount(0)
+	})
+
+	test('Says a missing project is gone instead of showing a blank page', async ({authenticatedPage: page}) => {
+		await page.goto('/projects/999999/1')
+		await expect(page.locator('.load-error')).toContainText('This project doesn\'t exist or you no longer have access to it.')
+		await page.getByRole('link', {name: 'Go to all projects'}).click()
+		await expect(page).toHaveURL(/\/projects$/)
+	})
+
 	test('Should be an empty project', async ({authenticatedPage: page}) => {
 		await createProjects(1)
 		await page.goto('/projects/1')

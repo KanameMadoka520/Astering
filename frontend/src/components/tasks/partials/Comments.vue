@@ -5,7 +5,7 @@
 		class="content details comments-container"
 	>
 		<div
-			v-if="canWrite || comments.length > 0"
+			v-if="canWrite || comments.length > 0 || listPending || listError"
 			class="task-section-header"
 			:class="{'d-print-none': comments.length === 0}"
 		>
@@ -29,6 +29,11 @@
 			</BaseButton>
 		</div>
 		<div class="comments">
+			<LoadError
+				v-if="listError"
+				:message="t('task.comment.loadFailed')"
+				:retry="retryComments"
+			/>
 			<span
 				v-if="listPending"
 				class="comments-loading"
@@ -37,6 +42,12 @@
 				<span class="loader is-inline-block" />
 				{{ $t('task.comment.loading') }}
 			</span>
+			<p
+				v-if="listEmpty"
+				class="comments-empty"
+			>
+				{{ t('task.comment.empty') }}
+			</p>
 			<div
 				v-for="c in comments"
 				:id="`comment-${c.id}`"
@@ -108,6 +119,7 @@
 					</div>
 					<Editor
 						:model-value="commentDrafts[c.id] ?? c.comment"
+						:storage-key="editCommentStorageKey(taskId, c.id)"
 						:is-edit-enabled="canWrite && c.author?.id === currentUserId"
 						:upload-callback="attachmentUpload"
 						:upload-enabled="true"
@@ -122,7 +134,34 @@
 							captureEditDraft(c)
 							editComment(taskId)
 						}"
+						@discard="discardCommentEdit(c)"
 					/>
+					<p
+						v-if="editFailed === c.id"
+						class="comment-edit-failed"
+						role="alert"
+					>
+						{{ $t('task.comment.editNotSaved') }}
+						<BaseButton
+							class="comment-edit-failed__retry"
+							@click="retryEdit(c)"
+						>
+							{{ $t('misc.retry') }}
+						</BaseButton>
+					</p>
+					<p
+						v-if="canWrite && storedCommentDrafts[c.id] !== undefined"
+						class="comment-draft-notice"
+						role="status"
+					>
+						{{ $t('task.comment.draftFound') }}
+						<BaseButton @click="restoreCommentDraft(c)">
+							{{ $t('task.comment.restoreDraft') }}
+						</BaseButton>
+						<BaseButton @click="discardStoredCommentDraft(c.id)">
+							{{ $t('task.description.discardDraft') }}
+						</BaseButton>
+					</p>
 					<Reactions 
 						:model-value="c.reactions"
 						class="mbs-2 d-print-none"
@@ -204,8 +243,10 @@
 
 		<Modal
 			:enabled="showDeleteModal"
+			:loading="deleting"
+			:confirm-label="$t('task.comment.delete')"
 			danger
-			@close="showDeleteModal = false"
+			@close="closeDelete"
 			@submit="() => deleteComment(commentToDelete)"
 		>
 			<template #header>
@@ -213,6 +254,12 @@
 			</template>
 
 			<template #text>
+				<p
+					v-if="deleteFailed"
+					role="alert"
+				>
+					{{ t('task.comment.deleteFailed') }}
+				</p>
 				<p>
 					{{ $t('task.comment.deleteText1') }}<br>
 					<strong class="delete-warning">{{ $t('misc.cannotBeUndone') }}</strong>
@@ -232,6 +279,7 @@ import CustomTransition from '@/components/misc/CustomTransition.vue'
 import Editor from '@/components/input/AsyncEditor'
 import PaginationEmit from '@/components/misc/PaginationEmit.vue'
 import UserAvatar from '@/components/misc/UserAvatar.vue'
+import LoadError from '@/components/misc/state/LoadError.vue'
 
 import {useQuery} from '@tanstack/vue-query'
 import {
@@ -247,7 +295,9 @@ import type {Task as ITask} from '@/client/generated'
 import {generateAttachmentUrl} from '@/helpers/attachments'
 import {useUploadAttachmentsMutation} from '@/client/queries/attachments'
 import {formatDateLong, formatDisplayDate} from '@/helpers/time/formatDate'
-import {clearEditorDraft} from '@/helpers/editorDraftStorage'
+import {clearEditorDraft, loadEditorDraft, saveEditorDraft, scopedEditorDraftKey} from '@/helpers/editorDraftStorage'
+import {captureDraftLease, editorDraftNamespace, isDraftLeaseCurrent} from '@/helpers/draftScope'
+import {captureClientRequestContext, isClientRequestContextCurrent, isRequestContextAbort} from '@/client/requestContext'
 import {getDisplayName} from '@/helpers/user'
 import {useConfigStore} from '@/stores/config'
 import {useAuthStore} from '@/stores/auth'
@@ -271,6 +321,9 @@ const {t} = useI18n({useScope: 'global'})
 const configStore = useConfigStore()
 const authStore = useAuthStore()
 const updateFrontendSettings = useUpdateFrontendSettingsMutation()
+const owner = captureClientRequestContext()
+const draftNamespace = editorDraftNamespace(owner)
+const draftLease = captureDraftLease(draftNamespace)
 
 const localSortOrder = ref<'asc' | 'desc' | null>(null)
 const commentSortOrder = computed(() => localSortOrder.value ?? authStore.settings.frontend_settings.comment_sort_order ?? 'asc')
@@ -282,16 +335,23 @@ const commentQuery = useQuery(computed(() => ({
 })))
 const comments = computed(() => commentQuery.data.value?.items ?? [])
 const totalPages = computed(() => commentQuery.data.value?.total_pages ?? 0)
-const createMutation = useCreateCommentMutation()
-const updateMutation = useUpdateCommentMutation()
-const deleteMutation = useDeleteCommentMutation()
-const listPending = useDelayedLoading(commentQuery.isLoading)
+const createMutation = useCreateCommentMutation(owner)
+const updateMutation = useUpdateCommentMutation(owner)
+const deleteMutation = useDeleteCommentMutation(owner)
+const listPending = useDelayedLoading(() => configStore.task_comments_enabled && props.taskId > 0
+	&& (commentQuery.isPending.value || commentQuery.isFetching.value))
+const listError = computed(() => commentQuery.isError.value)
+const listEmpty = computed(() => commentQuery.isSuccess.value && !commentQuery.isFetching.value
+	&& !commentQuery.isPlaceholderData.value && comments.value.length === 0)
 const loading = computed(() => createMutation.isPending.value || updateMutation.isPending.value)
 const showLoading = useDelayedLoading(loading)
 const commentDrafts = ref<Record<number, string>>({})
+const storedCommentDrafts = ref<Record<number, string>>({})
 
 const showDeleteModal = ref(false)
 const commentToDelete = ref<number | null>(null)
+const deleting = ref(false)
+const deleteFailed = ref(false)
 
 const isCommentEdit = ref(false)
 const commentEdit = ref<CommentResponse | null>(null)
@@ -300,6 +360,8 @@ const newCommentText = ref('')
 
 const saved = ref<ITask['id'] | null>(null)
 const saving = ref<ITask['id'] | null>(null)
+// The comment whose last edit did not reach the server; its text stays in commentDrafts until it does.
+const editFailed = ref<number | null>(null)
 
 const currentUserId = computed(() => authStore.info?.id ?? null)
 const enabled = computed(() => configStore.task_comments_enabled)
@@ -322,7 +384,43 @@ const actions = computed(() => {
 	}))
 })
 
-const commentStorageKey = computed(() => `task-comment-${props.taskId}`)
+// Drafts and edits belong to the account that typed them; nothing is sent after the session ended or changed.
+
+const commentStorageKey = computed(() => scopedEditorDraftKey(draftNamespace, `task-comment-${props.taskId}`))
+
+function editCommentStorageKey(taskId: number, commentId: number) {
+	return scopedEditorDraftKey(draftNamespace, `task-comment-${taskId}-edit-${commentId}`)
+}
+
+watch(comments, list => {
+	for (const comment of list) {
+		if (comment.author?.id !== owner.identity?.id || commentDrafts.value[comment.id] !== undefined) continue
+		const key = editCommentStorageKey(props.taskId, comment.id)
+		const text = loadEditorDraft(key)
+		if (text !== null && text !== comment.comment) storedCommentDrafts.value[comment.id] = text
+		else {
+			delete storedCommentDrafts.value[comment.id]
+			if (text !== null) clearEditorDraft(key, draftLease, text)
+		}
+	}
+}, {immediate: true})
+
+async function restoreCommentDraft(comment: CommentResponse) {
+	if (!props.canWrite || !isClientRequestContextCurrent(owner)) return
+	const text = storedCommentDrafts.value[comment.id]
+	if (text === undefined) return
+	commentDrafts.value[comment.id] = text
+	if (editFailed.value === comment.id) editFailed.value = null
+	delete storedCommentDrafts.value[comment.id]
+	captureEditDraft(comment)
+	await editComment(props.taskId)
+}
+
+function discardStoredCommentDraft(id: number) {
+	delete storedCommentDrafts.value[id]
+	clearEditorDraft(editCommentStorageKey(props.taskId, id), draftLease)
+}
+
 
 const commentsRef = ref<HTMLElement | null>(null)
 const newCommentEditor = ref<{setReplyContent: (html: string) => Promise<void>} | null>(null)
@@ -377,7 +475,7 @@ async function waitForEditorRef() {
 
 
 // the editor toasts the rejection itself, a mutation toast would duplicate it
-const uploadAttachments = useUploadAttachmentsMutation(() => false)
+const uploadAttachments = useUploadAttachmentsMutation(() => false, owner)
 
 function attachmentUpload(files: File[] | FileList): Promise<string[]> {
 	return Promise.all(Array.from(files).map(async file => {
@@ -429,18 +527,24 @@ watch(() => props.taskId, (_taskId, previousTaskId) => {
 	currentPage.value = 1
 	newCommentText.value = ''
 	commentDrafts.value = {}
+	editFailed.value = null
+	storedCommentDrafts.value = {}
 	commentEdit.value = null
 	commentToDelete.value = null
 	showDeleteModal.value = false
+	deleteFailed.value = false
 })
 
 const editorActive = ref(true)
 const creating = ref(false)
 
 async function addComment() {
-	if (!newCommentText.value || creating.value) return
+	if (!newCommentText.value || creating.value || !isClientRequestContextCurrent(owner)) return
 	const taskId = props.taskId
 	const text = newCommentText.value
+	const storageKey = commentStorageKey.value
+	saveEditorDraft(storageKey, text, draftLease)
+	if (!isDraftLeaseCurrent(draftLease)) return
 	creating.value = true
 	try {
 		await createMutation.mutateAsync({taskId, comment: text})
@@ -448,7 +552,7 @@ async function addComment() {
 		currentPage.value = commentSortOrder.value === 'desc' ? 1 : Math.max(1, totalPages.value)
 		if (newCommentText.value === text) {
 			newCommentText.value = ''
-			clearEditorDraft(commentStorageKey.value)
+			clearEditorDraft(storageKey, draftLease, text)
 		}
 		if (commentSortOrder.value === 'desc') {
 			commentsRef.value?.scrollIntoView({
@@ -470,13 +574,44 @@ function captureEditDraft(comment: CommentResponse) {
 
 function changeComment(comment: CommentResponse, text: string) {
 	commentDrafts.value[comment.id] = text
+	delete storedCommentDrafts.value[comment.id]
+	saveEditorDraft(editCommentStorageKey(props.taskId, comment.id), text, draftLease)
 	captureEditDraft(comment)
 	editCommentWithDelay()
 }
 
+// Esc in the editor: the comment goes back to its saved text and the queued save of the discarded text is dropped.
+function discardCommentEdit(comment: CommentResponse) {
+	delete commentDrafts.value[comment.id]
+	if (editFailed.value === comment.id) editFailed.value = null
+	discardStoredCommentDraft(comment.id)
+	if (commentEdit.value?.id !== comment.id) return
+	cancelPendingEdit()
+	commentEdit.value = null
+	isCommentEdit.value = false
+}
+
+function retryEdit(comment: CommentResponse) {
+	captureEditDraft(comment)
+	void editComment(props.taskId)
+}
+
 function toggleDelete(id: number) {
+	if (deleting.value || !isClientRequestContextCurrent(owner)) return
 	commentToDelete.value = id
+	deleteFailed.value = false
 	showDeleteModal.value = true
+}
+
+function closeDelete() {
+	if (deleting.value) return
+	showDeleteModal.value = false
+	commentToDelete.value = null
+	deleteFailed.value = false
+}
+
+function retryComments() {
+	if (!commentQuery.isFetching.value) return commentQuery.refetch()
 }
 
 const changeTimeout = ref<ReturnType<typeof setTimeout> | null>(null)
@@ -503,38 +638,69 @@ function editCommentWithDelay() {
 	changeTimeout.value = setTimeout(() => editComment(props.taskId), 5000)
 }
 
+// One writer per comment: a slow acknowledgement cannot overtake newer edits to the same comment.
+const pendingCommentSaves = new Map<string, Promise<void>>()
 async function editComment(taskId: number) {
 	const draft = commentEdit.value
-	if (!draft?.comment) {
-		isCommentEdit.value = false
-		return
-	}
+	if (!draft) return
 	cancelPendingEdit()
-	saving.value = draft.id
-	try {
-		await updateMutation.mutateAsync({taskId, id: draft.id, comment: draft.comment})
-		if (props.taskId !== taskId) return
-		if (commentDrafts.value[draft.id] === draft.comment) delete commentDrafts.value[draft.id]
-		saved.value = draft.id
-		clearTimeout(savedTimeout)
-		savedTimeout = setTimeout(() => { saved.value = null }, 2000)
-	} catch {
-		return
-	} finally {
-		isCommentEdit.value = false
-		saving.value = null
+	const storageKey = editCommentStorageKey(taskId, draft.id)
+	saveEditorDraft(storageKey, draft.comment, draftLease)
+	if (!isClientRequestContextCurrent(owner) || !isDraftLeaseCurrent(draftLease)) return
+	const pending = pendingCommentSaves.get(storageKey)
+	if (pending) return pending
+	const id = draft.id
+	const work = (async () => {
+		let text = loadEditorDraft(storageKey)
+		while (text !== null && text !== '' && text !== '<p></p>'
+			&& isClientRequestContextCurrent(owner) && isDraftLeaseCurrent(draftLease)) {
+			const submitted = text
+			saving.value = id
+			try {
+				await updateMutation.mutateAsync({taskId, id, comment: submitted})
+				clearEditorDraft(storageKey, draftLease, submitted)
+				if (props.taskId === taskId && isDraftLeaseCurrent(draftLease)) {
+					if (commentDrafts.value[id] === submitted) delete commentDrafts.value[id]
+					delete storedCommentDrafts.value[id]
+					if (editFailed.value === id) editFailed.value = null
+					saved.value = id
+					clearTimeout(savedTimeout)
+					savedTimeout = setTimeout(() => { saved.value = null }, 2000)
+				}
+			} catch (cause) {
+				// The scoped copy survives the failure; the visible text must also say that it was not saved.
+				if (!isRequestContextAbort(cause) && props.taskId === taskId
+					&& isClientRequestContextCurrent(owner) && isDraftLeaseCurrent(draftLease)) editFailed.value = id
+				return
+			}
+			text = loadEditorDraft(storageKey)
+		}
+	})()
+	pendingCommentSaves.set(storageKey, work)
+	try { await work } finally {
+		pendingCommentSaves.delete(storageKey)
+		if (commentEdit.value?.id === id && commentDrafts.value[id] === undefined) isCommentEdit.value = false
+		if (saving.value === id) saving.value = null
 	}
 }
 
 async function deleteComment(id: number | null) {
-	if (id === null) return
+	if (id === null || deleting.value || !showDeleteModal.value || commentToDelete.value !== id
+		|| !props.canWrite || !isClientRequestContextCurrent(owner)) return
 	const taskId = props.taskId
+	deleting.value = true
+	deleteFailed.value = false
 	try {
 		await deleteMutation.mutateAsync({taskId, id})
 	} catch {
+		if (props.taskId === taskId && commentToDelete.value === id && isClientRequestContextCurrent(owner)) {
+			deleteFailed.value = true
+		}
 		return
+	} finally {
+		deleting.value = false
 	}
-	if (props.taskId === taskId && commentToDelete.value === id) {
+	if (props.taskId === taskId && commentToDelete.value === id && isClientRequestContextCurrent(owner)) {
 		showDeleteModal.value = false
 		commentToDelete.value = null
 		currentPage.value = Math.min(currentPage.value, Math.max(1, totalPages.value))
@@ -551,6 +717,22 @@ function getCommentUrl(commentId: string) {
 </script>
 
 <style lang="scss" scoped>
+.comment-draft-notice {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2);
+	margin-block: var(--space-2);
+	padding: var(--space-3);
+	border-radius: var(--radius-sm);
+	background: var(--surface-hover);
+	font-size: var(--text-sm);
+
+	button {
+		text-decoration: underline;
+	}
+}
+
 .media {
 	display: flex;
 	align-items: flex-start;
@@ -616,6 +798,23 @@ function getCommentUrl(commentId: string) {
 		background: var(--surface-hover);
 		color: var(--text-primary);
 	}
+}
+
+.comment-edit-failed {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-1) var(--space-2);
+	margin-block-start: var(--space-2);
+	color: var(--danger-text);
+	font-size: var(--text-sm);
+}
+
+.comment-edit-failed__retry {
+	min-block-size: var(--target-min, 2rem);
+	color: var(--text-primary);
+	font-weight: var(--weight-medium);
+	text-decoration: underline;
 }
 
 .comment-save-status {

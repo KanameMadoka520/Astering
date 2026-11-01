@@ -612,7 +612,8 @@ export function compassImageQuery(spaceId: number, fileId: number) {
 		queryFn: ({signal}) => fetchCompassImage(spaceId, fileId, signal),
 		// Access is checked on every request; a minute-old answer is fine to draw again, not to keep forever.
 		staleTime: 60_000,
-		gcTime: 5 * 60_000,
+		// Original photos are large: once no view has asked for one within the fresh minute, the bytes go.
+		gcTime: 60_000,
 		retry: false,
 		// Every caller shows its own "image unavailable" state.
 		meta: {handlesError: true},
