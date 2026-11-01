@@ -160,6 +160,41 @@ describe('conversation snapshots racing live events', () => {
 		expect(cached()?.turns?.map(turn => [turn.id, turn.status])).toEqual([['t1', 'completed'], ['t2', 'running']])
 	})
 
+	it('preserves complete failed-compaction activity when an older first GET arrives afterwards', async () => {
+		const read = deferred<{data: Conversation}>()
+		sdk.tcyAiConversationsRead.mockReturnValueOnce(read.promise)
+		observe()
+		await flushPromises()
+		const progress = {
+			batch: 1,
+			batches: 3,
+			attempt: 2,
+			error_code: 'MODEL_OUTPUT_LIMIT',
+		}
+		sendFrame({
+			...activity(),
+			compact_progress: progress,
+			compact_error: 'The model reached its output token limit.',
+		})
+		await flushPromises()
+		read.resolve({data: finished})
+		await flushPromises()
+		expect(cached()?.compact_progress).toEqual(progress)
+		expect(cached()?.compact_error).toBe('The model reached its output token limit.')
+		expect(cached()?.turns?.[0].result?.reply).toBe('Finished')
+		sendFrame({
+			...activity(),
+			compacting: true,
+			compact_error: '',
+			compact_text: '',
+		})
+		await flushPromises()
+		expect(cached()?.compacting).toBe(true)
+		expect(cached()?.compact_progress).toBeUndefined()
+		expect(cached()?.compact_error).toBe('')
+		expect(cached()?.turns?.[0].result?.reply).toBe('Finished')
+	})
+
 	it.each(['send', 'review'] as const)('does not replace SSE progress with a late %s acknowledgement', async kind => {
 		client.setQueryData(key, initial)
 		const actions = observe()

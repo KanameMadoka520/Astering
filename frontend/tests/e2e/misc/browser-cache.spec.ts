@@ -131,16 +131,16 @@ test('browser revalidates private image bytes after UI reload and refuses cached
 			isImage: false,
 		})
 
-		const recycled = await apiContext.put(`${api}/drive/files/${file.file_id}`, {
+		const recycled = await apiContext.patch(`${api}/drive/files/${file.file_id}`, {
 			headers: {Authorization: `Bearer ${userToken}`},
 			data: {
 				action: 'trash',
 				revision: file.revision,
 			},
 		})
-		expect(recycled.ok()).toBe(true)
+		expect(recycled.status()).toBe(200)
 		const {revision} = await recycled.json() as {revision: number}
-		const purged = await apiContext.put(`${api}/drive/files/${file.file_id}`, {
+		const purged = await apiContext.patch(`${api}/drive/files/${file.file_id}`, {
 			headers: {Authorization: `Bearer ${userToken}`},
 			data: {
 				action: 'purge',
@@ -149,7 +149,7 @@ test('browser revalidates private image bytes after UI reload and refuses cached
 				confirm_name: fileName,
 			},
 		})
-		expect(purged.ok()).toBe(true)
+		expect(purged.status()).toBe(200)
 		// Even the original identity must recheck existence instead of getting its now-deleted cached image.
 		expect(await browserRead(page, imageUrl, ownerToken!)).toMatchObject({
 			status: 404,

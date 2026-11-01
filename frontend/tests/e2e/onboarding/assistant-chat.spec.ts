@@ -33,7 +33,19 @@ async function chatServer(page: Page, withReview = false, live = false) {
 			return route.fulfill({status: 201, json: c})
 		}
 		const c = conversations.get(id)!
-		if (action === 'events') return route.fulfill({status: 200, contentType: 'text/event-stream', body: `event: activity\ndata: ${JSON.stringify({turn:c.turns.at(-1),compacting:c.compacting ?? false,compactions:c.compactions})}\n\n`})
+		if (action === 'events') return route.fulfill({
+			status: 200,
+			contentType: 'text/event-stream',
+			body: `event: activity\ndata: ${JSON.stringify({
+				turn: c.turns.at(-1),
+				storage: c.storage,
+				compacting: c.compacting ?? false,
+				compactions: c.compactions,
+				compact_progress: c.compact_progress,
+				compact_error: c.compact_error,
+				compact_text: c.compact_text,
+			})}\n\n`,
+		})
 		if (action === 'messages') {
 			sends++
 			c.title ||= body.message
@@ -72,7 +84,25 @@ async function chatServer(page: Page, withReview = false, live = false) {
    if (body.archived !== undefined) { c.archived = body.archived; if (body.archived) c.pinned = false }
   }
   if (action === 'title') c.title = body.title
-		if (action === 'compact') { c.compact_error='';c.compacting=true;setTimeout(()=>{c.compactions.push({through:c.turns.length,summary:'Kept compact summary',model:'actual-fixture',usage:{input:100,output:20,reported:true}});c.compacting=false},200) }
+		if (action === 'compact') {
+			c.compact_error = ''
+			c.compact_progress = undefined
+			c.compact_text = ''
+			c.compacting = true
+			setTimeout(() => {
+				c.compactions.push({
+					through: c.turns.length,
+					summary: 'Kept compact summary',
+					model: 'actual-fixture',
+					usage: {
+						input: 100,
+						output: 20,
+						reported: true,
+					},
+				})
+				c.compacting = false
+			}, 200)
+		}
 		if (action === 'fork') {
 			const branch = structuredClone(c)
 			branch.id = crypto.randomUUID()
