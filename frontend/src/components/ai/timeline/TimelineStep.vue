@@ -12,7 +12,7 @@ import {requestUsage} from '@/helpers/aronaRunMetrics'
 import MarkdownBlock from './MarkdownBlock.vue'
 import ToolCallRow from './ToolCallRow.vue'
 
-// The parent passes the step object, the turn's whole actions array, operations only to the live round and the
+// TurnTimeline passes the step object, this round's stable actions array, operations only to the live round and the
 // round's own rejected decisions as a stable array, so a completed round keeps identical props between frames and is
 // skipped by the renderer.
 const props = withDefaults(defineProps<{

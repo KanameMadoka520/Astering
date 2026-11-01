@@ -2,7 +2,17 @@
 import {computed} from 'vue'
 import {useI18n} from 'vue-i18n'
 import type {Action, ModelStep, Operation} from '@/client/generated'
-import {NO_COMPACTIONS, NO_OPERATIONS, NO_SUBAGENTS, rejectedByStep, sameItems, timelineLayout, type AutoCompaction, type SubagentTask} from '@/helpers/aronaTimeline'
+import {
+	NO_ACTIONS,
+	NO_COMPACTIONS,
+	NO_OPERATIONS,
+	NO_SUBAGENTS,
+	rejectedByStep,
+	sameItems,
+	timelineLayout,
+	type AutoCompaction,
+	type SubagentTask,
+} from '@/helpers/aronaTimeline'
 import CompactionMarker from './CompactionMarker.vue'
 import SubagentRow from './SubagentRow.vue'
 import TimelineStep from './TimelineStep.vue'
@@ -29,6 +39,21 @@ const props = withDefaults(defineProps<{
 const {t} = useI18n({useScope: 'global'})
 const items = computed(() => timelineLayout(props.steps, props.actions, props.compactions, props.subagents))
 const last = computed(() => props.steps.length - 1)
+// A new receipt must not invalidate every settled round's argument matching and tool groups.
+const actionsByRound = computed<ReadonlyMap<number | undefined, readonly Action[]>>(previous => {
+	const grouped = new Map<number | undefined, Action[]>()
+	for (const action of props.actions) {
+		const list = grouped.get(action.round)
+		if (list) list.push(action)
+		else grouped.set(action.round, [action])
+	}
+	const stable = new Map<number | undefined, readonly Action[]>()
+	for (const [round, list] of grouped) {
+		const kept = previous?.get(round)
+		stable.set(round, kept && sameItems(kept, list) ? kept : list)
+	}
+	return stable
+})
 // A round whose decisions did not change keeps its previous array.
 const rejectedRounds = computed<(readonly Operation[])[]>(previous => rejectedByStep(props.steps, props.actions, props.rejected)
 	.map((list, index) => {
@@ -46,7 +71,7 @@ const rejectedRounds = computed<(readonly Operation[])[]>(previous => rejectedBy
 			<TimelineStep
 				v-if="item.kind === 'step'"
 				:step="item.step"
-				:actions="actions"
+				:actions="actionsByRound.get(item.step.round) ?? NO_ACTIONS"
 				:operations="running && item.index === last ? operations : NO_OPERATIONS"
 				:rejected="rejectedRounds[item.index]"
 				:live="running && item.index === last"

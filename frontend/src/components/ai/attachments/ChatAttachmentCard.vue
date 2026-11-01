@@ -12,7 +12,8 @@ const {t} = useI18n({useScope: 'global'})
 const isImage = computed(() => /^image\/(png|jpeg|gif|webp)$/.test(props.file.mime || ''))
 const card = ref<HTMLElement>()
 // A long history mounts every turn: only cards near the visible part of the thread download their original image.
-// Bytes already in the cache show at once, and the download button fetches on its own.
+// Cached bytes also wait for the viewport: creating URLs for all old images still initializes their image elements.
+// Once near, a card stays loaded. The download button fetches independently of visibility.
 const near = useNearViewport(card)
 const blob = useQuery(computed(() => chatAttachmentQuery(
 	props.conversationId,
@@ -25,7 +26,10 @@ const url = ref('')
 const failed = ref(false)
 const saving = ref(false)
 const preview = ref<HTMLDialogElement>()
-watch(() => blob.data.value, data => { if (url.value) URL.revokeObjectURL(url.value); url.value = data ? URL.createObjectURL(data) : '' }, {immediate: true})
+watch(() => isImage.value && !missing.value && near.value ? blob.data.value : undefined, data => {
+	if (url.value) URL.revokeObjectURL(url.value)
+	url.value = data ? URL.createObjectURL(data) : ''
+}, {immediate: true})
 onBeforeUnmount(() => { if (url.value) URL.revokeObjectURL(url.value) })
 async function download() {
 	saving.value = true; failed.value = false

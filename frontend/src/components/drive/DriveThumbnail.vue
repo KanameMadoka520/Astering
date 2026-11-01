@@ -47,7 +47,8 @@ const query = useQuery(computed(() => ({
 	...drivePreviewQuery(props.file.file_id),
 	enabled: image.value && !props.file.purging && near.value,
 })))
-const url = useObjectUrl(computed(() => image.value ? query.data.value : undefined))
+// A disabled query still returns cached bytes. Keep offscreen cached cards cheap too.
+const url = useObjectUrl(computed(() => image.value && !props.file.purging && near.value ? query.data.value : undefined))
 </script>
 
 <style scoped>

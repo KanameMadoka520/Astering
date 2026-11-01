@@ -88,13 +88,40 @@ describe('ChatAttachmentCard', () => {
 		expect(cards[19].find('img').attributes('src')).toBe('blob:preview')
 	})
 
-	it('shows an image already in the cache without waiting to come near', async () => {
-		client.setQueryData(chatAttachmentQuery('c1', 'f1', true).queryKey, new Blob(['png']))
-		const wrapper = mountHistory(['f1'])
+	it('creates cached image URLs only near the viewport and releases them on unmount', async () => {
+		const ids = Array.from({length: 20}, (_, index) => `f${index}`)
+		for (const id of ids) client.setQueryData(chatAttachmentQuery('c1', id, true).queryKey, new Blob(['png']))
+		const wrapper = mountHistory(ids)
 		await flushPromises()
 
-		expect(wrapper.find('img').attributes('src')).toBe('blob:preview')
+		expect(URL.createObjectURL).not.toHaveBeenCalled()
+		expect(wrapper.find('img').exists()).toBe(false)
+		const card = wrapper.findAll('.chat-file')[19]
+		scrollNear(card.element)
+		await flushPromises()
+
+		expect(card.find('img').attributes('src')).toBe('blob:preview')
+		expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
+		scrollNear(card.element)
+		await flushPromises()
+		expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
 		expect(sdk.tcyAiAttachmentsDownload).not.toHaveBeenCalled()
+		wrapper.unmount()
+		expect(URL.revokeObjectURL).toHaveBeenCalledExactlyOnceWith('blob:preview')
+	})
+
+	it('releases the preview if a previously cached image is marked missing', async () => {
+		client.setQueryData(chatAttachmentQuery('c1', 'f1', true).queryKey, new Blob(['png']))
+		const wrapper = mount(ChatAttachmentCard, {props: {conversationId: 'c1', file: image('f1')},
+			global: {plugins: [[VueQueryPlugin, {queryClient: client}]]}})
+		scrollNear(wrapper.element)
+		await flushPromises()
+		expect(wrapper.find('img').exists()).toBe(true)
+
+		await wrapper.setProps({file: {...image('f1'), missing: true}})
+		await flushPromises()
+		expect(wrapper.find('img').exists()).toBe(false)
+		expect(URL.revokeObjectURL).toHaveBeenCalledExactlyOnceWith('blob:preview')
 	})
 
 	it('still downloads the original when asked, wherever the card is', async () => {

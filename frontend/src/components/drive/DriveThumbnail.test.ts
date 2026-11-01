@@ -7,6 +7,7 @@ const sdk = vi.hoisted(() => ({drivePreview: vi.fn()}))
 vi.mock('@/client/generated', () => sdk)
 
 import type {DriveEntry} from '@/client/queries/drive'
+import {drivePreviewQuery} from '@/client/queries/drive'
 import DriveThumbnail from './DriveThumbnail.vue'
 
 enableAutoUnmount(afterEach)
@@ -73,5 +74,26 @@ describe('DriveThumbnail', () => {
 
 		expect(sdk.drivePreview.mock.calls.map(([options]) => options.path.file)).toEqual([1])
 		expect(wrapper.find('img.drive-thumbnail').attributes('src')).toBe('blob:thumbnail')
+	})
+
+	it('does not initialize cached offscreen thumbnails until near and releases the URL on unmount', async () => {
+		const client = new QueryClient({defaultOptions: {queries: {retry: false}}})
+		for (let id = 1; id <= 60; id++) client.setQueryData(drivePreviewQuery(id).queryKey, new Blob(['png']))
+		const wrapper = mount(defineComponent({
+			setup: () => () => h('div', Array.from({length: 60}, (_, index) => h(DriveThumbnail, {
+				key: index, file: picture(index + 1), decorative: true,
+			}))),
+		}), {global: {plugins: [[VueQueryPlugin, {queryClient: client}]], stubs: {Icon: true}}})
+		await flushPromises()
+		expect(URL.createObjectURL).not.toHaveBeenCalled()
+		expect(wrapper.find('img').exists()).toBe(false)
+
+		scrollNear(wrapper.findAll('.drive-file-symbol')[0].element)
+		await flushPromises()
+		expect(wrapper.find('img').attributes('src')).toBe('blob:thumbnail')
+		expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
+		expect(sdk.drivePreview).not.toHaveBeenCalled()
+		wrapper.unmount()
+		expect(URL.revokeObjectURL).toHaveBeenCalledExactlyOnceWith('blob:thumbnail')
 	})
 })
