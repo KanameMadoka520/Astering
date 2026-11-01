@@ -44,3 +44,52 @@ func TestFilterAttachmentImages(t *testing.T) {
 	}
 	assert.Empty(t, FilterAttachmentImages(`<img src="https://task.test/sub/api/v2/tasks/7/attachments/5">`, "https://task.test/sub/", func(_, _ int64) bool { return true }))
 }
+
+func TestFilterAttachmentImagesSplitOrigins(t *testing.T) {
+	const frontend = "https://front.test/app/"
+	const api = "https://api.test:8443/backend/api/v2/"
+	for _, src := range []string{
+		"https://api.test:8443/backend/api/v2/tasks/7/attachments/5",
+		"https://API.TEST:8443/backend/api/v1/tasks/7/attachments/5/preview?size=medium",
+		"//api.test:8443/backend/api/v2/tasks/7/attachments/5",
+		"https://front.test:443/app/api/v2/tasks/7/attachments/5",
+		"/backend/api/v2/tasks/7/attachments/5",
+		"/api/v2/tasks/7/attachments/5",
+		"/tasks/7/attachments/5",
+	} {
+		t.Run(src, func(t *testing.T) {
+			image := `<img data-src="` + src + `" src="#">`
+			assert.Equal(t, "<p>keep</p>", FilterAttachmentImages("<p>keep</p>"+image, frontend, func(tid, aid int64) bool { return tid == 7 && aid == 5 }, api))
+		})
+	}
+	for _, src := range []string{
+		"https://api.test:8444/backend/api/v2/tasks/7/attachments/5",
+		"http://api.test:8443/backend/api/v2/tasks/7/attachments/5",
+		"https://api.test/backend/api/v2/tasks/7/attachments/5",
+		"https://api.test.evil:8443/backend/api/v2/tasks/7/attachments/5",
+		"https://evil@api.test:8443/backend/api/v2/tasks/7/attachments/5",
+		"https://api.test:8443/app/api/v2/tasks/7/attachments/5",
+		"https://front.test/backend/api/v2/tasks/7/attachments/5",
+		"https://api.test:8443/backend-evil/api/v2/tasks/7/attachments/5",
+		"https://api.test:8443/api/v2/tasks/7/attachments/5",
+		"https://api.test:8443/backend/api/v2/tasks/8/attachments/5",
+		"https://api.test:8443/backend/api/v2/tasks/7/attachments/50",
+		"https://api.test:8443/backend%2Fapi/v2/tasks/7/attachments/5",
+		"ftp://api.test:8443/backend/api/v2/tasks/7/attachments/5",
+	} {
+		t.Run("preserve "+src, func(t *testing.T) {
+			image := `<img data-src="` + src + `" src="/api/v2/tasks/7/attachments/5">`
+			assert.Equal(t, image, FilterAttachmentImages(image, frontend, func(tid, aid int64) bool { return tid == 7 && aid == 5 }, api))
+		})
+	}
+	// A frontend path named api/v2 is a deployment prefix, not an API suffix.
+	assert.Empty(t, FilterAttachmentImages(`<img src="https://front.test/api/v2/api/v2/tasks/7/attachments/5">`, "https://front.test/api/v2/", func(_, _ int64) bool { return true }))
+}
+
+func TestFilterAttachmentImagesProtocolRelativeOrigin(t *testing.T) {
+	image := `<img data-src="//api.test/backend/api/v2/tasks/7/attachments/5" src="#">`
+	remove := func(tid, aid int64) bool { return tid == 7 && aid == 5 }
+	assert.Equal(t, image, FilterAttachmentImages(image, "http://front.test/app/", remove, "https://api.test/backend/"), "protocol-relative image inherits HTTP from its frontend document")
+	assert.Empty(t, FilterAttachmentImages(image, "http://front.test/app/", remove, "http://api.test/backend/"))
+	assert.Equal(t, image, FilterAttachmentImages(image, "", remove, "https://api.test/backend/"), "unknown document scheme must not manufacture a trusted origin")
+}

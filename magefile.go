@@ -546,7 +546,10 @@ func (Test) E2E(ctx context.Context, args string) error {
 	apiCmd := exec.CommandContext(ctx, "./vikunja", "web")
 	apiCmd.Env = append(os.Environ(),
 		fmt.Sprintf("VIKUNJA_SERVICE_INTERFACE=:%d", apiPort),
-		fmt.Sprintf("VIKUNJA_SERVICE_PUBLICURL=http://127.0.0.1:%d/", apiPort),
+		// Public page links must use the browser-facing frontend. The API embeds
+		// a placeholder during E2E and cannot serve the separate preview build.
+		fmt.Sprintf("VIKUNJA_SERVICE_PUBLICURL=http://127.0.0.1:%d/", frontendPort),
+		fmt.Sprintf("VIKUNJA_SERVICE_APIURL=http://127.0.0.1:%d/", apiPort),
 		fmt.Sprintf("VIKUNJA_SERVICE_TESTINGTOKEN=%s", testingToken),
 		fmt.Sprintf("VIKUNJA_SERVICE_ROOTPATH=%s", tmpDir),
 		"VIKUNJA_SERVICE_JWTSECRET=e2e-test-jwt-secret-do-not-use-in-production",

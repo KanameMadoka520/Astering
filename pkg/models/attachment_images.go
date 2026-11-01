@@ -38,5 +38,5 @@ func cleanTaskAttachmentImages(s *xorm.Session, taskID int64, source string) (st
 	for _, a := range attachments {
 		available[a.ID] = true
 	}
-	return richtext.FilterAttachmentImages(source, config.ServicePublicURL.GetString(), func(tid, aid int64) bool { return tid == taskID && !available[aid] }), nil
+	return richtext.FilterAttachmentImages(source, config.ServicePublicURL.GetString(), func(tid, aid int64) bool { return tid == taskID && !available[aid] }, config.ServiceAPIURL.GetString()), nil
 }

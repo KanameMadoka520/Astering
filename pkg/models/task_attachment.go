@@ -607,7 +607,7 @@ func (ta *TaskAttachment) Delete(s *xorm.Session, a web.Auth) error {
 
 	// Detach the cover and its inline images in the same transaction.
 	clean := func(source string) string {
-		return richtext.FilterAttachmentImages(source, config.ServicePublicURL.GetString(), func(tid, aid int64) bool { return tid == ta.TaskID && aid == ta.ID })
+		return richtext.FilterAttachmentImages(source, config.ServicePublicURL.GetString(), func(tid, aid int64) bool { return tid == ta.TaskID && aid == ta.ID }, config.ServiceAPIURL.GetString())
 	}
 	task.Description = clean(task.Description)
 	if task.CoverImageAttachmentID == ta.ID {

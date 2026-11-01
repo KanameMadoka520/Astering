@@ -50,6 +50,7 @@ const (
 	ServiceUnixSocket                     Key = `service.unixsocket`
 	ServiceUnixSocketMode                 Key = `service.unixsocketmode`
 	ServicePublicURL                      Key = `service.publicurl`
+	ServiceAPIURL                         Key = `service.apiurl`
 	ServiceEnableCaldav                   Key = `service.enablecaldav`
 	ServiceRootpath                       Key = `service.rootpath`
 	ServiceMaxItemsPerPage                Key = `service.maxitemsperpage`
@@ -410,6 +411,7 @@ func initDefaultConfig() {
 	ServiceInterface.setDefault(":3456")
 	ServiceUnixSocket.setDefault("")
 	ServicePublicURL.setDefault("")
+	ServiceAPIURL.setDefault("")
 	ServiceEnableCaldav.setDefault(true)
 
 	ServiceRootpath.setDefault(getRootpathLocation())
@@ -845,6 +847,12 @@ func InitConfig() {
 		}
 	}
 
+	apiURL, err := normalizeServiceAPIURL(ServiceAPIURL.GetString())
+	if err != nil {
+		log.Fatalf("Invalid service.apiurl: %s", err)
+	}
+	ServiceAPIURL.Set(apiURL)
+
 	if MigrationTodoistRedirectURL.GetString() == "" {
 		MigrationTodoistRedirectURL.Set(ServicePublicURL.GetString() + "migrate/todoist")
 	}
@@ -906,4 +914,20 @@ func GetMaxFileSizeInMBytes() uint64 {
 		return 20
 	}
 	return maxFileSizeInBytes
+}
+
+// normalizeServiceAPIURL validates an explicitly trusted public API root.
+// Empty keeps the normal same-origin deployment unchanged.
+func normalizeServiceAPIURL(value string) (string, error) {
+	if value == "" {
+		return "", nil
+	}
+	u, err := url.Parse(value)
+	if err != nil {
+		return "", fmt.Errorf("invalid URL: %w", err)
+	}
+	if (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" {
+		return "", fmt.Errorf("must be an absolute http(s) URL without credentials, query or fragment")
+	}
+	return strings.TrimRight(u.String(), "/") + "/", nil
 }

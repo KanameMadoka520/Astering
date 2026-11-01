@@ -19,6 +19,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/spf13/viper"
@@ -241,5 +242,30 @@ func TestPathsFollowRootpath(t *testing.T) {
 		initConfigFromYAML(t, "service:\n  rootpath: /pinned/root\nplugins:\n  dir: custom-plugins\n")
 
 		assert.Equal(t, "/pinned/root/custom-plugins", PluginsDir.GetString())
+	})
+}
+
+func TestServiceAPIURL(t *testing.T) {
+	for _, value := range []string{"", "https://api.test", "https://api.test/backend/", "http://127.0.0.1:3456/api/v2"} {
+		t.Run("valid "+value, func(t *testing.T) {
+			got, err := normalizeServiceAPIURL(value)
+			require.NoError(t, err)
+			if value == "" {
+				assert.Empty(t, got)
+			} else {
+				assert.Equal(t, strings.TrimRight(value, "/")+"/", got)
+			}
+		})
+	}
+	for _, value := range []string{"/api/v2", "//api.test/", "ftp://api.test/", "https:///missing-host", "https://user:secret@api.test/", "https://api.test/?key=secret", "https://api.test/?", "https://api.test/#fragment", "https://api.test:bad/"} {
+		t.Run("invalid "+value, func(t *testing.T) {
+			_, err := normalizeServiceAPIURL(value)
+			require.Error(t, err)
+		})
+	}
+	t.Run("environment overrides configured root", func(t *testing.T) {
+		t.Setenv("VIKUNJA_SERVICE_APIURL", "https://env-api.test/backend/api/v2/")
+		initConfigFromYAML(t, "service:\n  apiurl: https://configured-api.test/\n")
+		assert.Equal(t, "https://env-api.test/backend/api/v2/", ServiceAPIURL.GetString())
 	})
 }

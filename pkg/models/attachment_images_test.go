@@ -94,3 +94,71 @@ func TestAttachmentImageLifecycle(t *testing.T) {
 		})
 	}
 }
+
+func TestAttachmentImageLifecycleSplitOrigins(t *testing.T) {
+	for _, rollback := range []bool{false, true} {
+		t.Run(map[bool]string{false: "commit", true: "rollback"}[rollback], func(t *testing.T) {
+			db.LoadAndAssertFixtures(t)
+			files.InitTestFileFixtures(t)
+			oldPublic, oldAPI := config.ServicePublicURL.GetString(), config.ServiceAPIURL.GetString()
+			config.ServicePublicURL.Set("https://frontend.test/app/")
+			config.ServiceAPIURL.Set("https://api.test:8443/backend/api/v2/")
+			t.Cleanup(func() {
+				config.ServicePublicURL.Set(oldPublic)
+				config.ServiceAPIURL.Set(oldAPI)
+			})
+			remaining := `<p>meeting notes</p><img src="https://outside.test/backend/api/v2/tasks/1/attachments/1"><img src="https://api.test:8443/backend/api/v2/tasks/2/attachments/1">`
+			original := remaining + `<img data-src="https://api.test:8443/backend/api/v2/tasks/1/attachments/1" src="#">`
+			s := db.NewSession()
+			defer s.Close()
+			_, err := s.ID(1).Cols("description", "cover_image_attachment_id").Update(&Task{Description: original, CoverImageAttachmentID: 1})
+			require.NoError(t, err)
+			comment := &TaskComment{TaskID: 1, AuthorID: 1, Comment: original}
+			_, err = s.Insert(comment)
+			require.NoError(t, err)
+			require.NoError(t, s.Commit())
+
+			mutation := db.NewSession()
+			defer mutation.Close()
+			attachment := &TaskAttachment{ID: 1, TaskID: 1}
+			require.NoError(t, attachment.Delete(mutation, &user.User{ID: 1}))
+			var task Task
+			_, err = mutation.ID(1).Get(&task)
+			require.NoError(t, err)
+			assert.Equal(t, remaining, task.Description)
+			assert.Zero(t, task.CoverImageAttachmentID)
+			var savedComment TaskComment
+			_, err = mutation.ID(comment.ID).Get(&savedComment)
+			require.NoError(t, err)
+			assert.Equal(t, remaining, savedComment.Comment)
+			// Old tabs cannot restore the deleted image through either writer.
+			task.Description = original
+			require.NoError(t, task.updateSingleTask(mutation, &user.User{ID: 1}, []string{"description"}))
+			assert.Equal(t, remaining, task.Description)
+			savedComment.Comment = original
+			require.NoError(t, savedComment.Update(mutation, &user.User{ID: 1}))
+			assert.Equal(t, remaining, savedComment.Comment)
+			if rollback {
+				require.NoError(t, mutation.Rollback())
+				events.CleanupPending(mutation)
+			} else {
+				require.NoError(t, mutation.Commit())
+				events.DispatchPending(t.Context(), mutation)
+			}
+			read := db.NewReadSession()
+			defer read.Close()
+			var persisted Task
+			_, err = read.ID(1).Get(&persisted)
+			require.NoError(t, err)
+			if rollback {
+				assert.Equal(t, original, persisted.Description)
+				assert.Equal(t, int64(1), persisted.CoverImageAttachmentID)
+			} else {
+				assert.Equal(t, remaining, persisted.Description)
+				assert.Zero(t, persisted.CoverImageAttachmentID)
+			}
+			_, err = files.FileStat(attachment.File)
+			require.NoError(t, err, "shared Drive source must survive")
+		})
+	}
+}

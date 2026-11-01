@@ -49,6 +49,11 @@
                     "comment": "The public facing URL where your users can reach Vikunja. Used in emails and for the communication between api and frontend. The url must be a valid http or https url. This setting is required when cors.enable is true."
                 },
                 {
+                    "key": "apiurl",
+                    "default_value": "",
+                    "comment": "Optional trusted public API URL when the API and frontend use different origins or deployment paths. Leave empty for a same-origin deployment. Used to recognize local task attachment images when deleting attachments or saving descriptions and comments; it does not change frontend links, routing, or CORS. Must be an absolute http(s) URL without credentials, query or fragment. May include a deployment prefix and an optional /api/v1 or /api/v2 suffix, for example https://api.example.com/backend/api/v2/. Set VIKUNJA_SERVICE_APIURL to override."
+                },
+                {
                     "key": "rootpath",
                     "default_value": "\u003crootpath\u003e",
                     "comment": "The base path on the file system where Vikunja stores its data (database, files, logs, plugins).\nDefaults to the current working directory. When running as a systemd service, this respects the WorkingDirectory= setting.\nVikunja will also look in this path for a config file, so you could provide only this variable to point to a folder\nwith a config file which will then be used.\nWhen a config file is pinned with the `--config` flag, this search is skipped and rootpath defaults to the directory containing that config file.\nA relative rootpath set in a pinned config file is resolved against that same directory."
