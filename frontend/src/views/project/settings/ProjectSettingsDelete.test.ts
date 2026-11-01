@@ -24,6 +24,11 @@ import testid from '@/directives/testid'
 import {i18n} from '@/i18n'
 import en from '@/i18n/lang/en.json'
 import {useAuthStore} from '@/stores/auth'
+import {removeToken, saveToken} from '@/helpers/auth'
+import {
+	captureClientRequestContext,
+	isClientRequestContextCurrent,
+} from '@/client/requestContext'
 
 const defaults = queryClient.getDefaultOptions()
 let wrapper: VueWrapper | undefined
@@ -102,6 +107,68 @@ function confirmButton() {
 }
 
 describe('ProjectSettingsDelete', () => {
+	describe('confirmation request context', () => {
+		let previousApiUrl: string
+		function accountToken(id: number, prefix = 'header') {
+			const claims = {
+				id,
+				type: AUTH_TYPES.USER,
+			}
+			return `${prefix}.${btoa(JSON.stringify(claims))}.signature`
+		}
+		beforeEach(() => {
+			previousApiUrl = window.API_URL
+			window.API_URL = ''
+			removeToken()
+			saveToken(accountToken(1), false)
+			sdk.projectTasksList.mockResolvedValue(taskTotal(0))
+			sdk.projectsDelete.mockResolvedValue({data: {}})
+		})
+		afterEach(() => {
+			removeToken()
+			window.API_URL = previousApiUrl
+		})
+		const contextChanges = [
+			{
+				name: 'account identity',
+				change: () => saveToken(accountToken(2), false),
+			},
+			{
+				name: 'API server',
+				change: () => { window.API_URL = 'https://other.example' },
+			},
+			{
+				name: 'session epoch',
+				change: () => {
+					removeToken()
+					saveToken(accountToken(1), false)
+				},
+			},
+		]
+		it.each(contextChanges)('rejects the previous confirmation after the $name changes on the same project route', async ({change}) => {
+			await mountModal()
+			const request = captureClientRequestContext()
+			change()
+			expect(isClientRequestContextCurrent(request)).toBe(false)
+			confirmButton().click()
+			await flushPromises()
+
+			expect(sdk.projectsDelete).not.toHaveBeenCalled()
+		})
+
+		it('accepts a renewed token for the same account, session and API', async () => {
+			await mountModal()
+			const request = captureClientRequestContext()
+			saveToken(accountToken(1, 'renewed'), false)
+			expect(isClientRequestContextCurrent(request)).toBe(true)
+			confirmButton().click()
+			await flushPromises()
+
+			expect(sdk.projectsDelete).toHaveBeenCalledOnce()
+			expect(router.currentRoute.value.fullPath).toBe('/')
+		})
+	})
+
 	it('does not navigate away after an earlier project deletion finishes on a reused route', async () => {
 		sdk.projectsList.mockResolvedValue(list([project(42), project(43)]))
 		sdk.projectTasksList.mockResolvedValue(taskTotal(0))

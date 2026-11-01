@@ -58,6 +58,11 @@ import {useIsAlive} from '@/composables/useIsAlive'
 import {useProjects} from '@/composables/useProjects'
 import {useTitle} from '@/composables/useTitle'
 import {descendantProjects} from '@/helpers/projectAccess'
+import {
+	captureClientRequestContext,
+	isClientRequestContextCurrent,
+	type ClientRequestContext,
+} from '@/client/requestContext'
 
 const {t} = useI18n({useScope: 'global'})
 const projectList = useProjects()
@@ -72,13 +77,19 @@ const project = computed(() => projectList.projects[projectId.value])
 
 // What gets deleted is fixed once the project is known: the delete removes the project and everything inside it
 // from the list as soon as it starts, which would otherwise blank the title and shrink the count mid-request.
-const target = ref<{id: number, title: string, ids: number[]} | null>(null)
+const target = ref<{
+	id: number,
+	title: string,
+	ids: number[],
+	request: ClientRequestContext,
+} | null>(null)
 watch(projectId, () => { target.value = null }, {flush: 'sync'})
 watch([project, () => projectList.projectsArray], ([current]) => {
 	if (current && target.value?.id !== current.id) {
 		target.value = {
 			id: current.id,
 			title: current.title,
+			request: captureClientRequestContext(),
 			// The server deletes every level below, not just the direct children.
 			ids: [current.id, ...descendantProjects(projectList.projectsArray, current.id).map(child => child.id)],
 		}
@@ -119,8 +130,14 @@ const deleteNotice = computed(() => {
 const isDeleting = ref(false)
 
 async function deleteProject() {
-	const id = target.value?.id
-	if (!id || id !== projectId.value || isDeleting.value) {
+	const confirmation = target.value
+	const id = confirmation?.id
+	if (!confirmation || !id || id !== projectId.value || isDeleting.value) {
+		return
+	}
+	if (!isClientRequestContextCurrent(confirmation.request)) {
+		target.value = null
+		goBack()
 		return
 	}
 	const origin = router.currentRoute.value
@@ -133,7 +150,8 @@ async function deleteProject() {
 	} finally {
 		isDeleting.value = false
 	}
-	if (alive.value && projectId.value === id && router.currentRoute.value === origin) {
+	if (alive.value && target.value === confirmation && projectId.value === id && router.currentRoute.value === origin
+		&& isClientRequestContextCurrent(confirmation.request)) {
 		await router.push({name: 'home'})
 	}
 }

@@ -854,7 +854,7 @@
 								variant="tertiary"
 								icon="trash-alt"
 								danger
-								@click="showDeleteModal = true"
+								@click="openDeleteModal"
 							>
 								{{ $t('task.detail.actions.delete') }}
 							</XButton>
@@ -892,7 +892,7 @@
 			:enabled="showDeleteModal"
 			danger
 			:confirm-label="$t('task.detail.delete.confirm')"
-			@close="showDeleteModal = false"
+			@close="closeDeleteModal"
 			@submit="deleteTask"
 		>
 			<template #header>
@@ -915,6 +915,7 @@
 import {parseDateOrNull} from '@/helpers/parseDateOrNull'
 import {
 	ref,
+	shallowRef,
 	reactive,
 	computed,
 	watch,
@@ -947,6 +948,12 @@ import BaseButton from '@/components/base/BaseButton.vue'
 import LoadError from '@/components/misc/state/LoadError.vue'
 import UnsavedLeaveDialog from '@/components/misc/UnsavedLeaveDialog.vue'
 import {useUnsavedLeaveGuard} from '@/composables/useUnsavedLeaveGuard'
+import {useIsAlive} from '@/composables/useIsAlive'
+import {
+	captureClientRequestContext,
+	isClientRequestContextCurrent,
+	type ClientRequestContext,
+} from '@/client/requestContext'
 
 // partials
 import Attachments from '@/components/tasks/partials/Attachments.vue'
@@ -1027,6 +1034,7 @@ const emit = defineEmits<{
 
 const router = useRouter()
 const route = useRoute()
+const alive = useIsAlive()
 const {t} = useI18n({useScope: 'global'})
 
 const projectList = useProjects()
@@ -1515,6 +1523,7 @@ watch(taskQuery.error, cause => {
 	if (action === 'deleted') {
 		deletedTaskId.value = props.taskId
 		showDeleteModal.value = false
+		if (!deleteTaskMutation.isPending.value) deleteConfirmation.value = undefined
 		return
 	}
 	// The deleted query left the cache, so a later refetch answers with the API's own 404.
@@ -1774,18 +1783,52 @@ useTaskDetailShortcuts({
 })
 
 const showDeleteModal = ref(false)
+const deleteConfirmation = shallowRef<{
+	id: number,
+	projectId: number,
+	request: ClientRequestContext,
+	route: typeof router.currentRoute.value,
+}>()
+
+function openDeleteModal() {
+	if (deleteTaskMutation.isPending.value || !canWrite.value || isDeleted.value || task.value.id !== props.taskId) return
+	deleteConfirmation.value = {
+		id: task.value.id,
+		projectId: task.value.project_id,
+		request: captureClientRequestContext(),
+		route: router.currentRoute.value,
+	}
+	showDeleteModal.value = true
+}
+
+function closeDeleteModal() {
+	showDeleteModal.value = false
+	deleteConfirmation.value = undefined
+}
+
+// A confirmation belongs to this task and this visit, including leaving and returning to the same id.
+watch([() => props.taskId, () => router.currentRoute.value], closeDeleteModal, {flush: 'sync'})
 
 async function deleteTask() {
 	if (deleteTaskMutation.isPending.value) return
-	const {id, project_id: projectId} = task.value
+	const confirmation = deleteConfirmation.value
+	if (!showDeleteModal.value || !confirmation) return
+	const isCurrent = () => alive.value && deleteConfirmation.value === confirmation
+		&& props.taskId === confirmation.id && task.value.id === confirmation.id
+		&& router.currentRoute.value === confirmation.route && isClientRequestContextCurrent(confirmation.request)
+	if (!isCurrent()) {
+		closeDeleteModal()
+		return
+	}
+	const {id, projectId} = confirmation
 	try {
 		await deleteTaskMutation.mutateAsync(id)
 	} catch {
 		return
 	}
+	if (!isCurrent()) return
 	success({message: t('task.detail.deleteSuccess')})
-	if (props.taskId !== id) return
-	showDeleteModal.value = false
+	closeDeleteModal()
 	// Back to where the task was opened from (Home, Upcoming, a board behind the dialog), not always its project,
 	// so the browser's Back button does not lead to the deleted task's 404 page either.
 	if (isModal.value) {
