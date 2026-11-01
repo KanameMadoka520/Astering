@@ -4,7 +4,6 @@ import {configDefaults} from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import {URL, fileURLToPath} from 'node:url'
 import {dirname, resolve} from 'node:path'
-import {readFileSync} from 'node:fs'
 
 import VueI18nPlugin from '@intlify/unplugin-vue-i18n/vite'
 import {VitePWA} from 'vite-plugin-pwa'
@@ -47,9 +46,9 @@ function getSentryConfig(env: Record<string, string>): SentryVitePluginOptions {
 		telemetry: false,
 
 		// sourcemaps: {
-			// assets: [], // TODO
-			// deleteFilesAfterUpload: [], // TODO define glob
-			// rewriteSources // might need that instead of `urlPrefix`
+		// assets: [], // TODO
+		// deleteFilesAfterUpload: [], // TODO define glob
+		// rewriteSources // might need that instead of `urlPrefix`
 		// },
 
 		release: {
@@ -104,14 +103,8 @@ export default defineConfig(({command, mode}) => {
 })
 
 function getBuildConfig(env: Record<string, string>) {
-	const workboxPkgPath = resolve(dirname(pathSrc), 'node_modules/workbox-precaching/package.json')
-	const workboxVersion = JSON.parse(readFileSync(workboxPkgPath, 'utf-8')).version
-
 	return {
 		base: env.VIKUNJA_FRONTEND_BASE,
-		define: {
-			__WORKBOX_VERSION__: JSON.stringify(`v${workboxVersion}`),
-		},
 		// https://vitest.dev/config/
 		test: {
 			environment: 'happy-dom',
@@ -136,7 +129,7 @@ function getBuildConfig(env: Record<string, string>) {
 					postcssPresetEnv({
 						features: {
 							'logical-properties-and-values': false,
-						}
+						},
 					}),
 				],
 			},
@@ -176,17 +169,17 @@ function getBuildConfig(env: Record<string, string>) {
 					theme_color: '#f3f4f6',
 					icons: [
 						{
-							src: './images/icons/android-chrome-192x192.png?v=x33',
+							src: './images/icons/android-chrome-192x192.png?v=x40',
 							sizes: '192x192',
 							type: 'image/png',
 						},
 						{
-							src: './images/icons/android-chrome-512x512.png?v=x33',
+							src: './images/icons/android-chrome-512x512.png?v=x40',
 							sizes: '512x512',
 							type: 'image/png',
 						},
 						{
-							src: './images/icons/icon-maskable.png?v=x33',
+							src: './images/icons/icon-maskable.png?v=x40',
 							sizes: '1024x1024',
 							type: 'image/png',
 							purpose: 'maskable',
