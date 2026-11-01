@@ -26,6 +26,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"text/template"
@@ -41,8 +42,8 @@ import (
 const (
 	indexFile               = `index.html`
 	rootPath                = `dist/`
-	cacheControlMax         = `max-age=315360000, public, max-age=31536000, s-maxage=31536000, immutable`
-	cacheControlNone        = `public, max-age=0, s-maxage=0, must-revalidate`
+	cacheControlMax         = `public, max-age=31536000, immutable`
+	cacheControlNone        = `no-cache`
 	configScriptTagTemplate = `
 <script>
 	window.SENTRY_ENABLED = {{ .SENTRY_ENABLED }}
@@ -59,6 +60,11 @@ var etagLock sync.Mutex
 var scriptConfigString string
 var scriptConfigStringLock sync.Mutex
 
+// Only names produced by the frontend build, or modules in a pinned Workbox version,
+// may remain fresh without revalidation. Fixed public paths can change on the next release.
+var immutableBuildAssetPath = regexp.MustCompile(`(?:^|/)assets/[^/]+-[A-Za-z0-9_-]{8,}\.[A-Za-z0-9]+$`)
+var immutableWorkboxPath = regexp.MustCompile(`(?:^|/)workbox-v[0-9]+\.[0-9]+\.[0-9]+/workbox-[A-Za-z0-9_-]+(?:\.(?:dev|prod))?\.js$`)
+
 func init() {
 	etagCache = make(map[string]string)
 	etagLock = sync.Mutex{}
@@ -72,15 +78,34 @@ func serveIndexFile(c *echo.Context, assetFs http.FileSystem) (err error) {
 	}
 	defer index.Close()
 
-	if scriptConfigString == "" {
+	content, err := configuredIndexContent(index)
+	if err != nil {
+		return err
+	}
+	reader := strings.NewReader(content)
 
-		scriptConfigStringLock.Lock()
-		defer scriptConfigStringLock.Unlock()
+	info, err := index.Stat()
+	if err != nil {
+		return err
+	}
+
+	// Validate the actual HTML, including the configuration injected at runtime.
+	etag := etaggenerator.Generate([]byte(content), true)
+	return serveFile(c, reader, info, etag)
+}
+
+func configuredIndexContent(index io.Reader) (string, error) {
+	// Initialization and reads share the lock; concurrent first requests must not
+	// race with publishing the configured HTML. Release it before writing a response.
+	scriptConfigStringLock.Lock()
+	defer scriptConfigStringLock.Unlock()
+
+	if scriptConfigString == "" {
 
 		// replace config variables
 		tmpl, err := template.New("config").Parse(configScriptTagTemplate)
 		if err != nil {
-			return err
+			return "", err
 		}
 		var tplOutput bytes.Buffer
 		data := make(map[string]string)
@@ -95,28 +120,20 @@ func serveIndexFile(c *echo.Context, assetFs http.FileSystem) (err error) {
 
 		err = tmpl.Execute(&tplOutput, data)
 		if err != nil {
-			return err
+			return "", err
 		}
 		scriptConfig := tplOutput.String()
 
 		buf := bytes.Buffer{}
 		_, err = buf.ReadFrom(index)
 		if err != nil {
-			return err
+			return "", err
 		}
 
 		scriptConfigString = strings.ReplaceAll(buf.String(), `<div id="app"></div>`, `<div id="app"></div>`+scriptConfig)
 		scriptConfigString = injectAPIURL(scriptConfigString, config.ServicePublicURL.GetString())
 	}
-
-	reader := strings.NewReader(scriptConfigString)
-
-	info, err := index.Stat()
-	if err != nil {
-		return err
-	}
-
-	return serveFile(c, reader, info, "")
+	return scriptConfigString, nil
 }
 
 // injectAPIURL points the frontend at the public URL. The frontend appends the
@@ -219,37 +236,32 @@ func getMimeType(name string, file io.ReadSeeker) (mineType string, err error) {
 	return mineType, nil
 }
 
-func getCacheControlHeader(info os.FileInfo, file io.ReadSeeker) (header string, err error) {
-	// Don't cache service worker and related files
-	if info.Name() == "robots.txt" ||
-		info.Name() == "sw.js" ||
-		info.Name() == "manifest.webmanifest" {
+func getCacheControlHeader(info os.FileInfo, file io.ReadSeeker, requestPath string) (header string, err error) {
+	requestPath = path.Clean(requestPath)
+	// A missing asset can fall back to index.html. Never cache that HTML under the requested asset name.
+	if info.Name() != path.Base(requestPath) ||
+		(!immutableBuildAssetPath.MatchString(requestPath) && !immutableWorkboxPath.MatchString(requestPath)) {
 		return cacheControlNone, nil
-	}
-
-	if strings.HasPrefix(info.Name(), "workbox-") {
-		return cacheControlMax, nil
 	}
 
 	contentType, err := getMimeType(info.Name(), file)
 	if err != nil {
 		return "", err
 	}
+	// Go's MIME registry includes parameters such as "text/css; charset=utf-8".
+	contentType, _, err = mime.ParseMediaType(contentType)
+	if err != nil {
+		return "", err
+	}
 
-	// Cache everything looking like an asset
+	// Also check the served representation: HTML and configuration must always revalidate.
 	if strings.HasPrefix(contentType, "image/") ||
 		strings.HasPrefix(contentType, "font/") ||
-		strings.HasPrefix(contentType, "~images/") ||
-		strings.HasPrefix(contentType, "~font/") ||
 		contentType == "text/css" ||
 		contentType == "application/javascript" ||
 		contentType == "text/javascript" ||
 		contentType == "application/vnd.ms-fontobject" ||
 		contentType == "application/x-font-ttf" ||
-		contentType == "font/opentype" ||
-		contentType == "font/woff2" ||
-		contentType == "image/svg+xml" ||
-		contentType == "image/x-icon" ||
 		contentType == "audio/wav" {
 		return cacheControlMax, nil
 	}
@@ -265,7 +277,7 @@ func serveFile(c *echo.Context, file io.ReadSeeker, info os.FileInfo, etag strin
 		c.Response().Header().Set("Etag", etag)
 	}
 
-	cacheControl, err := getCacheControlHeader(info, file)
+	cacheControl, err := getCacheControlHeader(info, file, c.Request().URL.Path)
 	if err != nil {
 		return err
 	}

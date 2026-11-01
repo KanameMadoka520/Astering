@@ -177,9 +177,9 @@ func TestTaskAttachmentsV2(t *testing.T) {
 		assert.Equal(t, content, rec.Body.Bytes(), "the streamed file bytes must match the original")
 		assert.NotEmpty(t, rec.Header().Get("Content-Type"))
 		assert.Contains(t, rec.Header().Get("Content-Disposition"), "download.txt")
-		// Caching headers mirror v1: a concrete length and a cacheable directive.
+		// Ordinary documents remain private and are not stored in browser caches.
 		assert.Equal(t, strconv.Itoa(len(content)), rec.Header().Get("Content-Length"))
-		assert.Equal(t, "no-cache", rec.Header().Get("Cache-Control"))
+		assert.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
 		assert.NotEmpty(t, rec.Header().Get("Last-Modified"))
 		assert.Equal(t, "nosniff", rec.Header().Get("X-Content-Type-Options"))
 	})
@@ -364,7 +364,7 @@ func TestTaskAttachmentsV2_Preview(t *testing.T) {
 				require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
 				assert.Equal(t, tc.contentType, rec.Header().Get("Content-Type"))
 				assert.Equal(t, strconv.Itoa(rec.Body.Len()), rec.Header().Get("Content-Length"))
-				assert.Equal(t, "no-cache", rec.Header().Get("Cache-Control"))
+				assert.Equal(t, "private, no-cache", rec.Header().Get("Cache-Control"))
 				assert.Equal(t, "nosniff", rec.Header().Get("X-Content-Type-Options"))
 
 				cfg, format, err := image.DecodeConfig(rec.Body)

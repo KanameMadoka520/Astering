@@ -22,9 +22,11 @@ package files
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
+	"time"
 
 	"code.vikunja.io/api/pkg/models"
 	"code.vikunja.io/api/pkg/web"
@@ -63,11 +65,26 @@ func toAttachmentUploadError(err error) AttachmentUploadError {
 	return AttachmentUploadError{Message: err.Error()}
 }
 
+// PreviewCache identifies an immutable attachment and requested size after authorization.
+type PreviewCache struct {
+	Request *http.Request
+	Key     string
+}
+
 // WriteAttachmentPreview streams an inline image preview to the response and closes it.
-func WriteAttachmentPreview(w http.ResponseWriter, preview *models.TaskAttachmentPreview) {
+func WriteAttachmentPreview(w http.ResponseWriter, preview *models.TaskAttachmentPreview, cache ...PreviewCache) {
 	defer func() { _ = preview.Close() }()
 
-	w.Header().Set("Cache-Control", "no-cache")
+	PrivateImageCache(w)
+	if len(cache) > 0 && cache[0].Request != nil {
+		// Bump the encoding version when the deterministic preview format/quality changes.
+		etag := ImageETag([]byte(fmt.Sprintf("preview-v1:%s:%s:%d", cache[0].Key, preview.Mime, preview.Size)))
+		w.Header().Set("ETag", etag)
+		if ImageNotModified(cache[0].Request, etag, time.Time{}) {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+	}
 	w.Header().Set("Content-Type", preview.Mime)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	if preview.Size >= 0 {

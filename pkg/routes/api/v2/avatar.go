@@ -19,8 +19,11 @@ package apiv2
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"code.vikunja.io/api/pkg/modules/avatar"
+	"code.vikunja.io/api/pkg/modules/humabridge"
+	webfiles "code.vikunja.io/api/pkg/web/files"
 
 	"github.com/danielgtaylor/huma/v2"
 )
@@ -29,6 +32,7 @@ import (
 // the []byte Body straight to the wire; the header:"Content-Type" field overrides
 // content negotiation so the provider's actual mime type reaches the client.
 type avatarResponse struct {
+	Status      int
 	ContentType string `header:"Content-Type"`
 	Body        []byte
 }
@@ -81,5 +85,17 @@ func avatarGet(ctx context.Context, in *avatarInput) (*avatarResponse, error) {
 		return nil, translateDomainError(err)
 	}
 
-	return &avatarResponse{ContentType: mimeType, Body: a}, nil
+	if ec := humabridge.EchoContextFrom(ctx); ec != nil {
+		webfiles.PrivateImageCache((*ec).Response())
+		etag := webfiles.ImageETag(a)
+		(*ec).Response().Header().Set("ETag", etag)
+		if webfiles.ImageNotModified((*ec).Request(), etag, time.Time{}) {
+			return &avatarResponse{Status: http.StatusNotModified}, nil
+		}
+	}
+	return &avatarResponse{
+		Status:      http.StatusOK,
+		ContentType: mimeType,
+		Body:        a,
+	}, nil
 }

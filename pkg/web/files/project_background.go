@@ -46,20 +46,19 @@ func WriteProjectBackgroundInStoredFormat(w http.ResponseWriter, r *http.Request
 }
 
 func writeProjectBackground(w http.ResponseWriter, r *http.Request, bgFile *files.File, stat os.FileInfo, contentType string) {
-	// Override the global no-store directive so browsers can cache background images.
-	// no-cache allows caching but requires revalidation via If-Modified-Since.
-	w.Header().Set("Cache-Control", "no-cache")
-
-	if stat != nil {
-		modTime := stat.ModTime().UTC()
-		w.Header().Set("Last-Modified", modTime.Format(http.TimeFormat))
-
-		if ifModSince := r.Header.Get("If-Modified-Since"); ifModSince != "" {
-			if t, err := http.ParseTime(ifModSince); err == nil && !modTime.After(t) {
-				w.WriteHeader(http.StatusNotModified)
-				return
-			}
-		}
+	PrivateImageCache(w)
+	etag := fileImageETag(bgFile)
+	w.Header().Set("ETag", etag)
+	modified := bgFile.Created
+	if stat != nil && !stat.ModTime().IsZero() {
+		modified = stat.ModTime()
+	}
+	if !modified.IsZero() {
+		w.Header().Set("Last-Modified", modified.UTC().Format(http.TimeFormat))
+	}
+	if ImageNotModified(r, etag, modified) {
+		w.WriteHeader(http.StatusNotModified)
+		return
 	}
 
 	w.Header().Set("Content-Type", contentType)

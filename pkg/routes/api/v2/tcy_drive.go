@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -33,6 +34,7 @@ import (
 	"code.vikunja.io/api/pkg/user"
 	"code.vikunja.io/api/pkg/web"
 	webfiles "code.vikunja.io/api/pkg/web/files"
+
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humaecho"
 	"xorm.io/xorm"
@@ -180,7 +182,10 @@ func RegisterDriveRoutes(api huma.API) {
 		return &huma.StreamResponse{Body: func(hctx huma.Context) {
 			defer preview.Close()
 			c := humaecho.Unwrap(hctx)
-			webfiles.WriteAttachmentPreview((*c).Response(), preview)
+			webfiles.WriteAttachmentPreview((*c).Response(), preview, webfiles.PreviewCache{
+				Request: (*c).Request(),
+				Key:     fmt.Sprintf("drive:%d:sm", d.File.ID),
+			})
 		}}, nil
 	})
 	Register(api, download, func(ctx context.Context, in *DriveID) (*huma.StreamResponse, error) {
@@ -200,7 +205,11 @@ func RegisterDriveRoutes(api huma.API) {
 		return &huma.StreamResponse{Body: func(hctx huma.Context) {
 			defer d.File.File.Close()
 			c := humaecho.Unwrap(hctx)
-			(*c).Response().Header().Set("Cache-Control", "private, no-store")
+			if webfiles.IsCacheableImage(d.File.Mime) {
+				webfiles.PrivateImageCache((*c).Response())
+			} else {
+				(*c).Response().Header().Set("Cache-Control", "private, no-store")
+			}
 			(*c).Response().Header().Set("X-Content-Type-Options", "nosniff")
 			webfiles.WriteFileDownload((*c).Response(), (*c).Request(), d.File)
 		}}, nil

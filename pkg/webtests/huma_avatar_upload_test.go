@@ -25,7 +25,6 @@ import (
 	"image"
 	"image/color"
 	"image/png"
-	"io/fs"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -217,7 +216,7 @@ func pngWithClaimedDimensionsPatch(t *testing.T, width, height int) []byte {
 	return data
 }
 
-func TestAvatarUploadRemovesReplacedFile(t *testing.T) {
+func TestAvatarUploadRetainsReplacedDriveFile(t *testing.T) {
 	for _, path := range []string{avatarUploadPath, "/api/v1/user/settings/avatar/upload"} {
 		t.Run(path, func(t *testing.T) {
 			e, err := setupTestEnv()
@@ -247,9 +246,21 @@ func TestAvatarUploadRemovesReplacedFile(t *testing.T) {
 
 			newID := upload()
 			require.NotEqual(t, oldID, newID)
-			db.AssertMissing(t, "files", map[string]interface{}{"id": oldID})
+			db.AssertExists(t, "files", map[string]interface{}{
+				"id":            oldID,
+				"created_by_id": testuser1.ID,
+			}, false)
+			db.AssertExists(t, "drive_files", map[string]interface{}{
+				"file_id":  oldID,
+				"owner_id": testuser1.ID,
+			}, false)
+			db.AssertExists(t, "users", map[string]interface{}{
+				"id":              testuser1.ID,
+				"avatar_file_id":  newID,
+				"avatar_provider": "upload",
+			}, false)
 			_, err = files.FileStat(&files.File{ID: oldID})
-			require.ErrorIs(t, err, fs.ErrNotExist)
+			require.NoError(t, err, "replaced avatars remain owned Drive files until explicitly removed")
 		})
 	}
 }

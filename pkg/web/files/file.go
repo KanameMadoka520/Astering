@@ -21,6 +21,8 @@ import (
 	"mime"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"code.vikunja.io/api/pkg/files"
 )
@@ -30,9 +32,14 @@ import (
 // (Range + If-Modified-Since for free), a manual 304 + io.Copy otherwise. It does
 // not close the reader; the caller owns it.
 func WriteFileDownload(w http.ResponseWriter, r *http.Request, f *files.File) {
-	// Downloads must never be cached. no-cache overrides the global no-store
-	// directive so revalidation (If-Modified-Since) still works.
-	w.Header().Set("Cache-Control", "no-cache")
+	// Handlers explicitly opt authorized images in; preserve stricter caller policies.
+	cacheImage := IsCacheableImage(f.Mime) && !strings.Contains(strings.ToLower(w.Header().Get("Cache-Control")), "no-store")
+	if cacheImage {
+		PrivateImageCache(w)
+		w.Header().Set("ETag", fileImageETag(f))
+	} else if !strings.Contains(strings.ToLower(w.Header().Get("Cache-Control")), "no-store") {
+		w.Header().Set("Cache-Control", "private, no-store")
+	}
 
 	mimeToReturn := f.Mime
 	if mimeToReturn == "" {
@@ -53,11 +60,16 @@ func WriteFileDownload(w http.ResponseWriter, r *http.Request, f *files.File) {
 		return
 	}
 
-	if ifModSince := r.Header.Get("If-Modified-Since"); ifModSince != "" {
-		if t, parseErr := http.ParseTime(ifModSince); parseErr == nil && !f.Created.UTC().After(t) {
-			w.WriteHeader(http.StatusNotModified)
-			return
-		}
+	notModified := cacheImage && ImageNotModified(r, w.Header().Get("ETag"), f.Created)
+	if !cacheImage {
+		// Preserve conditional downloads for non-seekable storage without enabling cache storage.
+		since, err := http.ParseTime(r.Header.Get("If-Modified-Since"))
+		notModified = err == nil && !f.Created.UTC().Truncate(time.Second).After(since)
+	}
+	if notModified {
+		w.Header().Del("Content-Length")
+		w.WriteHeader(http.StatusNotModified)
+		return
 	}
 	_, _ = io.Copy(w, f.File)
 }

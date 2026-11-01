@@ -213,6 +213,9 @@ func taskAttachmentsDownload(ctx context.Context, in *struct {
 	return &huma.StreamResponse{Body: func(hctx huma.Context) {
 		defer func() { _ = file.File.Close() }()
 		c := humaecho.Unwrap(hctx)
+		if webfiles.IsCacheableImage(file.Mime) {
+			webfiles.PrivateImageCache((*c).Response())
+		}
 		webfiles.WriteFileDownload((*c).Response(), (*c).Request(), file)
 	}}, nil
 }
@@ -233,7 +236,11 @@ func taskAttachmentsPreview(ctx context.Context, in *struct {
 	}
 
 	return &huma.StreamResponse{Body: func(hctx huma.Context) {
-		webfiles.WriteAttachmentPreview((*humaecho.Unwrap(hctx)).Response(), preview)
+		ec := humaecho.Unwrap(hctx)
+		webfiles.WriteAttachmentPreview((*ec).Response(), preview, webfiles.PreviewCache{
+			Request: (*ec).Request(),
+			Key:     fmt.Sprintf("task:%d:%d:%s", in.TaskID, in.AttachmentID, in.Size),
+		})
 	}}, nil
 }
 

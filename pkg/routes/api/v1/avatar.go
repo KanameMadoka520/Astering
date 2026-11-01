@@ -17,16 +17,18 @@
 package v1
 
 import (
+	"errors"
+	"net/http"
+	"strconv"
+	"time"
+
 	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/events"
 	"code.vikunja.io/api/pkg/log"
 	"code.vikunja.io/api/pkg/models"
 	"code.vikunja.io/api/pkg/modules/avatar"
 	"code.vikunja.io/api/pkg/user"
-
-	"errors"
-	"net/http"
-	"strconv"
+	webfiles "code.vikunja.io/api/pkg/web/files"
 
 	"github.com/labstack/echo/v5"
 )
@@ -62,6 +64,12 @@ func GetAvatar(c *echo.Context) error {
 		return err
 	}
 
+	webfiles.PrivateImageCache(c.Response())
+	etag := webfiles.ImageETag(a)
+	c.Response().Header().Set("ETag", etag)
+	if webfiles.ImageNotModified(c.Request(), etag, time.Time{}) {
+		return c.NoContent(http.StatusNotModified)
+	}
 	return c.Blob(http.StatusOK, mimeType, a)
 }
 

@@ -18,6 +18,7 @@ package v1
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"code.vikunja.io/api/pkg/db"
@@ -133,7 +134,10 @@ func GetTaskAttachment(c *echo.Context) error {
 		if err != nil {
 			return err
 		}
-		webfiles.WriteAttachmentPreview(c.Response(), preview)
+		webfiles.WriteAttachmentPreview(c.Response(), preview, webfiles.PreviewCache{
+			Request: c.Request(),
+			Key:     fmt.Sprintf("task:%d:%d:%s", taskAttachment.TaskID, taskAttachment.ID, previewSize),
+		})
 		return nil
 	}
 
@@ -143,6 +147,9 @@ func GetTaskAttachment(c *echo.Context) error {
 	}
 	defer func() { _ = file.File.Close() }()
 
+	if webfiles.IsCacheableImage(file.Mime) {
+		webfiles.PrivateImageCache(c.Response())
+	}
 	webfiles.WriteFileDownload(c.Response(), c.Request(), file)
 	return nil
 }

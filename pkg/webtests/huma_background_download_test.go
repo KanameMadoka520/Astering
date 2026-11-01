@@ -61,19 +61,20 @@ func TestHumaProjectBackgroundDownload(t *testing.T) {
 
 		rec := getBackgroundRequest(t, e, "1", humaTokenFor(t, &testuser1), "")
 		require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
-		assert.Equal(t, "image/jpg", rec.Header().Get("Content-Type"))
-		assert.Equal(t, "no-cache", rec.Header().Get("Cache-Control"))
+		assert.Equal(t, "image/jpeg", rec.Header().Get("Content-Type"))
+		assert.Equal(t, "private, no-cache", rec.Header().Get("Cache-Control"))
 		assert.NotEmpty(t, rec.Body.Bytes(), "the download must return the stored bytes")
 	})
 
 	t.Run("If-Modified-Since returns 304", func(t *testing.T) {
-		// The in-memory test storage reports a zero modtime, so any valid
-		// If-Modified-Since is not-before it and yields a 304.
+		// Storage without a modtime uses the persisted file creation time.
 		body, contentType := multipartFileBody(t, "background", "bg.png", pngBytes(t))
 		up := uploadBackgroundRequest(t, e, "1", humaTokenFor(t, &testuser1), body, contentType)
 		require.Equal(t, http.StatusOK, up.Code, "upload body: %s", up.Body.String())
 
-		rec := getBackgroundRequest(t, e, "1", humaTokenFor(t, &testuser1), "Wed, 21 Oct 2015 07:28:00 GMT")
+		first := getBackgroundRequest(t, e, "1", humaTokenFor(t, &testuser1), "")
+		require.NotEmpty(t, first.Header().Get("Last-Modified"))
+		rec := getBackgroundRequest(t, e, "1", humaTokenFor(t, &testuser1), first.Header().Get("Last-Modified"))
 		assert.Equal(t, http.StatusNotModified, rec.Code, "body: %s", rec.Body.String())
 		assert.Empty(t, rec.Body.Bytes(), "a 304 must not carry a body")
 	})
@@ -100,7 +101,9 @@ func TestHumaProjectBackgroundDownload(t *testing.T) {
 
 	t.Run("No access at all is forbidden", func(t *testing.T) {
 		// testuser1 has no access to project 35.
-		rec := getBackgroundRequest(t, e, "35", humaTokenFor(t, &testuser1), "")
+		allowed := getBackgroundRequest(t, e, "35", humaTokenFor(t, &testuser6), "")
+		require.NotEmpty(t, allowed.Header().Get("ETag"))
+		rec := conditionalMediaRequest(e, "/api/v2/projects/35/background", humaTokenFor(t, &testuser1), allowed.Header().Get("ETag"))
 		assert.Equal(t, http.StatusForbidden, rec.Code, "body: %s", rec.Body.String())
 	})
 

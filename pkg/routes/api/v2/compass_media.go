@@ -23,9 +23,12 @@ import (
 	"mime"
 	"net/http"
 	"strconv"
+	"time"
 
 	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/models"
+	webfiles "code.vikunja.io/api/pkg/web/files"
+
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humaecho"
 )
@@ -55,12 +58,12 @@ func registerCompassImageRoutes(api huma.API) {
 			ec := humaecho.Unwrap(hctx)
 			w, r := (*ec).Response(), (*ec).Request()
 			etag := fmt.Sprintf(`"ci-%d"`, f.ID)
-			w.Header().Set("Cache-Control", "private, no-cache")
+			webfiles.PrivateImageCache(w)
 			w.Header().Set("ETag", etag)
 			w.Header().Set("Content-Type", f.Mime)
 			w.Header().Set("X-Content-Type-Options", "nosniff")
 			w.Header().Set("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": f.Name}))
-			if r.Header.Get("If-None-Match") == etag {
+			if webfiles.ImageNotModified(r, etag, time.Time{}) {
 				w.WriteHeader(http.StatusNotModified)
 				return
 			}

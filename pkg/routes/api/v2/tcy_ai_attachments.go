@@ -20,10 +20,14 @@ import (
 	"context"
 	"errors"
 	"mime"
+	"net/http"
 	"time"
 
+	"code.vikunja.io/api/pkg/modules/humabridge"
 	"code.vikunja.io/api/pkg/modules/tcyai"
 	"code.vikunja.io/api/pkg/modules/tcylocale"
+	webfiles "code.vikunja.io/api/pkg/web/files"
+
 	"github.com/danielgtaylor/huma/v2"
 )
 
@@ -34,6 +38,7 @@ type chatFileInput struct {
 	File string `path:"file" minLength:"64" maxLength:"64" doc:"Attachment hash referenced in this conversation."`
 }
 type chatBinaryResponse struct {
+	Status             int
 	ContentType        string `header:"Content-Type"`
 	ContentDisposition string `header:"Content-Disposition"`
 	CacheControl       string `header:"Cache-Control"`
@@ -110,7 +115,27 @@ func RegisterTCYAttachmentRoutes(api huma.API) {
 		if err != nil {
 			return nil, chatFileError(ctx, err)
 		}
-		return &chatBinaryResponse{ContentType: item.MIME, ContentDisposition: mime.FormatMediaType("attachment", map[string]string{"filename": item.Name}), CacheControl: "no-store", NoSniff: "nosniff", Body: data}, nil
+		response := &chatBinaryResponse{
+			Status:             http.StatusOK,
+			ContentType:        item.MIME,
+			ContentDisposition: mime.FormatMediaType("attachment", map[string]string{"filename": item.Name}),
+			CacheControl:       "no-store",
+			NoSniff:            "nosniff",
+			Body:               data,
+		}
+		if webfiles.IsCacheableImage(item.MIME) {
+			if ec := humabridge.EchoContextFrom(ctx); ec != nil {
+				webfiles.PrivateImageCache((*ec).Response())
+				response.CacheControl = "private, no-cache"
+				etag := webfiles.ImageETag(data)
+				(*ec).Response().Header().Set("ETag", etag)
+				if webfiles.ImageNotModified((*ec).Request(), etag, time.Time{}) {
+					response.Status = http.StatusNotModified
+					response.Body = nil
+				}
+			}
+		}
+		return response, nil
 	})
 	Register(api, op("tcy-ai-attachments-remove", "DELETE", "/ai/conversations/{id}/attachments/{file}", "Remove an unsent attachment; drive files and files referenced elsewhere are kept"), func(ctx context.Context, in *chatFileInput) (*emptyBody, error) {
 		uid, err := aiUser(ctx)
@@ -134,6 +159,13 @@ func RegisterTCYAttachmentRoutes(api huma.API) {
 		if err != nil {
 			return nil, chatFileError(ctx, err)
 		}
-		return &chatBinaryResponse{ContentType: kind, ContentDisposition: mime.FormatMediaType("attachment", map[string]string{"filename": "conversation-" + in.ID + "." + in.Format}), CacheControl: "no-store", NoSniff: "nosniff", Body: data}, nil
+		return &chatBinaryResponse{
+			Status:             http.StatusOK,
+			ContentType:        kind,
+			ContentDisposition: mime.FormatMediaType("attachment", map[string]string{"filename": "conversation-" + in.ID + "." + in.Format}),
+			CacheControl:       "no-store",
+			NoSniff:            "nosniff",
+			Body:               data,
+		}, nil
 	})
 }

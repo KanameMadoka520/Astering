@@ -203,6 +203,8 @@ func TestCompassImagesHTTP(t *testing.T) {
 	require.Equal(t, "image/png", response.Header().Get("Content-Type"))
 	require.Equal(t, "nosniff", response.Header().Get("X-Content-Type-Options"))
 	require.Equal(t, "private, no-cache", response.Header().Get("Cache-Control"))
+	require.Contains(t, strings.Join(response.Header().Values("Vary"), ","), "Authorization")
+	require.Contains(t, strings.Join(response.Header().Values("Vary"), ","), "Cookie")
 	require.Contains(t, response.Header().Get("Content-Disposition"), "inline")
 	req := httptest.NewRequest("GET", path, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
