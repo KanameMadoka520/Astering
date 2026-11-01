@@ -209,6 +209,11 @@ enum SEARCH_MODE {
 const query = ref('')
 const selectedCmd = ref<Command | null>(null)
 
+// A command keeps the dialog and the typed text until it worked; a second Enter meanwhile does nothing.
+const running = ref(false)
+const commandError = ref('')
+const commandErrorId = useId()
+
 const taskSearchParams = ref<TaskFilterParams | null>(null)
 const taskQuery = useTasks(
 	() => ({params: taskSearchParams.value ?? {}}),
@@ -220,8 +225,37 @@ const foundTasks = computed(() => taskSearchParams.value
 
 const createTeamMutation = useCreateTeamMutation()
 
+interface Command {
+	type: COMMAND_TYPE
+	title: string
+	placeholder: string
+	action: () => Promise<void>
+}
+
+const commands = computed<{ [key in COMMAND_TYPE]: Command }>(() => ({
+	newTask: {
+		type: COMMAND_TYPE.NEW_TASK,
+		title: t('quickActions.cmds.newTask'),
+		placeholder: t('quickActions.newTask'),
+		action: newTask,
+	},
+	newProject: {
+		type: COMMAND_TYPE.NEW_PROJECT,
+		title: t('quickActions.cmds.newProject'),
+		placeholder: t('quickActions.newProject'),
+		action: newProject,
+	},
+	newTeam: {
+		type: COMMAND_TYPE.NEW_TEAM,
+		title: t('quickActions.cmds.newTeam'),
+		placeholder: t('quickActions.newTeam'),
+		action: newTeam,
+	},
+}))
+
 const active = computed(() => baseStore.quickActionsActive)
 
+// The watchEffects below first run synchronously in setup; any const that run reaches must be declared above them.
 watchEffect(() => {
 	if (!active.value) {
 		reset()
@@ -354,34 +388,6 @@ const results = computed<Result[]>(() => {
 function isDone(item: QuickActionItem): boolean {
 	return 'done' in item && Boolean(item.done)
 }
-
-interface Command {
-	type: COMMAND_TYPE
-	title: string
-	placeholder: string
-	action: () => Promise<void>
-}
-
-const commands = computed<{ [key in COMMAND_TYPE]: Command }>(() => ({
-	newTask: {
-		type: COMMAND_TYPE.NEW_TASK,
-		title: t('quickActions.cmds.newTask'),
-		placeholder: t('quickActions.newTask'),
-		action: newTask,
-	},
-	newProject: {
-		type: COMMAND_TYPE.NEW_PROJECT,
-		title: t('quickActions.cmds.newProject'),
-		placeholder: t('quickActions.newProject'),
-		action: newProject,
-	},
-	newTeam: {
-		type: COMMAND_TYPE.NEW_TEAM,
-		title: t('quickActions.cmds.newTeam'),
-		placeholder: t('quickActions.newTeam'),
-		action: newTeam,
-	},
-}))
 
 const placeholder = computed(() => selectedCmd.value?.placeholder || t('quickActions.placeholder'))
 
@@ -622,11 +628,6 @@ function onEnter(event: KeyboardEvent) {
 	openTaskAfterCreate = event.ctrlKey || event.metaKey
 	doCmd()
 }
-
-// A command keeps the dialog and the typed text until it worked; a second Enter meanwhile does nothing.
-const running = ref(false)
-const commandError = ref('')
-const commandErrorId = useId()
 
 async function doCmd() {
 	// With a command chosen the search results are hidden, so Enter must never run one of them.

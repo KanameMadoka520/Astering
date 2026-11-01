@@ -1,4 +1,4 @@
-import {describe, it, expect, beforeEach, vi} from 'vitest'
+import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest'
 import {defineComponent, h} from 'vue'
 import {mount, flushPromises} from '@vue/test-utils'
 import {setActivePinia, createPinia} from 'pinia'
@@ -24,7 +24,13 @@ vi.mock('@/client/generated', () => sdk)
 
 const i18n = createI18n({legacy: false, locale: 'en', messages: {en}})
 
-async function mountQuickActions(project: ProjectResponse | null) {
+type OpenAt = 'afterMount' | 'beforeMount' | 'never'
+
+// The app mounts QuickActions closed and opens it later, so 'afterMount' is the default.
+async function mountQuickActions(
+	project: ProjectResponse | null,
+	{openAt = 'afterMount'}: {openAt?: OpenAt} = {},
+) {
 	const errors: unknown[] = []
 	const router = createRouter({
 		history: createMemoryHistory(),
@@ -43,7 +49,9 @@ async function mountQuickActions(project: ProjectResponse | null) {
 		setup() {
 			const baseStore = useBaseStore()
 			baseStore.setCurrentProject(project)
-			baseStore.setQuickActionsActive(true)
+			if (openAt === 'beforeMount') {
+				baseStore.setQuickActionsActive(true)
+			}
 			return () => h(QuickActions)
 		},
 	})
@@ -69,6 +77,10 @@ async function mountQuickActions(project: ProjectResponse | null) {
 		attachTo: document.body,
 	})
 	await flushPromises()
+	if (openAt === 'afterMount') {
+		useBaseStore().setQuickActionsActive(true)
+		await flushPromises()
+	}
 	return {wrapper, errors, router}
 }
 
@@ -86,6 +98,13 @@ async function chooseNewTask(wrapper: Awaited<ReturnType<typeof mountQuickAction
 describe('QuickActions', () => {
 	beforeEach(() => {
 		setActivePinia(createPinia())
+	})
+
+	it('mounts closed, as the app does, without an error', async () => {
+		const {errors} = await mountQuickActions(null, {openAt: 'never'})
+
+		expect(useBaseStore().quickActionsActive).toBe(false)
+		expect(errors).toEqual([])
 	})
 
 	it('opens without a current project', async () => {
@@ -161,6 +180,53 @@ describe('QuickActions', () => {
 			expect(sdk.tasksCreate).toHaveBeenCalledTimes(1)
 			expect(sdk.tasksCreate.mock.calls[0][0].body.title).toBe('New team')
 			expect(router.currentRoute.value.name).toBe('task.detail')
+		})
+
+		it('drops the error, the typed text and the command once closed and opened again', async () => {
+			const {wrapper, errors} = await mountQuickActions(null)
+			const input = await chooseNewTask(wrapper, 'Buy milk')
+			await input.trigger('keydown', {key: 'Enter'})
+			await flushPromises()
+			expect(wrapper.find('[role="alert"]').exists()).toBe(true)
+
+			await input.trigger('keydown', {key: 'Escape'})
+			await flushPromises()
+			expect(useBaseStore().quickActionsActive).toBe(false)
+			useBaseStore().setQuickActionsActive(true)
+			await flushPromises()
+
+			expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+			expect((wrapper.get('input.input').element as HTMLInputElement).value).toBe('')
+			expect(wrapper.find('.active-cmd').exists()).toBe(false)
+			expect(errors).toEqual([])
+		})
+	})
+
+	describe('in quick-add mode', () => {
+		let initialUrl = ''
+
+		beforeEach(() => {
+			initialUrl = window.location.href
+			window.history.replaceState(null, '', '/?mode=quick-add')
+		})
+
+		afterEach(() => {
+			window.history.replaceState(null, '', initialUrl)
+		})
+
+		it('starts on "New task" when opened after mounting', async () => {
+			const {wrapper, errors} = await mountQuickActions(null)
+
+			expect(wrapper.get('.active-cmd').text()).toBe('New task')
+			expect(errors).toEqual([])
+		})
+
+		// quickActionsActive is store state that outlives the component, so it can mount already open.
+		it('starts on "New task" when mounted already open', async () => {
+			const {wrapper, errors} = await mountQuickActions(null, {openAt: 'beforeMount'})
+
+			expect(wrapper.get('.active-cmd').text()).toBe('New task')
+			expect(errors).toEqual([])
 		})
 	})
 })
