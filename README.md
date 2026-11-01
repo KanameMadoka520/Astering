@@ -9,9 +9,17 @@
 基于 [Vikunja 官方 v2.7.1](https://github.com/go-vikunja/vikunja/releases/tag/v2.7.1) 的个人记录与团队项目管理扩展，由 **KanameMadoka520** 维护。保留上游项目、任务、甘特图、看板、提醒、CalDAV 和 MCP，增加可配置模型的 AI 助手、语音输入和独立公开主页。
 
 - 源码与问题反馈：[KanameMadoka520/vikunja-x](https://github.com/KanameMadoka520/vikunja-x)
-- 版本：`v2.7.1-tcymc.39`
+- 版本：`v2.7.1-tcymc.40`
 - 许可证：AGPL-3.0-or-later；上游版权和许可证继续适用，参见 [LICENSE](LICENSE) 与 [上游 README](README.upstream.md)。本项目是独立二次开发版。
 
+
+## 异步操作与模型连接检修（tcymc.40）
+
+任务与项目的删除确认绑定目标、页面及账户，切换任务或身份后不能沿用旧确认；慢请求完成后也不会把用户从新页面带走。阿罗娜的 HTTP 会话快照与流式活动按更新顺序协调，避免迟到查询把新进度覆盖为旧状态。
+
+模型流收到明确的协议完成事件后及时结束，不再额外等待连接关闭，同时保留尾部 token 用量。一次后台任务内的多轮调用和子代理共享私有连接池，在 HTTP 允许时复用连接，执行结束后回收；单次模型查询也回收自己的空闲连接。继续执行现有 SSRF、重定向和请求取消约束。详见 [检修依据、设计边界与验证方法](docs/correctness-performance-v40.md)。
+
+浏览器缓存按公开静态资源、固定入口和私人图片分别管理：内容哈希资源长期复用，入口与固定图片及时重验；私人图片先检查当前权限，未变化时返回 304，避免刷新重复传输图片。移除按任意后缀累积内容的 Service Worker 运行时缓存，业务 JSON、密钥及导出继续禁止持久复用。详见 [浏览器缓存与私人图片](docs/browser-cache.md)。
 
 ## 阿罗娜链接导航（tcymc.39）
 
@@ -458,9 +466,9 @@ pnpm vitest run src/i18n/coverage.test.ts src/helpers/tcyAudio.test.ts
 git clone https://github.com/KanameMadoka520/vikunja-x.git
 cd vikunja-x
 docker build -f Dockerfile.tcymc \
-  --build-arg RELEASE_VERSION=v2.7.1-tcymc.39 \
+  --build-arg RELEASE_VERSION=v2.7.1-tcymc.40 \
   --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
-  -t vikunja-x:v2.7.1-tcymc.39 .
+  -t vikunja-x:v2.7.1-tcymc.40 .
 ```
 
 `Dockerfile.tcymc` 固定基础镜像摘要，使用锁定依赖构建前端，并生成带 SQLite 支持的静态 Go 二进制，最终以 UID 1000 在最小镜像中运行。提供 CA 和时区数据。数据库支持沿用上游，包括 PostgreSQL。`SOURCE_COMMIT` 写入镜像的 OCI revision 标签，便于核对运行镜像对应的源码；正式发布从干净工作树构建，并核对源码标签、镜像 ID 与运行实例。
@@ -478,12 +486,12 @@ docker run -d --name vikunja-x --restart unless-stopped \
   -e VIKUNJA_SERVICE_SECRET=替换为随机且持久保存的长密钥 \
   -e VIKUNJA_SERVICE_ENABLEREGISTRATION=false \
   -e VIKUNJA_SERVICE_TIMEZONE=Asia/Shanghai \
-  vikunja-x:v2.7.1-tcymc.39
+  vikunja-x:v2.7.1-tcymc.40
 ```
 
 通过反向代理提供 HTTPS。创建首个账号使用 `docker exec -it vikunja-x /app/vikunja/vikunja user create --help` 查看 CLI 参数。注册默认建议关闭；SMTP 初始使用上游 `VIKUNJA_MAILER_*` 配置，也可通过上述管理员页面保存；密码勿提交源码。账号名中的 admin 不会绕过上游授权功能。
 
-Release 附带源码、Git bundle、Linux amd64 二进制、Docker 镜像包及 SHA256 校验文件；先运行 `sha256sum -c SHA256SUMS`，再使用 `docker load -i vikunja-x-v2.7.1-tcymc.39.docker.tar.gz` 导入镜像。
+Release 附带源码、Git bundle、Linux amd64 二进制、Docker 镜像包及 SHA256 校验文件；先运行 `sha256sum -c SHA256SUMS`，再使用 `docker load -i vikunja-x-v2.7.1-tcymc.40.docker.tar.gz` 导入镜像。
 
 ## 本地开发与验证
 
