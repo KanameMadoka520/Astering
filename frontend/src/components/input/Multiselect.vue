@@ -295,9 +295,10 @@ const showSearchResults = ref(false)
 const selectedItems = ref([]) as Ref<T[]>
 const selectedItem = ref(null) as Ref<T | null>
 
-onMounted(() => document.addEventListener('click', hideSearchResultsHandler))
+// Close the previous picker before an external action deliberately focuses and opens this one.
+onMounted(() => document.addEventListener('click', hideSearchResultsHandler, true))
 onBeforeUnmount(() => {
-	document.removeEventListener('click', hideSearchResultsHandler)
+	document.removeEventListener('click', hideSearchResultsHandler, true)
 	closeSearchResults()
 })
 

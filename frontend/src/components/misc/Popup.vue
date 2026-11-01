@@ -107,6 +107,11 @@ function close() {
 // reopen what the same interaction closed.
 let closedByLightDismiss = false
 
+// A fresh keyboard activation is not the trailing click of the pointer gesture that dismissed us.
+onKeyStroke(['Enter', ' '], () => {
+	closedByLightDismiss = false
+})
+
 function toggle() {
 	if (closedByLightDismiss) {
 		closedByLightDismiss = false

@@ -55,6 +55,28 @@ describe('Multiselect.vue — input composition and pending searches', () => {
 		document.body.innerHTML = ''
 	})
 
+	it.each(['input', 'picker root'])('opens after an external action focuses the %s and the user fills text without a keyup', async target => {
+		const wrapper = mountMultiselect({creatable: true, searchResults: []})
+		const input = wrapper.find('input[role="combobox"]')
+		const action = document.createElement('button')
+		action.textContent = 'Add labels'
+		action.addEventListener('click', () => {
+			const focusTarget = target === 'input' ? input.element : wrapper.element
+			;(focusTarget as HTMLElement).focus()
+		})
+		document.body.append(action)
+
+		// The action lives outside the picker, but deliberately moves focus into it.
+		action.click()
+		expect(document.activeElement).toBe(input.element)
+		await input.setValue('New label')
+		vi.advanceTimersByTime(300)
+		await nextTick()
+		expect(wrapper.get('.is-create-option').text()).toContain('New label')
+		expect(input.attributes('aria-expanded')).toBe('true')
+		wrapper.unmount()
+	})
+
 	it.each([
 		{creatable: false, action: 'select an option'},
 		{creatable: true, action: 'create an option'},

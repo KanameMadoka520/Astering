@@ -1,6 +1,6 @@
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest'
 import {mount, flushPromises} from '@vue/test-utils'
-import {h} from 'vue'
+import {h, nextTick} from 'vue'
 
 const {isMobile, floatingUi} = vi.hoisted(() => ({
 	isMobile: {value: false},
@@ -166,6 +166,25 @@ describe('Popup', () => {
 		wrapper.unmount()
 	})
 
+	it.each(['Enter', ' '])('reopens on a new %j activation before the light-dismiss timer expires', async key => {
+		vi.useFakeTimers({toFake: ['setTimeout', 'clearTimeout']})
+		const wrapper = mount(Popup, {...mountOptions, props: {open: true}})
+		try {
+			await flushPromises()
+			lightDismiss(wrapper.get('.popup').element as HTMLElement)
+			await nextTick()
+
+			// Native buttons produce a click for keyboard activation, without a pointer gesture.
+			await wrapper.get('.trigger').trigger('keydown', {key})
+			await wrapper.get('.trigger').trigger('click', {detail: 0})
+			expect(wrapper.emitted('update:open')).toEqual([[false], [true]])
+			expect(wrapper.get('.popup').attributes(POPOVER_OPEN)).toBe('')
+		} finally {
+			wrapper.unmount()
+			vi.useRealTimers()
+		}
+	})
+
 	it('renders a sheet instead of a popover on mobile', async () => {
 		isMobile.value = true
 		const wrapper = mount(Popup, {...mountOptions, props: {open: true, sheetOnMobile: true}})
@@ -271,5 +290,22 @@ describe('Popup without the Popover API', () => {
 		expect(wrapper.find('.popup').classes()).not.toContain('is-open')
 
 		wrapper.unmount()
+	})
+
+	it.each(['Enter', ' '])('reopens on a new %j activation immediately after Escape without the Popover API', async key => {
+		vi.useFakeTimers({toFake: ['setTimeout', 'clearTimeout']})
+		const wrapper = mount(Popup, {...mountOptions, props: {open: true}})
+		try {
+			await flushPromises()
+			window.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape'}))
+			await nextTick()
+			await wrapper.get('.trigger').trigger('keydown', {key})
+			await wrapper.get('.trigger').trigger('click', {detail: 0})
+			expect(wrapper.emitted('update:open')).toEqual([[false], [true]])
+			expect(wrapper.get('.popup').classes()).toContain('is-open')
+		} finally {
+			wrapper.unmount()
+			vi.useRealTimers()
+		}
 	})
 })
