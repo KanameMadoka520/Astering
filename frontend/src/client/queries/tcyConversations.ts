@@ -55,6 +55,11 @@ import {
 } from './taskCache'
 import {applyServerTaskChanges, reconcileServerBoards, type ServerTaskChange} from './taskMutations'
 import {normalizeTask, taskKeys, type TaskResponse} from './tasks'
+import {
+	readConversationSnapshot,
+	shareConversationSnapshot,
+	writeConversationSnapshot,
+} from './conversationSnapshot'
 
 export const conversationKeys = {
 	all: ['tcymc-conversations'] as const,
@@ -94,7 +99,13 @@ function isRunning(conversation?: Conversation): boolean {
 export function conversationQuery(id: string, streaming = false) {
 	return queryOptions({
 		queryKey: conversationKeys.detail(id),
-		queryFn: async ({signal}) => (await tcyAiConversationsRead({path: {id}, signal})).data,
+		queryFn: ({signal, client}) => readConversationSnapshot(
+			client,
+			conversationKeys.detail(id),
+			signal,
+			async () => (await tcyAiConversationsRead({path: {id}, signal})).data,
+		),
+		structuralSharing: shareConversationSnapshot,
 		enabled: Boolean(id),
 		meta: {handlesError: true},
 		refetchInterval: query => !streaming && (query.state.data?.compacting || isRunning(query.state.data))
@@ -166,12 +177,16 @@ export function useConversationAction() {
 }
 
 export function useSendConversation() {
+	const client = useQueryClient()
 	return useMutation(contextMutationOptions({
 		mutationFn: async (input: {
 			id: string
 			body: TcyAiConversationsSendData['body']
-		}) => (await tcyAiConversationsSend({path: {id: input.id}, body: input.body})).data,
-		onSuccess: (data, input, client) => client.setQueryData(conversationKeys.detail(input.id), data),
+		}) => writeConversationSnapshot(
+			client,
+			conversationKeys.detail(input.id),
+			async () => (await tcyAiConversationsSend({path: {id: input.id}, body: input.body})).data,
+		),
 		onSettled: (input, client) => Promise.all([
 			client.invalidateQueries({queryKey: conversationKeys.detail(input.id), exact: true}),
 			client.invalidateQueries({queryKey: conversationKeys.lists()}),
@@ -198,10 +213,13 @@ export function useSteerConversation() {
 
 // Task, project and label caches follow the receipts the resumed run returns (useAgentReceiptRefresh).
 export function useReviewConversation() {
+	const client = useQueryClient()
 	return useMutation(contextMutationOptions({
-		mutationFn: async (input: {id: string; body: ReviewInput}) =>
-			(await tcyAiConversationsReview({path: {id: input.id}, body: input.body})).data,
-		onSuccess: (data, input, client) => client.setQueryData(conversationKeys.detail(input.id), data),
+		mutationFn: async (input: {id: string; body: ReviewInput}) => writeConversationSnapshot(
+			client,
+			conversationKeys.detail(input.id),
+			async () => (await tcyAiConversationsReview({path: {id: input.id}, body: input.body})).data,
+		),
 		onSettled: (input, client) => Promise.all([
 			client.invalidateQueries({queryKey: conversationKeys.detail(input.id), exact: true}),
 			client.invalidateQueries({queryKey: conversationKeys.lists()}),

@@ -1,23 +1,15 @@
 import {watch, ref, onScopeDispose, toValue, type MaybeRefOrGetter} from 'vue'
 import {useQueryClient} from '@tanstack/vue-query'
-import {tcyAiConversationsEvents, type Conversation, type ChatTurn} from '@/client/generated'
+import {tcyAiConversationsEvents, type Conversation} from '@/client/generated'
 import {assertClientRequestContext, captureClientRequestContext} from '@/client/requestContext'
 import {conversationKeys} from './tcyConversations'
+import {applyConversationActivity, type ConversationActivity as Activity} from './conversationSnapshot'
 import {
 	applyConversationPatch,
 	ConversationStreamSyncError,
 	isStreamRecord,
 	streamRevision,
 } from './conversationEventPatch'
-
-type Activity = Pick<Conversation,
-	| 'storage'
-	| 'compact_progress'
-	| 'compacting'
-	| 'compact_text'
-	| 'compact_error'
-	| 'compactions'
-> & {turn?: ChatTurn}
 
 function assertActivity(value: unknown): asserts value is Activity {
 	if (!isStreamRecord(value) || typeof value.compacting !== 'boolean' || !Array.isArray(value.compactions)
@@ -45,13 +37,6 @@ export const RETRY_MS = 1500
 export const MAX_RETRY_MS = 30_000
 // The server sends the current state right away, so a reconnect that stays silent this long is not live.
 export const SILENT_STREAM_MS = 3000
-
-// Keeps the turn's position: earlier turns can still change (review, retry) without reordering the thread.
-function replaceTurn(turns: readonly ChatTurn[], turn: ChatTurn): ChatTurn[] {
-	return turns.some(item => item.id === turn.id)
-		? turns.map(item => item.id === turn.id ? turn : item)
-		: [...turns, turn]
-}
 
 function wait(ms: number, signal: AbortSignal) {
 	return new Promise<void>(resolve => {
@@ -153,17 +138,9 @@ export function useConversationEvents(id: MaybeRefOrGetter<string>) {
 								revision = 0
 							}
 							assertActivity(next)
-							const {turn, ...activity} = next
 							received = true
 							connected.value = true
-							const cached = client.setQueryData<Conversation>(conversationKeys.detail(value), current => current ? {
-								...current,
-								...activity,
-								compact_progress: activity.compact_progress,
-								compact_text: activity.compact_text ?? '',
-								compact_error: activity.compact_error ?? '',
-								turns: turn ? replaceTurn(current.turns ?? [], turn) : current.turns,
-							} : current)
+							const cached = applyConversationActivity(client, conversationKeys.detail(value), next)
 							baseline = revision ? (cached ? cachedActivity(next, cached) : next) : undefined
 						}
 					}
