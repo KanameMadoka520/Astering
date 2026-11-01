@@ -18,7 +18,6 @@ package apiv2
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -44,11 +43,13 @@ func RegisterTCYAIEvents(api huma.API) {
 			response.Header().Set("Content-Type", "text/event-stream")
 			response.Header().Set("Cache-Control", "no-store, no-transform")
 			response.Header().Set("X-Accel-Buffering", "no")
+			encoder := conversationEventEncoder{
+				delta: acceptsConversationDeltas((*ec).Request().Header.Get("Accept")),
+			}
 			timer := time.NewTicker(120 * time.Millisecond)
 			defer timer.Stop()
 			deadline := time.NewTimer(25 * time.Second)
 			defer deadline.Stop()
-			previous := ""
 			lastRead := time.Time{}
 			for {
 				select {
@@ -66,18 +67,17 @@ func RegisterTCYAIEvents(api huma.API) {
 				if err != nil {
 					return
 				}
-				data, err := json.Marshal(state)
+				event, err := encoder.encode(state)
 				if err != nil {
 					return
 				}
-				if string(data) != previous {
-					if _, err = fmt.Fprintf(response, "event: activity\ndata: %s\n\n", data); err != nil {
+				if event != nil {
+					if _, err = fmt.Fprintf(response, "event: %s\ndata: %s\n\n", event.name, event.data); err != nil {
 						return
 					}
 					if err = http.NewResponseController(response).Flush(); err != nil {
 						return
 					}
-					previous = string(data)
 				}
 			}
 		}}, nil

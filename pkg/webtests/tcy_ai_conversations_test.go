@@ -119,6 +119,15 @@ func TestTCYAIConversations(t *testing.T) {
 	assert.Equal(t, "no", eventRecorder.Header().Get("X-Accel-Buffering"))
 	assert.Contains(t, eventRecorder.Body.String(), "event: activity")
 	assert.NotContains(t, eventRecorder.Body.String(), "private-fixture")
+	deltaCtx, deltaCancel := context.WithCancel(t.Context())
+	deltaRequest := httptest.NewRequest("GET", path+"/events", nil).WithContext(deltaCtx)
+	deltaRequest.Header.Set("Authorization", "Bearer "+token)
+	deltaRequest.Header.Set("Accept", "text/event-stream; vikunja-events=delta-v1")
+	deltaRecorder := &cancelOnFlushRecorder{ResponseRecorder: httptest.NewRecorder(), cancel: deltaCancel}
+	e.ServeHTTP(deltaRecorder, deltaRequest)
+	assert.Contains(t, deltaRecorder.Body.String(), "event: snapshot")
+	assert.Contains(t, deltaRecorder.Body.String(), `"revision":1`)
+	assert.NotContains(t, deltaRecorder.Body.String(), "private-fixture")
 
 	require.Equal(t, 404, humaRequest(t, e, "POST", path+"/messages", `{"message":"denied","history":[],"project_id":0,"mode":"read","allow_delete":false,"request_id":"denied-key"}`, other, "").Code)
 	share, err := auth.NewLinkShareJWTAuthtoken(&models.LinkSharing{ID: 1, Hash: "test", ProjectID: 1})
