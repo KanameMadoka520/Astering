@@ -38,7 +38,7 @@
 				<template v-else>
 					<BaseButton
 						:aria-label="$t('misc.closeDialog')"
-						:disabled="loading"
+						:disabled="busy"
 						class="close d-print-none"
 						@click="requestClose"
 					>
@@ -65,7 +65,7 @@
 								<XButton
 									variant="secondary"
 									:shadow="false"
-									:disabled="loading"
+									:disabled="busy"
 									@click="requestClose"
 								>
 									{{ $t('misc.cancel') }}
@@ -75,10 +75,10 @@
 									variant="primary"
 									:danger="danger"
 									:shadow="false"
-									:loading="loading"
-									@click="!loading && $emit('submit')"
+									:loading="busy"
+									@click="submit"
 								>
-									{{ $t('misc.doit') }}
+									{{ confirmLabel || $t('misc.doit') }}
 								</XButton>
 							</div>
 						</slot>
@@ -107,6 +107,10 @@ const props = withDefaults(defineProps<{
 	title?: string,
 	// Styles the confirm action of the built-in header/text layout as destructive.
 	danger?: boolean,
+	// Names the confirm action of the built-in layout ("Revoke session"); defaults to the generic "Do it!".
+	confirmLabel?: string,
+	// `@submit`. Declared as a prop so a handler that returns a promise keeps the dialog busy until it settles.
+	onSubmit?: (...args: unknown[]) => unknown,
 }>(), {
 	enabled: true,
 	loading: false,
@@ -115,14 +119,38 @@ const props = withDefaults(defineProps<{
 	variant: 'default',
 	title: '',
 	danger: false,
+	confirmLabel: '',
+	onSubmit: undefined,
 })
 
-const emit = defineEmits(['close', 'submit'])
+const emit = defineEmits(['close', 'opened'])
+
+// A submit handler that is still running: no second submit, and Escape, Cancel and × wait for it.
+const submitting = ref(false)
+const busy = computed(() => props.loading || submitting.value)
 
 // While the close transition runs the <dialog> is still modal and receives keys: a second Escape there would close
 // the caller's view again, and a route modal would step back in history and reopen the task.
 function requestClose() {
-	if (!props.loading && props.enabled) emit('close')
+	if (!busy.value && props.enabled) emit('close')
+}
+
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+	return typeof (value as PromiseLike<unknown> | null)?.then === 'function'
+}
+
+async function submit() {
+	if (busy.value) return
+	const result = props.onSubmit?.()
+	if (!isThenable(result)) return
+	submitting.value = true
+	try {
+		await result
+	} catch {
+		// The handler reports its own failure; the dialog stays open for another try or Cancel.
+	} finally {
+		submitting.value = false
+	}
 }
 
 defineOptions({
@@ -207,10 +235,17 @@ function closeDialog() {
 		dialog.close()
 		showDialog.value = false
 		closeTimer = null
-		if (previouslyFocused.value instanceof HTMLElement) {
-			previouslyFocused.value.focus()
-		}
+		const toFocus = previouslyFocused.value
 		previouslyFocused.value = null
+		if (toFocus instanceof HTMLElement && toFocus.isConnected) {
+			toFocus.focus()
+			return
+		}
+		// The trigger went away with what the dialog removed (a deleted row): keep keyboard focus on the page.
+		const active = document.activeElement
+		if (!active || active === document.body) {
+			document.getElementById('main-content')?.focus({preventScroll: true})
+		}
 	}, closeTransitionDuration())
 }
 
@@ -237,6 +272,8 @@ watch(dialogRef, (dialog) => {
 	if (!props.enabled) return
 	delete dialog.dataset.closing
 	dialog.showModal()
+	// Focus calls made before this (e.g. v-focus in `mounted`) were dropped on the closed dialog.
+	emit('opened')
 })
 
 // A <dialog> opened with showModal() lives in the browser's top layer, which

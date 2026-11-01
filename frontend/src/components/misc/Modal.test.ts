@@ -456,3 +456,113 @@ describe('Modal.vue — confirm layout', () => {
 		wrapper.unmount()
 	})
 })
+
+describe('Modal.vue — confirm submit handling', () => {
+	const confirmMocks = {
+		global: {
+			mocks: {$t: (key: string) => key},
+			components: {XButton},
+			stubs: {Icon: true},
+		},
+	}
+
+	async function mountConfirm(props: Record<string, unknown>) {
+		const wrapper = mount(Modal, {
+			...confirmMocks,
+			attachTo: document.body,
+			props: {enabled: true, ...props},
+			slots: {header: '<span>Revoke this session</span>', text: '<p>Phone, Berlin</p>'},
+		})
+		await flushPromises()
+		await nextTick()
+		const dialog = document.querySelector('dialog.modal-dialog') as HTMLDialogElement
+		const [cancel, confirm] = Array.from(dialog.querySelectorAll<HTMLButtonElement>('.modal-content .actions .button'))
+		return {wrapper, dialog, cancel, confirm}
+	}
+
+	it('runs a pending submit handler only once and keeps the dialog open meanwhile', async () => {
+		let finish!: () => void
+		const onSubmit = vi.fn(() => new Promise<void>(resolve => { finish = resolve }))
+		const {wrapper, dialog, cancel, confirm} = await mountConfirm({onSubmit})
+
+		confirm.click()
+		await nextTick()
+		confirm.click()
+		await nextTick()
+		expect(onSubmit).toHaveBeenCalledTimes(1)
+		expect(confirm.getAttribute('aria-disabled')).toBe('true')
+
+		dialog.dispatchEvent(new Event('cancel', {cancelable: true}))
+		cancel.click()
+		await nextTick()
+		expect(wrapper.emitted('close')).toBeUndefined()
+
+		finish()
+		await flushPromises()
+		confirm.click()
+		await nextTick()
+		expect(onSubmit).toHaveBeenCalledTimes(2)
+		wrapper.unmount()
+	})
+
+	it('settles a rejected submit handler without an unhandled rejection and allows another try', async () => {
+		const unhandled = vi.fn()
+		window.addEventListener('unhandledrejection', unhandled)
+		const onSubmit = vi.fn().mockRejectedValueOnce(new Error('server said no')).mockResolvedValue(undefined)
+		const {wrapper, dialog, confirm} = await mountConfirm({onSubmit})
+
+		confirm.click()
+		await flushPromises()
+		expect(confirm.getAttribute('aria-disabled')).toBeNull()
+		dialog.dispatchEvent(new Event('cancel', {cancelable: true}))
+		expect(wrapper.emitted('close')).toHaveLength(1)
+
+		confirm.click()
+		await flushPromises()
+		expect(onSubmit).toHaveBeenCalledTimes(2)
+		expect(unhandled).not.toHaveBeenCalled()
+		window.removeEventListener('unhandledrejection', unhandled)
+		wrapper.unmount()
+	})
+
+	it('composes with an explicit loading prop and plain synchronous handlers', async () => {
+		const onSubmit = vi.fn()
+		const {wrapper, confirm} = await mountConfirm({onSubmit, loading: true})
+		confirm.click()
+		await nextTick()
+		expect(onSubmit).not.toHaveBeenCalled()
+
+		await wrapper.setProps({loading: false})
+		confirm.click()
+		confirm.click()
+		await nextTick()
+		expect(onSubmit).toHaveBeenCalledTimes(2)
+		wrapper.unmount()
+	})
+
+	it('names the confirm action when a label is given', async () => {
+		const {wrapper, confirm} = await mountConfirm({confirmLabel: 'Revoke session'})
+		expect(confirm.textContent).toContain('Revoke session')
+		expect(confirm.textContent).not.toContain('misc.doit')
+		wrapper.unmount()
+	})
+
+	it('moves focus to the main content when the trigger was removed while the dialog was open', async () => {
+		vi.useFakeTimers()
+		const main = document.createElement('main')
+		main.id = 'main-content'
+		main.tabIndex = -1
+		const trigger = document.createElement('button')
+		main.append(trigger)
+		document.body.append(main)
+		trigger.focus()
+
+		const {wrapper} = await mountConfirm({})
+		trigger.remove()
+		await wrapper.setProps({enabled: false})
+		await vi.runAllTimersAsync()
+		expect(document.activeElement).toBe(main)
+		vi.useRealTimers()
+		wrapper.unmount()
+	})
+})

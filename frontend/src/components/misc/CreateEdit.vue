@@ -3,7 +3,9 @@
 		:overflow="true"
 		:wide="wide"
 		:aria-label="title"
-		@close="goBack()"
+		:loading="currentLoading"
+		@close="cancel"
+		@opened="focusFirstField"
 	>
 		<Card
 			:title="title"
@@ -12,9 +14,12 @@
 			class="has-text-start"
 			:loading="currentLoading"
 			:show-close="true"
-			@close="goBack()"
+			@close="cancel"
 		>
-			<div class="p-4">
+			<div
+				ref="body"
+				class="p-4"
+			>
 				<slot />
 			</div>
 
@@ -32,15 +37,17 @@
 					<XButton
 						variant="secondary"
 						:shadow="false"
-						@click.prevent.stop="goBack()"
+						:aria-disabled="currentLoading || undefined"
+						@click.prevent.stop="cancel"
 					>
 						{{ $t('misc.cancel') }}
 					</XButton>
+					<!-- aria-disabled, not disabled: the clicked button keeps focus while the request runs. -->
 					<XButton
 						v-if="hasPrimaryAction"
 						variant="primary"
 						:icon="primaryIcon || undefined"
-						:disabled="isBusy"
+						:aria-disabled="isBusy || undefined"
 						:loading="currentLoading"
 						@click.prevent.stop="primary"
 					>
@@ -93,6 +100,24 @@ watch(
 )
 
 const isBusy = computed(() => props.primaryDisabled || currentLoading.value)
+
+// Leaving while the request runs would navigate away from a save that is still being decided.
+function cancel() {
+	if (currentLoading.value) return
+	goBack()
+}
+
+const body = ref<HTMLElement | null>(null)
+const FIELD = 'input:not([type="hidden"], [type="checkbox"], [type="radio"]), textarea, select'
+
+// v-focus runs before the dialog opens and its focus() is dropped; without this the close button gets focus.
+// Phones keep the keyboard closed, like v-focus itself.
+function focusFirstField() {
+	if (window.innerWidth <= 769) return
+	const active = document.activeElement
+	if (active instanceof HTMLElement && body.value?.contains(active)) return
+	body.value?.querySelector<HTMLElement>(FIELD)?.focus()
+}
 
 function setLoading(value: boolean) {
 	currentLoading.value = value
