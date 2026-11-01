@@ -29,6 +29,7 @@ export type TimelineGroup = {
 	succeeded: number
 	failed: number
 	rejected: number
+	skipped: number
 	pending: number
 	durationMs: number | null
 }
@@ -254,7 +255,9 @@ export function rejectedByStep(steps: readonly ModelStep[], actions: readonly Ac
 		if (own) own.push(action)
 		else rounds.set(action.round, [action])
 	}
-	let left = rejected
+	// Steering cancellations already have a round-specific action. Never assign that same receipt to a later replan.
+	const settled = new Set(actions.map(action => action.result_ref).filter(Boolean))
+	let left = rejected.filter(operation => !operation.id || !settled.has(operation.id))
 	for (const byName of [false, true]) {
 		steps.forEach((step, index) => {
 			// Only rounds that called a rejected tool can hold a decision; long turns skip the rest cheaply.
@@ -311,9 +314,23 @@ export function groupEntries(entries: readonly TimelineEntry[], min = GROUP_MIN)
 	return items
 }
 
+/** A steering change cancels a proposed call before execution; it is not a tool failure or a user's review rejection. */
+export function isSteeringReplan(action?: Action, operation?: Operation): boolean {
+	if (action) {
+		if (action.success || !action.result) return false
+		const result = parseJSON(action.result)
+		return isRecord(result) && result.code === 'STEERING_REPLAN' && result.executed === false && result.success === false
+	}
+	return operation?.status === 'rejected' && operation.error_code === 'STEERING_REPLAN'
+}
+
 function summarizeGroup(entries: TimelineEntry[]): TimelineGroup {
-	let succeeded = 0, failed = 0, rejected = 0, pending = 0, durationMs: number | null = null
+	let succeeded = 0, failed = 0, rejected = 0, skipped = 0, pending = 0, durationMs: number | null = null
 	for (const {action, operation} of entries) {
+		if (isSteeringReplan(action, operation)) {
+			skipped++
+			continue
+		}
 		if (!action) {
 			if (operation?.status === 'rejected') rejected++
 			else pending++
@@ -323,7 +340,7 @@ function summarizeGroup(entries: TimelineEntry[]): TimelineGroup {
 		else failed++
 		if (typeof action.duration_ms === 'number') durationMs = (durationMs ?? 0) + action.duration_ms
 	}
-	return {kind: 'group', key: `group-${entries[0].key}`, tool: entries[0].tool, entries, succeeded, failed, rejected, pending, durationMs}
+	return {kind: 'group', key: `group-${entries[0].key}`, tool: entries[0].tool, entries, succeeded, failed, rejected, skipped, pending, durationMs}
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

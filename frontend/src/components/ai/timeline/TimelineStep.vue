@@ -235,6 +235,7 @@ function onGroupToggle(key: string, event: Event) {
 						v-if="item.failed"
 						class="group-failed"
 					>· <Icon icon="exclamation-circle" /> {{ t('aronaRun.failedCount', {count: n(item.failed)}) }}</span>
+					<span v-if="item.skipped">· {{ t('aronaSteer.skippedCount', {count: n(item.skipped)}) }}</span>
 					<span v-if="item.rejected">· {{ t('aronaRun.rejectedCount', {count: n(item.rejected)}) }}</span>
 					<span v-if="item.pending">· {{ t('aronaRun.pendingCount', {count: n(item.pending)}) }}</span>
 					<span v-if="item.durationMs !== null">· {{ t('aronaRun.totalDuration', {value: seconds(item.durationMs)}) }}</span>

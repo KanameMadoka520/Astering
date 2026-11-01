@@ -68,3 +68,27 @@ describe('TimelineStep clock', () => {
 		expect(header()).toMatch(/· 4$/)
 	})
 })
+
+describe('TimelineStep steering cancellations', () => {
+	it('summarizes superseded plans separately from failed tools or user decisions', () => {
+		const wrapper = mount(TimelineStep, {
+			props: {
+				step: {round: 1},
+				operations: [],
+				live: false,
+				streaming: false,
+				hideText: false,
+				multiRound: false,
+				actions: Array.from({length: 4}, () => ({
+					round: 1, tool: 'create_task', success: false,
+					result: '{"success":false,"code":"STEERING_REPLAN","executed":false}',
+				})),
+			},
+			global: {stubs: {Icon: true, CacheUsage: true, ToolCallRow: true}},
+		})
+		expect(wrapper.text()).toContain('aronaSteer.skippedCount')
+		expect(wrapper.text()).not.toContain('aronaRun.failedCount')
+		expect(wrapper.text()).not.toContain('aronaRun.rejectedCount')
+		wrapper.unmount()
+	})
+})

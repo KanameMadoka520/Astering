@@ -5,7 +5,7 @@ import type {IconProp} from '@fortawesome/fontawesome-svg-core'
 import type {Action, Operation, ToolCall} from '@/client/generated'
 import WebSearchEvidence from '@/components/ai/WebSearchEvidence.vue'
 import {usePreferredOpen} from '@/composables/useAronaDisplayPreferences'
-import {argumentSummary, callArguments} from '@/helpers/aronaTimeline'
+import {argumentSummary, callArguments, isSteeringReplan} from '@/helpers/aronaTimeline'
 
 // Plain props only: a completed row keeps identical props between live frames and does not re-render.
 const props = withDefaults(defineProps<{
@@ -24,9 +24,10 @@ const {t, n} = useI18n({useScope: 'global'})
 const {open, onToggle} = usePreferredOpen(() => props.defaultOpen)
 
 // A rejected review decision is never shown as a proposal still waiting, nor as another call's result.
-type RowState = 'succeeded' | 'failed' | 'running' | 'rejected' | 'draft'
-const ICONS: Record<RowState, IconProp> = {succeeded: 'check', failed: 'exclamation-circle', running: 'ellipsis-h', rejected: 'times', draft: 'code'}
+type RowState = 'succeeded' | 'failed' | 'running' | 'rejected' | 'skipped' | 'draft'
+const ICONS: Record<RowState, IconProp> = {succeeded: 'check', failed: 'exclamation-circle', running: 'ellipsis-h', rejected: 'times', skipped: 'redo', draft: 'code'}
 const state = computed<RowState>(() => {
+	if (isSteeringReplan(props.action, props.operation)) return 'skipped'
 	if (props.action) return props.action.success ? 'succeeded' : 'failed'
 	if (props.operation) return props.operation.status === 'rejected' ? 'rejected' : 'running'
 	return 'draft'
@@ -37,6 +38,7 @@ const stateText = computed(() => {
 		case 'failed': return t('tcymc.text.failed')
 		case 'running': return t('flow.toolExecuting')
 		case 'rejected': return t('aronaRun.toolRejected')
+		case 'skipped': return t('aronaSteer.skippedTool')
 		default: return props.receiving ? t('flow.toolDraft') : t('flow.toolProposed')
 	}
 })
@@ -87,6 +89,12 @@ function pretty(value?: string) {
 			v-if="open"
 			class="tool-body"
 		>
+			<p
+				v-if="state === 'skipped'"
+				class="tool-note"
+			>
+				{{ t('aronaSteer.skippedNote') }}
+			</p>
 			<template v-if="action">
 				<WebSearchEvidence
 					v-if="action.search"
@@ -199,7 +207,8 @@ summary {
 }
 
 // Declined in review and never executed: a dashed rail, like a stopped subagent, so it never reads as finished work.
-.tool-row.is-rejected {
+.tool-row.is-rejected,
+.tool-row.is-skipped {
 	border-inline-start-style: dashed;
 }
 

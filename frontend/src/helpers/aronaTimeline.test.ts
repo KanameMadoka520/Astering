@@ -1,6 +1,6 @@
 import {describe, expect, it, vi} from 'vitest'
 import type {Action, ModelStep, Operation, RunResult, ToolCall} from '@/client/generated'
-import {callName, characterCount, finalAnswer, groupEntries, hidesLastStepText, NO_OPERATIONS, rejectedByStep, stepEntries, timelineLayout} from './aronaTimeline'
+import {callName, characterCount, finalAnswer, groupEntries, hidesLastStepText, isSteeringReplan, NO_OPERATIONS, rejectedByStep, stepEntries, timelineLayout} from './aronaTimeline'
 
 const call = (name: string, args = '{}'): ToolCall => ({id: name, function: {name, arguments: args}})
 const action = (round: number, tool: string, success = true): Action => ({round, tool, success, arguments: '{}', result: '{}', duration_ms: 100})
@@ -62,6 +62,20 @@ describe('Arona execution timeline', () => {
 		expect(stepEntries(draft, [], NO_OPERATIONS, own)[0].operation).toBe(edited)
 	})
 
+	it('never assigns a settled steering cancellation receipt to a later re-proposal', () => {
+		const steps: ModelStep[] = [1, 2].map(round => ({round, tool_calls: [call('create_task', '{"title":"A"}')]}))
+		const actions: Action[] = [{...action(1, 'create_task', false), arguments: '{"title":"A"}', result_ref: 'op1', result: '{"success":false,"code":"STEERING_REPLAN","executed":false}'}]
+		const cancelled: Operation = {id: 'op1', tool: 'create_task', status: 'rejected', error_code: 'STEERING_REPLAN', arguments: '{"title":"A"}'}
+		const perStep = rejectedByStep(steps, actions, [cancelled])
+		expect(perStep).toEqual([[], []])
+		const replanned = stepEntries(steps[1], actions, [], perStep[1])[0]
+		expect(replanned.action).toBeUndefined()
+		expect(replanned.operation).toBeUndefined()
+		// A separate user rejection is still paired, even when tool and arguments are identical.
+		const userRejected = {...cancelled, id: 'op2', error_code: 'USER_REJECTED'}
+		expect(rejectedByStep(steps, actions, [cancelled, userRejected])).toEqual([[], [userRejected]])
+	})
+
 	it('keeps a malformed invoke_tool envelope as one invoke_tool row, like the backend', () => {
 		// Stringified arguments are not an object, so the backend runs and fails it as invoke_tool itself.
 		const envelope = JSON.stringify({name: 'add_comment', arguments: '{"task_id":5}'})
@@ -111,6 +125,25 @@ describe('Arona execution timeline', () => {
 		expect(items.map(item => item.kind)).toEqual(['group', 'entry', 'entry', 'entry', 'entry'])
 		expect(items[0]).toMatchObject({tool: 'create_task', succeeded: 32, failed: 1, pending: 1, durationMs: 3300})
 		expect(items[0].kind === 'group' && items[0].entries).toHaveLength(34)
+	})
+
+	it('keeps plans superseded by steering out of failure and user-rejection counts', () => {
+		const skipped: Action = {...action(1, 'create_task', false), result: JSON.stringify({success: false, code: 'STEERING_REPLAN', executed: false})}
+		const operation: Operation = {tool: 'create_task', status: 'rejected', error_code: 'STEERING_REPLAN'}
+		expect(isSteeringReplan(skipped)).toBe(true)
+		expect(isSteeringReplan(undefined, operation)).toBe(true)
+		for (const result of ['not JSON', '{"code":"STEERING_REPLAN"}', '{"success":false,"executed":true,"code":"STEERING_REPLAN"}', '{"success":false,"executed":false,"data":{"code":"STEERING_REPLAN"}}']) {
+			expect(isSteeringReplan({...skipped, result})).toBe(false)
+		}
+		expect(isSteeringReplan({...skipped, success: true})).toBe(false)
+		expect(isSteeringReplan(undefined, {...operation, error_code: 'REJECTED'})).toBe(false)
+		const entries = [
+			{key: 'a', tool: 'create_task', action: skipped},
+			{key: 'b', tool: 'create_task', operation},
+			{key: 'c', tool: 'create_task', action: action(1, 'create_task', false)},
+			{key: 'd', tool: 'create_task', operation: {...operation, error_code: 'REJECTED'}},
+		]
+		expect(groupEntries(entries)[0]).toMatchObject({skipped: 2, failed: 1, rejected: 1, succeeded: 0, pending: 0})
 	})
 
 	it('places compactions before the next round and subagents after the round that delegated them', () => {

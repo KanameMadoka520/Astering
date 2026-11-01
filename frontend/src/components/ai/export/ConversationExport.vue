@@ -22,7 +22,7 @@ async function start() {
 	controller = new AbortController()
 	const c = JSON.parse(JSON.stringify(props.conversation)) as Conversation
 	try {
-		const blob = format.value === 'pdf' ? await conversationPDF(c, {you: t('tcymc.text.you'), assistant: t('tcymc.text.task_assistant'), missing: t('chatFiles.missing'), unreadable: t('chatFiles.pdfFile'), drafts: t('chatFiles.drafts'), summary: t('chatFiles.summary'), generated: t('chatFiles.generated'), status: t('chatFiles.status'), model: t('chatFiles.model'), duration: t('chatFiles.duration'), steps: t('chatFiles.tools')}, (done, total, stage) => { status.value = stage === 'pdf' ? t('chatFiles.pdfPreparing') : t('chatFiles.exportProgress', {done, total}) }, controller.signal) : await fetchConversationExport(c.id!, format.value, controller.signal)
+		const blob = format.value === 'pdf' ? await conversationPDF(c, {you: t('tcymc.text.you'), assistant: t('tcymc.text.task_assistant'), missing: t('chatFiles.missing'), unreadable: t('chatFiles.pdfFile'), drafts: t('chatFiles.drafts'), summary: t('chatFiles.summary'), generated: t('chatFiles.generated'), status: t('chatFiles.status'), model: t('chatFiles.model'), duration: t('chatFiles.duration'), steps: t('chatFiles.tools'), addition: t('aronaSteer.badge'), pending: t('aronaSteer.statusPending'), applied: t('aronaSteer.statusApplied')}, (done, total, stage) => { status.value = stage === 'pdf' ? t('chatFiles.pdfPreparing') : t('chatFiles.exportProgress', {done, total}) }, controller.signal) : await fetchConversationExport(c.id!, format.value, controller.signal)
 		controller.signal.throwIfAborted()
 		saveChatBlob(blob, `${(c.title || 'Arona').replace(/[\\/:*?"<>|]/g, '_').slice(0, 80)}.${format.value}`)
 		status.value = t('chatFiles.exportDone')
