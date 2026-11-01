@@ -99,11 +99,14 @@ func TestTeamMember_Delete(t *testing.T) {
 		s := db.NewSession()
 		defer s.Close()
 
+		_, err := s.Where("team_id = ? AND user_id = ?", 1, 2).Cols("admin").Update(&TeamMember{Admin: true})
+		require.NoError(t, err)
+
 		tm := &TeamMember{
 			TeamID:   1,
 			Username: "user1",
 		}
-		err := tm.Delete(s, &user.User{ID: 1})
+		err = tm.Delete(s, &user.User{ID: 1})
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
@@ -137,12 +140,15 @@ func TestTeamMember_Update(t *testing.T) {
 		s := db.NewSession()
 		defer s.Close()
 
+		_, err := s.Where("team_id = ? AND user_id = ?", 1, 2).Cols("admin").Update(&TeamMember{Admin: true})
+		require.NoError(t, err)
+
 		tm := &TeamMember{
 			TeamID:   1,
 			Username: "user1",
 			Admin:    true,
 		}
-		err := tm.Update(s, u)
+		err = tm.Update(s, u)
 		require.NoError(t, err)
 		assert.False(t, tm.Admin) // Since this endpoint toggles the permission, we should get a false for admin back.
 		err = s.Commit()
@@ -161,12 +167,15 @@ func TestTeamMember_Update(t *testing.T) {
 		s := db.NewSession()
 		defer s.Close()
 
+		_, err := s.Where("team_id = ? AND user_id = ?", 1, 2).Cols("admin").Update(&TeamMember{Admin: true})
+		require.NoError(t, err)
+
 		tm := &TeamMember{
 			TeamID:   1,
 			Username: "user1",
 			Admin:    true,
 		}
-		err := tm.Update(s, u)
+		err = tm.Update(s, u)
 		require.NoError(t, err)
 		assert.False(t, tm.Admin)
 		err = s.Commit()

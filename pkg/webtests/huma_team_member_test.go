@@ -38,6 +38,33 @@ import (
 // lists only user2. Teams 2/3/4 each list only user1 (non-admin). Teams 14/15
 // are external (external_id set) — team 14 lists user10 and user11.
 func TestHumaTeamMember(t *testing.T) {
+	t.Run("Last administrator protection", func(t *testing.T) {
+		for _, method := range []string{http.MethodDelete, http.MethodPost} {
+			t.Run(method, func(t *testing.T) {
+				e, err := setupTestEnv()
+				require.NoError(t, err)
+				token := humaTokenFor(t, &testuser1)
+				path := "/api/v2/teams/1/members/user1"
+				if method == http.MethodPost {
+					path += "/admin"
+				}
+				rec := humaRequest(t, e, method, path, "", token, "")
+				require.Equal(t, http.StatusBadRequest, rec.Code, "body: %s", rec.Body.String())
+				assert.Contains(t, rec.Body.String(), `"code":6011`)
+				db.AssertExists(t, "team_members", map[string]interface{}{"team_id": 1, "user_id": 1, "admin": true}, false)
+				// The same operation succeeds once another administrator exists.
+				promoted := humaRequest(t, e, http.MethodPost, "/api/v2/teams/1/members/user2/admin", "", token, "")
+				require.Equal(t, http.StatusOK, promoted.Code, "body: %s", promoted.Body.String())
+				rec = humaRequest(t, e, method, path, "", token, "")
+				if method == http.MethodDelete {
+					assert.Equal(t, http.StatusNoContent, rec.Code)
+				} else {
+					assert.Equal(t, http.StatusOK, rec.Code)
+				}
+				db.AssertExists(t, "team_members", map[string]interface{}{"team_id": 1, "user_id": 2, "admin": true}, false)
+			})
+		}
+	})
 	// user11 is a member of external team 14; not pre-defined in integrations.go.
 	testuser11 := user.User{
 		ID:       11,
@@ -233,6 +260,9 @@ func TestHumaTeamMember(t *testing.T) {
 			e, err := setupTestEnv()
 			require.NoError(t, err)
 			token := humaTokenFor(t, &testuser1)
+
+			promoted := humaRequest(t, e, http.MethodPost, "/api/v2/teams/1/members/user2/admin", "", token, "")
+			require.Equal(t, http.StatusOK, promoted.Code, "body: %s", promoted.Body.String())
 
 			rec := humaRequest(t, e, http.MethodPost, "/api/v2/teams/1/members/user1/admin", `{"admin":false}`, token, "")
 			require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())

@@ -1726,6 +1726,27 @@ func (err ErrCannotDeleteLastTeamMember) HTTPError() web.HTTPError {
 	return web.HTTPError{HTTPCode: http.StatusBadRequest, Code: ErrCodeCannotDeleteLastTeamMember, Message: "You cannot delete the last member of a team."}
 }
 
+// ErrCannotRemoveLastTeamAdmin prevents leaving a team without an administrator.
+type ErrCannotRemoveLastTeamAdmin struct {
+	TeamID int64
+	UserID int64
+}
+
+func IsErrCannotRemoveLastTeamAdmin(err error) bool {
+	_, ok := err.(ErrCannotRemoveLastTeamAdmin)
+	return ok
+}
+
+func (err ErrCannotRemoveLastTeamAdmin) Error() string {
+	return fmt.Sprintf("Cannot remove or demote the last team admin. [Team ID: %d, User ID: %d]", err.TeamID, err.UserID)
+}
+
+const ErrCodeCannotRemoveLastTeamAdmin = 6011
+
+func (err ErrCannotRemoveLastTeamAdmin) HTTPError() web.HTTPError {
+	return web.HTTPError{HTTPCode: http.StatusBadRequest, Code: ErrCodeCannotRemoveLastTeamAdmin, Message: "A team must keep at least one administrator. Make another member an administrator first."}
+}
+
 // ErrTeamDoesNotHaveAccessToProject represents an error, where the Team is not the owner of that Project (used i.e. when deleting a Project)
 type ErrTeamDoesNotHaveAccessToProject struct {
 	ProjectID int64

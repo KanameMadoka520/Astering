@@ -29,6 +29,12 @@ func (tm *TeamMember) CanCreate(s *xorm.Session, a web.Auth) (bool, error) {
 
 // CanDelete checks if the user can delete a new team member
 func (tm *TeamMember) CanDelete(s *xorm.Session, a web.Auth) (bool, error) {
+	return tm.canDeleteWithMembers(s, a, nil)
+}
+
+// A non-nil membership list comes from the current read under the team lock.
+// Reuse the same permission rules after waiting, without consulting an older RR snapshot.
+func (tm *TeamMember) canDeleteWithMembers(s *xorm.Session, a web.Auth, members []*TeamMember) (bool, error) {
 	// The self-removal shortcut below runs before IsAdmin, which holds the only
 	// other link share check in this file.
 	if _, is := a.(*LinkSharing); is {
@@ -40,13 +46,21 @@ func (tm *TeamMember) CanDelete(s *xorm.Session, a web.Auth) (bool, error) {
 		return false, err
 	}
 	if u.ID == a.GetID() {
+		if members != nil {
+			for _, member := range members {
+				if member.UserID == u.ID {
+					return true, nil
+				}
+			}
+			return tm.isAdminWithMembers(s, a, members)
+		}
 		// Otherwise Delete's errors leak whether a foreign team exists, is external, or has one member.
 		isMember, err := s.Where("team_id = ? AND user_id = ?", tm.TeamID, u.ID).Exist(&TeamMember{})
 		if err != nil || isMember {
 			return isMember, err
 		}
 	}
-	return tm.IsAdmin(s, a)
+	return tm.isAdminWithMembers(s, a, members)
 }
 
 // CanUpdate checks if the user can modify a team member's permission
@@ -56,6 +70,10 @@ func (tm *TeamMember) CanUpdate(s *xorm.Session, a web.Auth) (bool, error) {
 
 // IsAdmin checks if the user is team admin
 func (tm *TeamMember) IsAdmin(s *xorm.Session, a web.Auth) (bool, error) {
+	return tm.isAdminWithMembers(s, a, nil)
+}
+
+func (tm *TeamMember) isAdminWithMembers(s *xorm.Session, a web.Auth, members []*TeamMember) (bool, error) {
 	// Don't allow anything if we're dealing with a project share here
 	if _, is := a.(*LinkSharing); is {
 		return false, nil
@@ -63,6 +81,14 @@ func (tm *TeamMember) IsAdmin(s *xorm.Session, a web.Auth) (bool, error) {
 
 	if isInstanceAdmin(s, a) {
 		return true, nil
+	}
+	if members != nil {
+		for _, member := range members {
+			if member.UserID == a.GetID() && member.Admin {
+				return true, nil
+			}
+		}
+		return false, nil
 	}
 
 	// A user can add a member to a team if he is admin of that team
