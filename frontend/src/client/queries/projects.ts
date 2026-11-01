@@ -153,17 +153,25 @@ function partitionProjects(projects: Project[]): ProjectListResult {
 	return result
 }
 
-async function fetchAllProjects(): Promise<ProjectListResult> {
-	const projects = await fetchAllPages(async page => (await projectsList({
-		query: {is_archived: true, expand: 'permissions', page},
-	})).data)
+async function fetchAllProjects(signal?: AbortSignal): Promise<ProjectListResult> {
+	const projects = await fetchAllPages(async page => {
+		signal?.throwIfAborted()
+		const {data} = await projectsList({
+			query: {is_archived: true, expand: 'permissions', page},
+			signal,
+		})
+		// A transport may finish concurrently with cancellation. Do not start
+		// another page or normalize its response after the consumer has left.
+		signal?.throwIfAborted()
+		return data
+	})
 	return partitionProjects(projects)
 }
 
 export function projectsQuery() {
 	return queryOptions({
 		queryKey: projectKeys.list(),
-		queryFn: fetchAllProjects,
+		queryFn: ({signal}) => fetchAllProjects(signal),
 		staleTime: 5 * 60 * 1000,
 	})
 }
@@ -171,8 +179,9 @@ export function projectsQuery() {
 export function projectQuery(id: number) {
 	return queryOptions({
 		queryKey: projectKeys.detail(id),
-		queryFn: async () => {
-			const {data} = await projectsRead({path: {id}})
+		queryFn: async ({signal}) => {
+			const {data} = await projectsRead({path: {id}, signal})
+			signal.throwIfAborted()
 			return normalizeProject(data)
 		},
 		enabled: id !== 0,

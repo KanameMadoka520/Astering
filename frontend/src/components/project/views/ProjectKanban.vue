@@ -372,7 +372,7 @@
 					danger
 					:enabled="showBucketDeleteModal"
 					:confirm-label="$t('project.kanban.deleteBucketConfirm')"
-					@close="showBucketDeleteModal = false"
+					@close="closeBucketDeleteModal"
 					@submit="deleteBucket"
 				>
 					<template #header>
@@ -446,6 +446,7 @@ import {useTaskDragToProject} from '@/composables/useTaskDragToProject'
 import type {TaskFilterParams, TaskResponse} from '@/client/queries/tasks'
 import type {ProjectView, Task} from '@/client/generated'
 import {createProjectViewUpdate, useUpdateProjectViewMutation} from '@/client/queries/projectViews'
+import {captureClientRequestContext, isClientRequestContextCurrent, type ClientRequestContext} from '@/client/requestContext'
 
 const props = defineProps<{
 	isLoadingProject: boolean,
@@ -492,7 +493,7 @@ const dragBucket = ref(false)
 const sourceBucket = ref(0)
 
 const showBucketDeleteModal = ref(false)
-const bucketToDelete = ref(0)
+const bucketToDelete = ref<{project: number, view: number, bucket: number, request: ClientRequestContext} | null>(null)
 const bucketTitleEditable = ref(false)
 
 const newTaskText = ref('')
@@ -906,23 +907,40 @@ function deleteBucketModal(bucketId: number) {
 		return
 	}
 
-	bucketToDelete.value = bucketId
+	// Each opening has its own identity, even when the same bucket is opened again.
+	bucketToDelete.value = {
+		project: projectId.value,
+		view: props.viewId,
+		bucket: bucketId,
+		request: captureClientRequestContext(),
+	}
 	showBucketDeleteModal.value = true
+}
+
+function closeBucketDeleteModal() {
+	showBucketDeleteModal.value = false
+	bucketToDelete.value = null
 }
 
 // Stays open while the request runs and after a failure (the mutation reports it); closes once this bucket is gone.
 async function deleteBucket() {
-	const bucket = bucketToDelete.value
+	const confirmation = bucketToDelete.value
+	if (!showBucketDeleteModal.value || !confirmation ||
+		confirmation.project !== projectId.value || confirmation.view !== props.viewId) return
+	if (!isClientRequestContextCurrent(confirmation.request)) {
+		closeBucketDeleteModal()
+		return
+	}
+	const {project, view, bucket} = confirmation
 	try {
-		await deleteBucketMutation.mutateAsync({
-			project: projectId.value,
-			view: props.viewId,
-			bucket,
-		})
+		await deleteBucketMutation.mutateAsync({project, view, bucket})
 	} catch {
 		return
 	}
-	if (bucketToDelete.value === bucket) showBucketDeleteModal.value = false
+	if (bucketToDelete.value === confirmation && projectId.value === project && props.viewId === view &&
+		isClientRequestContextCurrent(confirmation.request)) {
+		closeBucketDeleteModal()
+	}
 }
 
 /** This little helper allows us to drag a bucket around at the title without focusing on it right away. */
@@ -1087,10 +1105,18 @@ async function setBucketLimit(bucketId: number, now: boolean = false) {
 	}, 2500)
 }
 
-// A pending limit belongs to the board it was typed on, never to the next one.
+// Confirmations and drafts belong to the board they were opened on, never to the next one.
 watch(() => [props.projectId, props.viewId], () => {
 	cancelBucketLimit()
 	limitDraft.value = undefined
+	showSetLimitInput.value = false
+	closeBucketDeleteModal()
+	newTaskText.value = ''
+	newTaskError.value = {}
+	showNewTaskInput.value = null
+	newTaskInputFocused.value = false
+	newBucketTitle.value = ''
+	showNewBucketInput.value = false
 })
 onBeforeUnmount(cancelBucketLimit)
 

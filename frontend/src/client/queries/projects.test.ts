@@ -153,7 +153,38 @@ describe('project queries', () => {
 		expect(result.savedFilterProjects.map(project => project.id)).toEqual([-2, -3])
 		expect(sdk.projectsList).toHaveBeenCalledExactlyOnceWith({
 			query: {is_archived: true, expand: 'permissions', page: 1},
+			signal: expect.any(AbortSignal),
 		})
+	})
+
+
+	it('stops pagination when cancelled even if the transport resolves its old page', async () => {
+		let release!: (response: {data: {items: Project[], total_pages: number}}) => void
+		sdk.projectsList.mockImplementationOnce(() => new Promise(resolve => { release = resolve }))
+		const pending = queryClient.fetchQuery(projectsQuery()).catch(cause => cause)
+		expect(sdk.projectsList).toHaveBeenCalledTimes(1)
+		const signal = sdk.projectsList.mock.calls[0][0].signal as AbortSignal
+		expect(signal).toBeInstanceOf(AbortSignal)
+		await queryClient.cancelQueries({queryKey: projectKeys.list()})
+		expect(signal.aborted).toBe(true)
+		release({data: {items: [serverProject()], total_pages: 100}})
+		await pending
+		await Promise.resolve()
+		expect(sdk.projectsList).toHaveBeenCalledTimes(1)
+		expect(queryClient.getQueryData(projectKeys.list())).toBeUndefined()
+	})
+
+	it('passes cancellation to project details and never caches their late response', async () => {
+		let release!: (response: {data: Project}) => void
+		sdk.projectsRead.mockImplementationOnce(() => new Promise(resolve => { release = resolve }))
+		const pending = queryClient.fetchQuery(projectQuery(1)).catch(cause => cause)
+		const signal = sdk.projectsRead.mock.calls[0][0].signal as AbortSignal
+		expect(signal).toBeInstanceOf(AbortSignal)
+		await queryClient.cancelQueries({queryKey: projectKeys.detail(1)})
+		expect(signal.aborted).toBe(true)
+		release({data: serverProject()})
+		await pending
+		expect(queryClient.getQueryData(projectKeys.detail(1))).toBeUndefined()
 	})
 
 	it('normalizes fields required by project consumers at the read boundary', async () => {

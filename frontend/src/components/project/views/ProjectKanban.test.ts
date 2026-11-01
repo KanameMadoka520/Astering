@@ -4,11 +4,14 @@ import {createPinia} from 'pinia'
 import {nextTick} from 'vue'
 import draggable from 'zhyswan-vuedraggable'
 import {QueryClient, VueQueryPlugin} from '@tanstack/vue-query'
+import {removeToken, saveToken} from '@/helpers/auth'
+import {captureClientRequestContext, isClientRequestContextCurrent} from '@/client/requestContext'
 
 const sdk = vi.hoisted(() => ({
 	projectViewBucketsTasksList: vi.fn(),
 	projectViewTasksList: vi.fn(),
 	bucketsUpdate: vi.fn(),
+	bucketsDelete: vi.fn(),
 	tasksCreate: vi.fn(),
 }))
 const {projectViewBucketsTasksList: loadBoard, projectViewTasksList: loadBucketPage, bucketsUpdate: updateBucket} = sdk
@@ -149,6 +152,8 @@ describe('ProjectKanban', () => {
 	beforeEach(() => {
 		updateBucket.mockClear()
 		updateBucket.mockResolvedValue({data: {id: 2, position: 200}})
+		sdk.bucketsDelete.mockReset()
+		sdk.bucketsDelete.mockResolvedValue({data: {}})
 		loadBoard.mockClear()
 		loadBoard.mockResolvedValue({data: {items: buckets}})
 		loadBucketPage.mockClear()
@@ -293,6 +298,180 @@ describe('ProjectKanban', () => {
 		wrapper.findComponent(draggable).vm.$emit('end', dragEndEvent('42'))
 
 		expect(updateBucket).not.toHaveBeenCalled()
+	})
+
+	describe('bucket deletion confirmation identity', () => {
+		let wrapper: Awaited<ReturnType<typeof mountKanban>> | undefined
+		let previousApiUrl: string
+
+		function accountToken(id: number) {
+			return `header.${btoa(JSON.stringify({id, type: 1}))}.signature`
+		}
+
+		beforeEach(() => {
+			previousApiUrl = window.API_URL
+			removeToken()
+			window.API_URL = ''
+			saveToken(accountToken(1), false)
+		})
+
+		afterEach(() => {
+			wrapper?.unmount()
+			wrapper = undefined
+			queryClient.clear()
+			removeToken()
+			window.API_URL = previousApiUrl
+		})
+
+		async function openConfirmation() {
+			wrapper = await mountKanban({
+				Modal: {name: 'Modal', props: ['enabled'], template: '<div />'},
+			})
+			const vm = wrapper.vm as unknown as {
+				deleteBucketModal: (id: number) => void,
+				deleteBucket: () => Promise<void>,
+				newTaskText: string,
+				newBucketTitle: string,
+				showNewTaskInput: number | null,
+				showNewBucketInput: boolean,
+				showSetLimitInput: boolean,
+			}
+			vm.deleteBucketModal(2)
+			await nextTick()
+			return {vm, modal: wrapper.findComponent({name: 'Modal'})}
+		}
+
+		const requestContextChanges = [
+			{name: 'account identity', change: () => saveToken(accountToken(2), false)},
+			{name: 'API server', change: () => { window.API_URL = 'https://other.example' }},
+			{name: 'session epoch', change: () => {
+				removeToken()
+				saveToken(accountToken(1), false)
+			}},
+		]
+
+		it.each(requestContextChanges)('rejects an old confirmation after the $name changes without navigation', async ({change}) => {
+			const {vm, modal} = await openConfirmation()
+			const request = captureClientRequestContext()
+			change()
+			expect(isClientRequestContextCurrent(request)).toBe(false)
+
+			await vm.deleteBucket()
+			await nextTick()
+			expect(sdk.bucketsDelete).not.toHaveBeenCalled()
+			expect(modal.props('enabled')).toBe(false)
+		})
+
+		it.each(requestContextChanges)('leaves the new confirmation alone when an old response arrives after the $name changes', async ({change}) => {
+			let resolveDelete!: (value: unknown) => void
+			sdk.bucketsDelete.mockImplementationOnce(() => new Promise(resolve => { resolveDelete = resolve }))
+			const {vm, modal} = await openConfirmation()
+			const deletion = vm.deleteBucket()
+			await flushPromises()
+			expect(sdk.bucketsDelete).toHaveBeenCalledOnce()
+
+			change()
+			vm.deleteBucketModal(2)
+			await nextTick()
+			resolveDelete({data: {}})
+			await deletion
+			await nextTick()
+			expect(modal.props('enabled')).toBe(true)
+			expect(sdk.bucketsDelete).toHaveBeenCalledOnce()
+		})
+
+		it('allows a refreshed token for the same account, session and API server', async () => {
+			const {vm, modal} = await openConfirmation()
+			const request = captureClientRequestContext()
+			saveToken(`renewed.${btoa(JSON.stringify({id: 1, type: 1}))}.signature`, false)
+			expect(isClientRequestContextCurrent(request)).toBe(true)
+			await vm.deleteBucket()
+			await nextTick()
+			expect(sdk.bucketsDelete).toHaveBeenCalledOnce()
+			expect(modal.props('enabled')).toBe(false)
+		})
+
+		it.each([
+			{projectId: 2, viewId: 10},
+			{projectId: 1, viewId: 20},
+		])('clears the confirmation and board drafts before a stale submit on %j', async props => {
+			const {vm, modal} = await openConfirmation()
+			vm.newTaskText = 'Task on the old board'
+			vm.newBucketTitle = 'Column on the old board'
+			vm.showNewTaskInput = 2
+			vm.showNewBucketInput = true
+			vm.showSetLimitInput = true
+			await wrapper!.setProps(props)
+
+			// A late event from the old dialog must not address its bucket through the new route.
+			await vm.deleteBucket()
+			expect(sdk.bucketsDelete).not.toHaveBeenCalled()
+			expect(modal.props('enabled')).toBe(false)
+			expect(vm.newTaskText).toBe('')
+			expect(vm.newBucketTitle).toBe('')
+			expect(vm.showNewTaskInput).toBeNull()
+			expect(vm.showNewBucketInput).toBe(false)
+			expect(vm.showSetLimitInput).toBe(false)
+		})
+
+		it.each([
+			{projectId: 2, viewId: 10},
+			{projectId: 1, viewId: 20},
+		])('does not close a new confirmation after navigating through %j and back', async props => {
+			let resolveDelete!: (value: unknown) => void
+			sdk.bucketsDelete.mockImplementationOnce(() => new Promise(resolve => { resolveDelete = resolve }))
+			const {vm, modal} = await openConfirmation()
+			const deletion = vm.deleteBucket()
+			await flushPromises()
+			expect(sdk.bucketsDelete).toHaveBeenCalledWith(expect.objectContaining({
+				path: {project: 1, view: 10, bucket: 2},
+			}))
+
+			await wrapper!.setProps(props)
+			await wrapper!.setProps({projectId: 1, viewId: 10})
+			vm.deleteBucketModal(2)
+			await nextTick()
+			expect(modal.props('enabled')).toBe(true)
+			resolveDelete({data: {}})
+			await deletion
+			await nextTick()
+
+			expect(modal.props('enabled')).toBe(true)
+			expect(sdk.bucketsDelete).toHaveBeenCalledTimes(1)
+		})
+
+		it('keeps a replacement confirmation for the same bucket after the old response arrives', async () => {
+			let resolveDelete!: (value: unknown) => void
+			sdk.bucketsDelete.mockImplementationOnce(() => new Promise(resolve => { resolveDelete = resolve }))
+			const {vm, modal} = await openConfirmation()
+			const deletion = vm.deleteBucket()
+			await flushPromises()
+			modal.vm.$emit('close')
+			vm.deleteBucketModal(2)
+			await nextTick()
+			resolveDelete({data: {}})
+			await deletion
+			await nextTick()
+			expect(modal.props('enabled')).toBe(true)
+		})
+
+		it('ignores a late submit after the confirmation was cancelled', async () => {
+			const {vm, modal} = await openConfirmation()
+			modal.vm.$emit('close')
+			await vm.deleteBucket()
+			expect(sdk.bucketsDelete).not.toHaveBeenCalled()
+		})
+
+		it('keeps a failed confirmation available for retry and closes it only after success', async () => {
+			sdk.bucketsDelete.mockRejectedValueOnce(new Error('Delete failed'))
+			const {vm, modal} = await openConfirmation()
+			await vm.deleteBucket()
+			expect(modal.props('enabled')).toBe(true)
+			await vm.deleteBucket()
+			await nextTick()
+			expect(modal.props('enabled')).toBe(false)
+			expect(sdk.bucketsDelete).toHaveBeenCalledTimes(2)
+		})
 	})
 
 	describe('bucket limit editing', () => {

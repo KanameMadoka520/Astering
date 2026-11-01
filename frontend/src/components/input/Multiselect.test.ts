@@ -45,6 +45,98 @@ function dispatchEscape(el: Element) {
 	return {event, preventDefault, stopPropagation}
 }
 
+describe('Multiselect.vue — input composition and pending searches', () => {
+	beforeEach(() => {
+		vi.useFakeTimers()
+	})
+
+	afterEach(() => {
+		vi.useRealTimers()
+		document.body.innerHTML = ''
+	})
+
+	it.each([
+		{creatable: false, action: 'select an option'},
+		{creatable: true, action: 'create an option'},
+	])('does not $action on IME confirmation, but accepts a later Enter', async ({creatable}) => {
+		const wrapper = mountMultiselect({creatable, searchResults: creatable ? [] : [{title: '研究计划'}]})
+		const input = wrapper.find('input[role="combobox"]')
+		await input.trigger('compositionstart')
+		await input.setValue('研究计划')
+		await input.trigger('keydown', {key: 'Enter', isComposing: true, keyCode: 229})
+		await input.trigger('keyup', {key: 'Enter', isComposing: true, keyCode: 229})
+		expect(wrapper.emitted('select')).toBeUndefined()
+		expect(wrapper.emitted('create')).toBeUndefined()
+
+		// Some browsers end composition before the confirming Enter's keyup, which then reports false.
+		await input.trigger('compositionend')
+		await input.trigger('keyup', {key: 'Enter', isComposing: false})
+		vi.advanceTimersByTime(300)
+		await nextTick()
+		expect(wrapper.emitted('select')).toBeUndefined()
+		expect(wrapper.emitted('create')).toBeUndefined()
+		expect(wrapper.emitted('search')).toEqual([['研究计划']])
+
+		await input.trigger('keydown', {key: 'Enter'})
+		await input.trigger('keyup', {key: 'Enter'})
+		expect(wrapper.emitted(creatable ? 'create' : 'select')).toHaveLength(1)
+		wrapper.unmount()
+	})
+
+	it('lets the input method keep ArrowDown focus and its default action', async () => {
+		const wrapper = mountMultiselect()
+		const input = await openResults(wrapper)
+		;(input.element as HTMLInputElement).focus()
+		const event = new KeyboardEvent('keydown', {key: 'ArrowDown', isComposing: true, bubbles: true, cancelable: true})
+		input.element.dispatchEvent(event)
+		await nextTick()
+		expect(event.defaultPrevented).toBe(false)
+		expect(document.activeElement).toBe(input.element)
+		wrapper.unmount()
+	})
+
+	it('lets the input method consume Escape without closing its visible results', async () => {
+		const wrapper = mountMultiselect()
+		const input = await openResults(wrapper)
+		const event = new KeyboardEvent('keydown', {key: 'Escape', isComposing: true, bubbles: true, cancelable: true})
+		input.element.dispatchEvent(event)
+		await nextTick()
+		expect(event.defaultPrevented).toBe(false)
+		expect(wrapper.find('[role="listbox"]').exists()).toBe(true)
+		wrapper.unmount()
+	})
+
+	it.each(['Escape', 'outside click'])('cancels a pending search when the results close by %s', async method => {
+		const wrapper = mountMultiselect()
+		const input = await openResults(wrapper)
+		await input.setValue('b')
+		await input.trigger('keydown', {key: 'b'})
+		await input.trigger('keyup', {key: 'b'})
+		if (method === 'Escape') dispatchEscape(input.element)
+		else document.body.dispatchEvent(new MouseEvent('click', {bubbles: true}))
+		await nextTick()
+		expect(wrapper.find('[role="listbox"]').exists()).toBe(false)
+
+		vi.advanceTimersByTime(300)
+		await nextTick()
+		expect(wrapper.find('[role="listbox"]').exists()).toBe(false)
+		expect(wrapper.emitted('search')).toEqual([['a']])
+		wrapper.unmount()
+	})
+
+	it('does not fire a queued search after the field has unmounted', async () => {
+		const onSearch = vi.fn()
+		const wrapper = mountMultiselect({onSearch})
+		const input = wrapper.find('input[role="combobox"]')
+		await input.setValue('later')
+		await input.trigger('keyup', {key: 'r'})
+		wrapper.unmount()
+		expect(vi.getTimerCount()).toBe(0)
+		vi.advanceTimersByTime(300)
+		expect(onSearch).not.toHaveBeenCalled()
+	})
+})
+
 describe('Multiselect.vue — combobox Escape semantics', () => {
 	beforeEach(() => {
 		vi.useFakeTimers()

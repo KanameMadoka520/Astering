@@ -60,11 +60,13 @@
 					:autocomplete="autocompleteEnabled ? undefined : 'off'"
 					:spellcheck="autocompleteEnabled ? undefined : 'false'"
 					@keyup="search"
-					@keyup.enter.exact.prevent="() => createOrSelectOnEnter()"
-					@keydown="clearKeyupGuard"
-					@keydown.down.exact.prevent="() => preSelect(0)"
+					@keyup.enter.exact.prevent="createOrSelectOnEnter"
+					@keydown="handleInputKeydown"
+					@keydown.down.exact="focusFirstResult"
 					@keydown.esc="handleEscape"
 					@focus="handleFocus"
+					@compositionstart="startComposition"
+					@compositionend="endComposition"
 				>
 				<BaseButton 
 					v-if="removalAvailable && !disabled"
@@ -281,6 +283,10 @@ function elementInResults(elem: string | T, label: string, query: string): boole
 
 const query = ref('')
 const searchTimeout = ref<ReturnType<typeof setTimeout> | null>(null)
+let loadingTimeout: ReturnType<typeof setTimeout> | undefined
+let focusTimeout: ReturnType<typeof setTimeout> | undefined
+let composing = false
+let ignoreCompositionKeyup = false
 const localLoading = ref(false)
 const showLoading = useDelayedLoading(() => props.loading)
 const showSearchResults = ref(false)
@@ -290,7 +296,10 @@ const selectedItems = ref([]) as Ref<T[]>
 const selectedItem = ref(null) as Ref<T | null>
 
 onMounted(() => document.addEventListener('click', hideSearchResultsHandler))
-onBeforeUnmount(() => document.removeEventListener('click', hideSearchResultsHandler))
+onBeforeUnmount(() => {
+	document.removeEventListener('click', hideSearchResultsHandler)
+	closeSearchResults()
+})
 
 const {modelValue, searchResults} = toRefs(props)
 
@@ -360,7 +369,7 @@ const searchInput = ref<HTMLInputElement | null>(null)
 // Searching will be triggered with a 200ms delay to avoid searching on every keyup event.
 function search(e?: KeyboardEvent) {
 	// The keyup of the Escape that just closed the results must not reopen them.
-	if (e?.key === 'Escape') {
+	if (e?.key === 'Escape' || composing || (e && (isComposingKey(e) || ignoreCompositionKeyup))) {
 		return
 	}
 
@@ -380,8 +389,10 @@ function search(e?: KeyboardEvent) {
 	localLoading.value = true
 
 	searchTimeout.value = setTimeout(() => {
+		searchTimeout.value = null
 		emit('search', query.value)
-		setTimeout(() => {
+		clearTimeout(loadingTimeout)
+		loadingTimeout = setTimeout(() => {
 			localLoading.value = false
 		}, 100) // The duration of the loading timeout of the services
 		showSearchResults.value = true
@@ -398,10 +409,15 @@ function hideSearchResultsHandler(e: MouseEvent) {
 
 function closeSearchResults() {
 	showSearchResults.value = false
+	if (searchTimeout.value !== null) clearTimeout(searchTimeout.value)
+	searchTimeout.value = null
+	clearTimeout(loadingTimeout)
+	clearTimeout(focusTimeout)
+	localLoading.value = false
 }
 
 function handleEscape(e: KeyboardEvent) {
-	if (!searchResultsVisible.value) {
+	if (isComposingKey(e) || !searchResultsVisible.value) {
 		return
 	}
 	// preventDefault cancels a wrapping native <dialog>'s Escape close request.
@@ -417,8 +433,33 @@ let suppressFocusOpen = false
 // would select or search a second time.
 let ignoreNextKeyup = false
 
-function clearKeyupGuard() {
+function isComposingKey(event: KeyboardEvent) {
+	return composing || event.isComposing || event.keyCode === 229
+}
+
+function handleInputKeydown(event: KeyboardEvent) {
 	ignoreNextKeyup = false
+	ignoreCompositionKeyup = isComposingKey(event)
+}
+
+function startComposition() {
+	composing = true
+	ignoreNextKeyup = false
+	ignoreCompositionKeyup = true
+	if (searchTimeout.value !== null) clearTimeout(searchTimeout.value)
+	searchTimeout.value = null
+}
+
+function endComposition() {
+	composing = false
+	// Read the final committed text, including on mobile keyboards that emit no ordinary character keyup.
+	search()
+}
+
+function focusFirstResult(event: KeyboardEvent) {
+	if (isComposingKey(event)) return
+	event.preventDefault()
+	preSelect(0)
 }
 
 // Options unmount once the query resets, dropping focus to the body where keystrokes become global shortcuts.
@@ -442,7 +483,8 @@ function handleFocus() {
 	}
 	// We need the timeout to avoid the hideSearchResultsHandler hiding the search results right after the input
 	// is focused. That would lead to flickering pre-loaded search results and hiding them right after showing.
-	setTimeout(() => {
+	clearTimeout(focusTimeout)
+	focusTimeout = setTimeout(() => {
 		showSearchResults.value = true
 	}, 10)
 }
@@ -533,8 +575,8 @@ function create() {
 	refocusInput()
 }
 
-function createOrSelectOnEnter() {
-	if (ignoreNextKeyup) {
+function createOrSelectOnEnter(event: KeyboardEvent) {
+	if (ignoreNextKeyup || ignoreCompositionKeyup || isComposingKey(event)) {
 		return
 	}
 
