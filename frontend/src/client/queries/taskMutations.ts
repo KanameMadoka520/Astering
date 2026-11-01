@@ -31,7 +31,6 @@ import {normalizeTask, taskKeys, type PaginatedTaskResponse, type TaskFilterPara
 import {bucketKeys, kanbanKeys, normalizeBucket, type BoardData} from './kanban'
 import {
 	cachedTaskCopies,
-	failTaskDetails,
 	invalidateTaskMembership,
 	isOvertakenByServerWrite,
 	isStaleTask,
@@ -673,7 +672,6 @@ export async function applyServerTaskChanges(client: QueryClient, changes: reado
 	const scope = serverChangeScope(client, changes)
 	const applied = changes.map(change => {
 		if (change.kind === 'deleted') {
-			failTaskDetails(client, change.id)
 			removeTaskEverywhere(client, change.id)
 			return true
 		}

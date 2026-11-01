@@ -244,11 +244,15 @@ describe('TaskDetailView deletion confirmation', () => {
 		await flushPromises()
 		await router.push('/elsewhere')
 		await router.push('/tasks/1')
+		await flushPromises()
 		pending.resolve({data: {}})
 		await deletion
 		await flushPromises()
 
 		expect(router.currentRoute.value.fullPath).toBe('/tasks/1')
+		const current = host!.findComponent(TaskDetailView)
+		expect(current.find('.task-view-deleted').exists()).toBe(true)
+		expect(current.find('.task-view').exists()).toBe(false)
 	})
 
 	it('accepts a renewed token for the same account and navigates after the confirmed deletion', async () => {

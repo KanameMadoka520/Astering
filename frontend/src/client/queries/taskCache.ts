@@ -240,6 +240,8 @@ export function failTaskDetails(client: QueryClient, id: number) {
 }
 
 export function removeTaskEverywhere(client: QueryClient, id: number) {
+	// Mounted observers retain their query after removeQueries, including a later visit during a slow DELETE.
+	failTaskDetails(client, id)
 	removeTaskFromCollections(client, id, {kind: 'delete'})
 	client.removeQueries({queryKey: [...taskKeys.details, id]})
 	client.setQueriesData<TaskResponse>({queryKey: taskKeys.details}, current =>

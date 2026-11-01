@@ -15,6 +15,8 @@ import {
 	replaceTaskEverywhere,
 	removeTaskEverywhere,
 	removeTaskFromBoard,
+	TaskDeletedError,
+	isTaskDeleted,
 } from './taskCache'
 
 const sdk = vi.hoisted(() => ({
@@ -29,6 +31,27 @@ vi.mock('@/client/generated', () => sdk)
 
 describe('task cache reconciliation', () => {
 	beforeEach(() => vi.resetAllMocks())
+	it('notifies an already mounted detail before removing its deleted query from the cache', () => {
+		const client = new QueryClient()
+		const detail = taskQuery(3)
+		client.setQueryData(detail.queryKey, normalizeTask({id: 3, title: 'deleted while viewing', project_id: 1}))
+		const observer = new QueryObserver<TaskResponse>(client, {
+			queryKey: detail.queryKey,
+			staleTime: Infinity,
+		})
+		const unsubscribe = observer.subscribe(() => {})
+		try {
+			removeTaskEverywhere(client, 3)
+
+			expect(observer.getCurrentResult().data).toBeUndefined()
+			expect(observer.getCurrentResult().error).toBeInstanceOf(TaskDeletedError)
+			expect(isTaskDeleted(client, 3)).toBe(true)
+			expect(client.getQueryData(detail.queryKey)).toBeUndefined()
+		} finally {
+			unsubscribe()
+			client.clear()
+		}
+	})
 	it('decrements the list total and the bucket count of a deleted task', () => {
 		const client = new QueryClient()
 		const task = normalizeTask({id: 3, title: 'task', project_id: 1, bucket_id: 5})
