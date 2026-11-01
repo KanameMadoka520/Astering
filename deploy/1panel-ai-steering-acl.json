@@ -1,0 +1,39 @@
+{
+  "state": "on",
+  "code": 403,
+  "action": "allow",
+  "type": "acl",
+  "res": "",
+  "ipBlock": "off",
+  "ipBlockTime": 600,
+  "expireTime": 24,
+  "unit": "h",
+  "name": "Vikunja AI与语音请求兼容",
+  "conditions": [
+    {
+      "field": "Method",
+      "rule": "^POST$",
+      "pattern": "regex",
+      "name": ""
+    },
+    {
+      "field": "URL",
+      "rule": "^/api/v2/ai/(?:settings|models|test|run|cleanup|transcribe|conversations(?:/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/(?:title|messages|fork|compact|stop|review|steer))?)(?:[?]|$)",
+      "pattern": "regex",
+      "name": ""
+    },
+    {
+      "field": "Header",
+      "rule": "(?i)^application/(?:json|merge-patch[+]json|json-patch[+]json)(?:[; ]|$)",
+      "pattern": "regex",
+      "name": "content-type"
+    },
+    {
+      "field": "Header",
+      "rule": "(?i)^Bearer[ ]+[A-Za-z0-9._~+/-]+=*$",
+      "pattern": "regex",
+      "name": "authorization"
+    }
+  ],
+  "description": "允许个人模型配置、连接测试、AI 指令、语音及私有会话中的自由文本；会话路径仅包含创建和指定 UUID 的消息、标题、分支、压缩、停止与审核/续接及运行中追加要求操作。仅指定 JSON POST 且带 Bearer 认证头，后端继续执行真实登录校验、会话所有权和工具权限检查。"
+}
