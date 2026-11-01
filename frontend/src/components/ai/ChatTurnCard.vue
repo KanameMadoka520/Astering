@@ -13,6 +13,8 @@ import MarkdownBlock from './timeline/MarkdownBlock.vue'
 import AronaAvatar from '@/components/ai/AronaAvatar.vue'
 import ChatAttachmentCard from '@/components/ai/attachments/ChatAttachmentCard.vue'
 import AgentReviewCard from '@/components/ai/AgentReviewCard.vue'
+import MessageTimestamp from './MessageTimestamp.vue'
+import TurnSteering from './TurnSteering.vue'
 import type {ChatTurn, Operation, ReviewInput} from '@/client/generated'
 
 const props = withDefaults(defineProps<{
@@ -51,6 +53,20 @@ const rejected = computed<readonly Operation[]>(previous => {
 const answer = computed(() => finalAnswer(result.value, running.value))
 const hideLastText = computed(() => hidesLastStepText(result.value, running.value))
 const searches = computed(() => (result.value?.actions ?? []).filter(action => action.search))
+// What `finished` means for each settled state; a running turn has no reply time, whatever it holds.
+const FINISHED_LABELS: Partial<Record<NonNullable<ChatTurn['status']>, string>> = {
+	completed: 'aronaTime.replied',
+	failed: 'aronaTime.failed',
+	stopped: 'aronaTime.stopped',
+	interrupted: 'aronaTime.interrupted',
+	awaiting_approval: 'aronaTime.paused',
+	awaiting_input: 'aronaTime.paused',
+	paused: 'aronaTime.paused',
+}
+const finishedLabel = computed(() => {
+	const key = !running.value && !props.sending && props.turn.status ? FINISHED_LABELS[props.turn.status] : undefined
+	return key ? t(key) : ''
+})
 async function copy() {
 	try {
 		await navigator.clipboard.writeText(answer.value)
@@ -95,6 +111,19 @@ const announcement = computed(() => {
 				</div>
 			</div>
 		</div>
+		<p class="user-meta">
+			<MessageTimestamp
+				:value="turn.started"
+				:label="t('aronaTime.sent')"
+				hide-label
+			/>
+		</p>
+		<TurnSteering
+			:entries="turn.steering"
+			:status="turn.status"
+			:turn-id="turn.id"
+			:conversation-id="conversationId"
+		/>
 		<div class="assistant-message">
 			<div class="assistant-identity">
 				<AronaAvatar size="small" />
@@ -103,6 +132,11 @@ const announcement = computed(() => {
 					v-if="result?.model"
 					class="model-badge"
 				>{{ result.model }}</span>
+				<MessageTimestamp
+					v-if="finishedLabel"
+					:value="turn.finished"
+					:label="finishedLabel"
+				/>
 				<span
 					class="is-sr-only"
 					role="status"
@@ -284,6 +318,16 @@ const announcement = computed(() => {
 	margin: 0;
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
+}
+
+.user-meta {
+	margin: var(--space-1) 0 0;
+	text-align: end;
+
+	// No valid send time: the timestamp renders nothing, and the row takes no space.
+	&:empty {
+		display: none;
+	}
 }
 
 .message-attachments {

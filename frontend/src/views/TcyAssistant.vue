@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed, onMounted, onBeforeUnmount, ref, watch, nextTick, useId} from 'vue'
+import {computed, onMounted, onBeforeUnmount, ref, shallowRef, watch, nextTick, useId} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {useRoute, useRouter} from 'vue-router'
 import {useQuery, useQueryClient} from '@tanstack/vue-query'
@@ -40,7 +40,13 @@ import {
 	useConversationAction,
 	useSendConversation,
 	useReviewConversation,
+	useSteerConversation,
 } from '@/client/queries/tcyConversations'
+import {provideSteeringOutbox} from '@/components/ai/steeringOutbox'
+import {hasSteeringRequest, pendingSteeringCount, type LocalSteer} from '@/helpers/turnSteering'
+import {markSteerInFlight, readSteerQueue, steerQueueOwner, updateSteerQueue, type QueuedSteer} from '@/helpers/steeringQueue'
+import {onTokenRefreshed} from '@/helpers/auth'
+import {useAuthStore} from '@/stores/auth'
 import {useProjects} from '@/composables/useProjects'
 import {provideAronaPresenting, usePresentedSnapshot} from '@/composables/useAronaPresentation'
 import {useTitle} from '@/composables/useTitle'
@@ -89,6 +95,7 @@ const create = useCreateConversation()
 const action = useConversationAction()
 const send = useSendConversation()
 const review = useReviewConversation()
+const steer = useSteerConversation()
 const paused = computed(() => active.value?.turns?.at(-1)?.result?.pause)
 const chatID = computed(() => props.embedded
 	? props.conversationId
@@ -511,9 +518,10 @@ const editingBusy = computed(() => Boolean(pendingMessage.value)
 	|| cleanup.isPending.value
 	|| recording.value)
 const busy = computed(() => !optionsReady.value || editingBusy.value || activeRun.value || Boolean(paused.value))
-watch([activeRun, editingBusy], ([running, editing]) => {
+watch([activeRun, editingBusy, () => steer.isPending.value], ([running, editing, steering]) => {
 	emit('activity', running || editing)
-	emit('navigationBusy', editing)
+	// Expanding unmounts the panel, and an instruction's failure would have no note left to show it.
+	emit('navigationBusy', editing || steering)
 }, {immediate: true})
 watch(() => Boolean(paused.value) && !activeRun.value, waiting => emit('attention', waiting), {immediate: true})
 const hasAssistant = computed(() => chatModels.value.some(c => c.id === selectedConnection.value))
@@ -530,6 +538,217 @@ const liveConversation = useQuery(computed(() => ({
 	enabled: false,
 })))
 const liveRunTitle = computed(() => liveConversation.data.value?.title || t('chat.untitled'))
+
+// Steering: text for the open conversation's running turn, which takes it in at its next safe step. A path of its
+// own, so `busy` still blocks files, options and new runs while the run works.
+const steerTurnID = computed(() => {
+	const conversation = active.value
+	const turn = conversation?.turns?.at(-1)
+	// Compacting a whole conversation is no run to steer; a run compacting its own context still takes instructions.
+	return conversation?.id === chatID.value && !conversation.compacting && turn?.status === 'running' ? turn.id ?? '' : ''
+})
+// A send still on its way has no running turn yet, and a run listed elsewhere means this one is stale.
+const steering = computed(() => Boolean(steerTurnID.value) && !runningElsewhere.value && !pendingMessage.value)
+const stopRequested = ref('')
+watch(steerTurnID, () => { stopRequested.value = '' })
+const steerBlocked = computed(() => steer.isPending.value || (steering.value && stopRequested.value === steerTurnID.value))
+const showSteerSend = computed(() => steering.value && Boolean(prompt.value.trim()))
+const steerStage = computed(() => steering.value ? active.value?.turns?.at(-1)?.result?.stage ?? '' : '')
+const steerHint = computed(() => {
+	if (stopRequested.value && stopRequested.value === steerTurnID.value) return 'aronaSteer.stopping'
+	if (steer.isPending.value) return 'aronaSteer.sending'
+	return steerStage.value === 'compacting' ? 'aronaSteer.autoCompacting' : 'aronaSteer.hint'
+})
+// This account's unconfirmed instructions (sending, failed, refused) survive reloads and closed panels. Acknowledged
+// ones stay in `sentSteers` only until the conversation lists them.
+// The token and server behind a request context are not reactive, so a new session, or a refreshed token that may
+// belong to another account by now, reads the queue again.
+const auth = useAuthStore()
+const tokenRefreshes = ref(0)
+onBeforeUnmount(onTokenRefreshed(() => { tokenRefreshes.value++ }))
+const steerQueue = computed(() => {
+	void auth.session
+	void tokenRefreshes.value
+	return readSteerQueue(captureClientRequestContext())
+})
+const sentSteers = shallowRef<readonly LocalSteer[]>([])
+provideSteeringOutbox(computed(() => [
+	...steerQueue.value.entries.filter(entry => entry.state === 'sending').map(entry => ({
+		chat: entry.chat,
+		turn: entry.turn,
+		request_id: entry.requestID,
+		message: entry.message,
+		state: 'sending' as const,
+	})),
+	...sentSteers.value,
+]))
+const waitingSteers = computed(() => {
+	if (!steering.value) return 0
+	const turn = active.value?.turns?.at(-1)
+	const unlisted = sentSteers.value.filter(entry => entry.chat === chatID.value && entry.turn === steerTurnID.value
+		&& !hasSteeringRequest(turn, entry.request_id)).length
+	return pendingSteeringCount(turn) + unlisted
+})
+// An acknowledged instruction leaves once its conversation lists it or its turn stops running.
+watch(active, conversation => {
+	const id = conversation?.id
+	if (!id || !sentSteers.value.some(entry => entry.chat === id)) return
+	const kept = sentSteers.value.filter(entry => {
+		if (entry.chat !== id) return true
+		const turn = conversation.turns?.find(item => item.id === entry.turn)
+		return turn?.status === 'running' && !hasSteeringRequest(turn, entry.request_id)
+	})
+	if (kept.length !== sentSteers.value.length) sentSteers.value = kept
+})
+// Screen readers hear that an instruction was taken; the thread itself is not a live region.
+const steerAnnouncement = ref('')
+watch(steerTurnID, () => { steerAnnouncement.value = '' })
+
+// One note per request, each closed only by its own retry, delivery or dismissal. Each keeps the scope it was read
+// from: the account or server can change before the notes follow, and a note never acts on another scope.
+type SteerFailure = QueuedSteer & {owner: string}
+const shownSteerFailures = computed(() => steerQueue.value.entries
+	.filter(entry => entry.state !== 'sending' && entry.chat === chatID.value)
+	.map((entry): SteerFailure => ({...entry, owner: steerQueue.value.owner})))
+function dropSteerFailures(owner: string, keep: (entry: QueuedSteer) => boolean) {
+	const context = captureClientRequestContext()
+	if (steerQueueOwner(context) !== owner) return
+	updateSteerQueue(context, entries => {
+		const kept = entries.filter(keep)
+		return kept.length === entries.length ? entries : kept
+	})
+}
+function dismissSteerFailure(failure: SteerFailure) {
+	dropSteerFailures(failure.owner, entry => entry.requestID !== failure.requestID)
+}
+// Focus on a note that leaves (retried, delivered, dismissed) returns to the composer instead of the page.
+watch(() => shownSteerFailures.value.length, (count, previous) => {
+	if (count < previous && document.activeElement?.closest('.steer-failure')) refocusComposer()
+})
+function refocusComposer() {
+	void nextTick(() => {
+		if (document.activeElement && document.activeElement !== document.body) return
+		// On touch screens the request field would open the on-screen keyboard, so the composer itself takes focus:
+		// next to the field, and not on a control such as Stop.
+		if (window.matchMedia('(pointer: fine)').matches) composerInput.value?.focus()
+		else composerForm.value?.focus()
+	})
+}
+// A request may have arrived even though its answer did not; the conversation listing it settles that.
+const deliveredSteerFailures = computed(() => {
+	const conversation = active.value
+	if (!conversation?.id) return ''
+	return shownSteerFailures.value
+		.filter(failure => failure.state === 'failed' && failure.chat === conversation.id
+			&& hasSteeringRequest(conversation.turns?.find(turn => turn.id === failure.turn), failure.requestID))
+		.map(failure => failure.requestID)
+		.join(' ')
+})
+watch(deliveredSteerFailures, ids => {
+	if (!ids) return
+	const delivered = new Set(ids.split(' '))
+	for (const failure of shownSteerFailures.value) {
+		if (delivered.has(failure.requestID) && failure.restored && prompt.value === failure.restored) prompt.value = ''
+	}
+	dropSteerFailures(steerQueue.value.owner, entry => !delivered.has(entry.requestID))
+	showNotice(t('aronaSteer.delivered'), 'info')
+}, {immediate: true})
+// Puts undelivered text back into the composer it was typed in, never over newer text. Returns what it put back.
+function keepSteerDraft(id: string, text: string): string {
+	if (disposed) {
+		// A later visit reads the draft.
+		if (readDraft(id).trim()) return ''
+		writeDraft(id, text)
+		return text
+	}
+	// In another conversation the composer's text follows route changes, so only the note can keep this one.
+	if (id !== chatID.value || !stillHere()) return ''
+	if (prompt.value === text) return text
+	if (prompt.value.trim()) return ''
+	prompt.value = text
+	return text
+}
+// 4xx answers the server gives for a turn that does not take instructions, or for an invalid one.
+const REFUSED = new Set([400, 409, 413, 422])
+async function sendSteer(retry?: SteerFailure) {
+	const id = chatID.value
+	if (steer.isPending.value) return
+	const request = captureClientRequestContext()
+	const owner = steerQueueOwner(request)
+	let turn: string
+	let message: string
+	let requestID: string
+	// What to put back if it fails: the text as typed, or what the failure note already restored.
+	let typed: string
+	if (retry) {
+		if (retry.owner !== owner || retry.state !== 'failed' || retry.chat !== id) return
+		;({turn, message, requestID} = retry)
+		typed = retry.restored || retry.message
+	} else {
+		turn = steerTurnID.value
+		message = prompt.value.trim()
+		if (!message || !steering.value || steerBlocked.value) return
+		// The same text again keeps its request id: if the first attempt arrived, the server does not queue it twice.
+		requestID = shownSteerFailures.value.find(failure => failure.owner === owner && failure.state === 'failed'
+			&& failure.turn === turn && failure.message === message)?.requestID ?? crypto.randomUUID()
+		typed = prompt.value
+		const fromButton = document.activeElement instanceof HTMLElement && document.activeElement.closest('.composer-steer')
+		prompt.value = ''
+		// The send button leaves with the text.
+		if (fromButton) refocusComposer()
+	}
+	const sending: QueuedSteer = {
+		chat: id,
+		turn,
+		requestID,
+		message,
+		state: 'sending',
+		restored: '',
+		reason: '',
+	}
+	steerAnnouncement.value = ''
+	markSteerInFlight(requestID, true)
+	// Stored before the request starts, in place for a retry, so nothing depends on this view surviving it.
+	updateSteerQueue(request, entries => entries.some(entry => entry.requestID === requestID)
+		? entries.map(entry => entry.requestID === requestID ? sending : entry)
+		: [...entries, sending])
+	try {
+		await steer.mutateAsync({
+			id,
+			body: {
+				turn_id: turn,
+				request_id: requestID,
+				message,
+			},
+		})
+		markSteerInFlight(requestID, false)
+		// Another session's storage is never written; its next visit finds the instruction listed or unconfirmed.
+		if (!isClientRequestContextCurrent(request)) return
+		updateSteerQueue(request, entries => entries.filter(entry => entry.requestID !== requestID))
+		sentSteers.value = [...sentSteers.value.filter(entry => entry.request_id !== requestID), {
+			chat: id,
+			turn,
+			request_id: requestID,
+			message,
+			state: 'sent',
+		}]
+		// A retry from the failure note delivered the text that note had put back into the composer.
+		if (retry?.restored && chatID.value === id && prompt.value === retry.restored) prompt.value = ''
+		if (chatID.value === id) steerAnnouncement.value = t('aronaSteer.accepted')
+	} catch (cause) {
+		markSteerInFlight(requestID, false)
+		if (isRequestContextAbort(cause) || !isClientRequestContextCurrent(request)) return
+		const {status, detail} = (cause ?? {}) as {status?: number, detail?: string}
+		const refused = status !== undefined && REFUSED.has(status)
+		const failed: QueuedSteer = {
+			...sending,
+			state: refused ? 'refused' : 'failed',
+			restored: keepSteerDraft(id, typed),
+			reason: refused && typeof detail === 'string' ? detail : '',
+		}
+		updateSteerQueue(request, entries => entries.map(entry => entry.requestID === requestID ? failed : entry))
+	}
+}
 const liveStatus = computed(() => t(events.connected.value ? 'flow.liveConnected' : 'flow.reconnecting'))
 // Only a running or compacting conversation is polled while the stream reconnects.
 const liveLabel = computed(() => t(events.connected.value
@@ -646,6 +865,10 @@ async function submit() {
 		}
 		await send.mutateAsync({id: target, body: request})
 		if (chatID.value === target && !prompt.value) original.value = ''
+		// Text a failed instruction put back into the composer has now gone out as this message.
+		if (originalPrompt.trim()) {
+			dropSteerFailures(steerQueueOwner(requestContext), entry => entry.chat !== target || entry.restored !== originalPrompt)
+		}
 	} catch (e) {
 		if (isRequestContextAbort(e) || !isClientRequestContextCurrent(requestContext)) return
 		if (chatID.value === target && !prompt.value) prompt.value = originalPrompt
@@ -658,6 +881,9 @@ async function manage(kind: 'stop' | 'compact' | 'fork', turnId?: string) {
 	if (kind === 'fork' && !window.confirm(t('chat.forkConfirm'))) return
 	if (kind === 'compact' && !window.confirm(t('chat.compactConfirm'))) return
 	const id = chatID.value
+	// No instruction may follow a stop into the run it ends.
+	const stopping = kind === 'stop' ? steerTurnID.value : ''
+	if (stopping) stopRequested.value = stopping
 	try {
 		const result = await action.mutateAsync({
 			id,
@@ -668,7 +894,9 @@ async function manage(kind: 'stop' | 'compact' | 'fork', turnId?: string) {
 		})
 		if (!stillHere() || chatID.value !== id) return
 		if (kind === 'fork' && result?.id) await selectConversation(result.id)
-	} catch { return }
+	} catch {
+		if (stopping && stopRequested.value === stopping) stopRequested.value = ''
+	}
 }
 
 // Kept while the menu's fields stay the same: the conversation object itself changes with every streamed delta.
@@ -712,11 +940,13 @@ async function confirmHistoryAction() {
 	const target = historyDialog.value
 	if (!target?.conversation.id || action.isPending.value || (target.kind === 'rename' && !newTitle.value.trim())) return
 	const id = target.conversation.id
+	const owner = steerQueueOwner(captureClientRequestContext())
 	try {
 		await action.mutateAsync({id, action: target.kind, title: newTitle.value.trim()})
 		if (historyDialog.value === target) historyDialog.value = undefined
 		if (target.kind === 'delete') {
 			writeDraft(id, '')
+			dropSteerFailures(owner, failure => failure.chat !== id)
 			if (chatID.value === id && stillHere()) {
 				prompt.value = ''
 				await navigateConversation('')
@@ -733,10 +963,16 @@ async function reviewOperation(body: ReviewInput) {
 	try { await review.mutateAsync({id: chatID.value, body}) } catch { return }
 }
 
+// While this conversation's run works, the composer steers it; otherwise it sends a new message.
+function submitComposer() {
+	if (steering.value) void sendSteer()
+	else void submit()
+}
+
 function composerKeydown(event: KeyboardEvent) {
 	if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
 		event.preventDefault()
-		void submit()
+		submitComposer()
 	}
 }
 
@@ -1325,13 +1561,14 @@ onBeforeUnmount(() => {
 					<form
 						ref="composerForm"
 						class="composer"
+						tabindex="-1"
 						:class="{'is-drop-target': dragging}"
 						@dragenter="dragEnter"
 						@dragover.prevent
 						@dragleave="dragLeave"
 						@drop.prevent="dropFiles"
 						@paste="pasteFiles"
-						@submit.prevent="submit"
+						@submit.prevent="submitComposer"
 					>
 						<input
 							ref="fileInput"
@@ -1369,7 +1606,7 @@ onBeforeUnmount(() => {
 							v-if="draftFiles.length"
 							class="attachment-input-hint"
 						>
-							{{ t('chatFiles.fileInputHint') }}
+							{{ t(steering ? 'aronaSteer.textOnly' : 'chatFiles.fileInputHint') }}
 						</p>
 						<p
 							v-if="imageMismatch"
@@ -1388,8 +1625,8 @@ onBeforeUnmount(() => {
 							data-tour="ai-prompt"
 							class="textarea"
 							rows="1"
-							maxlength="12000"
-							:placeholder="t('assistantUI.placeholder')"
+							:maxlength="steering ? 64000 : 12000"
+							:placeholder="t(steering ? 'aronaSteer.placeholder' : 'assistantUI.placeholder')"
 							@keydown="composerKeydown"
 						/>
 						<div
@@ -1443,6 +1680,7 @@ onBeforeUnmount(() => {
 						</p>
 						<div
 							class="composer-tools"
+							:class="{'is-steering': showSteerSend}"
 							data-tour="ai-voice"
 						>
 							<div class="composer-context">
@@ -1543,29 +1781,63 @@ onBeforeUnmount(() => {
 									{{ t('webSearch.configure') }}
 								</RouterLink>
 							</div>
-							<XButton
-								v-if="activeRun"
-								variant="primary"
-								icon="stop"
-								class="send"
-								icon-only
-								:aria-disabled="action.isPending.value"
-								@click="manage('stop')"
-							>
-								<span class="is-sr-only">{{ t('chat.stop') }}</span>
-							</XButton><XButton
-								v-else
-								variant="primary"
-								icon="arrow-up"
-								class="send"
-								icon-only
-								type="submit"
-								:aria-disabled="busy || !hasAssistant || runningElsewhere || (!prompt.trim() && !draftFiles.length) || imageMismatch"
-							>
-								<span class="is-sr-only">{{ send.isPending.value ? t('chat.sending') : t('tcymc.text.send_request') }}</span>
-							</XButton>
+							<div class="composer-actions">
+								<XButton
+									v-if="activeRun"
+									:variant="showSteerSend ? 'secondary' : 'primary'"
+									icon="stop"
+									class="send composer-stop"
+									icon-only
+									:title="t('chat.stop')"
+									:aria-disabled="action.isPending.value"
+									@click="manage('stop')"
+								>
+									<span class="is-sr-only">{{ t('chat.stop') }}</span>
+								</XButton><XButton
+									v-if="showSteerSend"
+									variant="primary"
+									icon="arrow-up"
+									class="composer-steer"
+									type="submit"
+									:aria-disabled="steerBlocked"
+								>
+									{{ t('aronaSteer.send') }}
+								</XButton><XButton
+									v-else-if="!activeRun"
+									variant="primary"
+									icon="arrow-up"
+									class="send"
+									icon-only
+									type="submit"
+									:aria-disabled="busy || !hasAssistant || runningElsewhere || (!prompt.trim() && !draftFiles.length) || imageMismatch"
+								>
+									<span class="is-sr-only">{{ send.isPending.value ? t('chat.sending') : t('tcymc.text.send_request') }}</span>
+								</XButton>
+							</div>
 						</div>
 						<p
+							v-if="steering"
+							class="composer-hint is-steering"
+						>
+							<Icon
+								icon="clock"
+								class="mode-icon"
+							/>
+							<span>{{ t(steerHint) }}</span>
+							<span v-if="waitingSteers">· {{ t('aronaSteer.waiting', {count: waitingSteers}) }}</span>
+							<span
+								v-if="!steerBlocked"
+								class="enter-hint"
+							>· {{ t('aronaSteer.enterHint') }}</span>
+						</p>
+						<p
+							v-else-if="compacting && prompt.trim()"
+							class="composer-hint"
+						>
+							{{ t('aronaSteer.compacting') }}
+						</p>
+						<p
+							v-else
 							class="composer-hint"
 							:class="mode === 'read' ? 'is-read' : 'is-write'"
 						>
@@ -1582,6 +1854,44 @@ onBeforeUnmount(() => {
 							class="notice-region"
 							role="status"
 						>
+							<!-- The note says the text is in the input only while it still is; otherwise it quotes it. -->
+							<div
+								v-for="failure in shownSteerFailures"
+								:key="failure.requestID"
+								class="notice steer-failure"
+							>
+								<div class="steer-failure-body">
+									<strong>{{ t(failure.state === 'refused' ? 'aronaSteer.refused' : 'aronaSteer.failed') }}</strong>
+									<span v-if="failure.reason">{{ failure.reason }}</span>
+									<span v-if="failure.restored && prompt === failure.restored">
+										{{ t(failure.state === 'refused' ? 'aronaSteer.restored' : 'aronaSteer.restoredRetry') }}
+									</span>
+									<template v-else>
+										<span>{{ t('aronaSteer.kept') }}</span>
+										<q class="steer-failure-text">{{ failure.message }}</q>
+									</template>
+									<span v-if="!steerQueue.saved">{{ t('aronaSteer.notSaved') }}</span>
+								</div>
+								<button
+									v-if="failure.state === 'failed'"
+									type="button"
+									class="steer-retry"
+									:aria-disabled="steer.isPending.value"
+									@click="sendSteer(failure)"
+								>
+									<Icon icon="redo" />{{ t('aronaSteer.retry') }}
+								</button>
+								<button
+									type="button"
+									class="notice-dismiss"
+									:aria-label="t('misc.close')"
+									:title="t('misc.close')"
+									@click="dismissSteerFailure(failure)"
+								>
+									<Icon icon="times" />
+								</button>
+							</div>
+							<span class="is-sr-only">{{ steerAnnouncement }}</span>
 							<p
 								v-if="notice"
 								class="notice"
@@ -2227,6 +2537,11 @@ summary {
 		border-color: var(--focus-ring-color);
 	}
 
+	// Focused itself only as the neutral place focus returns to on touch screens; the border above shows it.
+	&:focus {
+		outline: none;
+	}
+
 	&:has(.textarea:focus-visible) {
 		@include focus-ring;
 	}
@@ -2396,12 +2711,34 @@ summary {
 	font-size: var(--text-sm);
 }
 
+.composer-actions {
+	display: flex;
+	flex-shrink: 0;
+	align-items: center;
+	gap: var(--space-2);
+	margin-inline-start: auto;
+}
+
+// With the labelled steer button the actions take their own row when the chips leave no room beside them.
+.composer-tools.is-steering {
+	flex-wrap: wrap;
+	row-gap: var(--space-2);
+}
+
 .composer .send {
 	flex-shrink: 0;
 	inline-size: 2.25rem;
 	block-size: 2.25rem;
 	padding: 0;
 	border-radius: var(--radius-full);
+}
+
+.composer-steer {
+	flex-shrink: 0;
+	block-size: 2.25rem;
+	padding-inline: var(--space-3);
+	border-radius: var(--radius-full);
+	white-space: nowrap;
 }
 
 .composer-hint {
@@ -2416,6 +2753,10 @@ summary {
 
 	&.is-write .mode-icon {
 		color: var(--warning);
+	}
+
+	&.is-steering .mode-icon {
+		color: var(--accent-text);
 	}
 }
 
@@ -2467,6 +2808,61 @@ summary {
 	&.notice-info {
 		border-inline-start-color: var(--primary);
 		background: var(--tint-info);
+	}
+}
+
+.steer-failure-body {
+	display: grid;
+	flex: 1;
+	gap: var(--space-1);
+	min-inline-size: 0;
+	padding-block: var(--space-1);
+
+	span {
+		padding-block: 0;
+	}
+}
+
+.steer-failure-text {
+	max-block-size: 6rem;
+	overflow: auto;
+	color: var(--text-secondary);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.steer-retry {
+	display: inline-flex;
+	flex-shrink: 0;
+	align-items: center;
+	gap: var(--space-1);
+	min-block-size: var(--control-height-sm);
+	margin-block: var(--space-1);
+	padding-inline: var(--space-2);
+	border: 1px solid var(--border-default);
+	border-radius: var(--radius-sm);
+	background: var(--surface);
+	color: var(--text-primary);
+	font: inherit;
+	font-size: var(--text-sm);
+	white-space: nowrap;
+	cursor: pointer;
+
+	&:hover {
+		background: var(--surface-hover);
+	}
+
+	&:focus-visible {
+		@include focus-ring;
+	}
+
+	&[aria-disabled='true'] {
+		opacity: .5;
+		cursor: not-allowed;
+	}
+
+	svg {
+		inline-size: .8em;
 	}
 }
 
@@ -2695,6 +3091,10 @@ summary {
 
 	.enter-hint {
 		display: none;
+	}
+
+	.steer-retry {
+		min-block-size: var(--target-min);
 	}
 }
 
