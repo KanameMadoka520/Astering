@@ -6,12 +6,28 @@
 
 > -x 版 · 个人项目、日程、记录与原生 AI 助手。
 
-基于 [Vikunja 官方 v2.7.1](https://github.com/go-vikunja/vikunja/releases/tag/v2.7.1) 的个人任务管理扩展，由 **KanameMadoka520** 维护。保留上游项目、任务、甘特图、看板、提醒、CalDAV 和 MCP，增加可配置模型的 AI 助手、语音输入和独立公开主页。
+基于 [Vikunja 官方 v2.7.1](https://github.com/go-vikunja/vikunja/releases/tag/v2.7.1) 的个人记录与团队项目管理扩展，由 **KanameMadoka520** 维护。保留上游项目、任务、甘特图、看板、提醒、CalDAV 和 MCP，增加可配置模型的 AI 助手、语音输入和独立公开主页。
 
 - 源码与问题反馈：[KanameMadoka520/vikunja-x](https://github.com/KanameMadoka520/vikunja-x)
-- 版本：`v2.7.1-tcymc.34`
+- 版本：`v2.7.1-tcymc.35`
 - 许可证：AGPL-3.0-or-later；上游版权和许可证继续适用，参见 [LICENSE](LICENSE) 与 [上游 README](README.upstream.md)。本项目是独立二次开发版。
 
+
+## 记录保护、协作体验与事件流性能（tcymc.35）
+
+任务描述和评论编辑保留尚未保存的本地草稿，包括刻意清空的内容；明确区分编辑、提交中和服务器已保存。切换任务时，旧请求不会回写新任务，也不会覆盖更新的草稿。草稿按账户和 API 地址隔离，登录过期后可重新登录恢复；主动退出可选择清除，过期回调不能重新生成已清除的草稿。浏览器禁用本地存储时，无法保证离开编辑界面后的草稿恢复。
+
+分享设置区分直接授权、上级项目带来的访问权限和公开链接；读取失败时提供重试，不以空白列表断言无人共享。移除直接授权时解释仍可能保留的上级或团队权限，删除、撤销和离开等操作在失败时保留确认窗口。团队删除说明星图空间和文字记录的影响，成员管理的服务端保护防止最后一名管理员退出、被移除或降级，并在并发请求取得锁后重新核对权限。已有无管理员团队、身份提供方同步和账号删除沿用原有策略，不自动分配管理员。
+
+实际删除账户后，会清理阿罗娜的模型密钥、设置、会话、Bark 密钥与发送队列以及公开展示页，并阻止迟到请求重新写回。仍被保留项目、其他会话或星图引用的网盘文件继续保留，最后引用消失后再回收；失败清理可以在启动及定时任务中重试。浏览器草稿和服务器备份分别管理。公开页的全局存储使用跨进程文件锁，避免命令行清理与网页保存互相覆盖。
+
+任务详情弹窗使用原生路由生命周期，保存失败后的离开选择在弹窗里也生效。切换关联任务延续项目背景，修改链接锚点不重挂载编辑器，浏览器后退遵循原历史记录；确认一次离开不会永久关闭下一任务的编辑保护。
+
+新建任务与创建事件回读数据库实际保存的时间，避免同一秒内立即修改时被误认为旧响应；原有过期保护和数据库时间精度保持不变。
+
+阿罗娜活动流支持可恢复的增量事件：连接先取得完整状态，随后只传变化部分；旧客户端与旧服务端仍兼容。中间回复、工具结果、审核、终态和压缩信息保留，断开观察不终止后台任务。固定的大工具记录合成负载中，重复事件内容显著减少；服务端差异编码的 CPU 和每连接内存成本增加，不将其描述为服务器 CPU 或模型 token 节省。
+
+本轮由本机 Claude Code（Opus 5.5、ultracode、fast）与子代理参与设计和审查，使用真实浏览器 CPU 采样、同文档导航及移动端交互检查。测量使用固定场景并说明限制，不将本机结果当作真实用户 INP。完整覆盖范围、修复状态、验证和性能取舍见 [体验与性能审查](docs/ux-performance-audit.md)。检查、编译与 Release 仍全部在本机完成，不使用 GitHub Actions。
 
 ## 看板阶段分组与子任务聚焦（tcymc.34）
 
@@ -45,7 +61,7 @@
 
 ## 星图：原则、理想与长期记忆（tcymc.31）
 
-新增独立的「星图 / Compass」栏目，空间可自行命名，用于书写原则、理想、行动纲领、记忆和札记。私人空间默认只向本人开放，也可明确创建团队空间；当前团队成员共同写作，团队管理员管理空间设置和永久删除。实例管理员身份不会额外取得私人文字的应用访问权限。
+新增独立的「星图 / Compass」栏目，空间可自行命名，用于书写原则、理想、行动纲领、记忆和札记。私人空间默认只向本人开放，也可明确创建团队空间；当前团队成员共同写作，团队管理员管理空间设置与条目的永久删除。实例管理员身份不会额外取得私人文字的应用访问权限。
 
 长文与管理分开呈现：主题天色、置顶指引、序言、分类与标签组成空间首页；阅读页提供目录、阅读设置、Markdown 导出与打印。条目列表按页加载摘要，正文与历史版本按需读取。每次实际保存生成一个版本，重复保存不变内容不增加历史；旧版本可恢复为新版本，冲突保存返回明确提示。删除先进入回收站，永久删除会同时移除历史版本。
 
@@ -425,10 +441,13 @@ pnpm vitest run src/i18n/coverage.test.ts src/helpers/tcyAudio.test.ts
 ```sh
 git clone https://github.com/KanameMadoka520/vikunja-x.git
 cd vikunja-x
-docker build -f Dockerfile.tcymc --build-arg RELEASE_VERSION=v2.7.1-tcymc.5 -t vikunja-x:v2.7.1-tcymc.5 .
+docker build -f Dockerfile.tcymc \
+  --build-arg RELEASE_VERSION=v2.7.1-tcymc.35 \
+  --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
+  -t vikunja-x:v2.7.1-tcymc.35 .
 ```
 
-`Dockerfile.tcymc` 固定基础镜像摘要，使用锁定依赖构建前端，并生成带 SQLite 支持的静态 Go 二进制，最终以 UID 1000 在最小镜像中运行。提供 CA 和时区数据。数据库支持沿用上游，包括 PostgreSQL。
+`Dockerfile.tcymc` 固定基础镜像摘要，使用锁定依赖构建前端，并生成带 SQLite 支持的静态 Go 二进制，最终以 UID 1000 在最小镜像中运行。提供 CA 和时区数据。数据库支持沿用上游，包括 PostgreSQL。`SOURCE_COMMIT` 写入镜像的 OCI revision 标签，便于核对运行镜像对应的源码；正式发布从干净工作树构建，并核对源码标签、镜像 ID 与运行实例。
 
 最小运行示例（生产可按上游文档接入 PostgreSQL）：
 
@@ -443,12 +462,12 @@ docker run -d --name vikunja-x --restart unless-stopped \
   -e VIKUNJA_SERVICE_SECRET=替换为随机且持久保存的长密钥 \
   -e VIKUNJA_SERVICE_ENABLEREGISTRATION=false \
   -e VIKUNJA_SERVICE_TIMEZONE=Asia/Shanghai \
-  vikunja-x:v2.7.1-tcymc.5
+  vikunja-x:v2.7.1-tcymc.35
 ```
 
 通过反向代理提供 HTTPS。创建首个账号使用 `docker exec -it vikunja-x /app/vikunja/vikunja user create --help` 查看 CLI 参数。注册默认建议关闭；SMTP 初始使用上游 `VIKUNJA_MAILER_*` 配置，也可通过上述管理员页面保存；密码勿提交源码。账号名中的 admin 不会绕过上游授权功能。
 
-Release 附带 Linux amd64 二进制、Docker 镜像包及 SHA256 校验文件；使用 `docker load -i vikunja-x-v2.7.1-tcymc.5-linux-amd64.docker.tar.gz` 导入镜像。
+Release 附带源码、Git bundle、Linux amd64 二进制、Docker 镜像包及 SHA256 校验文件；先运行 `sha256sum -c SHA256SUMS`，再使用 `docker load -i vikunja-x-v2.7.1-tcymc.35.docker.tar.gz` 导入镜像。
 
 ## 本地开发与验证
 
