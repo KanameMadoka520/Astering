@@ -1,8 +1,15 @@
 # Git, plans, worktrees
 
+## 本 fork 的优先约定
+
+- 开始前遵守根目录 [AGENTS.md](../../AGENTS.md)与[长期开发准则](development-principles.md)。本仓库所有检查、构建及 Release 产物均在本机完成，不使用或恢复 GitHub Actions。
+- 日常工作按用户当前授权的源码提交、推送和手工 Release 流程进行。下文有关 Stacked PRs、Reviewable PRs 的说明是可选协作流程，不要求每次任务创建 PR，也不构成启用任何 GitHub 自动化的授权。
+- 提交正文使用中文，保留 Conventional Commit 类型及可选 scope，例如 `fix(ui): 修复手机端输入框对齐`。作者为 `KanameMadoka520 <90090108+KanameMadoka520@users.noreply.github.com>`，不添加 `Co-Authored-By`。
+- 仅文档变更检查差异、链接与规则一致性即可，不触发应用构建、生产重启或新二进制 Release。工作目录中已有的无关修改不得覆盖或混入提交。
+
 ## Commits
 
-- Conventional Commits (`feat: add foo`, `fix: correct bar`). Changelogs are generated from them.
+- 中文 Conventional Commits（`feat: 添加功能`、`fix: 修复问题`）。Changelogs are generated from them.
 - Lint before committing and fix what it reports:
   - backend changes: `mage lint:fix`
   - frontend changes: `cd frontend && pnpm lint:fix`

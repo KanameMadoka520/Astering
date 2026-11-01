@@ -509,7 +509,7 @@ mage test:filter TestTCY
 mage test:e2e 'tests/e2e/user/settings/tcy-'
 ```
 
-前后端开发约定见 [AGENTS.md](AGENTS.md)。新增接口位于 API v2，客户端通过 `mage generate:frontend-client` 自动生成。开发中可分别运行 API 与 `frontend` 的 `pnpm dev`。
+开发者和后续 agent 开始修改前，必须阅读 [AGENTS.md](AGENTS.md)、[长期开发准则](.agents/docs/development-principles.md)及目标目录的 agent 说明；涉及缓存时还需阅读[缓存与私人图片约定](docs/browser-cache.md)。这些受版本控制的规则适用于新会话、子 agent 和 worktree，涵盖权限、状态同步、性能、移动端、中英文、验证与本机发布。新增接口位于 API v2，客户端通过 `mage generate:frontend-client` 自动生成。开发中可分别运行 API 与 `frontend` 的 `pnpm dev`。
 
 提交作者使用 `KanameMadoka520 <90090108+KanameMadoka520@users.noreply.github.com>`，无需公开私人邮箱。本仓库不包含生产环境密码、SMTP 密码、模型密钥或 GitHub 访问令牌。
 
