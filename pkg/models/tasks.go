@@ -1180,6 +1180,10 @@ func createTasks(s *xorm.Session, projectID int64, tasks []*Task, a web.Auth, up
 		})
 	}
 
+	if err := refreshCreatedTaskTimestamps(s, tasks); err != nil {
+		return err
+	}
+
 	events.DispatchOnCommit(s, &TasksBatchCreatedEvent{
 		Tasks: tasks,
 		Doer:  createdBy,
@@ -1187,6 +1191,32 @@ func createTasks(s *xorm.Session, projectID int64, tasks []*Task, a web.Auth, up
 
 	err = updateProjectLastUpdated(s, &Project{ID: projectID})
 	return
+}
+
+func refreshCreatedTaskTimestamps(s *xorm.Session, tasks []*Task) error {
+	// Xorm assigns full-precision clock values to the inserted beans, while the
+	// database may persist lower precision. Return the stored timestamps so an
+	// immediate update cannot appear older than the creation response. Read after
+	// bucket assignment as selecting a done bucket also updates the task row.
+	for chunk := range slices.Chunk(tasks, 100) {
+		ids := make([]int64, 0, len(chunk))
+		for _, t := range chunk {
+			ids = append(ids, t.ID)
+		}
+		stored := make(map[int64]*Task, len(chunk))
+		if err := s.In("id", ids).Cols("id", "created", "updated").Find(&stored); err != nil {
+			return err
+		}
+		for _, t := range chunk {
+			persisted, exists := stored[t.ID]
+			if !exists {
+				return ErrTaskDoesNotExist{ID: t.ID}
+			}
+			t.Created = persisted.Created
+			t.Updated = persisted.Updated
+		}
+	}
+	return nil
 }
 
 func setTasksInBucketInViews(s *xorm.Session, views []*ProjectView, tasks []*Task, a web.Auth, setBucket bool, providedBuckets map[int64]*Bucket) ([]*TaskPosition, []*TaskBucket, error) {
