@@ -6,11 +6,12 @@ import {nextTick} from 'vue'
 import {mount, type VueWrapper} from '@vue/test-utils'
 import {marked} from 'marked'
 import {sanitizeProjectDescription} from '@/helpers/sanitizeProjectDescription'
+import {sanitizeAronaContent} from '@/helpers/sanitizeAronaContent'
 import MarkdownBlock from './MarkdownBlock.vue'
 
 function fullRender(source: string) {
 	const element = document.createElement('div')
-	element.innerHTML = sanitizeProjectDescription(marked.parse(source, {async: false}))
+	element.innerHTML = sanitizeAronaContent(marked.parse(source, {async: false}))
 	return element
 }
 
@@ -60,6 +61,36 @@ describe('MarkdownBlock', () => {
 	})
 	afterEach(() => {
 		vi.useRealTimers()
+	})
+
+	it.each([false, true])('opens Markdown and raw HTML links in a separate tab while streaming=%s', streaming => {
+		const wrapper = mount(MarkdownBlock, {props: {
+			source: '[External](https://example.com/article)\n\n<a href="https://other.example/" target="_self" rel="opener">HTML link</a>' +
+				'<svg><a xlink:href="https://example.com/svg"><text>SVG link</text></a></svg>' +
+				'<map><area shape="rect" coords="0,0,10,10" href="https://example.com/map"></map>',
+			streaming,
+		}})
+		expect(wrapper.findAll('a, area')).toHaveLength(4)
+		for (const link of wrapper.findAll('a, area')) {
+			expect(link.attributes('target')).toBe('_blank')
+			expect(link.attributes('rel')).toBe('noopener noreferrer')
+		}
+		expect(sanitizeProjectDescription('<a href="https://example.com/">Other content</a>'))
+			.toBe('<a href="https://example.com/">Other content</a>')
+		wrapper.unmount()
+	})
+
+	it('keeps a finished link node through streamed updates and completion', async () => {
+		const wrapper = mount(MarkdownBlock, {props: {
+			source: '[External](https://example.com/)\n\nWriting', streaming: true,
+		}})
+		const link = wrapper.get('a').element
+		await streamTo(wrapper, '[External](https://example.com/)\n\nWriting more')
+		expect(wrapper.get('a').element).toBe(link)
+		expect(wrapper.get('a').attributes('target')).toBe('_blank')
+		await wrapper.setProps({streaming: false})
+		expect(wrapper.get('a').element).toBe(link)
+		wrapper.unmount()
 	})
 
 	it('keeps the DOM of finished blocks while the answer streams', async () => {

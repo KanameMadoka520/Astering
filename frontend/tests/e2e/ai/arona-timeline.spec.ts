@@ -1,5 +1,7 @@
 import type {Locator, Page} from '@playwright/test'
 import {test, expect} from '../../support/fixtures'
+import {TaskFactory} from '../../factories/task'
+import {createProjects} from '../project/prepareProjects'
 
 // No model runs here: the conversation server is scripted with page.route and the test changes the saved turn
 // between polls, the way the backend appends rounds to one running turn.
@@ -209,6 +211,192 @@ async function expectCompleted(scope: Locator) {
 	await expect(scope.locator('.timeline-step[data-round="4"] .step-reply')).toHaveCount(0)
 	await expect(scope.locator('.step-reply, .chat-markdown').filter({hasText: FINAL})).toHaveCount(1)
 	await expectEarlierRounds(scope)
+}
+
+const LINK_FIXTURE_ORIGIN = 'https://arona-links.invalid'
+
+function linkConversation(title: string) {
+	return conversationWith(title, {
+		steps: [{
+			round: 1,
+			model: 'fixture',
+			started: new Date().toISOString(),
+			streaming: true,
+			text: 'Preparing reference links.',
+		}],
+	})
+}
+
+function completeLinkTurn(conversation: FixtureConversation, answer: string) {
+	const turn = conversation.turns[0]
+	Object.assign(turn.result.steps[0], {duration_ms: 20})
+	turn.result.steps.push(step(2, {text: answer}))
+	Object.assign(turn.result, {
+		stage: 'completed',
+		reply: answer,
+		actions: [{
+			...action(1, 'web_search', '{"query":"local link fixture"}', '{}'),
+			search: {
+				protocol: 'fixture',
+				verified: true,
+				sources: [{title: 'External listed source', url: `${LINK_FIXTURE_ORIGIN}/source`}],
+				// Exercise provider HTML, including an explicit same-tab target and a nested click target.
+				search_entry_point: [
+					`<a href="${LINK_FIXTURE_ORIGIN}/search-entry" target="_self"><span>External search card</span></a>`,
+					`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="180" height="36" viewBox="0 0 180 36"><a xlink:href="${LINK_FIXTURE_ORIGIN}/svg"><rect width="180" height="36" fill="#eee"/><text x="4" y="24">External SVG source</text></a></svg>`,
+				].join(''),
+			},
+		}],
+	})
+	turn.status = 'completed'
+}
+
+async function interceptExternalLinkPages(page: Page) {
+	// Context routing covers a popup's first document request too. Never contact an external site.
+	await page.context().route(`${LINK_FIXTURE_ORIGIN}/**`, route => route.fulfill({
+		status: 200,
+		contentType: 'text/html',
+		body: '<!doctype html><title>Local external-link fixture</title><p>External fixture</p>',
+	}))
+}
+
+async function expectIndependentPopup(page: Page, link: Locator, path: string) {
+	const originalURL = page.url()
+	const popupPromise = page.waitForEvent('popup', {timeout: 10_000})
+	await link.click()
+	const popup = await popupPromise
+	try {
+		await popup.waitForLoadState('domcontentloaded')
+		await expect(popup).toHaveURL(`${LINK_FIXTURE_ORIGIN}${path}`)
+		expect(await popup.evaluate(() => window.opener === null)).toBe(true)
+		await expect(page).toHaveURL(originalURL)
+	} finally {
+		await popup.close()
+	}
+}
+
+async function expectSearchLinkPopups(page: Page, card: Locator) {
+	const evidence = card.locator('.assistant-message > .web-evidence')
+	await evidence.locator('.sources-disclosure > summary').click()
+	await expectIndependentPopup(page, evidence.getByRole('link', {name: 'External search card', exact: true}), '/search-entry')
+	await expectIndependentPopup(page, evidence.getByRole('link', {name: 'External listed source', exact: true}), '/source')
+	await expectIndependentPopup(page, evidence.locator('svg a'), '/svg')
+}
+
+for (const width of [1440, 320]) {
+	test(`Arona links preserve the full-page conversation at ${width}px`, async ({authenticatedPage: page}) => {
+		const conversation = linkConversation('Keep the full-page conversation open')
+		const turn = conversation.turns[0]
+		await aronaServer(page, conversation)
+		await interceptExternalLinkPages(page)
+		await page.setViewportSize({width, height: 900})
+		await page.goto(`/ai?chat=${conversation.id}`)
+		const card = page.locator(`.chat-turn[data-turn-id="${turn.id}"]`)
+		await expect(card.locator('.timeline-step.is-live')).toHaveCount(1)
+		const originalDocument = await page.evaluateHandle(() => document)
+		let documentRequests = 0
+		let aiWrites = 0
+		page.on('request', request => {
+			if (request.isNavigationRequest() && request.frame() === page.mainFrame()) documentRequests++
+			if (new URL(request.url()).pathname.startsWith('/api/v2/ai/') && !['GET', 'HEAD'].includes(request.method())) aiWrites++
+		})
+
+		const liveLink = card.locator('.step-reply').getByRole('link', {name: 'External live reference', exact: true})
+		await expect(liveLink).toHaveCount(0)
+		// This arrives in a later SSE frame: links inserted during a live Markdown render need the policy too.
+		turn.result.steps[0].text = `Preparing reference links. [External **live reference**](${LINK_FIXTURE_ORIGIN}/live)`
+		await expectIndependentPopup(page, liveLink, '/live')
+		expect(await originalDocument.evaluate(original => original === document)).toBe(true)
+		await expect(card.locator('.user-message')).toContainText(conversation.title)
+
+		completeLinkTurn(conversation, `[External **final answer**](${LINK_FIXTURE_ORIGIN}/answer)`)
+		const answerLink = card.locator('.chat-markdown').getByRole('link', {name: 'External final answer', exact: true})
+		await expectIndependentPopup(page, answerLink, '/answer')
+		await expectSearchLinkPopups(page, card)
+		expect(await originalDocument.evaluate(original => original === document)).toBe(true)
+		expect(documentRequests).toBe(0)
+		expect(aiWrites).toBe(0)
+		await expect(card.locator('.user-message')).toContainText(conversation.title)
+		await expect(answerLink).toBeVisible()
+		await originalDocument.dispose()
+	})
+
+	test(`Arona links preserve the floating instance and draft during SPA navigation at ${width}px`, async ({authenticatedPage: page}) => {
+		const [project] = await createProjects()
+		const [task] = await TaskFactory.create(1, {title: 'Link destination task', project_id: project.id})
+		const conversation = linkConversation('Keep the floating conversation and draft')
+		const turn = conversation.turns[0]
+		await aronaServer(page, conversation)
+		await interceptExternalLinkPages(page)
+		await page.setViewportSize({width, height: 900})
+		await page.goto('/user/settings/general')
+		await page.getByRole('button', {name: 'Open floating Arona', exact: true}).click()
+		const panel = page.getByRole('region', {name: 'Arona', exact: true})
+		await panel.getByRole('button', {name: 'Conversations', exact: true}).click()
+		await panel.locator(`li[data-chat-id="${conversation.id}"] .history-link`).click()
+		const card = panel.locator(`.chat-turn[data-turn-id="${turn.id}"]`)
+		await expect(card.locator('.timeline-step.is-live')).toHaveCount(1)
+		const composer = panel.getByLabel('Your request')
+		const draft = 'Keep this unsent draft while I inspect the linked project and task.'
+		await composer.fill(draft)
+		const originalDocument = await page.evaluateHandle(() => document)
+		const originalPanel = await panel.evaluateHandle(element => element)
+		const originalComposer = await composer.evaluateHandle(element => element)
+		let documentRequests = 0
+		let aiWrites = 0
+		page.on('request', request => {
+			if (request.isNavigationRequest() && request.frame() === page.mainFrame()) documentRequests++
+			if (new URL(request.url()).pathname.startsWith('/api/v2/ai/') && !['GET', 'HEAD'].includes(request.method())) aiWrites++
+		})
+		async function expectSameFloatingConversation() {
+			expect(await originalDocument.evaluate(original => original === document)).toBe(true)
+			expect(await originalPanel.evaluate(original => original.isConnected && original === document.querySelector('.arona-panel'))).toBe(true)
+			expect(await composer.evaluate((current, original) => current === original, originalComposer)).toBe(true)
+			await expect(panel).toBeVisible()
+			await expect(composer).toHaveValue(draft)
+			await expect(card.locator('.user-message')).toContainText(conversation.title)
+			expect(documentRequests).toBe(0)
+			expect(aiWrites).toBe(0)
+		}
+
+		turn.result.steps[0].text = `Preparing reference links. [External **live reference**](${LINK_FIXTURE_ORIGIN}/live)`
+		await expectIndependentPopup(page, card.locator('.step-reply').getByRole('link', {name: 'External live reference', exact: true}), '/live')
+		await expectSameFloatingConversation()
+
+		const projectPath = `/projects/${project.id}/${project.views[0].id}`
+		const taskPath = `/tasks/${task.id}`
+		const origin = new URL(page.url()).origin
+		completeLinkTurn(conversation, [
+			`[External **final answer**](${LINK_FIXTURE_ORIGIN}/answer)`,
+			`[Relative project](${projectPath})`,
+			`[Absolute task](${origin}${taskPath})`,
+			`[Absolute project](${origin}${projectPath})`,
+			`[Relative task](${taskPath})`,
+		].join('\n\n'))
+		const answer = card.locator('.chat-markdown')
+		await expectIndependentPopup(page, answer.getByRole('link', {name: 'External final answer', exact: true}), '/answer')
+		await expectSearchLinkPopups(page, card)
+		await expectSameFloatingConversation()
+
+		for (const [name, path] of [
+			['Relative project', projectPath],
+			['Absolute task', taskPath],
+			['Absolute project', projectPath],
+			['Relative task', taskPath],
+		]) {
+			await answer.getByRole('link', {name, exact: true}).click()
+			await expect(page).toHaveURL(`${origin}${path}`)
+			if (path === projectPath) {
+				await expect(page.locator('.project-title')).toContainText(project.title)
+			} else {
+				await expect(page.locator('.task-view')).toContainText(task.title)
+			}
+			await expectSameFloatingConversation()
+		}
+		await originalComposer.dispose()
+		await originalPanel.dispose()
+		await originalDocument.dispose()
+	})
 }
 
 test('earlier rounds stay after later rounds, a reload and in the floating panel', async ({

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import {onBeforeUnmount, onMounted, ref, watch} from 'vue'
 import {marked, type Token, type TokensList} from 'marked'
-import {sanitizeProjectDescription} from '@/helpers/sanitizeProjectDescription'
+import {sanitizeAronaContent} from '@/helpers/sanitizeAronaContent'
+import {useAronaLinks} from '@/composables/useAronaLinks'
 
 const props = withDefaults(defineProps<{
 	source: string
@@ -12,6 +13,7 @@ const props = withDefaults(defineProps<{
 
 // Streamed text re-parses at most this often, with a trailing render so the last delta always lands.
 const STREAM_INTERVAL_MS = 120
+const followLink = useAronaLinks()
 const root = ref<HTMLElement>()
 let timer: ReturnType<typeof setTimeout> | undefined
 let renderedAt = 0
@@ -23,7 +25,7 @@ let linkKey = ''
 function renderAll(el: HTMLElement) {
 	blocks = []
 	linkKey = ''
-	const html = sanitizeProjectDescription(marked.parse(props.source, {async: false}))
+	const html = sanitizeAronaContent(marked.parse(props.source, {async: false}))
 	// The settled answer usually equals what streaming built; keeping that DOM keeps the reader's selection.
 	if (el.innerHTML !== html) el.innerHTML = html
 }
@@ -55,7 +57,7 @@ function renderBlocks(el: HTMLElement) {
 	for (const token of tokens.slice(kept)) {
 		const single = Object.assign([token] as Token[], {links: tokens.links}) as TokensList
 		const before = el.lastChild
-		el.insertAdjacentHTML('beforeend', sanitizeProjectDescription(marked.parser(single)))
+		el.insertAdjacentHTML('beforeend', sanitizeAronaContent(marked.parser(single)))
 		const nodes: ChildNode[] = []
 		for (let node = before ? before.nextSibling : el.firstChild; node; node = node.nextSibling) nodes.push(node)
 		blocks.push({raw: token.raw, nodes})
@@ -88,6 +90,7 @@ onBeforeUnmount(() => clearTimeout(timer))
 		ref="root"
 		class="markdown-block content"
 		:class="{'is-streaming': streaming}"
+		@click="followLink"
 	/>
 </template>
 

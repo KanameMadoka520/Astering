@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import {useI18n} from 'vue-i18n'
 import type {WebSearchResult} from '@/client/generated'
-import {sanitizeProjectDescription} from '@/helpers/sanitizeProjectDescription'
+import {sanitizeAronaContent} from '@/helpers/sanitizeAronaContent'
+import {useAronaLinks} from '@/composables/useAronaLinks'
 defineProps<{result: WebSearchResult}>()
 const {t} = useI18n({useScope: 'global'})
+const followLink = useAronaLinks()
 function safeURL(value = '') { try { const u = new URL(value); return ['http:', 'https:'].includes(u.protocol) && !u.username && !u.password ? u.href : '' } catch { return '' } }
 </script>
 
@@ -11,6 +13,7 @@ function safeURL(value = '') { try { const u = new URL(value); return ['http:', 
 	<section
 		class="web-evidence"
 		:aria-label="t('webSearch.evidence')"
+		@click="followLink"
 	>
 		<details class="sources-disclosure">
 			<summary>
@@ -41,7 +44,7 @@ function safeURL(value = '') { try { const u = new URL(value); return ['http:', 
 				</p>
 				<div
 					v-if="result.search_entry_point"
-					v-html="sanitizeProjectDescription(result.search_entry_point)"
+					v-html="sanitizeAronaContent(result.search_entry_point)"
 				/>
 				<details class="source-diagnostics">
 					<summary>{{ t('webSearch.technicalDetails') }}</summary><p>{{ result.protocol }} · {{ t('chat.seconds', {value: ((result.duration_ms || 0) / 1000).toFixed(2)}) }}</p>
