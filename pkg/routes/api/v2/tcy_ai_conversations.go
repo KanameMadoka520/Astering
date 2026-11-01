@@ -45,6 +45,12 @@ func conversationOut(ctx context.Context, value tcyai.Conversation, err error) (
 	return &conversationResponse{CacheControl: "no-store", Body: value}, nil
 }
 func conversationError(ctx context.Context, err error) error {
+	if errors.Is(err, tcyai.ErrSteeringUnavailable) {
+		return huma.Error409Conflict(tcylocale.Render(ctx, tcylocale.Error("chatSteeringUnavailable")))
+	}
+	if errors.Is(err, tcyai.ErrSteeringInvalid) {
+		return huma.Error400BadRequest(tcylocale.Render(ctx, tcylocale.Error("chatSteeringInvalid")))
+	}
 	if errors.Is(err, tcyai.ErrConversationMetadata) {
 		return huma.Error400BadRequest(tcylocale.Render(ctx, tcylocale.Error("chatMetadata")))
 	}
@@ -131,6 +137,20 @@ func RegisterTCYAIConversationRoutes(api huma.API) {
 			return nil, err
 		}
 		value, err := tcyai.GetConversation(uid, in.ID)
+		return conversationOut(ctx, value, err)
+	})
+	steer := op("tcy-ai-conversations-steer", "POST", "/ai/conversations/{id}/steer", "Add an instruction to the current running turn")
+	steer.MaxBodyBytes = 320 * 1024
+	steer.Description += " Durably queues instructions in acceptance order without changing the original goal or run permissions. Applied at safe model/tool boundaries; already executing operations may finish. Returns 409 when this turn no longer accepts instructions or an idempotency key changes payload. Identical retries return the existing receipt, even after completion."
+	Register(api, steer, func(ctx context.Context, in *struct {
+		ID   string `path:"id" format:"uuid" doc:"Conversation owned by the signed-in human user."`
+		Body tcyai.SteeringInput
+	}) (*conversationResponse, error) {
+		uid, err := aiUser(ctx)
+		if err != nil {
+			return nil, err
+		}
+		value, err := tcyai.SteerConversation(uid, in.ID, in.Body)
 		return conversationOut(ctx, value, err)
 	})
 	Register(api, op("tcy-ai-conversations-rename", "POST", "/ai/conversations/{id}/title", "Rename a conversation without changing its messages"), func(ctx context.Context, in *struct {

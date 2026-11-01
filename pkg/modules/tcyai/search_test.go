@@ -166,7 +166,12 @@ func TestTCYWebSearchTurnPolicy(t *testing.T) {
 				if mode == "required" && chatCalls == 1 {
 					assert.Equal(t, "auto", body["tool_choice"])
 					requireTools := list(body, "tools")
-					assert.Len(t, requireTools, 7)
+					names := make([]string, 0, len(requireTools))
+					for _, entry := range requireTools {
+						entryTool, _ := entry.(map[string]any)
+						names = append(names, toolName(entryTool))
+					}
+					assert.ElementsMatch(t, []string{"list_projects", "list_tasks", "get_task", "read_tool_result", "find_tools", "ask_user", "web_search", "invoke_tool"}, names)
 					_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"","tool_calls":[{"id":"s1","type":"function","function":{"name":"web_search","arguments":"{\"query\":\"Vikunja docs\"}"}}]},"finish_reason":"tool_calls"}]}`))
 					return
 				}

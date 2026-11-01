@@ -273,6 +273,8 @@
             "chatBusy": "An operation is still running. Stop it or wait before continuing.",
             "chatMetadata": "Enter a non-empty title up to 150 characters. A chat cannot be pinned and archived at the same time.",
             "chatRequestChanged": "This request ID was already used for a different message. Start a new request.",
+            "chatSteeringUnavailable": "This turn is no longer accepting additional instructions. Your message was not queued; keep it and send it as a new message or retry the interrupted run.",
+            "chatSteeringInvalid": "Enter a non-empty additional instruction of at most 64,000 characters with valid turn and request IDs.",
             "chatStreamProvider": "The model provider returned a stream error [%s]: %s. Upstream request ID: %s. Completed operations are preserved. If retrying gives the same error, check API compatibility or provide this ID to your provider.",
             "chatStreamInterrupted": "The model provider interrupted its response stream. Check its service logs or retry.",
             "chatStreamInvalid": "The model returned an invalid stream format. Check the selected protocol and provider compatibility.",

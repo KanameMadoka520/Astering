@@ -534,7 +534,7 @@ func TestTCYAttachmentsMissingConversationStoreKeepsFiles(t *testing.T) {
 	require.NoError(t, s.Close())
 	purge := owner.change(target, "purge", true, "target.txt")
 	assert.Equal(t, http.StatusConflict, purge.Code)
-	assert.Contains(t, purge.Body.String(), "drive_in_use")
+	assert.Contains(t, purge.Body.String(), "drive_chat_unreadable")
 	// An owner who never pinned a drive file to a chat simply has no conversations.
 	s = db.NewSession()
 	_, err = s.Where("owner_id = ?", testuser1.ID).Delete(&files.DriveChatRef{})

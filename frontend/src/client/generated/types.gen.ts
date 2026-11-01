@@ -792,6 +792,10 @@ export type ChatTurn = {
      * Execution state. Interrupted runs are never replayed automatically.
      */
     readonly status?: 'running' | 'completed' | 'failed' | 'stopped' | 'interrupted' | 'awaiting_approval' | 'awaiting_input' | 'paused';
+    /**
+     * Additional user instructions in server acceptance order; original prompt and execution permissions are preserved.
+     */
+    readonly steering?: Array<SteeringInstruction> | null;
 };
 
 export type ColumnMapping = {
@@ -4104,6 +4108,52 @@ export type Status = {
      * When the last migration started. Zero value if the user never migrated from this service.
      */
     readonly started_at?: string;
+};
+
+export type SteeringInput = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Additional instruction for this run, preserving its original goal and current permissions.
+     */
+    message?: string;
+    /**
+     * Reuse for retries of exactly the same turn and message; changing the payload conflicts.
+     */
+    request_id?: string;
+    /**
+     * Exact currently running turn to receive the instruction.
+     */
+    turn_id?: string;
+};
+
+export type SteeringInstruction = {
+    /**
+     * UTC time this instruction was checkpointed into the run context; does not claim provider or task completion.
+     */
+    readonly applied_at?: string;
+    /**
+     * UTC time the server durably accepted this instruction.
+     */
+    readonly created?: string;
+    /**
+     * Server-generated steering receipt ID.
+     */
+    readonly id?: string;
+    /**
+     * Original additional user instruction; never replaces the original turn prompt.
+     */
+    readonly message?: string;
+    /**
+     * Client idempotency key, unique in this conversation.
+     */
+    readonly request_id?: string;
+    /**
+     * Pending survives stop, failures and restart; applied means incorporated into durable model context.
+     */
+    readonly status?: 'pending' | 'applied';
 };
 
 export type StorageSnapshot = {
@@ -7821,6 +7871,21 @@ export type StateWritable = {
     published_at?: string;
 };
 
+export type SteeringInputWritable = {
+    /**
+     * Additional instruction for this run, preserving its original goal and current permissions.
+     */
+    message?: string;
+    /**
+     * Reuse for retries of exactly the same turn and message; changing the payload conflicts.
+     */
+    request_id?: string;
+    /**
+     * Exact currently running turn to receive the instruction.
+     */
+    turn_id?: string;
+};
+
 export type TaskWritable = {
     /**
      * The bucket the task is in. Only populated when the task is accessed via a view with buckets. To move a task between buckets, the new bucket must be in the same view as the old one.
@@ -9521,6 +9586,36 @@ export type TcyAiConversationsReviewResponses = {
 };
 
 export type TcyAiConversationsReviewResponse = TcyAiConversationsReviewResponses[keyof TcyAiConversationsReviewResponses];
+
+export type TcyAiConversationsSteerData = {
+    body: SteeringInputWritable;
+    path: {
+        /**
+         * Conversation owned by the signed-in human user.
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/ai/conversations/{id}/steer';
+};
+
+export type TcyAiConversationsSteerErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type TcyAiConversationsSteerError = TcyAiConversationsSteerErrors[keyof TcyAiConversationsSteerErrors];
+
+export type TcyAiConversationsSteerResponses = {
+    /**
+     * Created
+     */
+    201: Conversation;
+};
+
+export type TcyAiConversationsSteerResponse = TcyAiConversationsSteerResponses[keyof TcyAiConversationsSteerResponses];
 
 export type TcyAiConversationsStopData = {
     body?: never;

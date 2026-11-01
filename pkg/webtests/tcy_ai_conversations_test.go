@@ -270,3 +270,66 @@ func TestTCYAIConversationOrganizationAPI(t *testing.T) {
 	archive = humaRequest(t, e, "GET", base+"?scope=archived", "", token, "")
 	assert.NotContains(t, archive.Body.String(), chat.ID)
 }
+
+func TestTCYAISteeringAPI(t *testing.T) {
+	i18n.Init()
+	e, err := setupTestEnv()
+	require.NoError(t, err)
+	token, other := humaTokenFor(t, &testuser1), humaTokenFor(t, &testuser2)
+	oldPath, oldAllow := config.FilesBasePath.GetString(), config.OutgoingRequestsAllowNonRoutableIPs.GetBool()
+	config.FilesBasePath.Set(t.TempDir())
+	config.OutgoingRequestsAllowNonRoutableIPs.Set(true)
+	t.Cleanup(func() { config.FilesBasePath.Set(oldPath); config.OutgoingRequestsAllowNonRoutableIPs.Set(oldAllow) })
+	entered, release := make(chan struct{}), make(chan struct{})
+	var requests atomic.Int32
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if requests.Add(1) == 1 {
+			close(entered)
+			select {
+			case <-release:
+			case <-r.Context().Done():
+				return
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"Complete"},"finish_reason":"stop"}]}`)
+	}))
+	t.Cleanup(provider.Close)
+	chat, err := tcyai.CreateConversation(testuser1.ID, "steering API")
+	require.NoError(t, err)
+	chat, err = tcyai.StartConversation(context.Background(), testuser1.ID, chat.ID, tcyai.RunInput{Message: "original API goal", Mode: "read"}, tcyai.Connection{BaseURL: provider.URL, Protocol: "openai-chat", Model: "fixture", NonStreaming: true}, nil, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = tcyai.StopConversation(testuser1.ID, chat.ID) })
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("model did not start")
+	}
+	path := "/api/v2/ai/conversations/" + chat.ID + "/steer"
+	body := fmt.Sprintf(`{"turn_id":%q,"request_id":%q,"message":"API_ADDITION"}`, chat.Turns[0].ID, uuid.NewString())
+	assert.Equal(t, 401, humaRequest(t, e, "POST", path, body, "", "").Code)
+	assert.Equal(t, 404, humaRequest(t, e, "POST", path, body, other, "").Code)
+	assert.Contains(t, []int{401, 403}, humaRequest(t, e, "POST", path, body, "tk_2eef46f40ebab3304919ab2e7e39993f75f29d2e", "").Code)
+	share, err := auth.NewLinkShareJWTAuthtoken(&models.LinkSharing{ID: 1, Hash: "test", ProjectID: 1})
+	require.NoError(t, err)
+	assert.Contains(t, []int{401, 403}, humaRequest(t, e, "POST", path, body, share, "").Code)
+	assert.Contains(t, []int{400, 422}, humaRequest(t, e, "POST", path, `{"turn_id":"bad","request_id":"bad","message":""}`, token, "").Code)
+	accepted := humaRequest(t, e, "POST", path, body, token, "")
+	require.Equal(t, 201, accepted.Code, accepted.Body.String())
+	assert.Equal(t, "no-store", accepted.Header().Get("Cache-Control"))
+	var receipt tcyai.Conversation
+	require.NoError(t, json.Unmarshal(accepted.Body.Bytes(), &receipt))
+	require.Len(t, receipt.Turns[0].Steering, 1)
+	assert.Equal(t, "pending", receipt.Turns[0].Steering[0].Status)
+	assert.Equal(t, 201, humaRequest(t, e, "POST", path, body, token, "").Code)
+	assert.Equal(t, 409, humaRequest(t, e, "POST", path, strings.Replace(body, "API_ADDITION", "conflicting text", 1), token, "").Code)
+	close(release)
+	require.Eventually(t, func() bool {
+		current, getErr := tcyai.GetConversation(testuser1.ID, chat.ID)
+		return getErr == nil && current.Turns[0].Status == "completed"
+	}, 5*time.Second, 10*time.Millisecond)
+	assert.Equal(t, 201, humaRequest(t, e, "POST", path, body, token, "").Code, "exact retries survive completion")
+	fresh := fmt.Sprintf(`{"turn_id":%q,"request_id":%q,"message":"too late"}`, chat.Turns[0].ID, uuid.NewString())
+	assert.Equal(t, 409, humaRequest(t, e, "POST", path, fresh, token, "").Code)
+	assert.EqualValues(t, 2, requests.Load())
+}

@@ -219,6 +219,9 @@ func (state *AgentState) autoCompact(ctx context.Context, c Connection, persist 
 		latestAttachments = nil
 	}
 	replacement := []storedMessage{system, {Message: checkpoint}, {Message: Message{Role: "user", Content: executionContext(state.Input, c)}}, {Message: Message{Role: "user", Content: state.Input.Message, Attachments: latestAttachments, AttachmentOwner: state.OwnerID}}}
+	for _, entry := range state.AppliedSteering {
+		replacement = append(replacement, storedMessage{Message: steeringMessage(entry)})
+	}
 	after := []Message{}
 	for _, m := range replacement {
 		after = append(after, m.Message)

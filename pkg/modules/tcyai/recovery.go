@@ -75,7 +75,7 @@ func retryableTurn(record *conversationFile, index int) bool {
 		return false
 	}
 	turn := record.Turns[index]
-	if turn.Status != "failed" && turn.Status != "interrupted" {
+	if turn.Status != "failed" && turn.Status != "interrupted" && (turn.Status != "stopped" || !pendingSteering(turn)) {
 		return false
 	}
 	if !settledModelResult(turn.Result) {
@@ -134,6 +134,11 @@ func restoreRetryState(ctx context.Context, record *conversationFile, c Connecti
 	state.Messages[0].Content = turn.Result.SystemPrompt
 	state.Messages = append(state.Messages[:state.HistoryStart], record.Contexts[index]...)
 	state.Result = turn.Result
+	for _, entry := range turn.Steering {
+		if entry.Status == "applied" {
+			state.AppliedSteering = append(state.AppliedSteering, entry)
+		}
+	}
 	if n := len(turn.Result.Steps); n > 0 {
 		state.Available = append(state.Available, turn.Result.Steps[n-1].LoadedTools...)
 	}

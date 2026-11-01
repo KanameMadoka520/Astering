@@ -5,10 +5,11 @@ import {QueryClient, QueryObserver, VueQueryPlugin} from '@tanstack/vue-query'
 import type {Conversation, ConversationSummary, PaginatedConversationSummary} from '@/client/generated'
 
 const sdk = vi.hoisted(() => {
-	const conversation = async () => ({data: {id: 'c1', turns: []}})
+	const conversation = async (): Promise<{data: Conversation}> => ({data: {id: 'c1', turns: []}})
 	return {
 		tcyAiConversationsList: vi.fn(),
 		tcyAiConversationsSend: vi.fn(conversation),
+		tcyAiConversationsSteer: vi.fn(conversation),
 		tcyAiConversationsReview: vi.fn(conversation),
 		tcyAiConversationsOrganize: vi.fn(conversation),
 		tcyAiConversationsRename: vi.fn(conversation),
@@ -27,7 +28,7 @@ vi.mock('@/message', () => ({
 	translatedError: (key: string) => new Error(key),
 }))
 
-import {conversationKeys, conversationsQuery, useConversationAction, useReviewConversation, useSendConversation} from './tcyConversations'
+import {conversationKeys, conversationsQuery, useConversationAction, useReviewConversation, useSendConversation, useSteerConversation} from './tcyConversations'
 import {chatAttachmentQuery, useAttachDriveFileToChat, useRemoveChatAttachment, useUploadChatAttachment} from './chatAttachments'
 
 function page(items: ConversationSummary[]) {
@@ -42,6 +43,7 @@ describe('conversation writes and attachment bytes', () => {
 	function hooks() {
 		let found!: {
 			send: ReturnType<typeof useSendConversation>
+			steer: ReturnType<typeof useSteerConversation>
 			review: ReturnType<typeof useReviewConversation>
 			action: ReturnType<typeof useConversationAction>
 			upload: ReturnType<typeof useUploadChatAttachment>
@@ -52,6 +54,7 @@ describe('conversation writes and attachment bytes', () => {
 			setup() {
 				found = {
 					send: useSendConversation(),
+					steer: useSteerConversation(),
 					review: useReviewConversation(),
 					action: useConversationAction(),
 					upload: useUploadChatAttachment(),
@@ -70,6 +73,7 @@ describe('conversation writes and attachment bytes', () => {
 
 	it.each([
 		['send', (h: ReturnType<typeof hooks>) => h.send.mutateAsync({id: 'c1', body: {message: 'Hi'} as never})],
+		['steer', (h: ReturnType<typeof hooks>) => h.steer.mutateAsync({id: 'c1', body: {turn_id: 't1', request_id: 'r1', message: 'Keep the original goal, also do this'}})],
 		['review', (h: ReturnType<typeof hooks>) => h.review.mutateAsync({id: 'c1', body: {decision: 'approve'}})],
 		['organize', (h: ReturnType<typeof hooks>) => h.action.mutateAsync({id: 'c1', action: 'organize', pinned: true})],
 		['rename', (h: ReturnType<typeof hooks>) => h.action.mutateAsync({id: 'c1', action: 'rename', title: 'New'})],
@@ -87,6 +91,21 @@ describe('conversation writes and attachment bytes', () => {
 
 		expect(client.getQueryState(detailKey)?.isInvalidated).toBe(true)
 		expect(client.getQueryState(blobKey)?.isInvalidated).toBe(false)
+	})
+
+	it('does not rewind stream progress when an older steering acknowledgement arrives', async () => {
+		let resolve!: (value: {data: Conversation}) => void
+		sdk.tcyAiConversationsSteer.mockImplementationOnce(() => new Promise(done => { resolve = done }))
+		const h = hooks()
+		const body = {turn_id: 't1', request_id: 'r1', message: 'Also check dates'}
+		client.setQueryData<Conversation>(detailKey, {id: 'c1', turns: [{id: 't1', status: 'running'}]})
+		const pending = h.steer.mutateAsync({id: 'c1', body})
+		await vi.waitFor(() => expect(sdk.tcyAiConversationsSteer).toHaveBeenCalledWith({path: {id: 'c1'}, body}))
+		const completed: Conversation = {id: 'c1', turns: [{id: 't1', status: 'completed', result: {reply: 'Everything is done'}}]}
+		client.setQueryData(detailKey, completed)
+		resolve({data: {id: 'c1', turns: [{id: 't1', status: 'running'}]}})
+		await pending
+		expect(client.getQueryData(detailKey)).toEqual(completed)
 	})
 })
 

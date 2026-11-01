@@ -24,6 +24,8 @@ func snapshotAgentState(state *AgentState) *AgentState {
 		return nil
 	}
 	out := *state
+	out.steeringFence = false
+	out.AppliedSteering = cloneSteering(state.AppliedSteering)
 	out.Input.History = append([]Turn{}, state.Input.History...)
 	out.Input.AttachmentIDs = append([]string{}, state.Input.AttachmentIDs...)
 	out.Input.WriteProjectIDs = append([]int64{}, state.Input.WriteProjectIDs...)

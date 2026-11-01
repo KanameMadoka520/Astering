@@ -16,6 +16,7 @@ import {
 	tcyAiConversationsOrganize,
 	tcyAiConversationsDelete,
 	tcyAiConversationsSend,
+	tcyAiConversationsSteer,
 	tcyAiConversationsReview,
 	tcyAiConversationsStop,
 	tcyAiConversationsFork,
@@ -28,6 +29,7 @@ import {
 	type ReviewInput,
 	type Task,
 	type TcyAiConversationsSendData,
+	type TcyAiConversationsSteerData,
 } from '@/client/generated'
 import {assertClientRequestContext, captureClientRequestContext} from '@/client/requestContext'
 import {PERMISSIONS} from '@/constants/permissions'
@@ -170,6 +172,23 @@ export function useSendConversation() {
 			body: TcyAiConversationsSendData['body']
 		}) => (await tcyAiConversationsSend({path: {id: input.id}, body: input.body})).data,
 		onSuccess: (data, input, client) => client.setQueryData(conversationKeys.detail(input.id), data),
+		onSettled: (input, client) => Promise.all([
+			client.invalidateQueries({queryKey: conversationKeys.detail(input.id), exact: true}),
+			client.invalidateQueries({queryKey: conversationKeys.lists()}),
+		]),
+	}))
+}
+
+export function useSteerConversation() {
+	return useMutation(contextMutationOptions({
+		// The composer keeps the draft and explains conflicts or an uncertain delivery beside the input.
+		toastError: () => false,
+		mutationFn: async (input: {
+			id: string
+			body: TcyAiConversationsSteerData['body']
+		}) => (await tcyAiConversationsSteer({path: {id: input.id}, body: input.body})).data,
+		// A stream frame may already have applied the instruction or completed the run by the time the
+		// HTTP acknowledgement arrives. Refetch instead of replacing newer progress with that snapshot.
 		onSettled: (input, client) => Promise.all([
 			client.invalidateQueries({queryKey: conversationKeys.detail(input.id), exact: true}),
 			client.invalidateQueries({queryKey: conversationKeys.lists()}),

@@ -36,15 +36,16 @@ import (
 )
 
 type ChatTurn struct {
-	Retryable   bool             `json:"retryable" readOnly:"true" doc:"Latest failed model request can resume from confirmed tool results without replaying pending operations."`
-	Attachments []ChatAttachment `json:"attachments,omitempty" readOnly:"true" doc:"Files attached to this user message, in their original order."`
-	ID          string           `json:"id" readOnly:"true" doc:"Server-generated identifier."`
-	Prompt      string           `json:"prompt" readOnly:"true" doc:"Original user message."`
-	RequestID   string           `json:"request_id" readOnly:"true" doc:"Retry key for the exact same request; does not authorize replay."`
-	Status      string           `json:"status" enum:"running,completed,failed,stopped,interrupted,awaiting_approval,awaiting_input,paused" readOnly:"true" doc:"Execution state. Interrupted runs are never replayed automatically."`
-	Started     time.Time        `json:"started" readOnly:"true" doc:"UTC run start timestamp."`
-	Finished    *time.Time       `json:"finished,omitempty" readOnly:"true" doc:"UTC completion timestamp when finished."`
-	Result      RunResult        `json:"result" readOnly:"true" doc:"Saved answer, actual tool results and request metadata."`
+	Steering    []SteeringInstruction `json:"steering,omitempty" readOnly:"true" doc:"Additional user instructions in server acceptance order; original prompt and execution permissions are preserved."`
+	Retryable   bool                  `json:"retryable" readOnly:"true" doc:"Latest failed model request can resume from confirmed tool results without replaying pending operations."`
+	Attachments []ChatAttachment      `json:"attachments,omitempty" readOnly:"true" doc:"Files attached to this user message, in their original order."`
+	ID          string                `json:"id" readOnly:"true" doc:"Server-generated identifier."`
+	Prompt      string                `json:"prompt" readOnly:"true" doc:"Original user message."`
+	RequestID   string                `json:"request_id" readOnly:"true" doc:"Retry key for the exact same request; does not authorize replay."`
+	Status      string                `json:"status" enum:"running,completed,failed,stopped,interrupted,awaiting_approval,awaiting_input,paused" readOnly:"true" doc:"Execution state. Interrupted runs are never replayed automatically."`
+	Started     time.Time             `json:"started" readOnly:"true" doc:"UTC run start timestamp."`
+	Finished    *time.Time            `json:"finished,omitempty" readOnly:"true" doc:"UTC completion timestamp when finished."`
+	Result      RunResult             `json:"result" readOnly:"true" doc:"Saved answer, actual tool results and request metadata."`
 }
 type Compaction struct {
 	Through    int       `json:"through" doc:"Number of original turns covered by this summary."`
@@ -117,14 +118,15 @@ type conversationFile struct {
 	Requests map[string]string `json:"requests,omitempty"`
 }
 type liveConversation struct {
-	uid        int64
-	id         string
-	record     *conversationFile
-	cancel     context.CancelFunc
-	compacting bool
-	done       chan struct{}
-	watchDone  chan struct{}
-	storeRoot  string
+	acceptingSteering bool
+	uid               int64
+	id                string
+	record            *conversationFile
+	cancel            context.CancelFunc
+	compacting        bool
+	done              chan struct{}
+	watchDone         chan struct{}
+	storeRoot         string
 }
 
 var conversations = struct {
@@ -279,6 +281,7 @@ func cloneConversationTurn(record *conversationFile, index int) ChatTurn {
 	turn := record.Turns[index]
 	turn.Retryable = retryableTurn(record, index)
 	turn.Attachments = append([]ChatAttachment{}, turn.Attachments...)
+	turn.Steering = cloneSteering(turn.Steering)
 	turn.Result = publicResult(turn.Result)
 	if index < len(record.States) && record.States[index] != nil {
 		turn.Result.Configuration = runOptions(record.States[index].Input)
@@ -348,7 +351,7 @@ func searchConversationsLocked(uid int64, query, scope string) ([]ConversationSu
 		matches := query == "" || strings.Contains(strings.ToLower(record.Title), query)
 		if !matches {
 			for _, turn := range record.Turns {
-				if strings.Contains(strings.ToLower(turn.Prompt), query) || strings.Contains(strings.ToLower(turn.Result.Reply), query) {
+				if strings.Contains(strings.ToLower(turn.Prompt+steeringSearchText(turn.Steering)), query) || strings.Contains(strings.ToLower(turn.Result.Reply), query) {
 					matches = true
 					break
 				}
@@ -546,7 +549,11 @@ func conversationHistory(record *conversationFile, c Connection) ([]Message, str
 			if err != nil {
 				return nil, "", err
 			}
-			history = append(history, Message{Role: "user", Content: turn.Prompt, Attachments: turn.Attachments, AttachmentOwner: recordOwner(record)}, Message{Role: "assistant", Content: turn.Result.Reply + "\nPrevious execution status: " + turn.Status + ". Actual operations already attempted (do not replay them): " + string(detail) + "\n" + turn.Result.Error})
+			history = append(history, Message{Role: "user", Content: turn.Prompt, Attachments: turn.Attachments, AttachmentOwner: recordOwner(record)})
+			for _, entry := range turn.Steering {
+				history = append(history, steeringMessage(entry))
+			}
+			history = append(history, Message{Role: "assistant", Content: turn.Result.Reply + "\nPrevious execution status: " + turn.Status + ". Actual operations already attempted (do not replay them): " + string(detail) + "\n" + turn.Result.Error + pendingSteeringSummary(turn)})
 			continue
 		}
 		for _, stored := range record.Contexts[i] {
@@ -561,6 +568,9 @@ func conversationHistory(record *conversationFile, c Connection) ([]Message, str
 	}
 	if summary != "" {
 		summary += attachmentManifest(sentAttachments(record.Conversation))
+		for _, turn := range record.Turns[:through] {
+			summary += pendingSteeringSummary(turn)
+		}
 	}
 	return projectLegacyMessages(history), summary, nil
 }
@@ -702,7 +712,7 @@ func launchConversation(ctx context.Context, uid int64, record *conversationFile
 	} else {
 		jobCtx, cancel = context.WithCancel(baseCtx)
 	}
-	live := &liveConversation{uid: uid, id: record.ID, record: record, cancel: cancel, done: make(chan struct{}), storeRoot: accountKey(uid).root}
+	live := &liveConversation{acceptingSteering: true, uid: uid, id: record.ID, record: record, cancel: cancel, done: make(chan struct{}), storeRoot: accountKey(uid).root}
 	conversations.live[uid] = live
 	live.watchDone = make(chan struct{})
 	go func() { defer close(live.watchDone); watchAccount(jobCtx, uid, cancel, live.done) }()
@@ -711,23 +721,8 @@ func launchConversation(ctx context.Context, uid int64, record *conversationFile
 		defer finishDeletedLiveAccount(uid, live)
 		defer cancel()
 		result, runErr := RunAgent(jobCtx, c, state, execute, prepare, func(state *AgentState) error {
-			snapshot := publicResult(state.Result)
-			var checkpoint *AgentState
-			if !state.Streaming {
-				checkpoint = snapshotAgentState(state)
-			}
-			conversations.Lock()
-			defer conversations.Unlock()
-			if !currentLiveAccountLocked(uid, live) {
-				return ErrAccountDeleted
-			}
-			record.Turns[index].Result = snapshot
-			if state.Streaming {
-				return nil
-			}
-			record.States[index] = checkpoint
-			return writeConversation(uid, record)
-		})
+			return checkpointConversation(uid, live, index, state)
+		}, conversationControl(uid, live, index))
 		conversations.Lock()
 		defer conversations.Unlock()
 		if !currentLiveAccountLocked(uid, live) {
@@ -773,7 +768,8 @@ func launchConversation(ctx context.Context, uid int64, record *conversationFile
 			record.Contexts[index] = append(record.Contexts[index], storedMessage{Message: m, Native: m.Native})
 		}
 		record.States[index] = snapshotAgentState(state)
-		if !pausedTurn(*turn) && (turn.Status != "failed" || !safeModelState(state)) {
+		keepStopped := turn.Status == "stopped" && pendingSteering(*turn) && safeModelState(state)
+		if !pausedTurn(*turn) && !keepStopped && (turn.Status != "failed" || !safeModelState(state)) {
 			record.States[index] = nil
 		}
 		if err := writeConversation(uid, record); err != nil {
@@ -863,6 +859,7 @@ func StopConversation(uid int64, id string) error {
 	conversations.Lock()
 	defer conversations.Unlock()
 	if live := conversations.live[uid]; live != nil && live.id == id {
+		live.acceptingSteering = false
 		if live.cancel != nil {
 			live.cancel()
 		}
@@ -987,7 +984,7 @@ func summarizeConversation(ctx context.Context, record *conversationFile, c Conn
 	}
 	var history strings.Builder
 	for _, turn := range record.Turns[start:through] {
-		raw, encodeErr := json.Marshal(map[string]any{"user": turn.Prompt, "attachments": modelAttachments(turn.Attachments), "answer": turn.Result.Reply, "actions": compactActions(turn.Result.Actions), "receipts": compactReceipts(turn.Result.Operations), "status": turn.Status, "error": turn.Result.Error})
+		raw, encodeErr := json.Marshal(map[string]any{"user": turn.Prompt, "steering": turn.Steering, "attachments": modelAttachments(turn.Attachments), "answer": turn.Result.Reply, "actions": compactActions(turn.Result.Actions), "receipts": compactReceipts(turn.Result.Operations), "status": turn.Status, "error": turn.Result.Error})
 		if encodeErr != nil {
 			return "", usage, model, encodeErr
 		}

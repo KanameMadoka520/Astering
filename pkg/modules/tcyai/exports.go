@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // The portable export contains only the public transcript, never credentials,
@@ -103,7 +104,7 @@ func markdownLabel(s string) string {
 }
 func conversationMarkdown(c Conversation, available map[string]string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# %s\n\nConversation / 会话 ID: `%s`\n\nCreated / 创建时间: %s\n\n", markdownLabel(c.Title), c.ID, c.Created.Format("2006-01-02T15:04:05Z07:00"))
+	fmt.Fprintf(&b, "# %s\n\nConversation / 会话 ID: `%s`\n\nCreated / 创建时间: %s\n\n", markdownLabel(c.Title), c.ID, exportConversationTime(c.Created))
 	writeFiles := func(items []ChatAttachment) {
 		for _, a := range items {
 			path := available[a.ID]
@@ -121,9 +122,16 @@ func conversationMarkdown(c Conversation, available map[string]string) string {
 		}
 	}
 	for _, turn := range c.Turns {
-		fmt.Fprintf(&b, "## You / 你 · %s\n\n%s\n\n", turn.Started.Format("2006-01-02 15:04:05 MST"), turn.Prompt)
+		fmt.Fprintf(&b, "## You / 你%s\n\n%s\n\n", exportTimeSuffix(turn.Started), turn.Prompt)
 		writeFiles(turn.Attachments)
-		fmt.Fprintf(&b, "## Arona / 阿罗娜\n\n%s\n\n", turn.Result.Reply)
+		for _, entry := range turn.Steering {
+			fmt.Fprintf(&b, "### Additional instruction / 补充指令%s · %s\n\n%s\n\n", exportTimeSuffix(entry.Created), entry.Status, entry.Message)
+		}
+		finished := time.Time{}
+		if turn.Finished != nil {
+			finished = *turn.Finished
+		}
+		fmt.Fprintf(&b, "## Arona / 阿罗娜%s\n\n%s\n\n", exportTimeSuffix(finished), turn.Result.Reply)
 		if turn.Result.Error != "" {
 			fmt.Fprintf(&b, "> %s\n\n", turn.Result.Error)
 		}
@@ -147,4 +155,17 @@ func conversationMarkdown(c Conversation, available map[string]string) string {
 		fmt.Fprintf(&b, "## Context summary / 上下文摘要\n\n%s\n\n", summary.Summary)
 	}
 	return b.String()
+}
+
+func exportConversationTime(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.In(time.FixedZone("GMT+8", 8*60*60)).Format("2006-01-02 15:04:05 MST")
+}
+func exportTimeSuffix(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return " · " + exportConversationTime(value)
 }

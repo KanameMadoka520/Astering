@@ -57,16 +57,18 @@ type RunBudget struct {
 type Preparer func(context.Context, string, json.RawMessage) (Operation, error)
 
 type AgentState struct {
-	KnownAttachments  []ChatAttachment `json:"known_attachments,omitempty"`
-	QueuedAttachments []ChatAttachment `json:"queued_attachments,omitempty"`
-	Rebased           bool             `json:"rebased,omitempty"`
-	LastInputTokens   int64            `json:"last_input_tokens,omitempty"`
-	LastInputEstimate int64            `json:"last_input_estimate,omitempty"`
-	SegmentStarted    time.Time        `json:"segment_started,omitempty"`
-	OwnerID           int64            `json:"owner_id,omitempty"`
-	ConversationID    string           `json:"conversation_id,omitempty"`
-	SearchEnabled     bool             `json:"-"`
-	CacheStable       bool             `json:"cache_stable,omitempty"`
+	steeringFence     bool
+	AppliedSteering   []SteeringInstruction `json:"applied_steering,omitempty"`
+	KnownAttachments  []ChatAttachment      `json:"known_attachments,omitempty"`
+	QueuedAttachments []ChatAttachment      `json:"queued_attachments,omitempty"`
+	Rebased           bool                  `json:"rebased,omitempty"`
+	LastInputTokens   int64                 `json:"last_input_tokens,omitempty"`
+	LastInputEstimate int64                 `json:"last_input_estimate,omitempty"`
+	SegmentStarted    time.Time             `json:"segment_started,omitempty"`
+	OwnerID           int64                 `json:"owner_id,omitempty"`
+	ConversationID    string                `json:"conversation_id,omitempty"`
+	SearchEnabled     bool                  `json:"-"`
+	CacheStable       bool                  `json:"cache_stable,omitempty"`
 
 	HistoryStart int             `json:"history_start"`
 	Streaming    bool            `json:"-"`
@@ -218,7 +220,30 @@ func (state *AgentState) tools() []map[string]any {
 	return result
 }
 
-func RunAgent(ctx context.Context, c Connection, state *AgentState, execute Executor, prepare Preparer, save func(*AgentState) error) (result RunResult, runErr error) {
+//nolint:gocyclo // Keep steering fences, budget checks, model retries and tool settlement in their execution order.
+func RunAgent(ctx context.Context, c Connection, state *AgentState, execute Executor, prepare Preparer, save func(*AgentState) error, controls ...AgentControl) (result RunResult, runErr error) {
+	startActions := len(state.Result.Actions)
+	control := AgentControl{}
+	if len(controls) > 0 {
+		control = controls[0]
+	}
+	boundary := func() (bool, error) {
+		if control.Boundary != nil {
+			changed, err := control.Boundary(state)
+			if changed {
+				startActions = len(state.Result.Actions)
+			}
+			return changed, err
+		}
+		return false, nil
+	}
+	settle := func() (bool, error) {
+		changed, err := control.settle(state)
+		if changed {
+			startActions = len(state.Result.Actions)
+		}
+		return changed, err
+	}
 	started := time.Now()
 	state.SegmentStarted = started
 	state.SearchEnabled = c.WebSearchProtocol != "" && state.Input.SearchMode != "off"
@@ -250,7 +275,6 @@ func RunAgent(ctx context.Context, c Connection, state *AgentState, execute Exec
 		return state.Result, tcylocale.Error("searchRequiredUnavailable")
 	}
 	overflowRetried := false
-	startActions := len(state.Result.Actions)
 	for {
 		if err := ctx.Err(); err != nil {
 			return state.Result, err
@@ -258,15 +282,21 @@ func RunAgent(ctx context.Context, c Connection, state *AgentState, execute Exec
 		if err := requireActiveAccount(state.OwnerID); err != nil {
 			return state.Result, err
 		}
+		if _, err := boundary(); err != nil {
+			return state.Result, err
+		}
 		if len(state.Pending) == 0 {
-			if state.Input.StopAtSegmentLimit && state.Result.Budget.Rounds >= state.Result.Budget.RoundLimit {
+			if (state.Input.StopAtSegmentLimit && state.Result.Budget.Rounds >= state.Result.Budget.RoundLimit) ||
+				(state.Result.Budget.TokenLimit > 0 && state.Result.Usage.Input+state.Result.Usage.Output >= state.Result.Budget.TokenLimit) {
 				state.Result.Stage = "budget"
 				state.Result.Pause = "budget"
-				return state.Result, ErrAgentPaused
-			}
-			if state.Result.Budget.TokenLimit > 0 && state.Result.Usage.Input+state.Result.Usage.Output >= state.Result.Budget.TokenLimit {
-				state.Result.Stage = "budget"
-				state.Result.Pause = "budget"
+				changed, err := settle()
+				if err != nil {
+					return state.Result, err
+				}
+				if changed {
+					continue
+				}
 				return state.Result, ErrAgentPaused
 			}
 			if repeatedActions(state.Result.Actions[startActions:]) {
@@ -274,6 +304,9 @@ func RunAgent(ctx context.Context, c Connection, state *AgentState, execute Exec
 				return state.Result, ToolFailure("NO_PROGRESS", "Eight identical tool operations returned the same result. Execution stopped; review the trace before retrying.")
 			}
 			if err := state.autoCompact(ctx, c, persist, false); err != nil {
+				return state.Result, err
+			}
+			if _, err := boundary(); err != nil {
 				return state.Result, err
 			}
 			state.deliverQueuedAttachments()
@@ -289,12 +322,54 @@ func RunAgent(ctx context.Context, c Connection, state *AgentState, execute Exec
 				}
 				continue
 			}
-			if err != nil || done {
+			if errors.Is(err, errSteeringReplan) {
+				continue
+			}
+			if errors.Is(err, ErrAgentPaused) {
+				changed, settleErr := settle()
+				if settleErr != nil {
+					return state.Result, settleErr
+				}
+				if changed {
+					continue
+				}
+			}
+			if err != nil {
 				return state.Result, err
+			}
+			if done {
+				if control.Complete != nil {
+					changed, controlErr := settle()
+					if controlErr != nil {
+						return state.Result, controlErr
+					}
+					if changed {
+						continue
+					}
+				}
+				return state.Result, nil
 			}
 			overflowRetried = false
 		}
-		if err := state.toolStep(ctx, c, execute, prepare, persist); err != nil {
+		// The model may have planned a batch before new instructions arrived.
+		if changed, err := boundary(); err != nil {
+			return state.Result, err
+		} else if changed {
+			continue
+		}
+		if err := state.toolStep(ctx, c, execute, prepare, persist, boundary); err != nil {
+			if errors.Is(err, errSteeringReplan) {
+				continue
+			}
+			if errors.Is(err, ErrAgentPaused) {
+				changed, settleErr := settle()
+				if settleErr != nil {
+					return state.Result, settleErr
+				}
+				if changed {
+					continue
+				}
+			}
 			return state.Result, err
 		}
 	}
@@ -316,10 +391,8 @@ func (state *AgentState) modelRound(ctx context.Context, c Connection, started t
 	if state.SegmentStarted.IsZero() {
 		state.SegmentStarted = time.Now()
 	}
-	state.Result.Stage = "model"
-	b.Rounds++
-	// Checkpoint the model boundary before streaming so a restart can resume safely.
-	if err := persist(); err != nil {
+	// Checkpoint before streaming; a correction queued before intent must win.
+	if err := state.persistModelIntent(persist); err != nil {
 		return false, err
 	}
 	observed, o := withObservation(ctx, b.Rounds, c.Model, func(step ModelStep) {
@@ -406,7 +479,7 @@ func (state *AgentState) modelRound(ctx context.Context, c Connection, started t
 }
 
 //nolint:gocyclo // Keep validation, review, durable intent, execution and settlement in one ordered transition.
-func (state *AgentState) toolStep(ctx context.Context, c Connection, execute Executor, prepare Preparer, persist func() error) error {
+func (state *AgentState) toolStep(ctx context.Context, c Connection, execute Executor, prepare Preparer, persist func() error, controls ...func() (bool, error)) error {
 	call, decodeErr := resolveInvocation(state.Pending[0])
 	name := call.Function.Name
 	state.Result.Stage = "validation"
@@ -428,6 +501,15 @@ func (state *AgentState) toolStep(ctx context.Context, c Connection, execute Exe
 	}
 	if toolErr == nil {
 		op, toolErr = state.prepareOperation(ctx, prepare, name, raw, op)
+	}
+	if len(controls) > 0 {
+		changed, err := controls[0]()
+		if err != nil {
+			return err
+		}
+		if changed {
+			return errSteeringReplan
+		}
 	}
 	if op.Units < 1 {
 		op.Units = 1
@@ -466,7 +548,12 @@ func (state *AgentState) toolStep(ctx context.Context, c Connection, execute Exe
 	operationIndex := len(state.Result.Operations) - 1
 	state.Result.Stage = "execute"
 	// Persist intent before a side effect. A crash here leaves an uncertain receipt, never an automatic retry.
-	if err := persist(); err != nil {
+	if err := state.persistIntent(persist); err != nil {
+		if errors.Is(err, errSteeringReplan) {
+			state.Result.Operations = state.Result.Operations[:operationIndex]
+			state.Result.Budget.Operations -= op.Units
+			state.Result.Stage = "validation"
+		}
 		return err
 	}
 	toolStarted := time.Now()
@@ -501,6 +588,15 @@ func (state *AgentState) toolStep(ctx context.Context, c Connection, execute Exe
 	}
 	state.appendMessage(Message{Role: "tool", Content: toolContent, ToolCallID: call.ID})
 	state.Pending = state.Pending[1:]
+	// A confirmed final receipt is a safe model boundary even if Stop arrived
+	// while the atomic operation was running. Unknown outcomes remain unsafe.
+	if len(state.Pending) == 0 && state.Approved == nil && completeToolHistory(state.Messages) {
+		settled := state.Result
+		settled.Stage = "model"
+		if settledModelResult(settled) {
+			state.Result.Stage = "model"
+		}
+	}
 
 	if err := persist(); err != nil {
 		return err
