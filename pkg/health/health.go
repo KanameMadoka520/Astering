@@ -19,17 +19,26 @@ package health
 import (
 	"context"
 	"errors"
+	"time"
 
 	"code.vikunja.io/api/pkg/config"
 	"code.vikunja.io/api/pkg/db"
 	"code.vikunja.io/api/pkg/red"
 )
 
-// Check verifies the main service dependencies are reachable.
+// Check verifies dependencies within a bounded shared-monitor probe.
 func Check() error {
-	s := db.NewSession()
+	return CheckContext(context.Background())
+}
+
+// CheckContext respects a shorter caller deadline while bounding public health
+// probes to two seconds. A ping needs no transaction or reserved pool connection.
+func CheckContext(parent context.Context) error {
+	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
+	defer cancel()
+	s := db.NewReadSession()
 	defer s.Close()
-	if err := s.Ping(); err != nil {
+	if err := s.PingContext(ctx); err != nil {
 		return err
 	}
 
@@ -38,7 +47,7 @@ func Check() error {
 		if r == nil {
 			return errors.New("redis not initialized")
 		}
-		if err := r.Ping(context.Background()).Err(); err != nil {
+		if err := r.Ping(ctx).Err(); err != nil {
 			return err
 		}
 	}
