@@ -1,7 +1,7 @@
 import {i18n} from '@/i18n'
 
 function getStaticLabels(): Set<string> {
-	const labels = new Set<string>(['Vikunja', 'vikunja-x', '-x 版', 'GitHub'])
+	const labels = new Set<string>(['Vikunja', 'vikunja-x', 'x版本', 'x edition', 'GitHub'])
 	function collect(value: unknown, path: string) {
 		if (typeof value === 'string' || typeof value === 'function' || (value && typeof value === 'object' && (('body' in value && 'type' in value) || ('b' in value && 't' in value)))) {
 			const translated = i18n.global.t(path)

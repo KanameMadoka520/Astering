@@ -1,6 +1,6 @@
 # vikunja-x 品牌素材
 
-应用名为 **vikunja-x**，中文版本标识为 **-x 版**，英文为 **-x edition**。源码在 [KanameMadoka520/vikunja-x](https://github.com/KanameMadoka520/vikunja-x)。内部配置键与 `v2.7.1-tcymc.N` 版本序列保持兼容。
+应用名为 **vikunja-x**，中文版本标识为 **x版本**，英文为 **x edition**。源码在 [KanameMadoka520/vikunja-x](https://github.com/KanameMadoka520/vikunja-x)。内部配置键与 `v2.7.1-tcymc.N` 版本序列保持兼容。
 
 ## 角色形象（tcymc.33）
 
