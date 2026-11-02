@@ -471,3 +471,59 @@ describe('external MCP and private chat image review', () => {
 	})
 
 })
+
+it('previews view-order changes as named sequences and boundaries without presenting a version token as a change', async () => {
+	const input = {
+		project_id: 1,
+		view_id: 4,
+		bucket_id: 8,
+		task_ids: [3, 1],
+		after_task_id: 7,
+		before_task_id: 9,
+		order_version: 'a'.repeat(64),
+	}
+	const wrapper = mount(AgentReviewCard, {
+		props: {
+			busy: false,
+			turn: {
+				id: 'order-turn',
+				result: {
+					pause: 'review',
+					pending: {
+						id: 'order-operation',
+						tool: 'reorder_view_tasks',
+						arguments: JSON.stringify(input),
+						before: JSON.stringify({
+							...input,
+							items: [
+								{id: 1, title: 'First fixture', position: 100},
+								{id: 3, title: 'Third fixture', position: 300},
+							],
+						}),
+						after: JSON.stringify(input),
+					},
+				},
+			},
+		},
+		global: {
+			stubs: {
+				Icon: true,
+				XButton: {template: '<button><slot /></button>'},
+			},
+		},
+	})
+	const preview = wrapper.get('.task-order-preview')
+	expect(preview.findAll('ol')[0].findAll('li').map(item => item.text())).toEqual(['#1 First fixture', '#3 Third fixture'])
+	expect(preview.findAll('ol')[1].findAll('li').map(item => item.text())).toEqual(['#3 Third fixture', '#1 First fixture'])
+	expect(preview.text()).toContain('agent.taskOrder.afterTask(task=agent.taskOrder.taskId(id=7))')
+	expect(preview.text()).toContain('agent.taskOrder.beforeTask(task=agent.taskOrder.taskId(id=9))')
+	expect(preview.text()).not.toContain(input.order_version)
+	expect(wrapper.find('.change-table').exists()).toBe(false)
+	await wrapper.findAll('button').find(button => button.text() === 'agent.approve')!.trigger('click')
+	expect(wrapper.emitted('review')?.[0]?.[0]).toMatchObject({
+		turn_id: 'order-turn',
+		operation_id: 'order-operation',
+		decision: 'approve',
+	})
+	wrapper.unmount()
+})

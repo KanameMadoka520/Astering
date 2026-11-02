@@ -33,6 +33,8 @@ const AGENT_TOOLS = [
 	'read_tool_result',
 	'view_attachment',
 	'list_project_views',
+	'list_view_tasks',
+	'reorder_view_tasks',
 	'list_buckets',
 	'create_bucket',
 	'update_bucket',

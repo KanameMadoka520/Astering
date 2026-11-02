@@ -214,6 +214,8 @@ func compactToolResult(name string, raw json.RawMessage, data string) string {
 			return data
 		}
 		output = compactTaskDetails(item)
+	case "reorder_view_tasks":
+		output = selectFields(asObject(value), "project_id", "view_id", "view_kind", "bucket_id", "task_ids", "order_version", "position_recalculated", "manual_order_saved", "verified")
 	case "list_calendar_events":
 		output = selectFields(asObject(value), "items", "total", "page", "per_page", "total_pages", "timezone", "from", "to")
 	case "list_project_timeline":

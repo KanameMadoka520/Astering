@@ -28,7 +28,7 @@ import {
 import {client as sdkClient} from '@/client/generated/client.gen'
 import {assertClientRequestContext, captureClientRequestContext, isRequestContextAbort, type ClientRequestContext} from '@/client/requestContext'
 import {contextMutationOptions} from './contextMutation'
-import {normalizeTask, taskKeys, type PaginatedTaskResponse, type TaskFilterParams, type TaskResponse} from './tasks'
+import {normalizeTask, taskKeys, type TaskFilterParams, type TaskResponse} from './tasks'
 import {bucketKeys, kanbanKeys, normalizeBucket, type BoardData} from './kanban'
 import {
 	cachedTaskCopies,
@@ -44,6 +44,7 @@ import {
 } from './taskCache'
 import {projectTimelineKeys, type ProjectTimelineQuery} from './projectTimeline'
 import {invalidateCalendarTasks} from './calendar'
+import {patchTaskViewPositions} from './taskOrder'
 import {agentBoardKeys, refreshAgentBoards} from './kanbanServerRefresh'
 import {getCachedProject, projectKeys} from './projects'
 import {colorFromHex} from '@/helpers/color/colorFromHex'
@@ -421,33 +422,12 @@ export function updateTaskPositionMutationOptions() {
 		mutationFn: async ({taskId, ...body}: TaskPositionWritable & {taskId: number}) =>
 			(await tasksPositionUpdate({path: {task: taskId}, body})).data,
 		onSuccess: (data, {taskId, project_view_id}, client) => {
-			for (const [key, list] of client.getQueriesData<PaginatedTaskResponse>({queryKey: taskKeys.lists})) {
-				const params = taskKeys.paramsOf(key)
-				if (!list || !params || taskKeys.viewOf(key) !== project_view_id) continue
-				const direction = params.order_by?.[0] === 'desc' ? -1 : 1
-				const items = list.items.map(task => task.id === taskId
-					? {...task, position: data.position ?? task.position}
-					: task)
-				client.setQueryData(key, {
-					...list,
-					items: params.sort_by?.[0] === 'position'
-						? items.sort((a, b) => direction * (a.position - b.position))
-						: items,
-				})
-			}
-			for (const [key, board] of client.getQueriesData<BoardData>({queryKey: kanbanKeys.all})) {
-				if (board && kanbanKeys.viewOf(key) === project_view_id) client.setQueryData(key, {
-					...board,
-					buckets: board.buckets.map(bucket => ({
-						...bucket,
-						tasks: bucket.tasks
-							.map(task => task.id === taskId
-								? {...task, position: data.position ?? task.position}
-								: task)
-							.sort((a, b) => a.position - b.position),
-					})),
-				})
-			}
+			if (project_view_id === undefined || data.position === undefined) return
+			patchTaskViewPositions(client, project_view_id, [{
+				task_id: taskId,
+				project_view_id,
+				position: data.position,
+			}])
 		},
 		onSettled: ({taskId}, client) => invalidateTaskMembership(client, taskId),
 	})

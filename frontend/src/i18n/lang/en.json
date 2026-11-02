@@ -3166,6 +3166,8 @@
       "delegate_tasks": "Delegate parallel subtasks",
       "read_tool_result": "Read full tool result",
       "view_attachment": "View attachment",
+      "list_view_tasks": "Read task order in a view",
+      "reorder_view_tasks": "Reorder tasks in a view",
       "list_project_views": "List project views",
       "list_buckets": "List kanban buckets",
       "create_bucket": "Create kanban bucket",
@@ -3177,6 +3179,22 @@
     "routineReview": {
       "absoluteProgress": "This replaces the total recorded for the current period; it does not add to it. Setting 0 clears the period's progress.",
       "noUnit": "No unit"
+    },
+    "taskOrder": {
+      "saved": "The manual task order was saved for this view.",
+      "manualHint": "Other sorts and parent grouping may display tasks differently. Dates, completion and parent relationships were not changed.",
+      "viewManual": "View manual order",
+      "reviewHint": "Move these tasks as one block in the flat manual order of this view. Dates, completion and parent relationships stay unchanged.",
+      "project": "Project",
+      "view": "View",
+      "bucket": "Column",
+      "before": "Previous order of selected tasks",
+      "after": "Proposed order of selected tasks",
+      "taskId": "Task #{id}",
+      "afterTask": "Place after {task}.",
+      "beforeTask": "Place before {task}.",
+      "first": "Place at the beginning of this view or column.",
+      "last": "Place at the end of this view or column."
     },
     "repeatPolicy": {
       "default": "Return to the board's default bucket",

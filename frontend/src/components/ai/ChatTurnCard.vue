@@ -9,6 +9,9 @@ import OutputSpeed from './OutputSpeed.vue'
 import WebSearchEvidence from './WebSearchEvidence.vue'
 import RunStatus from './RunStatus.vue'
 import TurnTimeline from './timeline/TurnTimeline.vue'
+import ToolCallRow from './timeline/ToolCallRow.vue'
+import {toolLabels} from './toolLabels'
+import {useAronaDisplayPreferences} from '@/composables/useAronaDisplayPreferences'
 import MarkdownBlock from './timeline/MarkdownBlock.vue'
 import AronaAvatar from '@/components/ai/AronaAvatar.vue'
 import ChatAttachmentCard from '@/components/ai/attachments/ChatAttachmentCard.vue'
@@ -33,11 +36,14 @@ const emit = defineEmits<{
 	review: [input: ReviewInput]
 }>()
 const {t} = useI18n({useScope: 'global'})
+const {preferences} = useAronaDisplayPreferences()
+const labels = computed(() => toolLabels(t))
 const copied = ref(false)
 let copiedTimer: ReturnType<typeof setTimeout> | undefined
 const running = computed(() => props.turn.status === 'running')
 const result = computed(() => props.turn.result)
 const steps = computed(() => result.value?.steps ?? NO_STEPS)
+const actions = computed(() => result.value?.actions ?? NO_ACTIONS)
 const lastStep = computed(() => steps.value.at(-1))
 const compactions = computed(() => result.value?.auto_compactions ?? NO_COMPACTIONS)
 const subagents = computed(() => result.value?.subagents ?? NO_SUBAGENTS)
@@ -154,6 +160,20 @@ const announcement = computed(() => {
 				:compactions="compactions"
 				:subagents="subagents"
 			/>
+			<!-- Older records can retain real tool receipts without model diagnostics. Show the
+			     receipts themselves, without inventing a model round, thinking or usage. -->
+			<div
+				v-if="!steps.length && actions.length"
+				class="action-receipts"
+			>
+				<ToolCallRow
+					v-for="(action, index) in actions"
+					:key="action.result_ref || index"
+					:label="labels[action.tool ?? ''] || action.tool || t('aronaRun.unnamedTool')"
+					:action="action"
+					:default-open="preferences.expandToolDetails"
+				/>
+			</div>
 			<MarkdownBlock
 				v-if="answer"
 				class="chat-markdown"
@@ -284,6 +304,10 @@ const announcement = computed(() => {
 </template>
 
 <style scoped lang="scss">
+.action-receipts {
+	min-inline-size: 0;
+}
+
 .chat-turn {
 	content-visibility: auto;
 	contain-intrinsic-size: auto 200px;

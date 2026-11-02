@@ -4,6 +4,7 @@ import {useI18n} from 'vue-i18n'
 import type {ChatTurn, ReviewInput} from '@/client/generated'
 import {DESTRUCTIVE_TOOLS, toolLabels} from './toolLabels'
 import BucketImpactPreview from './BucketImpactPreview.vue'
+import TaskOrderPreview from './TaskOrderPreview.vue'
 const props = defineProps<{turn: ChatTurn; busy: boolean}>()
 const emit = defineEmits<{review: [input: ReviewInput]}>()
 const {t, locale} = useI18n({useScope: 'global'})
@@ -16,6 +17,7 @@ const toolName = computed(() => {
 	return toolLabels(t)[tool] || tool
 })
 const external = computed(() => pending.value?.external)
+const orderTool = computed(() => !external.value && pending.value?.tool === 'reorder_view_tasks')
 const imageTool = computed(() => ['insert_chat_image', 'update_task_description_image', 'remove_task_description_image']
 	.includes(pending.value?.tool ?? ''))
 const reviewHint = computed(() => external.value ? t('tcy.mcp.externalReview')
@@ -140,7 +142,7 @@ const TOOL_NOT_CHANGES: Record<string, string[]> = {
 const rows = computed(() => {
 	const tool = pending.value?.tool ?? ''
 	// The impact preview describes bucket changes; the field table would list locators instead.
-	if (bucketImpact.value || external.value) return []
+	if (bucketImpact.value || external.value || orderTool.value) return []
 	try {
 		const before = JSON.parse(pending.value?.before ?? 'null')
 		const proposed = JSON.parse(pending.value?.arguments ?? '{}')
@@ -232,6 +234,10 @@ function decide(decision: ReviewInput['decision']) {
 			>
 				<Icon icon="exclamation-circle" />{{ destructiveWarning }}
 			</p>
+			<TaskOrderPreview
+				v-if="orderTool"
+				:operation="pending"
+			/>
 			<BucketImpactPreview
 				v-if="bucketImpact"
 				:operation="pending"

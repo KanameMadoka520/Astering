@@ -56,6 +56,7 @@ import {
 import {applyServerTaskChanges, reconcileServerBoards, type ServerTaskChange} from './taskMutations'
 import {normalizeTask, taskKeys, type TaskResponse} from './tasks'
 import {invalidateCalendarTasks} from './calendar'
+import {applyServerTaskOrder, parseTaskOrderResult, type TaskOrderResult} from './taskOrder'
 import {
 	readConversationSnapshot,
 	shareConversationSnapshot,
@@ -255,6 +256,7 @@ type AgentCacheOperation =
 	| {kind: 'viewBuckets', project: number, view: number, defaultBucket: number, doneBucket: number}
 
 export type AgentRefreshPlan = {
+	orders: TaskOrderResult[]
 	operations: AgentCacheOperation[]
 	// Tasks whose embedded labels, assignees or relations changed without a task in the receipt.
 	fetchTasks: number[]
@@ -464,6 +466,7 @@ export function takeAgentReceipts(client: QueryClient, conversation?: Conversati
 
 function emptyPlan(): AgentRefreshPlan {
 	return {
+		orders: [],
 		operations: [],
 		fetchTasks: [],
 		refetchTasks: [],
@@ -490,6 +493,11 @@ export function planAgentRefresh(receipts: readonly AgentReceipt[]): AgentRefres
 	for (const {tool, arguments: args, result} of receipts) {
 		const id = positiveId(args.id)
 		switch (tool) {
+			case 'reorder_view_tasks': {
+				const order = parseTaskOrderResult(result, args)
+				if (order) plan.orders.push(order)
+				break
+			}
 			case 'call_mcp_tool':
 				// Remote tool arguments/results are not Vikunja entities, even when their names or IDs match.
 				break
@@ -907,6 +915,7 @@ async function settleAgentChanges(client: QueryClient, plan: AgentRefreshPlan) {
 	// Task changes refresh membership themselves: affected open lists refetch once, affected boards reload their loaded pages.
 	const lists = changes.length ? false : plan.taskLists
 	await Promise.all([
+		...plan.orders.map(order => applyServerTaskOrder(client, order)),
 		applyServerTaskChanges(client, changes),
 		refreshEmbeddedTaskData(client, embeddedRequests(client, plan)),
 		...(lists ? [

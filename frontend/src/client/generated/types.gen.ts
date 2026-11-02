@@ -4990,6 +4990,81 @@ export type TaskDuplicate = {
     readonly duplicated_task?: Task;
 };
 
+export type TaskOrderChange = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Neighbour before the block after removing task_ids; 0 means the beginning.
+     */
+    after_task_id?: number;
+    /**
+     * Neighbour after the block after removing task_ids; 0 means the end. Both neighbours must be adjacent.
+     */
+    before_task_id?: number;
+    /**
+     * Required positive bucket for manual kanban; 0 for list/table. Never moves tasks across buckets.
+     */
+    bucket_id?: number;
+    /**
+     * Latest version from the read endpoint; stale orders fail without mutation.
+     */
+    order_version?: string;
+    /**
+     * Distinct existing task IDs, in the desired order of the moved block. No task is created or deleted.
+     */
+    task_ids?: Array<number> | null;
+};
+
+export type TaskOrderItem = {
+    done?: boolean;
+    due_date?: string;
+    end_date?: string;
+    id?: number;
+    position?: number;
+    project_id?: number;
+    start_date?: string;
+    title?: string;
+};
+
+export type TaskOrderPage = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    bucket_id?: number;
+    items?: Array<TaskOrderItem> | null;
+    manual_order?: boolean;
+    next_task_id?: number;
+    order_version?: string;
+    page?: number;
+    per_page?: number;
+    previous_task_id?: number;
+    project_id?: number;
+    total?: number;
+    total_pages?: number;
+    view_id?: number;
+    view_kind?: 'list' | 'gantt' | 'table' | 'kanban';
+};
+
+export type TaskOrderResult = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    bucket_id?: number;
+    changed_positions?: Array<TaskPosition> | null;
+    manual_order_saved?: boolean;
+    order_version?: string;
+    position_recalculated?: boolean;
+    project_id?: number;
+    task_ids?: Array<number> | null;
+    verified?: boolean;
+    view_id?: number;
+    view_kind?: 'list' | 'gantt' | 'table' | 'kanban';
+};
+
 export type TaskPosition = {
     /**
      * A URL to the JSON Schema for this object.
@@ -8759,6 +8834,58 @@ export type TaskCommentReadBodyWritable = {
 
 export type TaskDuplicateWritable = {
     [key: string]: never;
+};
+
+export type TaskOrderChangeWritable = {
+    /**
+     * Neighbour before the block after removing task_ids; 0 means the beginning.
+     */
+    after_task_id?: number;
+    /**
+     * Neighbour after the block after removing task_ids; 0 means the end. Both neighbours must be adjacent.
+     */
+    before_task_id?: number;
+    /**
+     * Required positive bucket for manual kanban; 0 for list/table. Never moves tasks across buckets.
+     */
+    bucket_id?: number;
+    /**
+     * Latest version from the read endpoint; stale orders fail without mutation.
+     */
+    order_version?: string;
+    /**
+     * Distinct existing task IDs, in the desired order of the moved block. No task is created or deleted.
+     */
+    task_ids?: Array<number> | null;
+};
+
+export type TaskOrderPageWritable = {
+    bucket_id?: number;
+    items?: Array<TaskOrderItem> | null;
+    manual_order?: boolean;
+    next_task_id?: number;
+    order_version?: string;
+    page?: number;
+    per_page?: number;
+    previous_task_id?: number;
+    project_id?: number;
+    total?: number;
+    total_pages?: number;
+    view_id?: number;
+    view_kind?: 'list' | 'gantt' | 'table' | 'kanban';
+};
+
+export type TaskOrderResultWritable = {
+    bucket_id?: number;
+    changed_positions?: Array<TaskPositionWritable> | null;
+    manual_order_saved?: boolean;
+    order_version?: string;
+    position_recalculated?: boolean;
+    project_id?: number;
+    task_ids?: Array<number> | null;
+    verified?: boolean;
+    view_id?: number;
+    view_kind?: 'list' | 'gantt' | 'table' | 'kanban';
 };
 
 export type TaskPositionWritable = {
@@ -14595,6 +14722,68 @@ export type TaskBucketUpdateResponses = {
 };
 
 export type TaskBucketUpdateResponse = TaskBucketUpdateResponses[keyof TaskBucketUpdateResponses];
+
+export type ProjectViewTaskOrderListData = {
+    body?: never;
+    path: {
+        project: number;
+        view: number;
+    };
+    query?: {
+        /**
+         * Positive real bucket ID for manual kanban; zero for list/table.
+         */
+        bucket_id?: number;
+        page?: number;
+    };
+    url: '/projects/{project}/views/{view}/task-order';
+};
+
+export type ProjectViewTaskOrderListErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type ProjectViewTaskOrderListError = ProjectViewTaskOrderListErrors[keyof ProjectViewTaskOrderListErrors];
+
+export type ProjectViewTaskOrderListResponses = {
+    /**
+     * OK
+     */
+    200: TaskOrderPage;
+};
+
+export type ProjectViewTaskOrderListResponse = ProjectViewTaskOrderListResponses[keyof ProjectViewTaskOrderListResponses];
+
+export type ProjectViewTaskOrderUpdateData = {
+    body: TaskOrderChangeWritable;
+    path: {
+        project: number;
+        view: number;
+    };
+    query?: never;
+    url: '/projects/{project}/views/{view}/task-order';
+};
+
+export type ProjectViewTaskOrderUpdateErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type ProjectViewTaskOrderUpdateError = ProjectViewTaskOrderUpdateErrors[keyof ProjectViewTaskOrderUpdateErrors];
+
+export type ProjectViewTaskOrderUpdateResponses = {
+    /**
+     * OK
+     */
+    200: TaskOrderResult;
+};
+
+export type ProjectViewTaskOrderUpdateResponse = ProjectViewTaskOrderUpdateResponses[keyof ProjectViewTaskOrderUpdateResponses];
 
 export type ProjectViewTasksListData = {
     body?: never;

@@ -3166,6 +3166,8 @@
 			"delegate_tasks": "分派并行子任务",
 			"read_tool_result": "读取完整工具结果",
 			"view_attachment": "查看附件",
+			"list_view_tasks": "查看视图内任务顺序",
+			"reorder_view_tasks": "调整视图内任务顺序",
 			"list_project_views": "查看项目视图",
 			"list_buckets": "查看看板分组",
 			"create_bucket": "新建看板分组",
@@ -3177,6 +3179,22 @@
 		"routineReview": {
 			"absoluteProgress": "这会替换本期已记录的总量，不是在原有数量上累加；设为 0 会清除本期进度。",
 			"noUnit": "无单位"
+		},
+		"taskOrder": {
+			"saved": "已保存此视图的任务手动顺序。",
+			"manualHint": "其他排序或父子分组可能呈现不同顺序；任务日期、完成状态和父子关系均未改变。",
+			"viewManual": "按手动顺序查看",
+			"reviewHint": "将这些任务作为一组移动，调整此视图内的平铺手动顺序；任务日期、完成状态和父子关系保持不变。",
+			"project": "项目",
+			"view": "视图",
+			"bucket": "栏目",
+			"before": "所选任务原顺序",
+			"after": "所选任务新顺序",
+			"taskId": "任务 #{id}",
+			"afterTask": "放在{task}之后。",
+			"beforeTask": "放在{task}之前。",
+			"first": "放在此视图或栏目的最前面。",
+			"last": "放在此视图或栏目的最后面。"
 		},
 		"repeatPolicy": {
 			"default": "回到看板默认栏目",

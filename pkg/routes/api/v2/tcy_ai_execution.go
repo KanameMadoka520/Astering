@@ -147,11 +147,17 @@ func (e *aiExecution) prepareDirectTool(ctx context.Context, name string, raw js
 	if tcyai.IsChatImageTool(name) {
 		return e.prepareChatImage(ctx, name, raw)
 	}
+	if name == "reorder_view_tasks" {
+		return e.prepareTaskOrder(ctx, raw)
+	}
+	if name == "list_view_tasks" {
+		return tcyai.Operation{Units: 1}, nil
+	}
 	return e.prepareBucket(ctx, name, raw)
 }
 
 func (e *aiExecution) prepare(ctx context.Context, name string, raw json.RawMessage) (tcyai.Operation, error) {
-	if tcyai.IsChatImageTool(name) || tcyai.IsBucketTool(name) {
+	if tcyai.IsChatImageTool(name) || tcyai.IsBucketTool(name) || tcyai.IsTaskOrderTool(name) {
 		return e.prepareDirectTool(ctx, name, raw)
 	}
 	op := tcyai.Operation{Units: 1, ProjectIDs: []int64{}, After: string(raw)}
@@ -256,6 +262,13 @@ func (e *aiExecution) prepare(ctx context.Context, name string, raw json.RawMess
 }
 func marshalAI(value any) (string, error) { raw, err := json.Marshal(value); return string(raw), err }
 func (e *aiExecution) execute(ctx context.Context, name string, raw json.RawMessage) (string, error) {
+	if tcyai.IsTaskOrderTool(name) {
+		if _, err := serveAITool(ctx, e.api, e.caller, "validate_session", "/user", http.MethodGet, nil, nil); err != nil {
+			return "", err
+		}
+		return e.executeTaskOrder(ctx, name, raw)
+	}
+
 	if tcyai.IsChatImageTool(name) {
 		if _, err := serveAITool(ctx, e.api, e.caller, "validate_session", "/user", http.MethodGet, nil, nil); err != nil {
 			return "", err

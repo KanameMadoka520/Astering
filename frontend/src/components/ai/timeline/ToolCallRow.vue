@@ -4,6 +4,8 @@ import {useI18n} from 'vue-i18n'
 import type {IconProp} from '@fortawesome/fontawesome-svg-core'
 import type {Action, Operation, ToolCall} from '@/client/generated'
 import WebSearchEvidence from '@/components/ai/WebSearchEvidence.vue'
+import TaskOrderReceipt from '@/components/ai/TaskOrderReceipt.vue'
+import {parseTaskOrderResult} from '@/helpers/taskOrder'
 import {usePreferredOpen} from '@/composables/useAronaDisplayPreferences'
 import {argumentSummary, callArguments, callName, isSteeringReplan} from '@/helpers/aronaTimeline'
 
@@ -65,6 +67,14 @@ const externalSource = computed(() => {
 		return ''
 	}
 })
+const taskOrder = computed(() => {
+	if (props.action?.tool !== 'reorder_view_tasks' || !props.action.success || props.operation?.external) return undefined
+	try {
+		return parseTaskOrderResult(JSON.parse(props.action.result ?? ''), JSON.parse(props.action.arguments ?? ''))
+	} catch {
+		return undefined
+	}
+})
 function pretty(value?: string) {
 	if (!value) return t('chat.unavailable')
 	try { return JSON.stringify(JSON.parse(value), null, 2) } catch { return value }
@@ -72,74 +82,82 @@ function pretty(value?: string) {
 </script>
 
 <template>
-	<details
+	<div
 		class="tool-row"
 		:class="`is-${state}`"
-		:open="open"
-		@toggle="onToggle"
 	>
-		<summary>
-			<Icon
-				class="disclosure-icon"
-				icon="chevron-right"
-			/>
-			<Icon
-				class="state-icon"
-				:icon="ICONS[state]"
-			/>
-			<span class="tool-name">{{ label }}</span>
-			<span
-				v-if="externalSource"
-				class="tool-args"
-				:title="externalSource"
-			>{{ t('tcy.mcp.externalSource', {name: externalSource}) }}</span>
-			<span class="tool-state">{{ stateText }}</span>
-			<span
-				v-if="duration"
-				class="tool-time"
-			>{{ duration }}</span>
-			<span
-				v-if="argumentText"
-				class="tool-args"
-			>{{ argumentText }}</span>
-		</summary>
-		<!-- Arguments and results can be large; render them only while open. -->
-		<div
-			v-if="open"
-			class="tool-body"
+		<details
+			class="tool-disclosure"
+			:open="open"
+			@toggle="onToggle"
 		>
-			<p
-				v-if="state === 'skipped'"
-				class="tool-note"
-			>
-				{{ t('aronaSteer.skippedNote') }}
-			</p>
-			<template v-if="action">
-				<WebSearchEvidence
-					v-if="action.search"
-					:result="action.search"
+			<summary>
+				<Icon
+					class="disclosure-icon"
+					icon="chevron-right"
 				/>
-				<strong>{{ t('chat.arguments') }}</strong>
-				<pre tabindex="0">{{ pretty(action.arguments) }}</pre>
-				<strong>{{ t('chat.actualResult') }}</strong>
-				<pre tabindex="0">{{ pretty(action.result) }}</pre>
-			</template>
-			<template v-else-if="operation">
+				<Icon
+					class="state-icon"
+					:icon="ICONS[state]"
+				/>
+				<span class="tool-name">{{ label }}</span>
+				<span
+					v-if="externalSource"
+					class="tool-args"
+					:title="externalSource"
+				>{{ t('tcy.mcp.externalSource', {name: externalSource}) }}</span>
+				<span class="tool-state">{{ stateText }}</span>
+				<span
+					v-if="duration"
+					class="tool-time"
+				>{{ duration }}</span>
+				<span
+					v-if="argumentText"
+					class="tool-args"
+				>{{ argumentText }}</span>
+			</summary>
+			<!-- Arguments and results can be large; render them only while open. -->
+			<div
+				v-if="open"
+				class="tool-body"
+			>
 				<p
-					v-if="state === 'rejected'"
+					v-if="state === 'skipped'"
 					class="tool-note"
 				>
-					{{ t('aronaRun.rejectedNote') }}
+					{{ t('aronaSteer.skippedNote') }}
 				</p>
-				<strong>{{ t('chat.arguments') }}</strong>
-				<pre tabindex="0">{{ pretty(operation.arguments || call?.function?.arguments) }}</pre>
-			</template>
-			<template v-else>
-				<strong>{{ t('aronaRun.proposedArguments') }}</strong>
-				<pre tabindex="0">{{ pretty(call?.function?.arguments) }}</pre>
-			</template>
-		</div>
-	</details>
+				<template v-if="action">
+					<WebSearchEvidence
+						v-if="action.search"
+						:result="action.search"
+					/>
+					<strong>{{ t('chat.arguments') }}</strong>
+					<pre tabindex="0">{{ pretty(action.arguments) }}</pre>
+					<strong>{{ t('chat.actualResult') }}</strong>
+					<pre tabindex="0">{{ pretty(action.result) }}</pre>
+				</template>
+				<template v-else-if="operation">
+					<p
+						v-if="state === 'rejected'"
+						class="tool-note"
+					>
+						{{ t('aronaRun.rejectedNote') }}
+					</p>
+					<strong>{{ t('chat.arguments') }}</strong>
+					<pre tabindex="0">{{ pretty(operation.arguments || call?.function?.arguments) }}</pre>
+				</template>
+				<template v-else>
+					<strong>{{ t('aronaRun.proposedArguments') }}</strong>
+					<pre tabindex="0">{{ pretty(call?.function?.arguments) }}</pre>
+				</template>
+			</div>
+		</details>
+		<TaskOrderReceipt
+			v-if="taskOrder"
+			:result="taskOrder"
+		/>
+	</div>
 </template>
 
 <style scoped lang="scss">
@@ -181,7 +199,7 @@ summary {
 	transition: transform var(--motion-fast) var(--ease-standard);
 }
 
-.tool-row[open] > summary > .disclosure-icon {
+.tool-disclosure[open] > summary > .disclosure-icon {
 	transform: rotate(90deg);
 }
 
@@ -220,7 +238,7 @@ summary {
 	font-size: var(--text-xs);
 }
 
-.is-failed > summary,
+.is-failed summary,
 .is-failed .tool-name {
 	color: var(--danger-text);
 }

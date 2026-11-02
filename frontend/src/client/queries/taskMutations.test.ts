@@ -319,7 +319,11 @@ describe('task mutations', () => {
 			.build(client, updateTaskPositionMutationOptions())
 			.execute({taskId: 1, project_view_id: 2, position: 3})
 		expect(client.getQueryData<PaginatedTask>(key)?.items?.map(task => task.id)).toEqual([2, 1])
-		expect(client.getQueryData(other)).toEqual(data)
+		expect(client.getQueryData<PaginatedTask>(other)?.items?.map(task => task.id)).toEqual([1, 2])
+		expect(client.getQueryData<PaginatedTask>(other)?.items?.[0]).toMatchObject({
+			position: 1,
+			positions: [{task_id: 1, project_view_id: 2, position: 3}],
+		})
 	})
 
 	it('reorders descending lists in their own direction and leaves unsorted ones alone', async () => {
