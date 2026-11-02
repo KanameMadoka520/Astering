@@ -6,7 +6,9 @@ import Message from '@/components/misc/Message.vue'
 import ModelPicker from './ModelPicker.vue'
 import SpeechRecognitionOptions from './SpeechRecognitionOptions.vue'
 import SpeechConnectionTest from './SpeechConnectionTest.vue'
+import AliyunSpeechAccess from './AliyunSpeechAccess.vue'
 import type {AIConnection, AIProtocol, SpeechModel} from '@/client/queries/tcyAi'
+import {aliyunSpeechModelConnection, speechConnectionCanProbe, supportsAliyunSpeechAccess} from '@/helpers/aliyunSpeech'
 import {
 	speechAudioLimit,
 	type SpeechConnectionPresentation,
@@ -31,7 +33,7 @@ const emit = defineEmits<{
 	default: [connection: AIConnection]
 	remove: [connection: AIConnection]
 	models: [connection: AIConnection]
-	test: [connection: AIConnection, file: File]
+	test: [connection: AIConnection, file?: File]
 	resetTest: []
 }>()
 const {t} = useI18n({useScope: 'global'})
@@ -65,6 +67,7 @@ function toggleEnabled() {
 	update({speech: {...props.connection.speech, disabled: enabled.value}})
 }
 function modelConnection(model: SpeechModel): AIConnection {
+	if (props.provider.id === 'aliyun') return aliyunSpeechModelConnection(props.connection, model)
 	return {
 		...props.connection,
 		model: model.id,
@@ -196,6 +199,11 @@ function value(event: Event) {
 			>
 				{{ t('speechSettings.keyDestinationChanged') }}
 			</Message>
+			<AliyunSpeechAccess
+				v-if="provider.id === 'aliyun' && supportsAliyunSpeechAccess(connection.protocol)"
+				:connection="connection"
+				@update:connection="emit('update:connection', $event)"
+			/>
 			<div class="speech-field">
 				<div class="speech-field__heading">
 					<label :for="`${connection.id}-speech-key`">{{ t('tcymc.apiKey') }}</label>
@@ -360,6 +368,7 @@ function value(event: Event) {
 			<SpeechConnectionTest
 				:key="connection.id"
 				:can-test="state.canTest && enabled"
+				:can-probe="speechConnectionCanProbe(connection)"
 				:testing="state.testing"
 				:max-bytes="speechAudioLimit(connection)"
 				:result="state.result"

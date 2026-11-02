@@ -616,12 +616,12 @@ func testAISearch(ctx context.Context, c tcyai.Connection) (*aiTextResponse, err
 }
 
 func registerAIConnectionTest(api huma.API, op func(string, string, string, string) huma.Operation) {
-	Register(api, op("tcy-ai-test", "POST", "/ai/test", "测试已保存模型的文字响应或语音转写能力"), func(ctx context.Context, in *struct {
+	Register(api, op("tcy-ai-test", "POST", "/ai/test", "测试已保存模型的文字响应、语音识别或阿里实时语音连接握手"), func(ctx context.Context, in *struct {
 		Body struct {
 			ConnectionID string            `json:"connection_id"`
 			WebSearch    bool              `json:"web_search,omitempty" doc:"Test actual web search, not chat or write tools."`
 			Connection   *tcyai.Connection `json:"connection,omitempty" doc:"Optional unsaved connection for search tests; saved secrets only reused on the same origin."`
-			Audio        string            `json:"audio"`
+			Audio        string            `json:"audio" doc:"Base64 audio for recognition tests; empty only supports a real no-audio handshake for dashscope-asr and qwen-asr-realtime."`
 			Filename     string            `json:"filename"`
 		}
 	}) (*aiTextResponse, error) {
@@ -647,10 +647,16 @@ func registerAIConnectionTest(api huma.API, op func(string, string, string, stri
 				}
 				out := &aiTextResponse{}
 				out.Body.Endpoint = tcyai.Endpoint(c)
-				if c.Kind == "chat" {
+				switch {
+				case c.Kind == "chat":
 					out.Body.Endpoint = tcyai.AgentEndpoint(c)
 					out.Body.Text, out.Body.Warning, err = tcyai.TestConnection(ctx, c)
-				} else {
+				case in.Body.Audio == "":
+					var speech tcyai.SpeechResult
+					speech, err = tcyai.TestSpeechConnection(ctx, c)
+					setSpeechResponse(out, speech)
+					out.Body.Warning = tcylocale.Render(ctx, tcylocale.Error("speechProbeOnly"))
+				default:
 					data, e := decodeAIAudio(in.Body.Audio)
 					if e != nil {
 						return nil, aiError(ctx, e)

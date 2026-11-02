@@ -37,6 +37,7 @@ import (
 )
 
 type Connection struct {
+	CopyKeyFrom        string         `json:"copy_key_from,omitempty" maxLength:"80" writeOnly:"true" doc:"Save-only source connection ID. Copies this account’s saved chat key to a new chat connection at the same credential destination; never persisted or returned."`
 	Speech             *SpeechOptions `json:"speech,omitempty" doc:"Optional provider-specific speech recognition configuration."`
 	AutoCompactTokens  int64          `json:"auto_compact_tokens,omitempty" minimum:"0" maximum:"9007199254740991" doc:"Soft input threshold for automatic compaction; zero derives from declared capacity or uses a 128000-token policy, never a capacity claim."`
 	DisableAutoCompact bool           `json:"disable_auto_compact,omitempty" doc:"Disable automatic context checkpoints for this connection."`
@@ -109,6 +110,9 @@ func read(uid int64) (s Settings, err error) {
 		return s, tcylocale.Error("e13")
 	}
 	err = json.Unmarshal(plain, &s)
+	for i := range s.Connections {
+		s.Connections[i].CopyKeyFrom = ""
+	}
 	return s, err
 }
 
@@ -124,6 +128,7 @@ func Redact(s Settings) Settings {
 		s.Connections[i].Protocol = s.Connections[i].EffectiveProtocol()
 		s.Connections[i].HasKey = s.Connections[i].APIKey != ""
 		s.Connections[i].APIKey = ""
+		s.Connections[i].CopyKeyFrom = ""
 		resolved := s.Connections[i].Capabilities()
 		s.Connections[i].Resolved = &resolved
 	}
@@ -143,9 +148,15 @@ func (s Settings) Find(id, kind string) (Connection, error) {
 	return Connection{}, tcylocale.Error("e46")
 }
 
-func Save(uid int64, s Settings) (Settings, error) {
+func Save(uid int64, s Settings) (result Settings, err error) {
 	settingsLock.Lock()
-	defer func() { settingsLock.Unlock(); cleanupRevokedAccount(uid) }()
+	defer func() {
+		if err != nil {
+			result = Redact(result)
+		}
+		settingsLock.Unlock()
+		cleanupRevokedAccount(uid)
+	}()
 	old, err := read(uid)
 	if err != nil {
 		return s, err
@@ -156,11 +167,17 @@ func Save(uid int64, s Settings) (Settings, error) {
 	if len(s.Connections) > 20 {
 		return s, tcylocale.Error("e30")
 	}
+	s.Connections = append([]Connection(nil), s.Connections...)
 	ids := map[string]bool{}
 	for i := range s.Connections {
 		c := &s.Connections[i]
 		if err := validateConnection(c, ids); err != nil {
 			return s, err
+		}
+		if c.CopyKeyFrom != "" {
+			if err := copyConnectionKey(c, old); err != nil {
+				return s, err
+			}
 		}
 		if c.APIKey == "" {
 			for _, prev := range old.Connections {
@@ -185,6 +202,30 @@ func Save(uid int64, s Settings) (Settings, error) {
 	return writeSettings(uid, s)
 }
 
+// Only persisted source connections participate, so drafts cannot form key-copy chains.
+func copyConnectionKey(target *Connection, old Settings) error {
+	if target.APIKey != "" || target.Kind != "chat" {
+		return tcylocale.Error("connectionKeyCopyInvalid")
+	}
+	var source *Connection
+	for i := range old.Connections {
+		connection := &old.Connections[i]
+		if connection.ID == target.ID {
+			return tcylocale.Error("connectionKeyCopyInvalid")
+		}
+		if connection.ID == target.CopyKeyFrom {
+			source = connection
+		}
+	}
+	if source == nil || source.Kind != "chat" || source.APIKey == "" ||
+		source.EffectiveProtocol() != target.EffectiveProtocol() || !sameSpeechSecretDestination(*source, *target) {
+		return tcylocale.Error("connectionKeyCopyInvalid")
+	}
+	target.APIKey = source.APIKey
+	target.CopyKeyFrom = ""
+	return nil
+}
+
 func writeSettings(uid int64, s Settings) (Settings, error) {
 	var result Settings
 	err := withAccountWrite(uid, func() error {
@@ -198,6 +239,10 @@ func writeSettings(uid int64, s Settings) (Settings, error) {
 func writeSettingsFile(uid int64, s Settings) (Settings, error) {
 	if accountDeleted(uid) {
 		return s, ErrAccountDeleted
+	}
+	s.Connections = append([]Connection(nil), s.Connections...)
+	for i := range s.Connections {
+		s.Connections[i].CopyKeyFrom = ""
 	}
 	plain, err := json.Marshal(s)
 	if err != nil {
@@ -284,6 +329,9 @@ func (c Connection) ValidateProtocol() error {
 
 // ResolveConnection accepts draft metadata but only reuses this user's saved key at the same endpoint.
 func ResolveConnection(uid int64, c Connection) (Connection, error) {
+	if c.CopyKeyFrom != "" {
+		return Connection{}, tcylocale.Error("connectionKeyCopyInvalid")
+	}
 	if err := validateConnection(&c, map[string]bool{}); err != nil {
 		return c, err
 	}

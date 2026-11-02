@@ -11,9 +11,17 @@
 基于 [Vikunja 官方 v2.7.1](https://github.com/go-vikunja/vikunja/releases/tag/v2.7.1) 的个人记录与团队项目管理扩展，由 **KanameMadoka520** 维护。保留上游项目、任务、甘特图、看板、提醒、CalDAV 和 MCP，增加可配置模型的 AI 助手、语音输入和独立公开主页。
 
 - 源码与问题反馈：[KanameMadoka520/vikunja-x](https://github.com/KanameMadoka520/vikunja-x)
-- 版本：`v2.7.1-tcymc.41`
+- 版本：`v2.7.1-tcymc.42`
 - 许可证：AGPL-3.0-or-later；上游版权和许可证继续适用，参见 [LICENSE](LICENSE) 与 [上游 README](README.upstream.md)。本项目是独立二次开发版。
 
+
+## 工具定义失效与重试恢复（tcymc.42）
+
+历史工具定义在升级后可能发生变化。阿罗娜会在本轮执行上下文中看到需要重新发现的工具名称，按需获取当前定义；继续保留参数、权限和审核校验，不自动重放失败的写入。完整的工具发现结果不再套用普通业务结果的截断预览，旧版会话重试也能恢复当前轮已经发现的工具。详见 [工具加载与恢复规则](docs/agent-tool-loading.md)。
+
+文字与多模态连接可以复制为独立草稿，更换模型后单独保存。在同一接口地址与协议下，密钥由服务器在保存时安全复制，读取接口不回显；更换认证目的地需要重新填写密钥。复制不改变默认助手，也不会提交原连接或其他卡片尚未保存的修改。
+
+阿里百炼新连接改为标准北京地址，只填 API Key 与模型即可使用，工作空间与词表 ID 保留为可选高级配置。任务 WebSocket 与 Qwen Realtime 支持无需音频的真实连接探测，文件识别测试仍可检查实际转写。既有连接不自动迁移，切换地域时密钥仍受目的地保护。详见 [阿里简化接入与测试边界](docs/speech-and-routines-v41.md#阿里百炼简化接入tcymc42)。
 
 ## 专用语音接入与周期任务（tcymc.41）
 
@@ -474,9 +482,9 @@ pnpm vitest run src/i18n/coverage.test.ts src/helpers/tcyAudio.test.ts
 git clone https://github.com/KanameMadoka520/vikunja-x.git
 cd vikunja-x
 docker build -f Dockerfile.tcymc \
-  --build-arg RELEASE_VERSION=v2.7.1-tcymc.41 \
+  --build-arg RELEASE_VERSION=v2.7.1-tcymc.42 \
   --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
-  -t vikunja-x:v2.7.1-tcymc.41 .
+  -t vikunja-x:v2.7.1-tcymc.42 .
 ```
 
 `Dockerfile.tcymc` 固定基础镜像摘要，使用锁定依赖构建前端，并生成带 SQLite 支持的静态 Go 二进制，最终以 UID 1000 在最小镜像中运行。提供 CA 和时区数据。数据库支持沿用上游，包括 PostgreSQL。`SOURCE_COMMIT` 写入镜像的 OCI revision 标签，便于核对运行镜像对应的源码；正式发布从干净工作树构建，并核对源码标签、镜像 ID 与运行实例。
@@ -494,12 +502,12 @@ docker run -d --name vikunja-x --restart unless-stopped \
   -e VIKUNJA_SERVICE_SECRET=替换为随机且持久保存的长密钥 \
   -e VIKUNJA_SERVICE_ENABLEREGISTRATION=false \
   -e VIKUNJA_SERVICE_TIMEZONE=Asia/Shanghai \
-  vikunja-x:v2.7.1-tcymc.41
+  vikunja-x:v2.7.1-tcymc.42
 ```
 
 通过反向代理提供 HTTPS。创建首个账号使用 `docker exec -it vikunja-x /app/vikunja/vikunja user create --help` 查看 CLI 参数。注册默认建议关闭；SMTP 初始使用上游 `VIKUNJA_MAILER_*` 配置，也可通过上述管理员页面保存；密码勿提交源码。账号名中的 admin 不会绕过上游授权功能。
 
-Release 附带源码、Git bundle、Linux amd64 二进制、Docker 镜像包及 SHA256 校验文件；先运行 `sha256sum -c SHA256SUMS`，再使用 `docker load -i vikunja-x-v2.7.1-tcymc.41.docker.tar.gz` 导入镜像。
+Release 附带源码、Git bundle、Linux amd64 二进制、Docker 镜像包及 SHA256 校验文件；先运行 `sha256sum -c SHA256SUMS`，再使用 `docker load -i vikunja-x-v2.7.1-tcymc.42.docker.tar.gz` 导入镜像。
 
 ## 本地开发与验证
 

@@ -27,7 +27,7 @@ type SpeechModel struct {
 	Prompt      bool   `json:"prompt" doc:"Adapter supports recognition context."`
 	Hotwords    bool   `json:"hotwords" doc:"Adapter supports inline vocabulary hints."`
 	Vocabulary  bool   `json:"vocabulary" doc:"Adapter supports a compiled vocabulary ID."`
-	Workspace   bool   `json:"workspace" doc:"Preset uses a dedicated Alibaba workspace hostname."`
+	Workspace   bool   `json:"workspace" doc:"Adapter supports an optional Alibaba workspace ID; required only when the endpoint contains {workspace_id}."`
 	AppID       bool   `json:"app_id" doc:"Adapter accepts the optional Volcengine application ID for legacy credentials."`
 	ResourceID  bool   `json:"resource_id" doc:"Adapter needs a Volcengine service resource ID."`
 }
@@ -49,7 +49,7 @@ func SpeechProviders() []SpeechProvider {
 			ID:          id,
 			Name:        id,
 			Protocol:    "dashscope-asr",
-			BaseURL:     "wss://{workspace_id}.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference",
+			BaseURL:     "wss://dashscope.aliyuncs.com/api-ws/v1/inference",
 			Recommended: id == "qwen-audio-3.1-asr-flash-streaming",
 			SampleRate:  16000,
 			Language:    true,
@@ -63,7 +63,7 @@ func SpeechProviders() []SpeechProvider {
 		ID:         "qwen3-asr-flash-realtime",
 		Name:       "qwen3-asr-flash-realtime",
 		Protocol:   "qwen-asr-realtime",
-		BaseURL:    "wss://{workspace_id}.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime",
+		BaseURL:    "wss://dashscope.aliyuncs.com/api-ws/v1/realtime",
 		SampleRate: 16000,
 		Language:   true,
 		Workspace:  true,
@@ -71,7 +71,7 @@ func SpeechProviders() []SpeechProvider {
 		ID:         "fun-asr-flash-2026-06-15",
 		Name:       "fun-asr-flash-2026-06-15",
 		Protocol:   "dashscope-file-asr",
-		BaseURL:    "https://{workspace_id}.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+		BaseURL:    "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
 		Language:   true,
 		Prompt:     true,
 		Hotwords:   true,

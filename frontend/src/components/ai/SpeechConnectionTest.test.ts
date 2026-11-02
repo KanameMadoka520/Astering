@@ -82,4 +82,19 @@ describe('speech connection audio test', () => {
 		expect(wrapper.get('[role="alert"]').text()).toBe('speechSettings.emptyAudio')
 		expect(wrapper.emitted('test')).toBeUndefined()
 	})
+
+	it('offers a separate connection handshake without a file and keeps recognition file-only', async () => {
+		const wrapper = mountTest()
+		await wrapper.setProps({canProbe: true})
+		const probe = wrapper.findAll('button').find(button => button.text() === 'speechSettings.probeConnection')
+		expect(probe).toBeDefined()
+		await probe!.trigger('click')
+		expect(wrapper.emitted('test')).toEqual([[]])
+		const recognition = wrapper.findAll('button').find(button => button.text() === 'speechSettings.runTest')!
+		await recognition.trigger('click')
+		expect(wrapper.emitted('test')).toHaveLength(1)
+		await wrapper.setProps({canTest: false})
+		await probe!.trigger('click')
+		expect(wrapper.emitted('test')).toHaveLength(1)
+	})
 })

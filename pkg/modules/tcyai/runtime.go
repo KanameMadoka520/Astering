@@ -192,7 +192,9 @@ func NewAgentState(ctx context.Context, c Connection, input RunInput) *AgentStat
 	for _, t := range Tools(in.Mode, in.AllowDelete) {
 		state.Available = append(state.Available, toolName(t))
 	}
-	state.restoreDiscoveredTools()
+	if stale := state.restoreDiscoveredTools(); len(stale) > 0 {
+		state.Messages[historyStart].Content = executionContext(in, c, stale...)
+	}
 	return state
 }
 

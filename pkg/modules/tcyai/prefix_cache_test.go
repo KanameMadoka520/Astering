@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -62,6 +63,111 @@ func TestTCYAICacheStableDiscoveryAndTurns(t *testing.T) {
 	assert.Equal(t, string(before), string(readTools))
 	compacted := NewAgentState(ctx, c, RunInput{Mode: "write", Message: "next", Summary: "old work"})
 	assert.NotContains(t, compacted.Available, "update_task", "compaction drops unavailable contracts; rediscover")
+}
+
+func discoveryContractHistory(t *testing.T, name string, stale bool) []Message {
+	t.Helper()
+	state := NewAgentState(context.Background(), Connection{}, RunInput{
+		Mode:        "write",
+		AllowDelete: true,
+	})
+	arguments, err := json.Marshal(map[string]any{"query": name})
+	require.NoError(t, err)
+	data, err := state.discover(arguments)
+	require.NoError(t, err)
+	callID := "discover-" + name
+	if stale {
+		var result map[string]any
+		require.NoError(t, json.Unmarshal([]byte(data), &result))
+		definitions := result["tools"].([]any)
+		require.Len(t, definitions, 1)
+		definitions[0].(map[string]any)["description"] = "Historical contract description"
+		encoded, err := json.Marshal(result)
+		require.NoError(t, err)
+		data = string(encoded)
+		callID += "-stale"
+	}
+	return []Message{
+		{
+			Role:      "assistant",
+			ToolCalls: []ToolCall{toolCall(callID, "find_tools", arguments)},
+		},
+		{
+			Role:       "tool",
+			ToolCallID: callID,
+			Content:    data,
+		},
+	}
+}
+
+func TestTCYAIStaleDiscoveryContext(t *testing.T) {
+	old := discoveryContractHistory(t, "update_task", true)
+	fresh := discoveryContractHistory(t, "update_task", false)
+	oldDelete := discoveryContractHistory(t, "delete_task", true)
+	for _, test := range []struct {
+		name       string
+		mode       string
+		history    []Message
+		wantStale  []string
+		wantLoaded bool
+	}{
+		{
+			name:      "changed contract requires rediscovery",
+			mode:      "write",
+			history:   old,
+			wantStale: []string{"update_task"},
+		},
+		{
+			name:       "unchanged contract stays reusable",
+			mode:       "write",
+			history:    fresh,
+			wantLoaded: true,
+		},
+		{
+			name:       "new valid definition supersedes stale history",
+			mode:       "write",
+			history:    append(append([]Message{}, old...), fresh...),
+			wantLoaded: true,
+		},
+		{
+			name:       "older valid definition still remains in context",
+			mode:       "write",
+			history:    append(append([]Message{}, fresh...), old...),
+			wantLoaded: true,
+		},
+		{
+			name:    "read mode cannot rediscover historical writes",
+			mode:    "read",
+			history: old,
+		},
+		{
+			name:    "disabled deletion cannot be restored",
+			mode:    "write",
+			history: oldDelete,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			state := NewAgentState(context.Background(), Connection{}, RunInput{
+				Mode:          test.mode,
+				Message:       "next request",
+				ServerHistory: test.history,
+			})
+			assert.Equal(t, test.history, state.messages()[1:state.HistoryStart], "historical messages remain byte-stable")
+			current := state.Messages[state.HistoryStart].Content
+			_, payload, ok := strings.Cut(current, "\n")
+			require.True(t, ok)
+			var execution struct {
+				StaleTools []string `json:"stale_tool_definitions"`
+			}
+			require.NoError(t, json.Unmarshal([]byte(payload), &execution))
+			assert.Equal(t, test.wantStale, execution.StaleTools)
+			if len(test.wantStale) > 0 {
+				assert.Contains(t, current, "find_tools")
+			}
+			assert.Equal(t, test.wantLoaded, slices.Contains(state.Available, "update_task"))
+			assert.NotContains(t, state.Available, "delete_task")
+		})
+	}
 }
 
 func TestTCYAIInvocationValidationAndReview(t *testing.T) {

@@ -156,6 +156,49 @@ describe('TcyAISettingsForm', () => {
 		}]})
 	})
 
+	it('duplicates saved chat settings without returning a key or submitting the source draft', async () => {
+		const wrapper = await mountForm()
+		await wrapper.get('.ai-field input').setValue('Unfinished source name')
+		await wrapper.get('.connection__copy').trigger('click')
+		await flushPromises()
+		const copy = wrapper.findAll('form.connection')[1]
+		expect(copy.text()).toContain('modelSettings.keyWillCopy')
+		expect(copy.get('input[type="password"]').element).toHaveProperty('value', '')
+		await copy.trigger('submit')
+		await flushPromises()
+		const body = sdk.tcyAiSaveSettings.mock.calls[0][0].body
+		expect(body.assistant).toBe('llm')
+		expect(body.connections[0].name).toBe('Saved LLM')
+		expect(body.connections[1]).toMatchObject({
+			copy_key_from: 'llm',
+			api_key: '',
+			protocol: 'openai-chat',
+			base_url: 'https://llm.example/v1',
+			model: 'model',
+		})
+		expect(body.connections[1].id).not.toBe('llm')
+		expect(wrapper.get('.ai-field input').element).toHaveProperty('value', 'Unfinished source name')
+	})
+
+	it.each(['address', 'protocol'])('requires a replacement key if a duplicate changes its %s before saving', async field => {
+		const wrapper = await mountForm()
+		await wrapper.get('.connection__copy').trigger('click')
+		await flushPromises()
+		const copy = wrapper.findAll('form.connection')[1]
+		if (field === 'address') await copy.findAll('.ai-field input')[1].setValue('https://another.example/v1')
+		else await copy.findAll('.ai-field select')[1].setValue('anthropic')
+		await copy.trigger('submit')
+		expect(sdk.tcyAiSaveSettings).not.toHaveBeenCalled()
+		expect(copy.text()).toContain('modelSettings.copyKeyChanged')
+		await copy.get('input[type="password"]').setValue('replacement-fixture-key')
+		await copy.trigger('submit')
+		await flushPromises()
+		expect(sdk.tcyAiSaveSettings.mock.calls[0][0].body.connections[1]).toMatchObject({
+			api_key: 'replacement-fixture-key',
+			copy_key_from: undefined,
+		})
+	})
+
 	it.each([
 		['workspace', {speech: {provider: 'openai', workspace_id: 'workspace-b', app_id: 'app-a'}}],
 		['native protocol', {protocol: 'qwen-asr-realtime'}],
@@ -263,5 +306,40 @@ describe('TcyAISettingsForm', () => {
 		expect(disabled.connections.find((connection: AISettings['connections'][number]) => connection.id === speech.id).speech.disabled).toBe(true)
 		await wrapper.findAll('button').find(button => button.text().includes('modelSettings.chat'))!.trigger('click')
 		expect(wrapper.find('.ai-field input').element).toHaveProperty('value', 'Unfinished chat rename')
+	})
+
+	it.each(['dashscope-asr', 'qwen-asr-realtime'] as const)('probes a saved %s connection without requesting an audio file', async protocol => {
+		const saved: AIConnection = {
+			id: 'aliyun-probe',
+			name: 'Alibaba speech',
+			kind: 'transcription',
+			protocol,
+			base_url: 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
+			model: 'fixture-model',
+			api_key: '',
+			has_key: true,
+			speech: {provider: 'openai'},
+		}
+		sdk.tcyAiTest.mockReset()
+		sdk.tcyAiTest.mockResolvedValue({data: {
+			endpoint: saved.base_url,
+			warning: 'Connection handshake only.',
+			elapsed_ms: 20,
+		}})
+		sdk.tcyAiSettings.mockResolvedValue({data: {...SAVED, connections: [...SAVED.connections, saved]}})
+		const wrapper = await mountForm(true)
+		await wrapper.findAll('button').find(button => button.text().includes('modelSettings.transcription'))!.trigger('click')
+		await flushPromises()
+		await wrapper.get('.speech-provider-card').trigger('click')
+		const dialog = wrapper.getComponent(SpeechProviderDialog)
+		dialog.vm.$emit('test', dialog.props('connection'))
+		await flushPromises()
+		expect(sdk.tcyAiTest).toHaveBeenCalledTimes(1)
+		expect(sdk.tcyAiTest.mock.calls[0][0].body).toMatchObject({
+			connection_id: saved.id,
+			audio: '',
+			filename: '',
+		})
+		expect(wrapper.text()).toContain('Connection handshake only.')
 	})
 })

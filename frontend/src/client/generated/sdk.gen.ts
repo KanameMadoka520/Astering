@@ -883,9 +883,9 @@ export const tcyAiSpeechProviders = <ThrowOnError extends boolean = true>(option
 });
 
 /**
- * 测试已保存模型的文字响应或语音转写能力
+ * 测试已保存模型的文字响应、语音识别或阿里实时语音连接握手
  *
- * 测试已保存模型的文字响应或语音转写能力。仅供当前登录用户使用，不向 MCP 暴露。
+ * 测试已保存模型的文字响应、语音识别或阿里实时语音连接握手。仅供当前登录用户使用，不向 MCP 暴露。
  */
 export const tcyAiTest = <ThrowOnError extends boolean = true>(options: Options<TcyAiTestData, ThrowOnError>): RequestResult<TcyAiTestResponses, TcyAiTestErrors, ThrowOnError> => (options.client ?? client).post<TcyAiTestResponses, TcyAiTestErrors, ThrowOnError>({
     security: [{

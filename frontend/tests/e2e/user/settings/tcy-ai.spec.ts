@@ -297,6 +297,8 @@ test('Alibaba streaming preset persists workspace and displays the resolved endp
 	const provider = page.getByRole('button', {name: '配置阿里云', exact: true})
 	await provider.click()
 	const dialog = page.getByRole('dialog', {name: '阿里云设置', exact: true})
+	await dialog.getByText('专属工作空间地址（高级，可选）', {exact: true}).click()
+	await dialog.getByRole('button', {name: '使用北京专属工作空间地址', exact: true}).click()
 	await dialog.getByLabel('API 密钥', {exact: true}).fill('fixture-bailian-only-key')
 	await dialog.getByLabel(/^工作空间 ID/).fill('fixture-workspace')
 	await dialog.getByLabel(/^识别语言/).fill('zh')

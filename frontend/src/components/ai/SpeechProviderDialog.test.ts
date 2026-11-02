@@ -139,6 +139,48 @@ describe('speech provider dialog', () => {
 		expect(wrapper.text()).not.toContain('speechSettings.promptHint')
 	})
 
+	it('does not require a workspace for a standard Alibaba endpoint and folds optional vocabulary', async () => {
+		const wrapper = mountDialog()
+		await wrapper.setProps({
+			connection: {
+				...connection,
+				base_url: 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
+			},
+			provider: {
+				...provider,
+				models: [{...model, vocabulary: true}],
+			},
+		})
+		const workspace = wrapper.findAll('label').find(label => label.text().includes('speechSettings.workspace'))!
+		expect(workspace.get('input').attributes('required')).toBeUndefined()
+		const vocabulary = wrapper.findAll('label').find(label => label.text().includes('speechSettings.vocabulary'))!
+		const enhancement = vocabulary.element.closest('details')
+		expect(enhancement).not.toBeNull()
+		expect(enhancement!.open).toBe(false)
+		expect(vocabulary.get('input').attributes('required')).toBeUndefined()
+	})
+
+	it.each([
+		'wss://dashscope-intl.aliyuncs.com/api-ws/v1/inference',
+		'wss://existing-workspace.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference',
+		'wss://my-proxy.example/speech',
+	])('keeps the existing host when choosing or defaulting a model: %s', async baseURL => {
+		const wrapper = mountDialog()
+		await wrapper.setProps({
+			connection: {...connection, base_url: baseURL},
+			provider: {
+				...provider,
+				models: [{...model, base_url: 'wss://dashscope.aliyuncs.com/api-ws/v1/inference'}],
+			},
+		})
+		await wrapper.get('.speech-model__choose').trigger('click')
+		expect(wrapper.emitted('update:connection')?.[0]?.[0]).toMatchObject({base_url: baseURL})
+		const makeDefault = wrapper.findAll('.speech-model button')
+			.find(candidate => candidate.text() === 'speechSettings.makeDefault')!
+		await makeDefault.trigger('click')
+		expect(wrapper.emitted('default')?.[0]?.[0]).toMatchObject({base_url: baseURL})
+	})
+
 	it('emits a disabled draft without mutating the saved connection', async () => {
 		const wrapper = mountDialog()
 		await wrapper.get('input[role="switch"]').setValue(false)

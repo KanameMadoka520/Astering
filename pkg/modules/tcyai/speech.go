@@ -35,7 +35,7 @@ type SpeechOptions struct {
 	Prompt       string   `json:"prompt,omitempty" maxLength:"8000" doc:"Optional recognition context, only sent by adapters that support it."`
 	Hotwords     []string `json:"hotwords,omitempty" maxItems:"100" doc:"Optional vocabulary hints, only sent by adapters that support them."`
 	VocabularyID string   `json:"vocabulary_id,omitempty" maxLength:"200" doc:"Provider-created vocabulary identifier when supported."`
-	WorkspaceID  string   `json:"workspace_id,omitempty" maxLength:"100" doc:"Alibaba workspace ID used to resolve the dedicated inference hostname."`
+	WorkspaceID  string   `json:"workspace_id,omitempty" maxLength:"100" doc:"Optional Alibaba workspace ID; required only when the endpoint contains {workspace_id}."`
 	AppID        string   `json:"app_id,omitempty" maxLength:"200" doc:"Volcengine application ID/app key; the access token is stored in api_key."`
 	ResourceID   string   `json:"resource_id,omitempty" maxLength:"200" doc:"Volcengine speech service resource identifier."`
 	Disabled     bool     `json:"disabled,omitempty" doc:"Disabled speech connections cannot be used as the default recognizer."`

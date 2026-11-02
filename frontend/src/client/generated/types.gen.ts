@@ -4126,7 +4126,7 @@ export type SpeechModel = {
      */
     vocabulary?: boolean;
     /**
-     * Preset uses a dedicated Alibaba workspace hostname.
+     * Adapter supports an optional Alibaba workspace ID; required only when the endpoint contains {workspace_id}.
      */
     workspace?: boolean;
 };
@@ -4165,7 +4165,7 @@ export type SpeechOptions = {
      */
     vocabulary_id?: string;
     /**
-     * Alibaba workspace ID used to resolve the dedicated inference hostname.
+     * Optional Alibaba workspace ID; required only when the endpoint contains {workspace_id}.
      */
     workspace_id?: string;
 };
@@ -5224,6 +5224,9 @@ export type TcyAiTestRequest = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    /**
+     * Base64 audio for recognition tests; empty only supports a real no-audio handshake for dashscope-asr and qwen-asr-realtime.
+     */
     audio?: string;
     /**
      * Optional unsaved connection for search tests; saved secrets only reused on the same origin.
@@ -6746,6 +6749,10 @@ export type ConnectionWritable = {
      * Declared model context capacity in tokens; zero uses known provider metadata or remains unknown.
      */
     context_window?: number;
+    /**
+     * Save-only source connection ID. Copies this account’s saved chat key to a new chat connection at the same credential destination; never persisted or returned.
+     */
+    copy_key_from?: string;
     /**
      * Disable automatic context checkpoints for this connection.
      */
@@ -8518,6 +8525,9 @@ export type TcyAiPromptResponseWritable = {
 };
 
 export type TcyAiTestRequestWritable = {
+    /**
+     * Base64 audio for recognition tests; empty only supports a real no-audio handshake for dashscope-asr and qwen-asr-realtime.
+     */
     audio?: string;
     /**
      * Optional unsaved connection for search tests; saved secrets only reused on the same origin.

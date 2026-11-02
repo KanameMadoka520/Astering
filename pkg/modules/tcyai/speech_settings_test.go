@@ -55,6 +55,41 @@ func TestTCYAISpeechSettingsLegacyCompatibility(t *testing.T) {
 	require.Equal(t, "fixture-key", stored.Connections[0].APIKey)
 }
 
+func TestTCYAISpeechAliStandardPresets(t *testing.T) {
+	speechSettingsFixture(t)
+	providers := SpeechProviders()
+	require.Equal(t, "aliyun", providers[0].ID)
+	require.Len(t, providers[0].Models, 4)
+	for _, model := range providers[0].Models {
+		t.Run(model.ID, func(t *testing.T) {
+			require.NotContains(t, model.BaseURL, "{workspace_id}")
+			require.Contains(t, model.BaseURL, "://dashscope.aliyuncs.com/")
+			require.True(t, model.Workspace, "dedicated workspaces remain an optional capability")
+			public, err := Save(94103, Settings{
+				Connections: []Connection{{
+					ID:       "standard-ali",
+					Name:     "Standard Ali",
+					Kind:     "transcription",
+					Protocol: model.Protocol,
+					BaseURL:  model.BaseURL,
+					Model:    model.ID,
+					APIKey:   "fixture-standard-key",
+					Speech:   &SpeechOptions{Provider: "aliyun"},
+				}},
+				Transcription: "standard-ali",
+			})
+			require.NoError(t, err, "a standard preset only needs its model and key")
+			require.Empty(t, public.Connections[0].Speech.WorkspaceID)
+			require.Empty(t, public.Connections[0].Speech.VocabularyID)
+			require.Empty(t, public.Connections[0].APIKey)
+			loaded, err := Load(94103)
+			require.NoError(t, err)
+			require.Equal(t, model.BaseURL, loaded.Connections[0].BaseURL)
+			require.Equal(t, "fixture-standard-key", loaded.Connections[0].APIKey)
+		})
+	}
+}
+
 func TestTCYAISpeechSettingsEncryptedRoundTrip(t *testing.T) {
 	speechSettingsFixture(t)
 	speech := &SpeechOptions{

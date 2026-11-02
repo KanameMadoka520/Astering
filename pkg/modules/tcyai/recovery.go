@@ -16,7 +16,10 @@
 
 package tcyai
 
-import "context"
+import (
+	"context"
+	"slices"
+)
 
 // Only a model boundary with fully recorded tool replies is safe to retry.
 // Never turn an uncertain side effect into a second execution.
@@ -139,9 +142,16 @@ func restoreRetryState(ctx context.Context, record *conversationFile, c Connecti
 			state.AppliedSteering = append(state.AppliedSteering, entry)
 		}
 	}
-	if n := len(turn.Result.Steps); n > 0 {
-		state.Available = append(state.Available, turn.Result.Steps[n-1].LoadedTools...)
+	if n := len(turn.Result.Steps); n > 0 && !state.CacheStable {
+		loaded := turn.Result.Steps[n-1].LoadedTools
+		for _, definition := range state.catalog() {
+			name := toolName(definition)
+			if slices.Contains(loaded, name) && !slices.Contains(state.Available, name) {
+				state.Available = append(state.Available, name)
+			}
+		}
 	}
+	state.restoreDiscoveredTools()
 	if !safeModelState(state) {
 		return ErrAgentReview
 	}

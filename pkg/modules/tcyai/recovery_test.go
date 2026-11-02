@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -122,6 +123,61 @@ func TestTCYAIRetryRejectsUncertainAndIncompleteHistory(t *testing.T) {
 	assert.True(t, safeModelState(state))
 	state.Result.ErrorCode = "SAVE_FAILED"
 	assert.False(t, safeModelState(state))
+}
+
+func TestTCYAILegacyRetryRestoresCurrentTurnDiscovery(t *testing.T) {
+	for _, mode := range []string{"write", "read"} {
+		t.Run(mode, func(t *testing.T) {
+			connection := Connection{Model: "fixture"}
+			state := NewAgentState(context.Background(), connection, RunInput{
+				Message:  "continue this request",
+				Mode:     mode,
+				Approval: "auto",
+			})
+			for _, name := range []string{"update_task", "delete_task"} {
+				for _, message := range discoveryContractHistory(t, name, false) {
+					state.appendMessage(message)
+				}
+			}
+			state.Result.Stage = "model"
+			step := ModelStep{}
+			for _, definition := range state.tools() {
+				step.LoadedTools = append(step.LoadedTools, toolName(definition))
+			}
+			state.Result.Steps = []ModelStep{step}
+			record := &conversationFile{
+				Conversation: Conversation{Turns: []ChatTurn{{
+					ID:     "legacy-turn",
+					Prompt: state.Input.Message,
+					Status: "failed",
+					Result: state.Result,
+				}}},
+				Contexts: [][]storedMessage{state.Messages[state.HistoryStart:]},
+			}
+			require.NoError(t, restoreRetryState(context.Background(), record, connection))
+			restored := record.States[0]
+			require.True(t, restored.CacheStable)
+			assert.Equal(t, mode == "write", slices.Contains(restored.Available, "update_task"))
+			assert.NotContains(t, restored.Available, "delete_task", "history cannot restore disabled deletion")
+			writes := 0
+			restored.Pending = []ToolCall{toolCall("next-write", "invoke_tool", json.RawMessage(`{"name":"update_task","arguments":{"id":1,"title":"updated"}}`))}
+			restored.appendMessage(Message{
+				Role:      "assistant",
+				ToolCalls: restored.Pending,
+			})
+			require.NoError(t, restored.toolStep(context.Background(), connection, func(context.Context, string, json.RawMessage) (string, error) {
+				writes++
+				return `{"id":1,"title":"updated"}`, nil
+			}, nil, func() error { return nil }))
+			if mode == "write" {
+				assert.Equal(t, 1, writes)
+				assert.True(t, restored.Result.Actions[0].Success)
+			} else {
+				assert.Zero(t, writes)
+				assert.Equal(t, "TOOL_NOT_ALLOWED", restored.Result.Operations[0].ErrorCode)
+			}
+		})
+	}
 }
 
 func TestTCYAIRetryAfterRestartUsesCheckpoint(t *testing.T) {

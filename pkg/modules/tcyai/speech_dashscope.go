@@ -161,14 +161,6 @@ func transcribeQwenRealtime(ctx context.Context, c Connection, filename string, 
 	if rate != 8000 && rate != 16000 {
 		return "", tcylocale.Error("speechProtocol08")
 	}
-	session := map[string]any{
-		"input_audio_format": "pcm",
-		"sample_rate":        rate,
-		"turn_detection":     nil,
-	}
-	if c.Speech != nil && c.Speech.Language != "" && c.Speech.Language != "auto" {
-		session["input_audio_transcription"] = map[string]string{"language": c.Speech.Language}
-	}
 	socket, cleanup, err := dialSpeechSocket(ctx, Endpoint(c), speechHeaders(c))
 	if err != nil {
 		return "", err
@@ -177,7 +169,7 @@ func transcribeQwenRealtime(ctx context.Context, c Connection, filename string, 
 	if err = wsjson.Write(ctx, socket, map[string]any{
 		"event_id": uuid.NewString(),
 		"type":     "session.update",
-		"session":  session,
+		"session":  qwenSpeechSession(c, rate),
 	}); err != nil {
 		return "", speechStreamError(ctx)
 	}
@@ -228,6 +220,18 @@ func transcribeQwenRealtime(ctx context.Context, c Connection, filename string, 
 			return "", tcylocale.Error("speechProtocol05")
 		}
 	}
+}
+
+func qwenSpeechSession(c Connection, rate int) map[string]any {
+	session := map[string]any{
+		"input_audio_format": "pcm",
+		"sample_rate":        rate,
+		"turn_detection":     nil,
+	}
+	if c.Speech != nil && c.Speech.Language != "" && c.Speech.Language != "auto" {
+		session["input_audio_transcription"] = map[string]string{"language": c.Speech.Language}
+	}
+	return session
 }
 
 func speechHeaders(c Connection) http.Header {

@@ -112,6 +112,7 @@ export function speechProviderID(connection: AIConnection): string {
 
 export interface SpeechConnectionTestResult {
 	ok: boolean
+	connectionOnly?: boolean
 	text: string
 	endpoint: string
 	elapsedMs?: number

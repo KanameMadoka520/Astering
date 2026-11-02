@@ -17,6 +17,7 @@ export type SpeechModel = Omit<Required<ProviderModel>, 'protocol'> & {protocol:
 export type SpeechProvider = Omit<Required<Provider>, 'models'> & {models: SpeechModel[]}
 export type SearchProtocol = '' | 'deepseek' | 'openai-responses' | 'openai-chat' | 'anthropic' | 'gemini'
 export type AIConnection = {
+	copy_key_from?: string,
 	speech?: SpeechOptions,
 	web_search_protocol?: SearchProtocol,
 	web_search_base_url?: string,

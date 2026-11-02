@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed, onBeforeUnmount, ref, watch} from 'vue'
+import {computed, nextTick, onBeforeUnmount, ref, watch} from 'vue'
 import {useEventListener} from '@vueuse/core'
 import {useQuery} from '@tanstack/vue-query'
 import {useI18n} from 'vue-i18n'
@@ -22,6 +22,7 @@ import {
 	isRequestContextAbort,
 } from '@/client/requestContext'
 import {prepareSpeechFile} from '@/helpers/tcyAudio'
+import {speechConnectionCanProbe} from '@/helpers/aliyunSpeech'
 import {speechRequestEndpoint} from '@/helpers/speechEndpoints'
 import {
 	sameSpeechSecretDestination,
@@ -162,6 +163,7 @@ let disposed = false
 onBeforeUnmount(() => { disposed = true })
 const testResults = ref<Record<string, {
 	ok: boolean
+	connectionOnly?: boolean
 	text: string
 	endpoint: string
 	stamp: string
@@ -359,6 +361,37 @@ function addConnection() {
 	})
 }
 
+function copyKeySource(connection: AIConnection) {
+	const source = props.initial.connections.find(item => item.id === connection.copy_key_from)
+	return source?.has_key && source.protocol === connection.protocol
+		&& sameSpeechSecretDestination(source, connection) ? source : undefined
+}
+async function copyConnection(connection: AIConnection) {
+	if (save.isPending.value || draft.value.connections.length >= MAX_CONNECTIONS) return
+	const source = connection.copy_key_from || connection.id
+	const savedSource = props.initial.connections.find(item => item.id === source)
+	const copy: AIConnection = {
+		...connection,
+		id: crypto.randomUUID(),
+		name: t('modelSettings.copyName', {name: connection.name || connection.model}).slice(0, 100),
+		input_types: [...(connection.input_types ?? [])],
+		speech: connection.speech ? {
+			...connection.speech,
+			hotwords: [...(connection.speech.hotwords ?? [])],
+		} : undefined,
+		resolved: undefined,
+		has_key: false,
+		copy_key_from: !connection.api_key && savedSource?.has_key
+			&& savedSource.protocol === connection.protocol
+			&& sameSpeechSecretDestination(savedSource, connection) ? source : undefined,
+	}
+	const index = draft.value.connections.findIndex(item => item.id === connection.id)
+	draft.value.connections.splice(index + 1, 0, copy)
+	expanded.value[copy.id] = true
+	await nextTick()
+	document.getElementById(`${copy.id}-connection-name`)?.focus()
+}
+
 function savePayload(settings: Settings) {
 	return {
 		...settings,
@@ -373,6 +406,7 @@ function savePayload(settings: Settings) {
 			base_url: c.base_url,
 			model: c.model,
 			api_key: c.api_key,
+			copy_key_from: c.api_key ? undefined : c.copy_key_from,
 			non_streaming: c.non_streaming,
 			context_window: c.context_window || 0,
 			max_output_tokens: c.max_output_tokens || 0,
@@ -389,6 +423,10 @@ function savePayload(settings: Settings) {
 async function saveConnection(connection: AIConnection, asSpeechDefault = false) {
 	if (save.isPending.value) return
 	const id = connection.id
+	if (connection.copy_key_from && !connection.api_key && !copyKeySource(connection)) {
+		cardErrors.value[id] = t('modelSettings.copyKeyChanged')
+		return
+	}
 	const submitted = cardStamp(connection)
 	const payload = initialDraft()
 	const index = payload.connections.findIndex(c => c.id === id)
@@ -522,28 +560,33 @@ async function testConnection(connection: AIConnection, testAudio?: File) {
 	const started = performance.now()
 	try {
 		let audio = ''
-		let filename = testAudio?.name ?? 'audio.webm'
+		let filename = testAudio?.name ?? ''
 		if (kind === 'transcription') {
-			if (!testAudio) return fail(t('tcymc.text.choose_an_audio_file_for_testing_first'))
-			if (!testAudio.size) return fail(t('speechSettings.emptyAudio'))
-			if (testAudio.size > speechAudioLimit(connection)) {
-				return fail(t('speechSettings.audioLimit', {size: speechAudioLimit(connection) / 1024 / 1024}))
+			if (!testAudio && !speechConnectionCanProbe(connection)) {
+				return fail(t('tcymc.text.choose_an_audio_file_for_testing_first'))
 			}
-			let file: Blob = testAudio
-			try {
-				const converted = await prepareSpeechFile(file, filename, connection.protocol)
-				file = converted.file
-				filename = converted.filename
-			} catch {
-				return fail(t('tcymc.audioConversionFailed'))
+			if (testAudio) {
+				if (!testAudio.size) return fail(t('speechSettings.emptyAudio'))
+				if (testAudio.size > speechAudioLimit(connection)) {
+					return fail(t('speechSettings.audioLimit', {size: speechAudioLimit(connection) / 1024 / 1024}))
+				}
+				let file: Blob = testAudio
+				try {
+					const converted = await prepareSpeechFile(file, filename, connection.protocol)
+					file = converted.file
+					filename = converted.filename
+				} catch {
+					return fail(t('tcymc.audioConversionFailed'))
+				}
+				audio = await readAudio(file)
 			}
-			audio = await readAudio(file)
 		}
 		if (!current()) return
 		const result = await test.mutateAsync({connection_id: id, audio, filename})
 		if (!current()) return
 		testResults.value[id] = {
 			ok: true,
+			connectionOnly: kind === 'transcription' && !testAudio,
 			text: [result.text, result.warning].filter(Boolean).join('\n'),
 			endpoint: result.endpoint ?? '',
 			stamp,
@@ -671,6 +714,7 @@ function changeInputTypes(c: AIConnection, event: Event) {
 	c.input_types = value ? value.split(',') : []
 }
 function changedAddress(c: AIConnection) {
+	if (c.copy_key_from && !c.api_key) return !copyKeySource(c)
 	const previous = props.initial.connections.find(s => s.id === c.id)
 	return previous?.has_key
 		&& !sameSpeechSecretDestination(previous, c)
@@ -724,6 +768,7 @@ function usedBy(c: AIConnection) {
 }
 function keyStatus(c: AIConnection) {
 	if (c.api_key) return t('modelSettings.keyPending')
+	if (copyKeySource(c)) return t('modelSettings.keyWillCopy')
 	return c.has_key ? t('modelSettings.keyStored') : t('modelSettings.keyMissing')
 }
 function connectionStatus(c: AIConnection): {tone: Tone, icon: IconProp, text: string} {
@@ -900,6 +945,17 @@ function connectionStatus(c: AIConnection): {tone: Tone, icon: IconProp, text: s
 							</li>
 						</ul>
 						<div class="connection__end">
+							<XButton
+								variant="tertiary"
+								type="button"
+								icon="copy"
+								class="is-small connection__copy"
+								:aria-disabled="save.isPending.value || draft.connections.length >= MAX_CONNECTIONS"
+								:aria-describedby="`${connection.id}-name`"
+								@click="copyConnection(connection)"
+							>
+								{{ t('modelSettings.copyConnection') }}
+							</XButton>
 							<span
 								class="connection__status"
 								:class="`is-${connectionStatus(connection).tone}`"
@@ -935,10 +991,17 @@ function connectionStatus(c: AIConnection): {tone: Tone, icon: IconProp, text: s
 						>
 							{{ t('mailServer.keyChange') }}
 						</Message>
+						<Message
+							v-if="copyKeySource(connection) && !connection.api_key"
+							variant="info"
+						>
+							{{ t('modelSettings.copyKeyHint', {name: copyKeySource(connection)?.name}) }}
+						</Message>
 						<div class="fields">
 							<label class="ai-field">
 								<span class="ai-field__label">{{ t('tcymc.text.connection_name') }}</span>
 								<input
+									:id="`${connection.id}-connection-name`"
 									v-model="connection.name"
 									class="input"
 									required
@@ -1613,6 +1676,7 @@ function connectionStatus(c: AIConnection): {tone: Tone, icon: IconProp, text: s
 
 .connection__end {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	justify-content: flex-end;
 	gap: var(--space-2);

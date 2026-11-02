@@ -20,6 +20,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"unicode/utf8"
 )
 
 // Audits retain the complete result. Only model-facing payloads are projected;
@@ -29,8 +30,11 @@ func modelToolResult(name string, raw json.RawMessage, data, ref string) string 
 	if name == "read_tool_result" {
 		return projected
 	}
+	// Discovery already bounds its catalog selection. Cutting its structured
+	// contracts would tell the model a tool is loaded without usable parameters.
+	needsPreview := name != "find_tools" && utf8.RuneCountInString(projected) > 16000
 	var result any
-	if len([]rune(projected)) > 16000 {
+	if needsPreview {
 		var original map[string]any
 		_ = json.Unmarshal([]byte(projected), &original)
 		preview := selectFields(original, "id", "title", "project_id", "total", "page", "per_page", "total_pages")
@@ -49,7 +53,7 @@ func modelToolResult(name string, raw json.RawMessage, data, ref string) string 
 	if ref != "" {
 		object["result_ref"] = ref
 	}
-	if projected != data || len([]rune(projected)) > 16000 {
+	if projected != data || needsPreview {
 		if ref != "" {
 			object["read_more"] = "read_tool_result"
 		} else {

@@ -5,12 +5,13 @@ import type {SpeechConnectionTestResult} from '@/helpers/speechProviders'
 
 const props = defineProps<{
 	canTest: boolean
+	canProbe?: boolean
 	testing: boolean
 	maxBytes: number
 	result?: SpeechConnectionTestResult
 }>()
 const emit = defineEmits<{
-	test: [file: File]
+	test: [file?: File]
 	reset: []
 }>()
 const {t, locale} = useI18n({useScope: 'global'})
@@ -46,6 +47,10 @@ function run() {
 	if (!props.canTest || props.testing || !file.value || error.value) return
 	emit('test', file.value)
 }
+function probe() {
+	if (!props.canTest || !props.canProbe || props.testing) return
+	emit('test')
+}
 </script>
 
 <template>
@@ -63,6 +68,20 @@ function run() {
 		<p class="speech-test__hint">
 			{{ t('speechSettings.testHint') }}
 		</p>
+		<template v-if="canProbe">
+			<XButton
+				type="button"
+				variant="secondary"
+				:loading="testing"
+				:aria-disabled="!canTest || testing"
+				@click="probe"
+			>
+				{{ t('speechSettings.probeConnection') }}
+			</XButton>
+			<p class="speech-test__hint">
+				{{ t('speechSettings.probeHint') }}
+			</p>
+		</template>
 		<label class="speech-test__file">
 			<span>{{ t('tcymc.text.audio_file_for_connection_testing') }}</span>
 			<input
@@ -108,7 +127,9 @@ function run() {
 			role="status"
 		>
 			<div class="speech-test__metrics">
-				<strong>{{ t(result.ok ? 'modelSettings.statusTested' : 'modelSettings.statusTestFailed') }}</strong>
+				<strong>{{ t(result.ok
+					? result.connectionOnly ? 'speechSettings.probePassed' : 'modelSettings.statusTested'
+					: 'modelSettings.statusTestFailed') }}</strong>
 				<span v-if="result.elapsedMs !== undefined">
 					{{ t('speechSettings.elapsed', {seconds: seconds(result.elapsedMs)}) }}
 				</span>
