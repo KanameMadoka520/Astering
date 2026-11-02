@@ -8,6 +8,7 @@ import {prepareSpeechFile, speechSampleRate} from '@/helpers/tcyAudio'
 import {useSpeechRecording} from '@/composables/useSpeechRecording'
 import {useConversationEvents} from '@/client/queries/conversationEvents'
 import {aiSettingsQuery, useCleanupAI, useTranscribeAI} from '@/client/queries/tcyAi'
+import SpeechInputControl from '@/components/ai/SpeechInputControl.vue'
 import AssistantPreferences from '@/components/ai/AssistantPreferences.vue'
 import {assistantPreferencesQuery} from '@/client/queries/assistantPreferences'
 import {builtinProfileIDs, normalizeOptions, profileOptions, validOptions, type AssistantOptions} from '@/helpers/assistantProfiles'
@@ -394,7 +395,8 @@ const cleanup = useCleanupAI()
 // eslint-disable-next-line vue/no-ref-object-reactivity-loss
 const prompt = ref(readDraft(chatID.value))
 // Synchronous, so text is filed under the conversation it was typed in even when the chat changes right after.
-watch(prompt, text => writeDraft(chatID.value, text), {flush: 'sync'})
+let draftRevision = 0
+watch(prompt, text => { draftRevision++; writeDraft(chatID.value, text) }, {flush: 'sync'})
 let switchingChat = false
 // Any other change of chat on this page (a chat created for this text by a first upload or send, a deleted chat,
 // the browser's back button) keeps the composer text, so its draft moves along. Leaving /ai clears the chat query
@@ -497,7 +499,6 @@ function resizeComposer() {
 	el.style.height = `${Math.min(el.scrollHeight, 180)}px`
 }
 watch(prompt, async () => {await nextTick(); resizeComposer()})
-const voiceOpen = ref(false)
 const effectivePrompt = useQuery(computed(() => promptQuery(projectID.value, mode.value, allowDelete.value, showSystemPrompt.value)))
 const tidy = ref(true)
 const original = ref('')
@@ -510,9 +511,11 @@ const microphone = useSpeechRecording({
 	onError: kind => showNotice(t(kind === 'unsupported'
 		? 'tcymc.text.this_browser_cannot_record_audio_please_upload_an'
 		: kind === 'permission' ? 'tcymc.text.cannot_access_the_microphone_check_your_browser_s'
-			: 'tcymc.text.recording_was_interrupted_please_try_again')),
+			: kind === 'empty' ? 'tcymc.text.the_recording_is_empty_please_try_again'
+				: kind === 'too-large' ? 'tcymc.text.audio_must_not_exceed_16_mib'
+					: 'tcymc.text.recording_was_interrupted_please_try_again')),
 })
-const {recording, requesting: microphonePending, elapsed} = microphone
+const {recording, requesting: microphonePending, stopping: microphoneStopping, elapsed} = microphone
 const editingBusy = computed(() => Boolean(pendingMessage.value)
 	|| chatUploads.running.value
 	|| drivePicking.value
@@ -525,8 +528,10 @@ const editingBusy = computed(() => Boolean(pendingMessage.value)
 	|| action.isPending.value
 	|| transcribe.isPending.value
 	|| cleanup.isPending.value
-	|| recording.value || microphonePending.value)
+	|| recording.value || microphonePending.value || microphoneStopping.value)
 const busy = computed(() => !optionsReady.value || editingBusy.value || activeRun.value || Boolean(paused.value))
+// Dictation edits the draft, including an instruction to steer a running turn.
+const voiceBusy = computed(() => !optionsReady.value || editingBusy.value || archived.value)
 watch([activeRun, editingBusy, () => steer.isPending.value], ([running, editing, steering]) => {
 	emit('activity', running || editing)
 	// Expanding unmounts the panel, and an instruction's failure would have no note left to show it.
@@ -1086,18 +1091,44 @@ function captureSpeechOwner() {
 }
 type SpeechOwner = ReturnType<typeof captureSpeechOwner>
 function speechOwnerIsCurrent(owner: SpeechOwner) {
-	return !disposed && isClientRequestContextCurrent(owner.context) && chatID.value === owner.chat
+	return !disposed && presenting.value && isClientRequestContextCurrent(owner.context) && chatID.value === owner.chat
 		&& owner.connectionID !== '' && owner.configuration === JSON.stringify(speechConnection.value)
 }
+let speechAttempt: SpeechOwner | undefined
 let audioOperation = 0
 let audioController: AbortController | undefined
-// The input and conversion belong to the account, chat and recognizer selected at the gesture.
-watch([chatID, () => JSON.stringify(speechConnection.value)], () => {
+let uploadOwner: SpeechOwner | undefined
+let cleanupController: AbortController | undefined
+let cleanupOwner: {context: ReturnType<typeof captureClientRequestContext>, chat: string} | undefined
+function cancelVoice() {
 	microphone.cancel()
 	audioController?.abort()
+	cleanupController?.abort()
+	speechAttempt = undefined
 	audioOperation++
 	audioStage.value = ''
-})
+}
+function voiceKeydown(event: KeyboardEvent) {
+	if (event.key !== 'Escape' || !(recording.value || microphonePending.value || microphoneStopping.value || audioStage.value || cleanupController)) return
+	event.preventDefault()
+	event.stopPropagation()
+	cancelVoice()
+}
+// A hidden panel or a changed identity must never keep recording or apply a late transcript.
+watch([chatID, () => JSON.stringify(speechConnection.value)], () => {
+	uploadOwner = undefined
+	cancelVoice()
+}, {flush: 'sync'})
+watch(presenting, shown => { if (!shown) cancelVoice() }, {flush: 'sync'})
+watch([() => auth.session, tokenRefreshes], () => {
+	if (!speechAttemptIsCurrent() || cleanupOwner && !isClientRequestContextCurrent(cleanupOwner.context)) cancelVoice()
+}, {flush: 'sync'})
+function speechAttemptIsCurrent() {
+	return !speechAttempt || speechOwnerIsCurrent(speechAttempt)
+}
+// pagehide also covers Safari navigation/BFCache before visibility events have settled.
+onMounted(() => window.addEventListener('pagehide', cancelVoice))
+onBeforeUnmount(() => window.removeEventListener('pagehide', cancelVoice))
 async function processAudio(file: Blob, filename: string, owner = captureSpeechOwner()) {
 	if (!speechOwnerIsCurrent(owner) || audioStage.value) return
 	if (file.size > 16 * 1024 * 1024) {
@@ -1108,6 +1139,7 @@ async function processAudio(file: Blob, filename: string, owner = captureSpeechO
 		showNotice(t('tcymc.text.the_recording_is_empty_please_try_again'))
 		return
 	}
+	speechAttempt = owner
 	const operation = ++audioOperation
 	const controller = new AbortController()
 	audioController = controller
@@ -1149,33 +1181,55 @@ async function processAudio(file: Blob, filename: string, owner = captureSpeechO
 	}
 }
 
-async function toggleRecording() {
-	if (microphonePending.value) { microphone.cancel(); return }
-	if (recording.value) { microphone.stop(); return }
-	if (busy.value || !hasSpeech.value) return
-	await microphone.start()
+function startRecording() {
+	if (voiceBusy.value || !hasSpeech.value || !presenting.value) return
+	dismissNotice()
+	speechAttempt = captureSpeechOwner()
+	void microphone.start()
 }
 
+function chooseAudio() {
+	if (voiceBusy.value || !hasSpeech.value) return
+	uploadOwner = captureSpeechOwner()
+	speechAttempt = uploadOwner
+	// Keep this synchronous with the user's click (iOS file picker activation).
+	audioInput.value?.click()
+}
 async function upload(event: Event) {
 	const input = event.target as HTMLInputElement
 	const file = input.files?.[0]
-	if (file && !busy.value) await processAudio(file, file.name)
+	const owner = uploadOwner
+	uploadOwner = undefined
 	input.value = ''
+	if (file && owner && !voiceBusy.value) await processAudio(file, file.name, owner)
 }
 
 async function tidyText() {
-	if (busy.value || !prompt.value.trim() || !settings.data.value?.cleanup) return
+	if (voiceBusy.value || !prompt.value.trim() || !settings.data.value?.cleanup) return
+	const text = prompt.value
+	const revision = draftRevision
+	const context = captureClientRequestContext()
+	const chat = chatID.value
+	const controller = new AbortController()
+	cleanupController = controller
+	cleanupOwner = {context, chat}
 	try {
-		const result = await cleanup.mutateAsync(prompt.value)
+		const result = await cleanup.mutateAsync({text, signal: controller.signal})
+		if (disposed || controller.signal.aborted || !presenting.value || chatID.value !== chat || !isClientRequestContextCurrent(context)) return
+		if (draftRevision !== revision) {
+			showNotice(t('tcy.voice.draftChanged'), 'info')
+			return
+		}
 		original.value = result.original ?? ''
 		prompt.value = result.text ?? ''
-	} catch { return }
+	} catch { return } finally {
+		if (cleanupController === controller) { cleanupController = undefined; cleanupOwner = undefined }
+	}
 }
 
 onBeforeUnmount(() => {
 	disposed = true
-	audioController?.abort()
-	microphone.cancel()
+	cancelVoice()
 })
 </script>
 
@@ -1186,6 +1240,7 @@ onBeforeUnmount(() => {
 			'is-embedded': embedded,
 			'has-overlay-history': historyOverlay,
 		}"
+		@keydown.capture="voiceKeydown"
 	>
 		<header class="assistant-heading">
 			<div class="heading-actions heading-start">
@@ -1626,55 +1681,14 @@ onBeforeUnmount(() => {
 							:placeholder="t(steering ? 'aronaSteer.placeholder' : 'assistantUI.placeholder')"
 							@keydown="composerKeydown"
 						/>
-						<div
-							v-if="voiceOpen"
-							class="voice-tools"
+						<input
+							ref="audioInput"
+							class="hidden-input"
+							type="file"
+							accept="audio/*"
+							@change="upload"
+							@cancel="uploadOwner = undefined"
 						>
-							<XButton
-								variant="secondary"
-								type="button"
-								class="is-small"
-								:shadow="false"
-								:icon="recording || microphonePending ? 'stop' : 'microphone'"
-								:aria-disabled="(busy && !recording && !microphonePending) || !hasSpeech"
-								@click="toggleRecording"
-							>
-								{{ microphonePending ? t('speechSettings.cancelMicrophone') : recording ? t('tcymc.stopRecording', {seconds: elapsed}) : t('tcymc.text.record_audio') }}
-							</XButton><XButton
-								variant="secondary"
-								class="is-small"
-								icon="cloud-upload-alt"
-								:shadow="false"
-								:aria-disabled="busy || !hasSpeech"
-								@click="!busy && hasSpeech && audioInput?.click()"
-							>
-								{{ t('tcymc.text.upload_audio') }}
-							</XButton><input
-								ref="audioInput"
-								class="hidden-input"
-								type="file"
-								accept="audio/*"
-								@change="upload"
-							><label class="checkbox"><input
-								v-model="tidy"
-								type="checkbox"
-							>{{ t('tcymc.text.clean_up_the_transcript') }}</label><XButton
-								variant="secondary"
-								class="is-small"
-								:shadow="false"
-								:aria-disabled="busy || !prompt.trim() || !settings.data.value?.cleanup"
-								@click="tidyText"
-							>
-								{{ t('tcymc.text.clean_up_text') }}
-							</XButton>
-						</div>
-						<p
-							v-if="microphonePending || audioStage || cleanup.isPending.value"
-							class="audio-progress"
-							role="status"
-						>
-							<progress :aria-label="microphonePending ? t('speechSettings.waitingForMicrophone') : t(`flow.${audioStage || 'audioProcessing'}`)" /> {{ microphonePending ? t('speechSettings.waitingForMicrophone') : t(`flow.${audioStage || 'audioProcessing'}`) }}
-						</p>
 						<div
 							class="composer-tools"
 							:class="{'is-steering': showSteerSend}"
@@ -1686,16 +1700,24 @@ onBeforeUnmount(() => {
 									@device="fileInput?.click()"
 									@drive="driveOpen = true"
 								/>
-								<BaseButton
-									class="toolbar-button"
-									:title="microphonePending ? t('speechSettings.cancelMicrophone') : recording ? t('tcymc.stopRecording', {seconds: elapsed}) : t('assistantUI.voiceTools')"
-									:aria-label="microphonePending ? t('speechSettings.cancelMicrophone') : recording ? t('tcymc.stopRecording', {seconds: elapsed}) : t('assistantUI.voiceTools')"
-									:aria-expanded="voiceOpen"
-									:class="{'is-recording': recording}"
-									@click="recording || microphonePending ? toggleRecording() : (voiceOpen = !voiceOpen)"
-								>
-									<Icon :icon="recording || microphonePending ? 'stop' : 'microphone'" />
-								</BaseButton>
+								<SpeechInputControl
+									v-model:tidy="tidy"
+									:disabled="voiceBusy || !hasSpeech"
+									:disabled-reason="!hasSpeech ? t('tcy.voice.setupHint') : ''"
+									:recording="recording"
+									:requesting="microphonePending"
+									:stopping="microphoneStopping"
+									:processing="Boolean(audioStage) || cleanup.isPending.value"
+									:processing-label="audioStage ? t(`flow.${audioStage}`) : ''"
+									:elapsed="elapsed"
+									:can-cleanup="Boolean(settings.data.value?.cleanup)"
+									:can-tidy="!voiceBusy && Boolean(prompt.trim() && settings.data.value?.cleanup)"
+									@start="startRecording"
+									@stop="microphone.stop"
+									@cancel="cancelVoice"
+									@upload="chooseAudio"
+									@tidy="tidyText"
+								/>
 								<label
 									class="composer-chip profile-switch"
 									:title="t('assistantUI.scenarios')"
@@ -2063,11 +2085,6 @@ onBeforeUnmount(() => {
 	&:disabled {
 		opacity: .5;
 		cursor: not-allowed;
-	}
-
-	&.is-recording {
-		background: var(--tint-danger);
-		color: var(--danger-text);
 	}
 }
 
@@ -2759,30 +2776,6 @@ summary {
 
 .mode-icon {
 	inline-size: .75rem;
-}
-
-.voice-tools {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: var(--space-2);
-	margin-block-end: var(--space-2);
-	padding-block: var(--space-2);
-	border-block-end: 1px solid var(--border-subtle);
-	font-size: var(--text-sm);
-}
-
-.audio-progress {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	color: var(--text-secondary);
-	font-size: var(--text-sm);
-
-	progress {
-		inline-size: 4rem;
-		block-size: .3rem;
-	}
 }
 
 .notice {

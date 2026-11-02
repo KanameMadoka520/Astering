@@ -102,7 +102,7 @@ function expand() { open.value = false; void router.push({name: 'tcy-ai', query:
 						:key="accountKey"
 						v-model:conversation-id="conversation"
 						embedded
-						:presenting="open"
+						:presenting="open && !underDrawer"
 						:context-project-id="base.currentProjectId || 0"
 						:context-task-id="taskID"
 						@activity="running = $event"

@@ -2883,7 +2883,7 @@
 			},
 			"voice": {
 				"title": "先说出来，再检查文字",
-				"text": "点击麦克风菜单打开录音、上传音频和文字整理。识别后的文字可以先修改，再发送。"
+				"text": "点一下麦克风开始，再点一下结束录音。手机也可长按录音、松手识别。语音选项中可以上传音频和整理文字。检查文字后再发送。"
 			},
 			"send": {
 				"title": "把需求写清楚再发送",
@@ -4645,5 +4645,30 @@
 		"completedRecord": "由{user}于 {time} 达成",
 		"updatedRecord": "最近由{user}于 {time} 记录",
 		"periodCount": "{n} 个周期"
-	}
+	},
+  "tcy": {
+    "voice": {
+      "start": "开始语音输入",
+      "stop": "结束并识别",
+      "cancel": "取消语音输入",
+      "more": "语音选项",
+      "upload": "上传音频",
+      "tidy": "整理输入文字",
+      "requesting": "等待麦克风授权…",
+      "recording": "正在录音",
+      "stopping": "正在结束录音…",
+      "processing": "正在识别或整理…",
+      "tapHint": "点一下开始，再点一下结束识别。文字会保留在输入框中。",
+      "holdHint": "点按开始或结束；也可以长按录音，松手识别。",
+      "slideCancelHint": "向左滑动可取消",
+      "cancelReleaseHint": "松手取消本次录音",
+      "releaseHint": "松手结束并识别",
+      "menuLabel": "语音输入选项",
+      "elapsed": "已录音 {seconds} 秒",
+      "autoTidy": "自动整理识别结果",
+      "cleanupUnavailable": "请先在 AI 与语音设置中选择用于整理文字的模型。",
+      "setupHint": "请先在 AI 与语音设置中选择默认语音识别模型。",
+      "draftChanged": "整理期间你继续编辑了文字，已保留当前草稿。如有需要，可再次整理。"
+    }
+  }
 }

@@ -190,7 +190,7 @@ export function useTranscribeAI() {
 
 export function useCleanupAI() {
 	return useMutation(contextMutationOptions({
-		mutationFn: async (text: string) => (await tcyAiCleanup({body: {text}})).data,
+		mutationFn: async ({text, signal}: {text: string, signal?: AbortSignal}) => (await tcyAiCleanup({body: {text}, signal})).data,
 	}))
 }
 

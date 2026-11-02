@@ -2883,7 +2883,7 @@
       },
       "voice": {
         "title": "Speak, review, then send",
-        "text": "Open the microphone menu for recording, audio upload and text cleanup. Transcripts remain editable before you send."
+        "text": "Click the microphone to start and stop recording. On touchscreens you can also hold to record and release to transcribe. Voice options contains audio upload and text cleanup. Review the text before sending."
       },
       "send": {
         "title": "Describe the result you want",
@@ -4645,5 +4645,30 @@
 		"completedRecord": "Reached at {time}, by {user}",
 		"updatedRecord": "Last recorded at {time}, by {user}",
 		"periodCount": "{n} periods"
-	}
+	},
+  "tcy": {
+    "voice": {
+      "start": "Start voice input",
+      "stop": "Stop and transcribe",
+      "cancel": "Cancel voice input",
+      "more": "Voice options",
+      "upload": "Upload audio",
+      "tidy": "Clean up text",
+      "requesting": "Waiting for microphone permission…",
+      "recording": "Recording",
+      "stopping": "Finishing recording…",
+      "processing": "Recognizing or cleaning up audio…",
+      "tapHint": "Click to start, then click again to transcribe. Text stays in your draft.",
+      "holdHint": "Tap to start/stop, or hold to record and release to transcribe.",
+      "slideCancelHint": "Slide left to cancel",
+      "cancelReleaseHint": "Release to discard",
+      "releaseHint": "Release to transcribe",
+      "menuLabel": "Voice input options",
+      "elapsed": "{seconds}s recorded",
+      "autoTidy": "Automatically clean up the transcript",
+      "cleanupUnavailable": "Select a text cleanup model in AI and voice settings to enable this.",
+      "setupHint": "Choose a speech recognition model in AI and voice settings first.",
+      "draftChanged": "You edited the draft while cleanup was running. Your edits are kept; run cleanup again if needed."
+    }
+  }
 }
