@@ -20,4 +20,14 @@ describe('assistant run options', () => {
 		expect(normalizeOptions(JSON.parse(JSON.stringify(options)))).toEqual(options)
 		expect(validOptions({...options, enable_subagents: 'yes' as unknown as boolean})).toBe(false)
 	})
+	it('requires an explicit conversation choice for external MCP, including legacy templates', () => {
+		for (const id of builtinProfileIDs) expect(profileOptions(id).mcp_server_ids).toEqual([])
+		const ids = ['server-a', 'server-a', 'server-b']
+		const options = normalizeOptions({mcp_server_ids: ids})
+		expect(options.mcp_server_ids).toEqual(['server-a', 'server-b'])
+		expect(options.mcp_server_ids).not.toBe(ids)
+		expect(normalizeOptions({mcp_server_ids: null}).mcp_server_ids).toEqual([])
+		expect(validOptions({...options, mcp_server_ids: [123 as unknown as string]})).toBe(false)
+	})
+
 })

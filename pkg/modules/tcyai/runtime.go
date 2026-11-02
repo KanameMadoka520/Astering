@@ -31,18 +31,19 @@ import (
 )
 
 type Operation struct {
-	ID         string  `json:"id" doc:"Server-generated receipt identifier."`
-	Tool       string  `json:"tool" doc:"Tool name."`
-	Arguments  string  `json:"arguments" doc:"Validated arguments, including any user edits."`
-	Status     string  `json:"status" enum:"prepared,running,succeeded,failed,rejected,unknown" doc:"running after a restart means the outcome is unknown, never safe to replay."`
-	Before     string  `json:"before,omitempty" doc:"Actual pre-operation snapshot as JSON."`
-	After      string  `json:"after,omitempty" doc:"Proposed changes as JSON, not a claim of execution."`
-	ProjectIDs []int64 `json:"project_ids" doc:"Projects affected by this operation."`
-	Version    string  `json:"version,omitempty" doc:"Fingerprint used to detect changes after review."`
-	Units      int     `json:"units" doc:"Operation units; bulk writes count each target."`
-	Verified   bool    `json:"verified" doc:"The executor verified the committed task field changes."`
-	Approved   bool    `json:"approved" doc:"This exact proposal was reviewed by the user."`
-	ErrorCode  string  `json:"error_code,omitempty" doc:"Stable failure code."`
+	External   *MCPPreparedOperation `json:"external,omitempty" readOnly:"true" doc:"External MCP source, local policy and exact definition/configuration fingerprint. Never contains credentials."`
+	ID         string                `json:"id" doc:"Server-generated receipt identifier."`
+	Tool       string                `json:"tool" doc:"Tool name."`
+	Arguments  string                `json:"arguments" doc:"Validated arguments, including any user edits."`
+	Status     string                `json:"status" enum:"prepared,running,succeeded,failed,rejected,unknown" doc:"running after a restart means the outcome is unknown, never safe to replay."`
+	Before     string                `json:"before,omitempty" doc:"Actual pre-operation snapshot as JSON."`
+	After      string                `json:"after,omitempty" doc:"Proposed changes as JSON, not a claim of execution."`
+	ProjectIDs []int64               `json:"project_ids" doc:"Projects affected by this operation."`
+	Version    string                `json:"version,omitempty" doc:"Fingerprint used to detect changes after review."`
+	Units      int                   `json:"units" doc:"Operation units; bulk writes count each target."`
+	Verified   bool                  `json:"verified" doc:"The executor verified the committed task field changes."`
+	Approved   bool                  `json:"approved" doc:"This exact proposal was reviewed by the user."`
+	ErrorCode  string                `json:"error_code,omitempty" doc:"Stable failure code."`
 }
 
 type RunBudget struct {
@@ -57,6 +58,8 @@ type RunBudget struct {
 type Preparer func(context.Context, string, json.RawMessage) (Operation, error)
 
 type AgentState struct {
+	mcp               *MCPRuntime
+	MCPTickets        []MCPToolTicket `json:"mcp_tickets,omitempty"`
 	steeringFence     bool
 	AppliedSteering   []SteeringInstruction `json:"applied_steering,omitempty"`
 	KnownAttachments  []ChatAttachment      `json:"known_attachments,omitempty"`
@@ -117,6 +120,9 @@ func failureCode(err error) string {
 
 // ExplainError adds a localized explanation while retaining the exact technical detail for debugging and model recovery.
 func ExplainError(ctx context.Context, err error) string {
+	if key := mcpErrorKey(err); key != "" {
+		return tcylocale.Render(ctx, tcylocale.Error(key)) + "\n" + tcylocale.Render(ctx, err)
+	}
 	var streamError *ProviderStreamError
 	if errors.As(err, &streamError) {
 		return tcylocale.Render(ctx, tcylocale.Error("chatStreamProvider", streamError.Type, streamError.Message, streamError.RequestID))
@@ -224,6 +230,7 @@ func (state *AgentState) tools() []map[string]any {
 
 //nolint:gocyclo // Keep steering fences, budget checks, model retries and tool settlement in their execution order.
 func RunAgent(ctx context.Context, c Connection, state *AgentState, execute Executor, prepare Preparer, save func(*AgentState) error, controls ...AgentControl) (result RunResult, runErr error) {
+	defer state.closeMCP()
 	ctx, releaseClient := withProviderClient(ctx)
 	defer releaseClient()
 	startActions := len(state.Result.Actions)
@@ -527,7 +534,7 @@ func (state *AgentState) toolStep(ctx context.Context, c Connection, execute Exe
 		}
 		state.Result.Budget.OperationLimit = max(state.Result.Budget.OperationLimit, state.Result.Budget.Operations+op.Units)
 	}
-	if toolErr == nil && NeedsReview(name, state.Input) && !op.Approved {
+	if toolErr == nil && operationNeedsReview(name, state.Input, op) && !op.Approved {
 		state.Result.Pending = &op
 		state.Result.Pause = "review"
 		state.Result.Stage = "review"
@@ -575,7 +582,13 @@ func (state *AgentState) toolStep(ctx context.Context, c Connection, execute Exe
 		if errors.As(toolErr, &uncertain) && uncertain.Uncertain {
 			op.Status = "unknown"
 		}
-		payload, encodeErr := json.Marshal(map[string]any{"success": false, "code": op.ErrorCode, "message": ExplainError(ctx, toolErr), "retryable": op.Status != "unknown" && op.ErrorCode != "FORBIDDEN" && op.ErrorCode != "SCOPE_DENIED"})
+		failure := map[string]any{"success": false, "code": op.ErrorCode, "message": ExplainError(ctx, toolErr), "retryable": op.Status != "unknown" && op.ErrorCode != "FORBIDDEN" && op.ErrorCode != "SCOPE_DENIED"}
+		if name == "call_mcp_tool" && json.Valid([]byte(data)) {
+			// A JSON-RPC success envelope can contain a business failure such as
+			// a Wallos version conflict. Preserve its actual structured evidence.
+			failure["remote_result"] = json.RawMessage(data)
+		}
+		payload, encodeErr := json.Marshal(failure)
 		if encodeErr != nil {
 			return encodeErr
 		}
@@ -584,7 +597,7 @@ func (state *AgentState) toolStep(ctx context.Context, c Connection, execute Exe
 	state.Result.Operations[operationIndex] = op
 	state.Result.Actions = append(state.Result.Actions, Action{ResultRef: op.ID, Search: search, Round: state.Result.Budget.Rounds, Tool: name, Arguments: string(raw), Result: data, Success: toolErr == nil, DurationMS: time.Since(toolStarted).Milliseconds()})
 	toolContent := data
-	if state.CacheStable && toolErr == nil {
+	if state.CacheStable {
 		toolContent = modelToolResult(name, raw, data, op.ID)
 	}
 	if op.Approved && op.Arguments != call.Function.Arguments {
@@ -612,6 +625,12 @@ func (state *AgentState) toolStep(ctx context.Context, c Connection, execute Exe
 }
 
 func (state *AgentState) prepareOperation(ctx context.Context, prepare Preparer, name string, raw json.RawMessage, op Operation) (Operation, error) {
+	if IsChatImageTool(name) {
+		ctx = state.withChatImages(ctx)
+	}
+	if name == "call_mcp_tool" {
+		return state.prepareMCPOperation(ctx, raw, op)
+	}
 	if prepare == nil || !IsWriteTool(name) {
 		return op, nil
 	}
@@ -641,6 +660,7 @@ type ReviewInput struct {
 }
 
 func ReviewAgent(ctx context.Context, state *AgentState, in ReviewInput, prepare Preparer) error {
+	defer state.closeMCP()
 	r := &state.Result
 	switch in.Decision {
 	case "retry":
@@ -685,10 +705,10 @@ func ReviewAgent(ctx context.Context, state *AgentState, in ReviewInput, prepare
 			if err != nil {
 				return err
 			}
-			if prepare == nil {
+			if prepare == nil && proposal.Tool != "call_mcp_tool" {
 				return ErrAgentReview
 			}
-			updated, err := prepare(ctx, proposal.Tool, raw)
+			updated, err := state.prepareOperation(ctx, prepare, proposal.Tool, raw, Operation{})
 			if err != nil {
 				return err
 			}
@@ -729,11 +749,20 @@ func (state *AgentState) catalog() []map[string]any {
 	if !state.SearchEnabled {
 		all = slices.DeleteFunc(all, func(t map[string]any) bool { return toolName(t) == "web_search" })
 	}
+	if len(state.Input.MCPServerIDs) == 0 {
+		all = slices.DeleteFunc(all, func(t map[string]any) bool { return isMCPAgentTool(toolName(t)) })
+	}
 	return all
 }
 
 func (state *AgentState) executeAgentTool(ctx context.Context, c Connection, execute Executor, op *Operation, name string, raw json.RawMessage, persist func() error) (string, *WebSearchResult, error) {
 	switch name {
+	case "find_mcp_tools":
+		data, err := state.discoverMCP(ctx, raw)
+		return data, nil, err
+	case "call_mcp_tool":
+		data, err := state.callMCP(ctx, raw, op)
+		return data, nil, err
 	case "delegate_tasks":
 		data, err := state.delegateTasks(ctx, c, raw, execute, persist)
 		return data, nil, err
@@ -767,7 +796,11 @@ func (state *AgentState) executeAgentTool(ctx context.Context, c Connection, exe
 		data, err := state.discover(raw)
 		return data, nil, err
 	default:
-		data, err := execute(WithOperation(ctx, op), name, raw)
+		executionCtx := WithOperation(ctx, op)
+		if IsChatImageTool(name) {
+			executionCtx = state.withChatImages(executionCtx)
+		}
+		data, err := execute(executionCtx, name, raw)
 		return data, nil, err
 	}
 }

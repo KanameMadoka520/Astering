@@ -36,7 +36,9 @@ const optionId = useId()
 function choose(id: string) {
 	selected.value = id
 	const p = custom.value.find(p => p.id === id)
+	const mcpServerIDs = [...draft.value.mcp_server_ids]
 	draft.value = p ? normalizeOptions(p.options) : {...profileOptions(id), connection_id: draft.value.connection_id, project_id: draft.value.project_id}
+	draft.value.mcp_server_ids = mcpServerIDs
 	name.value = p?.name ?? ''
 	sourceProfile.value = p?.id ?? ''
 	saved.value = false
@@ -71,7 +73,11 @@ async function saveTemplate(overwrite = false) {
 	if (!name.value.trim() || !valid.value || !preferences.data.value || (!overwrite && custom.value.length >= 20)) return
 	const id = overwrite ? sourceProfile.value : `custom-${crypto.randomUUID()}`
 	if (overwrite && !custom.value.some(p => p.id === id)) return
-	const profile = {id, name: name.value.trim(), options: normalizeOptions(draft.value)}
+	const profile = {
+		id,
+		name: name.value.trim(),
+		options: {...normalizeOptions(draft.value), mcp_server_ids: []},
+	}
 	const profiles = overwrite ? custom.value.map(p => p.id === id ? profile : p) : [...custom.value, profile]
 	if (await persist({...preferences.data.value, profiles}, () => saveTemplate(overwrite))) {
 		selected.value = id

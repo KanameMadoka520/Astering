@@ -45,6 +45,12 @@ export const DESTRUCTIVE_TOOLS: ReadonlySet<string> = new Set(['delete_task', 'd
 
 export function toolLabels(t: (key: string) => string): Record<string, string> {
 	return {
+		find_mcp_tools: t('tcy.mcp.findTools'),
+		call_mcp_tool: t('tcy.mcp.callTool'),
+		get_task_description_layout: t('tcy.chatImages.layout'),
+		insert_chat_image: t('tcy.chatImages.insert'),
+		update_task_description_image: t('tcy.chatImages.update'),
+		remove_task_description_image: t('tcy.chatImages.remove'),
 		web_search: t('webSearch.title'),
 		invoke_tool: t('cacheEfficiency.callTool'),
 		list_projects: t('tcymc.text.find_projects'),

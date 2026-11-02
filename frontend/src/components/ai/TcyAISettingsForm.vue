@@ -3,7 +3,7 @@ import {computed, nextTick, onBeforeUnmount, ref, watch} from 'vue'
 import {useEventListener} from '@vueuse/core'
 import {useQuery} from '@tanstack/vue-query'
 import {useI18n} from 'vue-i18n'
-import {onBeforeRouteLeave, onBeforeRouteUpdate, useRouter, type RouteLocationNormalized} from 'vue-router'
+import {onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter, type RouteLocationNormalized} from 'vue-router'
 import type {IconProp} from '@fortawesome/fontawesome-svg-core'
 
 import ModelPicker from './ModelPicker.vue'
@@ -11,6 +11,7 @@ import WebSearchEvidence from './WebSearchEvidence.vue'
 import SpeechProviderGrid from './SpeechProviderGrid.vue'
 import SpeechProviderDialog from './SpeechProviderDialog.vue'
 import AIModelRoles from './AIModelRoles.vue'
+import MCPSettingsPanel from './MCPSettingsPanel.vue'
 import SegmentedControl, {type SegmentedOption} from '@/components/input/SegmentedControl.vue'
 import Message from '@/components/misc/Message.vue'
 import type {ListedModel, WebSearchResult} from '@/client/generated'
@@ -37,7 +38,7 @@ const props = defineProps<{initial: AISettings}>()
 const {t, locale} = useI18n({useScope: 'global'})
 
 type Settings = AISettings
-type Tab = 'chat' | 'transcription' | 'roles'
+type Tab = 'chat' | 'transcription' | 'roles' | 'mcp'
 type Role = 'assistant' | 'transcription' | 'cleanup'
 type Tone = 'neutral' | 'warning' | 'success' | 'danger'
 
@@ -74,14 +75,17 @@ const draft = ref<Settings>(initialDraft())
 const baseline = ref(JSON.stringify(initialDraft()))
 const baselineSettings = computed(() => JSON.parse(baseline.value) as Settings)
 const dirty = computed(() => JSON.stringify(draft.value) !== baseline.value)
+const mcpDirty = ref(false)
+const pageDirty = computed(() => dirty.value || mcpDirty.value)
 
 // A typed API key or base URL exists only in this draft: leaving asks first, and the route is followed only after
 // an explicit discard.
 const router = useRouter()
+const route = useRoute()
 const leaveTarget = ref<string | null>(null)
 let leaving = false
 function confirmLeave(to: RouteLocationNormalized) {
-	if (leaving || !dirty.value) return true
+	if (leaving || !pageDirty.value) return true
 	leaveTarget.value = to.fullPath
 	return false
 }
@@ -97,16 +101,19 @@ async function discardAndLeave() {
 	if (failure) leaving = false
 }
 useEventListener(window, 'beforeunload', (event: BeforeUnloadEvent) => {
-	if (!dirty.value) return
+	if (!pageDirty.value) return
 	event.preventDefault()
 	// Older browsers only ask when a return value is set.
 	event.returnValue = ''
 })
 const saveError = ref('')
-const activeTab = ref<Tab>('chat')
+const activeTab = ref<Tab>(route.query.tab === 'mcp' ? 'mcp' : 'chat')
+const mcpVisited = ref(route.query.tab === 'mcp')
+watch(activeTab, tab => { if (tab === 'mcp') mcpVisited.value = true })
+watch(() => route.query.tab, tab => { if (tab === 'mcp') activeTab.value = 'mcp' })
 useEventListener(window, 'vikunja:ai-settings-tab', (event: Event) => {
 	const tab = (event as CustomEvent).detail
-	if (['chat', 'transcription', 'roles'].includes(tab)) activeTab.value = tab
+	if (['chat', 'transcription', 'roles', 'mcp'].includes(tab)) activeTab.value = tab
 })
 const visibleConnections = computed(() => activeTab.value === 'chat' ? chatModels.value : [])
 const tabOptions = computed<SegmentedOption<Tab>[]>(() => [
@@ -123,6 +130,10 @@ const tabOptions = computed<SegmentedOption<Tab>[]>(() => [
 	{
 		value: 'roles',
 		label: t('modelSettings.roles'),
+	},
+	{
+		value: 'mcp',
+		label: t('tcy.mcp.tab'),
 	},
 ])
 const savingPart = ref('')
@@ -1473,7 +1484,7 @@ function connectionStatus(c: AIConnection): {tone: Tone, icon: IconProp, text: s
 		</section>
 
 		<AIModelRoles
-			v-show="activeTab !== 'chat'"
+			v-show="activeTab === 'transcription' || activeTab === 'roles'"
 			:settings="draft"
 			:persisted-ids="props.initial.connections.map(connection => connection.id)"
 			:speech-layout="activeTab === 'transcription'"
@@ -1483,6 +1494,12 @@ function connectionStatus(c: AIConnection): {tone: Tone, icon: IconProp, text: s
 			:error="saveError"
 			@update:settings="draft = $event"
 			@save="saveRoles"
+		/>
+		<MCPSettingsPanel
+			v-if="mcpVisited"
+			v-show="activeTab === 'mcp'"
+			:active="activeTab === 'mcp'"
+			@dirty="mcpDirty = $event"
 		/>
 
 		<Modal

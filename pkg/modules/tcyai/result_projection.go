@@ -32,17 +32,21 @@ func modelToolResult(name string, raw json.RawMessage, data, ref string) string 
 	}
 	// Discovery already bounds its catalog selection. Cutting its structured
 	// contracts would tell the model a tool is loaded without usable parameters.
-	needsPreview := name != "find_tools" && utf8.RuneCountInString(projected) > 16000
+	needsPreview := name != "find_tools" && name != "find_mcp_tools" && utf8.RuneCountInString(projected) > 16000
+	decode := json.Unmarshal
+	if isMCPAgentTool(name) {
+		decode = mcpDecodeJSON
+	}
 	var result any
 	if needsPreview {
 		var original map[string]any
-		_ = json.Unmarshal([]byte(projected), &original)
-		preview := selectFields(original, "id", "title", "project_id", "total", "page", "per_page", "total_pages")
+		_ = decode([]byte(projected), &original)
+		preview := selectFields(original, "id", "title", "project_id", "total", "page", "per_page", "total_pages", "success", "code", "message", "retryable", "source", "untrusted")
 		preview["preview"] = string([]rune(projected)[:16000])
 		preview["preview_is_partial"] = true
 		preview["details_omitted"] = true
 		result = preview
-	} else if json.Unmarshal([]byte(projected), &result) != nil {
+	} else if decode([]byte(projected), &result) != nil {
 		result = map[string]any{"text": projected}
 	}
 	// Wrapping arrays rather than mutating them keeps paged/array contracts valid.
@@ -81,7 +85,11 @@ func compactActions(actions []Action) []map[string]any {
 	out := make([]map[string]any, 0, len(actions))
 	for _, action := range actions {
 		var args map[string]any
-		_ = json.Unmarshal([]byte(action.Arguments), &args)
+		decode := json.Unmarshal
+		if isMCPAgentTool(action.Tool) {
+			decode = mcpDecodeJSON
+		}
+		_ = decode([]byte(action.Arguments), &args)
 		out = append(out, map[string]any{"tool": action.Tool, "arguments": compactChangedFields(args), "success": action.Success, "result": modelToolResult(action.Tool, json.RawMessage(action.Arguments), action.Result, action.ResultRef)})
 	}
 	return out

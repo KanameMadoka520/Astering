@@ -138,12 +138,21 @@ func isAIProjectMutation(name string) bool {
 	return name == "update_project" || name == "set_project_completed"
 }
 
+// prepareDirectTool validates the current human session before direct model-backed
+// tools bypass the internal HTTP dispatcher.
+func (e *aiExecution) prepareDirectTool(ctx context.Context, name string, raw json.RawMessage) (tcyai.Operation, error) {
+	if _, err := serveAITool(ctx, e.api, e.caller, "validate_session", "/user", http.MethodGet, nil, nil); err != nil {
+		return tcyai.Operation{}, err
+	}
+	if tcyai.IsChatImageTool(name) {
+		return e.prepareChatImage(ctx, name, raw)
+	}
+	return e.prepareBucket(ctx, name, raw)
+}
+
 func (e *aiExecution) prepare(ctx context.Context, name string, raw json.RawMessage) (tcyai.Operation, error) {
-	if tcyai.IsBucketTool(name) {
-		if _, err := serveAITool(ctx, e.api, e.caller, "validate_session", "/user", http.MethodGet, nil, nil); err != nil {
-			return tcyai.Operation{}, err
-		}
-		return e.prepareBucket(ctx, name, raw)
+	if tcyai.IsChatImageTool(name) || tcyai.IsBucketTool(name) {
+		return e.prepareDirectTool(ctx, name, raw)
 	}
 	op := tcyai.Operation{Units: 1, ProjectIDs: []int64{}, After: string(raw)}
 	if !tcyai.IsWriteTool(name) {
@@ -247,6 +256,12 @@ func (e *aiExecution) prepare(ctx context.Context, name string, raw json.RawMess
 }
 func marshalAI(value any) (string, error) { raw, err := json.Marshal(value); return string(raw), err }
 func (e *aiExecution) execute(ctx context.Context, name string, raw json.RawMessage) (string, error) {
+	if tcyai.IsChatImageTool(name) {
+		if _, err := serveAITool(ctx, e.api, e.caller, "validate_session", "/user", http.MethodGet, nil, nil); err != nil {
+			return "", err
+		}
+		return e.executeChatImage(ctx, name, raw)
+	}
 	if tcyai.IsBucketTool(name) {
 		if _, err := serveAITool(ctx, e.api, e.caller, "validate_session", "/user", http.MethodGet, nil, nil); err != nil {
 			return "", err
@@ -358,12 +373,34 @@ func (e *aiExecution) mutateTasks(ctx context.Context, name string, raw json.Raw
 }
 
 func (e *aiExecution) lockTasks(ctx context.Context, s *xorm.Session, changes []aiChange, name string, preview tcyai.Operation) (map[int64]*models.Task, error) {
+	var expected []struct {
+		ID        int64 `json:"id"`
+		ProjectID int64 `json:"project_id"`
+	}
+	if json.Unmarshal([]byte(preview.Before), &expected) != nil {
+		return nil, tcyai.ToolFailure("STATE_CONFLICT", "The task preview is unavailable. Read the tasks again.")
+	}
+	sourceProjects := make(map[int64]int64, len(expected))
+	for _, item := range expected {
+		sourceProjects[item.ID] = item.ProjectID
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := models.LockProjectViewsForTaskMutation(s, preview.ProjectIDs...); err != nil {
+		return nil, err
+	}
 	var err error
 	before := []map[string]any{}
 	tasks := map[int64]*models.Task{}
 	for _, change := range changes {
 		if err = ctx.Err(); err != nil {
 			return nil, err
+		}
+		if db.Type() == schemas.SQLITE {
+			if _, err = s.NoAutoTime().ID(change.ID).Cols("id").Update(&models.Task{ID: change.ID}); err != nil {
+				return nil, err
+			}
 		}
 		locking := s
 		if kind := db.Type(); kind == schemas.MYSQL || kind == schemas.POSTGRES {
@@ -372,6 +409,9 @@ func (e *aiExecution) lockTasks(ctx context.Context, s *xorm.Session, changes []
 		task, err := models.GetTaskSimple(locking, &models.Task{ID: change.ID})
 		if err != nil {
 			return nil, err
+		}
+		if expectedPID, ok := sourceProjects[task.ID]; !ok || expectedPID != task.ProjectID {
+			return nil, tcyai.ToolFailure("STATE_CONFLICT", "The task moved before its lock was acquired. Read the current task again.")
 		}
 		if err = e.scope(task.ProjectID); err != nil {
 			return nil, err
@@ -386,9 +426,15 @@ func (e *aiExecution) lockTasks(ctx context.Context, s *xorm.Session, changes []
 		if !can {
 			return nil, tcyai.ToolFailure("FORBIDDEN", "Current project permissions deny this operation.")
 		}
+		currentTask := task
 		if err = task.ReadOne(s, e.auth); err != nil {
 			return nil, err
 		}
+		// Hydration may use an older RR snapshot. Keep the locked task columns authoritative.
+		currentTask.Reminders = task.Reminders
+		currentTask.Routine = task.Routine
+		currentTask.IsFavorite = task.IsFavorite
+		task = currentTask
 		data, err := json.Marshal(task)
 		if err != nil {
 			return nil, err

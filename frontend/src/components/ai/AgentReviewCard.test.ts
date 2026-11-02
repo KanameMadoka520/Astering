@@ -375,3 +375,99 @@ describe('bucket review', () => {
 		expect(wrapper.find('table').exists()).toBe(false)
 	})
 })
+
+
+describe('external MCP and private chat image review', () => {
+	it('uses persisted external source and destructive policy without presenting remote rows as Vikunja tasks', () => {
+		const wrapper = shallowMount(AgentReviewCard, {
+			props: {
+				busy: false,
+				turn: reviewTurn({
+					tool: 'call_mcp_tool',
+					arguments: '{"server_id":"remote","tool_name":"delete_task","arguments":{"id":12}}',
+					before: '[{"id":12,"title":"Remote record"}]',
+					external: {
+						server_id: 'remote',
+						server_name: 'Wallos fixture',
+						tool: 'delete_task',
+						destructive: true,
+					},
+				}),
+			},
+			global: {stubs},
+		})
+		expect(wrapper.get('.review-external').text()).toContain('Wallos fixture')
+		expect(wrapper.get('.review-external code').text()).toBe('delete_task')
+		expect(wrapper.classes()).toContain('is-destructive')
+		expect(wrapper.find('.change-table').exists()).toBe(false)
+		expect(wrapper.text()).toContain('tcy.mcp.externalReview')
+	})
+
+	it.each([
+		['insert_chat_image', 'tcy.chatImages.shareHint'],
+		['update_task_description_image', 'tcy.chatImages.updateHint'],
+		['remove_task_description_image', 'tcy.chatImages.removeHint'],
+	])('explains the precise sharing or removal effect of %s', (tool, hint) => {
+		const wrapper = shallowMount(AgentReviewCard, {
+			props: {
+				busy: false,
+				turn: reviewTurn({tool}),
+			},
+			global: {stubs},
+		})
+		expect(wrapper.text()).toContain(hint)
+	})
+	it('shows image placement and text changes without exposing concurrency hashes as change fields', () => {
+		const wrapper = shallowMount(AgentReviewCard, {
+			props: {
+				busy: false,
+				turn: reviewTurn({
+					tool: 'update_task_description_image',
+					arguments: JSON.stringify({
+						id: 12,
+						image_index: 0,
+						position: 'after',
+						block_index: 2,
+						alt: '',
+						description_version: 'fixture-description-hash',
+						image_hash: 'fixture-image-hash',
+					}),
+				}),
+			},
+			global: {stubs},
+		})
+		const summary = wrapper.get('.review-external')
+		expect(summary.text()).toContain('tcy.chatImages.after')
+		expect(summary.text()).toContain('tcy.chatImages.emptyText')
+		expect(summary.text()).not.toContain('fixture-description-hash')
+		expect(summary.text()).not.toContain('fixture-image-hash')
+	})
+
+	it('submits external arguments unchanged after opening the editor, preserving large integers and decimal spelling', async () => {
+		const raw = '{"server_id":"remote","tool_name":"update_fixture","arguments":{"id":9007199254740993,"amount":1.2300,"small":1e-8}}'
+		const wrapper = shallowMount(AgentReviewCard, {
+			props: {
+				busy: false,
+				turn: reviewTurn({
+					tool: 'call_mcp_tool',
+					arguments: raw,
+					external: {
+						server_id: 'remote',
+						server_name: 'External fixture',
+						tool: 'update_fixture',
+					},
+				}),
+			},
+			global: {stubs},
+		})
+		await wrapper.findAll('button').find(button => button.text() === 'agent.edit')!.trigger('click')
+		await wrapper.findAll('button').find(button => button.text() === 'agent.updatePreview')!.trigger('click')
+		expect(wrapper.emitted('review')?.[0]?.[0]).toMatchObject({
+			decision: 'edit',
+			arguments: raw,
+		})
+		expect(wrapper.get('textarea.argument-editor').element).toHaveProperty('value', raw)
+		expect(wrapper.findAll('pre').some(pre => pre.text() === raw)).toBe(true)
+	})
+
+})

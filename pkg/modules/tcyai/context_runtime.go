@@ -246,6 +246,8 @@ func (state *AgentState) autoCompact(ctx context.Context, c Connection, persist 
 	event.Status = "completed"
 	event.Summary = summary
 	oldMessages, oldStart := state.Messages, state.HistoryStart
+	oldMCPTickets := state.MCPTickets
+	oldAvailable := state.Available
 	oldTokens, oldEstimate, oldRebased := state.LastInputTokens, state.LastInputEstimate, state.Rebased
 	state.Messages = replacement
 	state.HistoryStart = 1
@@ -254,6 +256,8 @@ func (state *AgentState) autoCompact(ctx context.Context, c Connection, persist 
 	state.LastInputEstimate = 0
 	state.Result.AutoCompactions[index] = event
 	state.Available = nil
+	state.MCPTickets = nil
+	state.closeMCP()
 	for _, t := range Tools(state.Input.Mode, state.Input.AllowDelete) {
 		state.Available = append(state.Available, toolName(t))
 	}
@@ -263,6 +267,8 @@ func (state *AgentState) autoCompact(ctx context.Context, c Connection, persist 
 	state.updateContextStatus(c)
 	if err = persist(); err != nil {
 		state.Messages, state.HistoryStart = oldMessages, oldStart
+		state.MCPTickets = oldMCPTickets
+		state.Available = oldAvailable
 		state.LastInputTokens, state.LastInputEstimate, state.Rebased = oldTokens, oldEstimate, oldRebased
 		return err
 	}

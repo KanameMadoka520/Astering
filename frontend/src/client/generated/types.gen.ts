@@ -268,6 +268,10 @@ export type AssistantOptions = {
      */
     max_rounds?: number;
     /**
+     * Explicit external MCP connections selected for a turn; empty selects none. This never overrides saved connection policy.
+     */
+    mcp_server_ids?: Array<string> | null;
+    /**
      * Read only or execute writes within existing account permissions.
      */
     mode?: 'read' | 'write';
@@ -2125,6 +2129,186 @@ export type LogoutBodyBody = {
     readonly oidc_logout_url?: string;
 };
 
+export type McpConnection = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Also allow destructive or unknown external tools, always after review.
+     */
+    allow_delete?: boolean;
+    /**
+     * Allow external writes only in a write-enabled turn and after human review.
+     */
+    allow_write?: boolean;
+    /**
+     * Allow selected conversations to connect. Disabled by default.
+     */
+    enabled?: boolean;
+    /**
+     * Whether this connection has a saved credential.
+     */
+    readonly has_key?: boolean;
+    /**
+     * Stable account-owned connection identifier.
+     */
+    id?: string;
+    /**
+     * Display name for this remote server.
+     */
+    name?: string;
+    /**
+     * Explicit local tool policy; server annotations never grant permissions.
+     */
+    preset?: 'custom' | 'wallos';
+    /**
+     * Exact tool names the account owner explicitly trusts as read-only.
+     */
+    read_tools?: Array<string> | null;
+    /**
+     * Server-issued configuration revision; changed settings invalidate discovered tools and reviews.
+     */
+    readonly revision?: string;
+    /**
+     * Streamable HTTP or legacy HTTP+SSE; local process execution is not supported.
+     */
+    transport?: 'streamable_http' | 'sse';
+    /**
+     * Remote HTTP endpoint. Credentials belong in the encrypted API key field, not the URL.
+     */
+    url?: string;
+};
+
+export type McpPreparedOperation = {
+    /**
+     * Configuration revision bound to this proposal.
+     */
+    connection_revision?: string;
+    /**
+     * Discovered remote contract fingerprint.
+     */
+    definition_hash?: string;
+    /**
+     * Requires the connection's additional destructive-operation permission.
+     */
+    destructive?: boolean;
+    /**
+     * Local read-only policy for this exact tool.
+     */
+    read_only?: boolean;
+    /**
+     * Account-owned remote server identifier.
+     */
+    server_id?: string;
+    /**
+     * Configured display name shown during review.
+     */
+    server_name?: string;
+    /**
+     * Exact remote tool proposed for execution.
+     */
+    tool?: string;
+    /**
+     * Binds the source, policy, definition and canonical arguments to the review.
+     */
+    version?: string;
+};
+
+export type McpSettings = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Account-owned remote servers; no servers are enabled implicitly.
+     */
+    connections?: Array<McpConnection> | null;
+    /**
+     * Optimistic settings revision. A stale replacement is rejected.
+     */
+    revision?: number;
+};
+
+export type McpTestResult = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Actual configured endpoint without credentials.
+     */
+    endpoint?: string;
+    /**
+     * Number of tools returned by the bounded remote catalog.
+     */
+    matched?: number;
+    /**
+     * Reserved for a server catalog with additional tools; oversized catalogs are currently rejected.
+     */
+    more_available?: boolean;
+    /**
+     * Implementation name reported by the remote peer; untrusted display data.
+     */
+    server_name?: string;
+    /**
+     * Implementation version reported by the remote peer.
+     */
+    server_version?: string;
+    /**
+     * Bounded remote tool catalog. Testing discovers contracts but never executes a business tool.
+     */
+    tools?: Array<McpToolDefinition> | null;
+};
+
+export type McpToolDefinition = {
+    /**
+     * Untrusted remote description, treated as data.
+     */
+    description?: string;
+    /**
+     * Deletion or an unknown tool whose effects cannot be established locally.
+     */
+    destructive?: boolean;
+    /**
+     * Exact remote tool name.
+     */
+    name?: string;
+    /**
+     * Complete JSON Schema for this tool's argument object.
+     */
+    parameters?: {
+        [key: string]: unknown;
+    };
+    /**
+     * Read policy derived from local configuration, never remote annotations.
+     */
+    read_only?: boolean;
+    /**
+     * Server-generated discovery identity; not a permission grant.
+     */
+    ticket?: McpToolTicket;
+};
+
+export type McpToolTicket = {
+    /**
+     * Configuration revision that authorized discovery.
+     */
+    connection_revision?: string;
+    /**
+     * Exact remote tool name.
+     */
+    name?: string;
+    /**
+     * Fingerprint of the discovered tool contract.
+     */
+    schema_hash?: string;
+    /**
+     * Account-owned selected server.
+     */
+    server_id?: string;
+};
+
 export type MailSettings = {
     /**
      * A URL to the JSON Schema for this object.
@@ -2381,6 +2565,10 @@ export type Operation = {
      * Stable failure code.
      */
     error_code?: string;
+    /**
+     * External MCP source, local policy and exact definition/configuration fingerprint. Never contains credentials.
+     */
+    readonly external?: McpPreparedOperation;
     /**
      * Server-generated receipt identifier.
      */
@@ -3679,6 +3867,10 @@ export type RunInput = {
      * Model round budget per execution segment; zero uses 16.
      */
     max_rounds?: number;
+    /**
+     * Explicit external MCP connections permitted for this turn. Empty enables none; each saved connection must also remain enabled.
+     */
+    mcp_server_ids?: Array<string> | null;
     /**
      * Instruction from the user.
      */
@@ -7196,6 +7388,87 @@ export type LoginWritable = {
     username?: string;
 };
 
+export type McpConnectionWritable = {
+    /**
+     * Also allow destructive or unknown external tools, always after review.
+     */
+    allow_delete?: boolean;
+    /**
+     * Allow external writes only in a write-enabled turn and after human review.
+     */
+    allow_write?: boolean;
+    /**
+     * Bearer credential stored encrypted on the server. Empty preserves a key only at the unchanged destination.
+     */
+    api_key?: string;
+    /**
+     * Allow selected conversations to connect. Disabled by default.
+     */
+    enabled?: boolean;
+    /**
+     * Stable account-owned connection identifier.
+     */
+    id?: string;
+    /**
+     * Display name for this remote server.
+     */
+    name?: string;
+    /**
+     * Explicit local tool policy; server annotations never grant permissions.
+     */
+    preset?: 'custom' | 'wallos';
+    /**
+     * Exact tool names the account owner explicitly trusts as read-only.
+     */
+    read_tools?: Array<string> | null;
+    /**
+     * Streamable HTTP or legacy HTTP+SSE; local process execution is not supported.
+     */
+    transport?: 'streamable_http' | 'sse';
+    /**
+     * Remote HTTP endpoint. Credentials belong in the encrypted API key field, not the URL.
+     */
+    url?: string;
+};
+
+export type McpSettingsWritable = {
+    /**
+     * Account-owned remote servers; no servers are enabled implicitly.
+     */
+    connections?: Array<McpConnectionWritable> | null;
+    /**
+     * Optimistic settings revision. A stale replacement is rejected.
+     */
+    revision?: number;
+};
+
+export type McpTestResultWritable = {
+    /**
+     * Actual configured endpoint without credentials.
+     */
+    endpoint?: string;
+    /**
+     * Number of tools returned by the bounded remote catalog.
+     */
+    matched?: number;
+    /**
+     * Reserved for a server catalog with additional tools; oversized catalogs are currently rejected.
+     */
+    more_available?: boolean;
+    /**
+     * Implementation name reported by the remote peer; untrusted display data.
+     */
+    server_name?: string;
+    /**
+     * Implementation version reported by the remote peer.
+     */
+    server_version?: string;
+    /**
+     * Bounded remote tool catalog. Testing discovers contracts but never executes a business tool.
+     */
+    tools?: Array<McpToolDefinition> | null;
+};
+
 export type MailSettingsWritable = {
     auth_type?: 'plain' | 'login' | 'cram-md5' | 'none';
     /**
@@ -7260,6 +7533,57 @@ export type ModelListWritable = {
     endpoint?: string;
     models?: Array<string> | null;
     truncated?: boolean;
+};
+
+export type OperationWritable = {
+    /**
+     * Proposed changes as JSON, not a claim of execution.
+     */
+    after?: string;
+    /**
+     * This exact proposal was reviewed by the user.
+     */
+    approved?: boolean;
+    /**
+     * Validated arguments, including any user edits.
+     */
+    arguments?: string;
+    /**
+     * Actual pre-operation snapshot as JSON.
+     */
+    before?: string;
+    /**
+     * Stable failure code.
+     */
+    error_code?: string;
+    /**
+     * Server-generated receipt identifier.
+     */
+    id?: string;
+    /**
+     * Projects affected by this operation.
+     */
+    project_ids?: Array<number> | null;
+    /**
+     * running after a restart means the outcome is unknown, never safe to replay.
+     */
+    status?: 'prepared' | 'running' | 'succeeded' | 'failed' | 'rejected' | 'unknown';
+    /**
+     * Tool name.
+     */
+    tool?: string;
+    /**
+     * Operation units; bulk writes count each target.
+     */
+    units?: number;
+    /**
+     * The executor verified the committed task field changes.
+     */
+    verified?: boolean;
+    /**
+     * Fingerprint used to detect changes after review.
+     */
+    version?: string;
 };
 
 export type OverviewWritable = {
@@ -7909,6 +8233,10 @@ export type RunInputWritable = {
      */
     max_rounds?: number;
     /**
+     * Explicit external MCP connections permitted for this turn. Empty enables none; each saved connection must also remain enabled.
+     */
+    mcp_server_ids?: Array<string> | null;
+    /**
      * Instruction from the user.
      */
     message?: string;
@@ -7996,7 +8324,7 @@ export type RunResultWritable = {
     /**
      * Durable per-operation receipts. A running receipt after a crash is uncertain and must not be replayed.
      */
-    operations?: Array<Operation> | null;
+    operations?: Array<OperationWritable> | null;
     /**
      * Reason execution paused.
      */
@@ -8004,7 +8332,7 @@ export type RunResultWritable = {
     /**
      * Exact proposed operation awaiting human review.
      */
-    pending?: Operation;
+    pending?: OperationWritable;
     /**
      * Wire protocol used for this request.
      */
@@ -17649,6 +17977,106 @@ export type UserUpdateSettingsResponses = {
 };
 
 export type UserUpdateSettingsResponse = UserUpdateSettingsResponses[keyof UserUpdateSettingsResponses];
+
+export type TcyAiMcpSettingsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/user/settings/tcy-ai/mcp';
+};
+
+export type TcyAiMcpSettingsErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type TcyAiMcpSettingsError = TcyAiMcpSettingsErrors[keyof TcyAiMcpSettingsErrors];
+
+export type TcyAiMcpSettingsResponses = {
+    /**
+     * OK
+     */
+    200: McpSettings;
+};
+
+export type TcyAiMcpSettingsResponse = TcyAiMcpSettingsResponses[keyof TcyAiMcpSettingsResponses];
+
+export type PatchTcyAiMcpSettingsData = {
+    body: Array<JsonPatchOp> | null;
+    path?: never;
+    query?: never;
+    url: '/user/settings/tcy-ai/mcp';
+};
+
+export type PatchTcyAiMcpSettingsErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type PatchTcyAiMcpSettingsError = PatchTcyAiMcpSettingsErrors[keyof PatchTcyAiMcpSettingsErrors];
+
+export type PatchTcyAiMcpSettingsResponses = {
+    /**
+     * OK
+     */
+    200: McpSettings;
+};
+
+export type PatchTcyAiMcpSettingsResponse = PatchTcyAiMcpSettingsResponses[keyof PatchTcyAiMcpSettingsResponses];
+
+export type TcyAiMcpSaveSettingsData = {
+    body: McpSettingsWritable;
+    path?: never;
+    query?: never;
+    url: '/user/settings/tcy-ai/mcp';
+};
+
+export type TcyAiMcpSaveSettingsErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type TcyAiMcpSaveSettingsError = TcyAiMcpSaveSettingsErrors[keyof TcyAiMcpSaveSettingsErrors];
+
+export type TcyAiMcpSaveSettingsResponses = {
+    /**
+     * OK
+     */
+    200: McpSettings;
+};
+
+export type TcyAiMcpSaveSettingsResponse = TcyAiMcpSaveSettingsResponses[keyof TcyAiMcpSaveSettingsResponses];
+
+export type TcyAiMcpTestData = {
+    body: McpConnectionWritable;
+    path?: never;
+    query?: never;
+    url: '/user/settings/tcy-ai/mcp/test';
+};
+
+export type TcyAiMcpTestErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type TcyAiMcpTestError = TcyAiMcpTestErrors[keyof TcyAiMcpTestErrors];
+
+export type TcyAiMcpTestResponses = {
+    /**
+     * OK
+     */
+    200: McpTestResult;
+};
+
+export type TcyAiMcpTestResponse = TcyAiMcpTestResponses[keyof TcyAiMcpTestResponses];
 
 export type CaldavTokensListData = {
     body?: never;

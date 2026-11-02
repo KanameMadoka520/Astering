@@ -15,14 +15,23 @@ const toolName = computed(() => {
 	const tool = pending.value?.tool ?? ''
 	return toolLabels(t)[tool] || tool
 })
-const reviewHint = computed(() => pending.value?.tool === 'set_task_routine_progress'
-	? t('agent.routineReview.absoluteProgress')
-	: pending.value?.tool === 'set_task_repeat_bucket' ? t('agent.repeatPolicy.futureOnly') : '')
-const destructive = computed(() => DESTRUCTIVE_TOOLS.has(pending.value?.tool ?? ''))
+const external = computed(() => pending.value?.external)
+const imageTool = computed(() => ['insert_chat_image', 'update_task_description_image', 'remove_task_description_image']
+	.includes(pending.value?.tool ?? ''))
+const reviewHint = computed(() => external.value ? t('tcy.mcp.externalReview')
+	: imageTool.value ? t(pending.value?.tool === 'remove_task_description_image'
+		? 'tcy.chatImages.removeHint' : pending.value?.tool === 'update_task_description_image'
+			? 'tcy.chatImages.updateHint' : 'tcy.chatImages.shareHint')
+		: pending.value?.tool === 'set_task_routine_progress'
+			? t('agent.routineReview.absoluteProgress')
+			: pending.value?.tool === 'set_task_repeat_bucket' ? t('agent.repeatPolicy.futureOnly') : '')
+const destructive = computed(() => external.value?.destructive === true
+	|| DESTRUCTIVE_TOOLS.has(pending.value?.tool ?? ''))
 // Deleting a bucket removes the bucket only; the generic wording would suggest its tasks go too.
-const destructiveWarning = computed(() => pending.value?.tool === 'delete_bucket'
-	? t('agent.bucketImpact.deleteWarning')
-	: t('agent.destructiveWarning'))
+const destructiveWarning = computed(() => external.value ? t('tcy.mcp.destructiveWarning')
+	: pending.value?.tool === 'delete_bucket'
+		? t('agent.bucketImpact.deleteWarning')
+		: t('agent.destructiveWarning'))
 // Bucket tools put their effect (task destinations, default and done bucket changes) in pending.after.
 const BUCKET_WRITE_TOOLS = new Set([
 	'create_bucket',
@@ -40,12 +49,32 @@ const bucketImpact = computed(() => {
 		return false
 	}
 })
+const imageFields = computed(() => {
+	if (!imageTool.value) return []
+	try {
+		const fields = JSON.parse(pending.value?.arguments ?? '{}')
+		if (!fields || typeof fields !== 'object' || Array.isArray(fields)) return []
+		return ['id', 'attachment_id', 'image_index', 'position', 'block_index', 'alt', 'title']
+			.filter(key => fields[key] !== undefined && fields[key] !== null)
+			.map(key => ({
+				key,
+				value: key === 'position' && ['start', 'end', 'before', 'after'].includes(fields[key])
+					? t(`tcy.chatImages.${fields[key]}`) : fields[key] === ''
+						? t('tcy.chatImages.emptyText') : String(fields[key]),
+			}))
+	} catch {
+		return []
+	}
+})
 const pause = computed(() => props.turn.result?.pause)
 watch(() => pending.value?.id, () => {
 	args.value = pretty(pending.value?.arguments)
 	editing.value = false
 }, {immediate: true})
 function pretty(value?: string) {
+	// External JSON may contain IDs or exact decimals outside JavaScript's numeric precision.
+	// Parsing validates the editor below; it must never rewrite a remote argument or snapshot.
+	if (external.value) return value ?? ''
 	try { return JSON.stringify(JSON.parse(value ?? ''), null, 2) } catch { return value ?? '' }
 }
 const valid = computed(() => { try { const parsed = JSON.parse(args.value); return parsed && typeof parsed === 'object' && !Array.isArray(parsed) } catch { return false } })
@@ -111,7 +140,7 @@ const TOOL_NOT_CHANGES: Record<string, string[]> = {
 const rows = computed(() => {
 	const tool = pending.value?.tool ?? ''
 	// The impact preview describes bucket changes; the field table would list locators instead.
-	if (bucketImpact.value) return []
+	if (bucketImpact.value || external.value) return []
 	try {
 		const before = JSON.parse(pending.value?.before ?? 'null')
 		const proposed = JSON.parse(pending.value?.arguments ?? '{}')
@@ -173,6 +202,27 @@ function decide(decision: ReviewInput['decision']) {
 			<p class="review-target">
 				<strong :title="pending.tool">{{ toolName }}</strong> · {{ t('agent.targets', {count: pending.units}) }}
 			</p>
+			<dl
+				v-if="external"
+				class="review-external"
+			>
+				<dt>{{ t('tcy.mcp.externalConnection') }}</dt>
+				<dd>{{ external.server_name || external.server_id }}</dd>
+				<dt>{{ t('tcy.mcp.externalTool') }}</dt>
+				<dd><code>{{ external.tool }}</code></dd>
+			</dl>
+			<dl
+				v-if="imageFields.length"
+				class="review-external"
+			>
+				<template
+					v-for="field in imageFields"
+					:key="field.key"
+				>
+					<dt>{{ t(`tcy.chatImages.fields.${field.key}`) }}</dt>
+					<dd>{{ field.value }}</dd>
+				</template>
+			</dl>
 			<p v-if="reviewHint">
 				{{ reviewHint }}
 			</p>
@@ -292,6 +342,15 @@ function decide(decision: ReviewInput['decision']) {
 </template>
 
 <style scoped lang="scss">
+.review-external {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	gap: var(--space-2) var(--space-3);
+	overflow-wrap: anywhere;
+
+	dd { margin: 0; }
+}
+
 .agent-review {
 	margin-block: var(--space-3);
 	padding: var(--space-3) var(--space-4);

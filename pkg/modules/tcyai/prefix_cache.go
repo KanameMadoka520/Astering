@@ -32,7 +32,7 @@ func stableEntryTools() []map[string]any {
 			result = append(result, t)
 		}
 	}
-	return append(result, tool("invoke_tool", "Call a discovered Vikunja tool. Use the exact name and JSON arguments from find_tools; server validation, permissions and review still apply.", map[string]any{
+	return append(result, tool("invoke_tool", "Call a discovered application tool. Use the exact name and JSON arguments from find_tools; server validation, permissions and review still apply.", map[string]any{
 		"name":      map[string]any{"type": "string", "description": "Exact discovered tool name"},
 		"arguments": map[string]any{"type": "object", "additionalProperties": true, "description": "Argument object matching the discovered parameters, not a JSON string"},
 	}, "name", "arguments"))
@@ -52,6 +52,7 @@ func executionContext(in RunInput, c Connection, staleTools ...string) string {
 		SearchMode           string   `json:"search_mode"`
 		WebSearchAvailable   bool     `json:"web_search_available"`
 		SubagentsEnabled     bool     `json:"subagents_enabled"`
+		MCPServerIDs         []string `json:"mcp_server_ids"`
 		StaleToolDefinitions []string `json:"stale_tool_definitions,omitempty"`
 	}{
 		Time:                 time.Now().In(time.FixedZone("Asia/Shanghai", 8*3600)).Format(time.RFC3339),
@@ -64,6 +65,7 @@ func executionContext(in RunInput, c Connection, staleTools ...string) string {
 		SearchMode:           in.SearchMode,
 		WebSearchAvailable:   c.WebSearchProtocol != "" && in.SearchMode != "off",
 		SubagentsEnabled:     in.EnableSubagents,
+		MCPServerIDs:         append([]string{}, in.MCPServerIDs...),
 		StaleToolDefinitions: staleTools,
 	})
 	if err != nil {

@@ -11,7 +11,7 @@ import {
 	trackNewConversation,
 	type AgentReceipt,
 } from './tcyConversations'
-import {normalizeTask, taskKeys, type PaginatedTaskResponse, type TaskResponse} from './tasks'
+import {normalizeTask, taskKeys, taskQuery, type PaginatedTaskResponse, type TaskResponse} from './tasks'
 import {bucketKeys, kanbanKeys, normalizeBucket, type BoardData} from './kanban'
 import {labelKeys} from './labels'
 import {commentKeys} from './comments'
@@ -863,4 +863,67 @@ describe('bucket receipt cache writes', () => {
 		expect(sdk.projectViewBucketsTasksList).toHaveBeenCalledTimes(1)
 		expect(boardFetch).not.toHaveBeenCalled()
 	})
+})
+
+
+describe('external and chat-image tool receipt boundaries', () => {
+	it('does not turn MCP discovery into a write or remote tool results into Vikunja entities', () => {
+		expect(agentReceipt('find', action('find_mcp_tools', {}, {tools: []}))).toBeUndefined()
+		const remote = receipt('call_mcp_tool', {
+			server_id: 'wallos',
+			tool_name: 'delete_task',
+			arguments: {id: 3},
+		}, serverTask)
+		const plan = planAgentRefresh([remote])
+		expect(plan.operations).toEqual([])
+		expect(plan.refetchTasks).toEqual([])
+		expect(plan.refetchProjects).toEqual([])
+		expect(plan.timeline).toBe(false)
+		expect(plan.projectList).toBe(false)
+	})
+
+	it.each(['insert_chat_image', 'update_task_description_image', 'remove_task_description_image'])(
+		'patches the description after %s and reads new attachments only when needed', tool => {
+			const changed = {...serverTask, description: '<p>Updated image position</p>', attachments: null}
+			const plan = planAgentRefresh([receipt(tool, {id: 3}, changed)])
+			expect(plan.operations).toEqual([{kind: 'task', task: changed}])
+			expect(plan.refetchTasks).toEqual(tool === 'remove_task_description_image' ? [] : [3])
+			expect(plan.timeline).toBe(false)
+			expect(plan.projectList).toBe(false)
+		},
+	)
+	it('preserves old attachments during an image write and hydrates the exact open task through the generated client', async () => {
+		vi.clearAllMocks()
+		const client = new QueryClient({defaultOptions: {queries: {retry: false}}})
+		const oldAttachment = {id: 10, task_id: 3}
+		const newAttachment = {id: 11, task_id: 3}
+		const initial = normalizeTask({...serverTask, description: '<p>Before</p>', attachments: [oldAttachment]})
+		client.setQueryData(taskKeys.detail(3), initial)
+		const updated = {...serverTask, description: '<p>After image</p>', attachments: null}
+		const hydrated = {...updated, attachments: [oldAttachment, newAttachment]}
+		sdk.tasksRead.mockImplementation(async () => {
+			const visible = client.getQueryData<TaskResponse>(taskKeys.detail(3))!
+			expect(visible.description).toBe('<p>After image</p>')
+			expect(visible.attachments.map(item => item.id)).toEqual([10])
+			return {data: hydrated}
+		})
+		const detail = taskQuery(3)
+		const unsubscribe = new QueryObserver(client, {
+			queryKey: detail.queryKey,
+			queryFn: detail.queryFn,
+			staleTime: Infinity,
+		}).subscribe(() => {})
+		try {
+			await client.getMutationCache().build(client, agentRefreshMutationOptions()).execute(planAgentRefresh([
+				receipt('insert_chat_image', {id: 3, attachment_id: 'chat-image'}, updated),
+			]))
+			expect(sdk.tasksRead).toHaveBeenCalledTimes(1)
+			expect(sdk.tasksRead.mock.calls[0][0].path).toEqual({task: 3})
+			expect(client.getQueryData<TaskResponse>(taskKeys.detail(3))?.attachments.map(item => item.id)).toEqual([10, 11])
+		} finally {
+			unsubscribe()
+			client.clear()
+		}
+	})
+
 })

@@ -80,6 +80,7 @@ func (state *AgentState) delegateTasks(ctx context.Context, c Connection, raw js
 			defer wg.Done()
 			started := time.Now()
 			in := RunInput{Message: goal, Mode: "read", Approval: "smart", ProjectID: state.Input.ProjectID, SearchMode: state.Input.SearchMode, MaxRounds: state.Input.MaxRounds, MaxOperations: state.Input.MaxOperations, TimeoutSeconds: state.Input.TimeoutSeconds, StopAtSegmentLimit: true}
+			in.MCPServerIDs = append([]string{}, state.Input.MCPServerIDs...)
 			// Child limits bound parallel exploration; reaching one is explicitly a
 			// partial result for the parent to decide how to continue, never completion.
 			if remaining > 0 {

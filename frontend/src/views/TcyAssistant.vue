@@ -9,6 +9,7 @@ import {useSpeechRecording} from '@/composables/useSpeechRecording'
 import {useConversationEvents} from '@/client/queries/conversationEvents'
 import {aiSettingsQuery, useCleanupAI, useTranscribeAI} from '@/client/queries/tcyAi'
 import SpeechInputControl from '@/components/ai/SpeechInputControl.vue'
+import MCPSessionPicker from '@/components/ai/MCPSessionPicker.vue'
 import AssistantPreferences from '@/components/ai/AssistantPreferences.vue'
 import {assistantPreferencesQuery} from '@/client/queries/assistantPreferences'
 import {builtinProfileIDs, normalizeOptions, profileOptions, validOptions, type AssistantOptions} from '@/helpers/assistantProfiles'
@@ -410,6 +411,7 @@ const mode = ref<'read' | 'write'>('read')
 const allowDelete = ref(false)
 const approval = ref<'smart' | 'review' | 'auto'>('smart')
 const writeProjectIDs = ref<number[]>([])
+const mcpServerIDs = ref<string[]>([])
 const maxRounds = ref(8)
 const maxOperations = ref(20)
 const timeoutSeconds = ref(120)
@@ -429,6 +431,7 @@ const currentOptions = computed<AssistantOptions>(() => ({
 	allow_delete: allowDelete.value,
 	approval: approval.value,
 	write_project_ids: writeProjectIDs.value,
+	mcp_server_ids: mcpServerIDs.value,
 	max_rounds: maxRounds.value,
 	max_operations: maxOperations.value,
 	timeout_seconds: timeoutSeconds.value,
@@ -448,6 +451,7 @@ function applyOptions(o: AssistantOptions, profile: string, remember = true) {
 	allowDelete.value = o.allow_delete
 	approval.value = o.approval
 	writeProjectIDs.value = [...o.write_project_ids]
+	mcpServerIDs.value = [...o.mcp_server_ids]
 	maxRounds.value = o.max_rounds
 	maxOperations.value = o.max_operations
 	timeoutSeconds.value = o.timeout_seconds
@@ -465,6 +469,7 @@ function selectProfile(id: string) {
 	const options = custom
 		? normalizeOptions(custom.options)
 		: {...profileOptions(id), connection_id: connectionID.value, project_id: projectID.value}
+	options.mcp_server_ids = [...mcpServerIDs.value]
 	applyOptions(options, id)
 }
 function optionsStorageKey(id: string) {
@@ -487,6 +492,7 @@ watch([() => preferences.data.value, () => preferences.isError.value, active, ch
 	const defaultID = value?.default_profile || 'ask'
 	const custom = value?.profiles?.find(p => p.id === defaultID)
 	const options = saved?.options ?? (last ? normalizeOptions(last) : custom ? normalizeOptions(custom.options) : profileOptions(defaultID))
+	if (!saved && !last) options.mcp_server_ids = []
 	if (contextProject.value) options.project_id = contextProject.value
 	applyOptions(options, saved?.profile ?? (last ? '' : defaultID), false)
 	initializedChat.value = id
@@ -842,6 +848,7 @@ async function submit() {
 		allow_delete: allowDelete.value && mode.value === 'write',
 		approval: approval.value,
 		write_project_ids: [...writeProjectIDs.value],
+		mcp_server_ids: [...mcpServerIDs.value],
 		max_rounds: maxRounds.value,
 		max_operations: maxOperations.value,
 		timeout_seconds: timeoutSeconds.value,
@@ -1718,6 +1725,12 @@ onBeforeUnmount(() => {
 									@upload="chooseAudio"
 									@tidy="tidyText"
 								/>
+								<MCPSessionPicker
+									:model-value="mcpServerIDs"
+									:disabled="!optionsReady || editingBusy || activeRun || Boolean(paused) || archived"
+									:write-scoped="writeProjectIDs.length > 0"
+									@update:modelValue="mcpServerIDs = $event; applyOptions(currentOptions, '')"
+								/>
 								<label
 									class="composer-chip profile-switch"
 									:title="t('assistantUI.scenarios')"
@@ -2470,7 +2483,9 @@ summary {
 // Composer
 .composer-dock {
 	position: relative;
-	flex-shrink: 0;
+	display: flex;
+	flex-direction: column;
+	min-block-size: 0;
 	padding: var(--space-2) var(--column-inset) var(--space-4);
 }
 
@@ -2540,6 +2555,9 @@ summary {
 
 .composer {
 	position: relative;
+	display: flex;
+	flex-direction: column;
+	min-block-size: 0;
 	padding: var(--space-2) var(--space-3);
 	border: 1px solid var(--border-default);
 	border-radius: var(--radius-lg);

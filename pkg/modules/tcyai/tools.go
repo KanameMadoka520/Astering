@@ -165,6 +165,8 @@ func AllTools(mode string, allowDelete bool) []map[string]any {
 	)
 	result = append(result, routineTools(mode)...)
 	result = append(result, bucketTools(mode)...)
+	result = append(result, ChatImageTools(mode)...)
+	result = append(result, mcpAgentTools()...)
 	if mode != "write" {
 		return result
 	}
@@ -203,7 +205,7 @@ func Tools(mode string, allowDelete bool) []map[string]any {
 }
 
 func IsWriteTool(name string) bool {
-	return !strings.HasPrefix(name, "list_") && !strings.HasPrefix(name, "get_") && name != "find_tools" && name != "ask_user" && name != "web_search" && name != "read_tool_result" && name != "view_attachment" && name != "delegate_tasks"
+	return !strings.HasPrefix(name, "list_") && !strings.HasPrefix(name, "get_") && name != "find_tools" && name != "find_mcp_tools" && name != "ask_user" && name != "web_search" && name != "read_tool_result" && name != "view_attachment" && name != "delegate_tasks"
 }
 
 func NeedsReview(name string, in RunInput) bool {
@@ -211,6 +213,9 @@ func NeedsReview(name string, in RunInput) bool {
 		return false
 	}
 	if in.Approval == "review" || bucketAlwaysReviewed(name) {
+		return true
+	}
+	if IsChatImageTool(name) {
 		return true
 	}
 	if name == "update_project_announcement" || name == "delete_task" || name == "create_project" || name == "add_comment" || name == "assign_task" || name == "unassign_task" {
@@ -222,6 +227,9 @@ func NeedsReview(name string, in RunInput) bool {
 var schemaCache sync.Map
 
 func ValidateTool(name string, raw json.RawMessage, in RunInput) (json.RawMessage, error) {
+	if isMCPAgentTool(name) && len(in.MCPServerIDs) == 0 {
+		return nil, ToolFailure("MCP_NOT_SELECTED", "No external MCP connection is selected for this turn. Continue with local tools or ask the user to select a connection; never infer access from historical turns.")
+	}
 	if name == "delegate_tasks" && !in.EnableSubagents {
 		return nil, ToolFailure("TOOL_NOT_ALLOWED", "Subagents are disabled for this turn.")
 	}
@@ -236,7 +244,11 @@ func ValidateTool(name string, raw json.RawMessage, in RunInput) (json.RawMessag
 		return nil, fmt.Errorf("TOOL_NOT_ALLOWED: %s", name)
 	}
 	var instance map[string]any
-	if len(raw) > 64000 || json.Unmarshal(raw, &instance) != nil || instance == nil {
+	decode := json.Unmarshal
+	if name == "call_mcp_tool" {
+		decode = mcpDecodeJSON
+	}
+	if len(raw) > 64000 || decode(raw, &instance) != nil || instance == nil {
 		return nil, fmt.Errorf("INVALID_ARGUMENTS: expected a JSON object under 64000 bytes")
 	}
 	function := definition["function"].(map[string]any)
@@ -259,6 +271,11 @@ func ValidateTool(name string, raw json.RawMessage, in RunInput) (json.RawMessag
 	}
 	if err = cached.(*jsonschema.Resolved).Validate(instance); err != nil {
 		return nil, fmt.Errorf("INVALID_ARGUMENTS: %w", err)
+	}
+	if name == "call_mcp_tool" {
+		// Remote argument formats belong to the discovered remote schema, not
+		// Vikunja's date/text conventions. The MCP adapter validates them again.
+		return json.Marshal(instance)
 	}
 	if err = validateText(instance); err != nil {
 		return nil, err

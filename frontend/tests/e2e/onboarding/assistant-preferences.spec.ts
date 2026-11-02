@@ -71,6 +71,22 @@ for (const width of [1440, 390]) {
 		expect(box!.y + box!.height).toBeLessThanOrEqual(500)
 		expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 		await page.screenshot({path: testInfo.outputPath(`assistant-keyboard-${width}.png`)})
+		// Wrapped controls and a configuration notice must yield textarea space before covering send.
+		await page.setViewportSize({width, height: 440})
+		await expect(page.locator('.composer .notice-info')).toBeVisible()
+		const shorterBox = await page.locator('.composer').boundingBox()
+		expect(shorterBox!.y + shorterBox!.height).toBeLessThanOrEqual(440)
+		const inputBox = await page.getByLabel('Your request').boundingBox()
+		expect(inputBox!.height).toBeGreaterThanOrEqual(44)
+		const sendBox = await page.locator('.composer-actions .send').boundingBox()
+		expect(sendBox!.y + sendBox!.height).toBeLessThanOrEqual(440)
+		await page.locator('.composer .notice-info').getByRole('button', {name: 'Close', exact: true}).click()
+		await expect(page.locator('.composer .notice-info')).toHaveCount(0)
+		expect(await page.getByLabel('Your request').inputValue()).toBe('Long draft\n'.repeat(20))
+		const clearedBox = await page.locator('.composer').boundingBox()
+		expect(clearedBox!.y + clearedBox!.height).toBeLessThanOrEqual(440)
+		expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+		await page.screenshot({path: testInfo.outputPath(`assistant-keyboard-short-${width}.png`)})
 	})
 }
 

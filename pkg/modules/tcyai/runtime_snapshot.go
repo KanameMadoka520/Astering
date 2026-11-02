@@ -24,11 +24,14 @@ func snapshotAgentState(state *AgentState) *AgentState {
 		return nil
 	}
 	out := *state
+	out.mcp = nil
+	out.MCPTickets = append([]MCPToolTicket{}, state.MCPTickets...)
 	out.steeringFence = false
 	out.AppliedSteering = cloneSteering(state.AppliedSteering)
 	out.Input.History = append([]Turn{}, state.Input.History...)
 	out.Input.AttachmentIDs = append([]string{}, state.Input.AttachmentIDs...)
 	out.Input.WriteProjectIDs = append([]int64{}, state.Input.WriteProjectIDs...)
+	out.Input.MCPServerIDs = append([]string{}, state.Input.MCPServerIDs...)
 	out.Input.ServerHistory = nil
 	out.Input.ServerAttachments = append([]ChatAttachment{}, state.Input.ServerAttachments...)
 	out.Messages = append([]storedMessage{}, state.Messages...)
@@ -44,6 +47,7 @@ func snapshotAgentState(state *AgentState) *AgentState {
 	if state.Approved != nil {
 		approved := *state.Approved
 		approved.ProjectIDs = append([]int64{}, approved.ProjectIDs...)
+		approved.External = cloneMCPOperation(approved.External)
 		out.Approved = &approved
 	}
 	return &out

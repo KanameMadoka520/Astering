@@ -288,6 +288,7 @@ func cloneConversationTurn(record *conversationFile, index int) ChatTurn {
 	} else if turn.Result.Configuration != nil {
 		options := *turn.Result.Configuration
 		options.WriteProjectIDs = append([]int64{}, options.WriteProjectIDs...)
+		options.MCPServerIDs = append([]string{}, options.MCPServerIDs...)
 		turn.Result.Configuration = &options
 	}
 	return turn
@@ -689,11 +690,19 @@ func publicResult(result RunResult) RunResult {
 	out.Operations = append([]Operation{}, result.Operations...)
 	for i := range out.Operations {
 		out.Operations[i].ProjectIDs = append([]int64{}, out.Operations[i].ProjectIDs...)
+		out.Operations[i].External = cloneMCPOperation(out.Operations[i].External)
 	}
 	if result.Pending != nil {
 		proposal := *result.Pending
 		proposal.ProjectIDs = append([]int64{}, proposal.ProjectIDs...)
+		proposal.External = cloneMCPOperation(proposal.External)
 		out.Pending = &proposal
+	}
+	if result.Configuration != nil {
+		options := *result.Configuration
+		options.WriteProjectIDs = append([]int64{}, options.WriteProjectIDs...)
+		options.MCPServerIDs = append([]string{}, options.MCPServerIDs...)
+		out.Configuration = &options
 	}
 	return out
 }

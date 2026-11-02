@@ -5,7 +5,7 @@ import type {IconProp} from '@fortawesome/fontawesome-svg-core'
 import type {Action, Operation, ToolCall} from '@/client/generated'
 import WebSearchEvidence from '@/components/ai/WebSearchEvidence.vue'
 import {usePreferredOpen} from '@/composables/useAronaDisplayPreferences'
-import {argumentSummary, callArguments, isSteeringReplan} from '@/helpers/aronaTimeline'
+import {argumentSummary, callArguments, callName, isSteeringReplan} from '@/helpers/aronaTimeline'
 
 // Plain props only: a completed row keeps identical props between live frames and does not re-render.
 const props = withDefaults(defineProps<{
@@ -51,6 +51,20 @@ const argumentText = computed(() => {
 	// Unwrapped only when the backend would run the inner tool; a malformed envelope stays one invoke_tool row.
 	return argumentSummary(callArguments(props.call))
 })
+const externalSource = computed(() => {
+	const external = props.operation?.external
+	if (external) return `${external.server_name || external.server_id} · ${external.tool}`
+	const tool = props.action?.tool ?? props.operation?.tool ?? callName(props.call)
+	if (tool !== 'call_mcp_tool') return ''
+	try {
+		const raw = props.action?.arguments ?? props.operation?.arguments ?? callArguments(props.call)
+		const args = JSON.parse(raw)
+		if (!args || typeof args !== 'object' || Array.isArray(args)) return ''
+		return [args.server_id, args.tool_name].filter(value => typeof value === 'string').join(' · ')
+	} catch {
+		return ''
+	}
+})
 function pretty(value?: string) {
 	if (!value) return t('chat.unavailable')
 	try { return JSON.stringify(JSON.parse(value), null, 2) } catch { return value }
@@ -74,6 +88,11 @@ function pretty(value?: string) {
 				:icon="ICONS[state]"
 			/>
 			<span class="tool-name">{{ label }}</span>
+			<span
+				v-if="externalSource"
+				class="tool-args"
+				:title="externalSource"
+			>{{ t('tcy.mcp.externalSource', {name: externalSource}) }}</span>
 			<span class="tool-state">{{ stateText }}</span>
 			<span
 				v-if="duration"

@@ -91,4 +91,11 @@ describe('suggestionOptions', () => {
 		expect(options.approval).toBe('review')
 		expect(options.max_operations).toBe(plan.max_operations)
 	})
+	it('keeps only the explicitly selected external servers when changing the scenario', () => {
+		const current = {...restricted, mcp_server_ids: ['chosen-server']}
+		const options = suggestionOptions('plan', current)
+		expect(options.mcp_server_ids).toEqual(['chosen-server'])
+		expect(options.mcp_server_ids).not.toBe(current.mcp_server_ids)
+	})
+
 })

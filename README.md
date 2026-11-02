@@ -11,9 +11,15 @@
 基于 [Vikunja 官方 v2.7.1](https://github.com/go-vikunja/vikunja/releases/tag/v2.7.1) 的个人记录与团队项目管理扩展，由 **KanameMadoka520** 维护。保留上游项目、任务、甘特图、看板、提醒、CalDAV 和 MCP，增加可配置模型的 AI 助手、语音输入和独立公开主页。
 
 - 源码与问题反馈：[KanameMadoka520/vikunja-x](https://github.com/KanameMadoka520/vikunja-x)
-- 版本：`v2.7.1-tcymc.43`
+- 版本：`v2.7.1-tcymc.44`
 - 许可证：AGPL-3.0-or-later；上游版权和许可证继续适用，参见 [LICENSE](LICENSE) 与 [上游 README](README.upstream.md)。本项目是独立二次开发版。
 
+
+## 按需外部 MCP 与聊天插图（tcymc.44）
+
+阿罗娜设置增加独立的 MCP 外部工具连接：每条连接单独保存、启用或关闭，对话输入区再选择本次需要的连接。没有选中就不连接外站，工具定义按需发现，不把全部 MCP 目录常驻塞入模型。支持 Streamable HTTP、旧版 HTTP+SSE 和服务端加密 Bearer 密钥，内置本机 Wallos 模板；外部写入逐次审核，配置变化撤销旧授权，结果未知不自动重放。原有供其他客户端操作 Vikunja 的 MCP 服务入口继续独立使用。
+
+聊天附图可以由阿罗娜放进任务描述的具体段落前后，并支持替换、移动、修改替代文字与标题和移除展示。工具使用描述版本与图片指纹精确定位，直接复用网盘文件，不重复上传；聊天、网盘和任务附件原件保留。相关界面局部更新。详见 [连接方式、权限边界与验证方法](docs/external-mcp-and-chat-images.md)。
 
 ## 点按与长按语音输入（tcymc.43）
 
@@ -488,9 +494,9 @@ pnpm vitest run src/i18n/coverage.test.ts src/helpers/tcyAudio.test.ts
 git clone https://github.com/KanameMadoka520/vikunja-x.git
 cd vikunja-x
 docker build -f Dockerfile.tcymc \
-  --build-arg RELEASE_VERSION=v2.7.1-tcymc.43 \
+  --build-arg RELEASE_VERSION=v2.7.1-tcymc.44 \
   --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
-  -t vikunja-x:v2.7.1-tcymc.43 .
+  -t vikunja-x:v2.7.1-tcymc.44 .
 ```
 
 `Dockerfile.tcymc` 固定基础镜像摘要，使用锁定依赖构建前端，并生成带 SQLite 支持的静态 Go 二进制，最终以 UID 1000 在最小镜像中运行。提供 CA 和时区数据。数据库支持沿用上游，包括 PostgreSQL。`SOURCE_COMMIT` 写入镜像的 OCI revision 标签，便于核对运行镜像对应的源码；正式发布从干净工作树构建，并核对源码标签、镜像 ID 与运行实例。
@@ -508,12 +514,12 @@ docker run -d --name vikunja-x --restart unless-stopped \
   -e VIKUNJA_SERVICE_SECRET=替换为随机且持久保存的长密钥 \
   -e VIKUNJA_SERVICE_ENABLEREGISTRATION=false \
   -e VIKUNJA_SERVICE_TIMEZONE=Asia/Shanghai \
-  vikunja-x:v2.7.1-tcymc.43
+  vikunja-x:v2.7.1-tcymc.44
 ```
 
 通过反向代理提供 HTTPS。创建首个账号使用 `docker exec -it vikunja-x /app/vikunja/vikunja user create --help` 查看 CLI 参数。注册默认建议关闭；SMTP 初始使用上游 `VIKUNJA_MAILER_*` 配置，也可通过上述管理员页面保存；密码勿提交源码。账号名中的 admin 不会绕过上游授权功能。
 
-Release 附带源码、Git bundle、Linux amd64 二进制、Docker 镜像包及 SHA256 校验文件；先运行 `sha256sum -c SHA256SUMS`，再使用 `docker load -i vikunja-x-v2.7.1-tcymc.43.docker.tar.gz` 导入镜像。
+Release 附带源码、Git bundle、Linux amd64 二进制、Docker 镜像包及 SHA256 校验文件；先运行 `sha256sum -c SHA256SUMS`，再使用 `docker load -i vikunja-x-v2.7.1-tcymc.44.docker.tar.gz` 导入镜像。
 
 ## 本地开发与验证
 

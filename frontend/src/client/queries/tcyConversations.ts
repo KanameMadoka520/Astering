@@ -276,7 +276,7 @@ export type AgentRefreshPlan = {
 	buckets: number[]
 }
 
-const READ_ONLY_TOOLS = new Set(['find_tools', 'ask_user', 'web_search', 'invoke_tool'])
+const READ_ONLY_TOOLS = new Set(['find_tools', 'find_mcp_tools', 'ask_user', 'web_search', 'invoke_tool'])
 // Fields that move a task on the project timeline (dates, progress, completion, project).
 const TIMELINE_FIELDS = ['start_date', 'end_date', 'due_date', 'percent_done', 'done', 'project_id']
 // Project fields shown on the timeline and in the lifecycle history.
@@ -489,6 +489,24 @@ export function planAgentRefresh(receipts: readonly AgentReceipt[]): AgentRefres
 	for (const {tool, arguments: args, result} of receipts) {
 		const id = positiveId(args.id)
 		switch (tool) {
+			case 'call_mcp_tool':
+				// Remote tool arguments/results are not Vikunja entities, even when their names or IDs match.
+				break
+			case 'insert_chat_image':
+			case 'update_task_description_image':
+			case 'remove_task_description_image':
+				if (isTaskEntity(result) && (id === undefined || result.id === id)) {
+					plan.operations.push({kind: 'task', task: result})
+					// Description writes may add an attachment, but their write response is not hydrated.
+					// The shared task patch preserves cached attachments; only this task needs a full read.
+					if (tool !== 'remove_task_description_image' && !Array.isArray(result.attachments)) {
+						plan.refetchTasks.push(result.id)
+					}
+				} else if (id) {
+					plan.refetchTasks.push(id)
+					markLists('active')
+				}
+				break
 			case 'update_task':
 				if (isTaskEntity(result) && (id === undefined || result.id === id)) {
 					plan.operations.push({kind: 'task', task: result})

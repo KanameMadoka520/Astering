@@ -306,6 +306,7 @@ func runAI(ctx context.Context, api huma.API, uid int64, in tcyai.RunInput) (*si
 		return nil, executionErr
 	}
 	state := tcyai.NewAgentState(ctx, c, in)
+	state.OwnerID = uid
 	result, err = tcyai.RunAgent(ctx, c, state, execution.execute, execution.prepare, nil)
 	if err != nil {
 		result.Reply = tcylocale.Text(ctx, "stopped", tcylocale.Render(ctx, err))
