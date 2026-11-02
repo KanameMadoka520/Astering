@@ -3,6 +3,7 @@ import {computed, nextTick, ref, watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 
 import CalendarEventLink from './CalendarEventLink.vue'
+import {calendarLunarLabel} from '@/helpers/calendarDisplay'
 import {
 	addCalendarDays,
 	addCalendarMonths,
@@ -18,15 +19,22 @@ const props = defineProps<{
 	segments: Map<string, CalendarSegment[]>
 	timezone: string
 	dense: boolean
+	showLunar?: boolean
+	collapsed?: boolean
+	picker?: boolean
 }>()
 const emit = defineEmits<{
 	select: [date: string]
+	create: [date: string]
 }>()
 const {t, locale} = useI18n({useScope: 'global'})
 const root = ref<HTMLElement>()
 const focusedDate = ref('')
 let restoreFocus = false
-const weeks = computed(() => Array.from({length: 6}, (_, index) => props.dates.slice(index * 7, index * 7 + 7)))
+const weeks = computed(() => {
+	const all = Array.from({length: 6}, (_, index) => props.dates.slice(index * 7, index * 7 + 7))
+	return props.collapsed ? all.filter(week => week.includes(props.selectedDate)) : all
+})
 const eventLimit = computed(() => props.dense ? 2 : 3)
 watch(() => props.selectedDate, async date => {
 	focusedDate.value = date
@@ -58,7 +66,7 @@ function keydown(event: KeyboardEvent, date: string, index: number) {
 	<div
 		ref="root"
 		class="calendar-month-view"
-		:class="{'is-dense': dense}"
+		:class="{'is-dense': dense, 'is-picker': picker, 'is-collapsed': collapsed}"
 		role="grid"
 		:aria-label="t('calendar.monthGrid')"
 	>
@@ -90,6 +98,8 @@ function keydown(event: KeyboardEvent, date: string, index: number) {
 				}"
 				role="gridcell"
 				:aria-selected="date === selectedDate"
+				@click.self="emit('select', date)"
+				@dblclick.self="emit('create', date)"
 			>
 				<button
 					type="button"
@@ -102,9 +112,17 @@ function keydown(event: KeyboardEvent, date: string, index: number) {
 						weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
 					})"
 					@click="emit('select', date)"
+					@dblclick="emit('create', date)"
 					@keydown="keydown($event, date, weekIndex * 7 + dayIndex)"
 				>
-					{{ Number(date.slice(8)) }}
+					<span>{{ Number(date.slice(8)) }}</span>
+					<span
+						v-if="showLunar"
+						class="calendar-month-lunar"
+						aria-hidden="true"
+					>
+						{{ calendarLunarLabel(date, locale) }}
+					</span>
 				</button>
 				<div class="calendar-month-events">
 					<CalendarEventLink
@@ -181,9 +199,12 @@ function keydown(event: KeyboardEvent, date: string, index: number) {
 }
 
 .calendar-month-date {
-	display: block;
-	inline-size: 2rem;
-	block-size: 2rem;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2.75rem;
+	block-size: 2.75rem;
 	margin: 0 auto var(--space-1);
 	padding: 0;
 	border: 0;
@@ -195,8 +216,8 @@ function keydown(event: KeyboardEvent, date: string, index: number) {
 	cursor: pointer;
 
 	&.is-today {
-		background: var(--primary);
-		color: var(--text-on-accent);
+		color: var(--accent-text);
+		font-weight: var(--weight-bold);
 	}
 
 	&:hover {
@@ -206,6 +227,44 @@ function keydown(event: KeyboardEvent, date: string, index: number) {
 	&:focus-visible {
 		outline: 2px solid var(--focus-ring-color);
 		outline-offset: 1px;
+	}
+}
+
+.is-selected .calendar-month-date {
+	background: var(--primary);
+	color: var(--text-on-accent);
+}
+
+.calendar-month-lunar {
+	max-inline-size: 100%;
+	overflow: hidden;
+	font-size: 9px;
+	font-weight: normal;
+	line-height: 1.3;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.is-picker {
+	.calendar-month-cell {
+		min-block-size: 4rem;
+		border-inline-end: 0;
+		background: transparent;
+	}
+
+	.calendar-month-events {
+		display: none;
+	}
+
+	.calendar-month-count {
+		display: block;
+		inline-size: 4px;
+		block-size: 4px;
+		margin-inline: auto;
+		overflow: hidden;
+		border-radius: 50%;
+		background: var(--primary);
+		font-size: 0;
 	}
 }
 

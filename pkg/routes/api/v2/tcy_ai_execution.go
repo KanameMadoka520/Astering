@@ -106,7 +106,7 @@ func aiTaskSnapshot(raw []byte) (map[string]any, error) {
 		return nil, err
 	}
 	out := map[string]any{}
-	for _, k := range []string{"id", "project_id", "title", "description", "due_date", "start_date", "end_date", "priority", "done", "hex_color", "percent_done", "is_favorite", "repeat_after", "repeat_mode", "cover_image_attachment_id", "updated", "routine"} {
+	for _, k := range []string{"id", "project_id", "title", "description", "due_date", "start_date", "end_date", "all_day", "all_day_start", "all_day_end", "priority", "done", "hex_color", "percent_done", "is_favorite", "repeat_after", "repeat_mode", "cover_image_attachment_id", "updated", "routine"} {
 		out[k] = task[k]
 	}
 	// Row IDs may change; an equal trigger time can still have a different rescheduling anchor.

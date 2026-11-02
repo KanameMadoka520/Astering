@@ -11,6 +11,7 @@ import {
 	calendarTimeLabel,
 	clampCalendarDate,
 	layoutTimedEvents,
+	layoutCalendarTimeline,
 	parseCalendarDate,
 	resolveCalendarWallTime,
 	type CalendarDay,
@@ -193,6 +194,23 @@ describe('resolveCalendarWallTime', () => {
 })
 
 describe('calendarSegments', () => {
+	it('keeps explicit all-day civil dates stable across time zones and excludes the last boundary', () => {
+		const days: CalendarDay[] = SHANGHAI_DAYS.map(day => ({
+			...day,
+			start_at: `${day.date}T08:00:00Z`,
+			end_at: `${addCalendarDays(day.date, 1)}T08:00:00Z`,
+		}))
+		const result = calendarSegments([{
+			id: 1,
+			all_day: true,
+			all_day_start: '2026-11-03',
+			all_day_end: '2026-11-05',
+			due_date: '2026-11-05T09:00:00Z',
+		}], days)
+		expect(result.get('2026-11-03')?.[0]).toMatchObject({kind: 'all_day', continuesAfter: true})
+		expect(result.get('2026-11-04')?.[0]).toMatchObject({kind: 'all_day', continuesBefore: true})
+		expect(result.get('2026-11-05')?.map(event => event.kind)).toEqual(['due'])
+	})
 	it('clips cross-day intervals at real midnight and never creates an empty next-day tail', () => {
 		const item = task(1, '2026-11-02T23:00:00+08:00', '2026-11-05T00:00:00+08:00')
 		const result = calendarSegments([item], SHANGHAI_DAYS)
@@ -282,6 +300,37 @@ describe('calendarSegments', () => {
 			durationMinutes: 20,
 			dayMinutes: 1500,
 		})
+	})
+})
+
+describe('readable calendar timeline density', () => {
+	it('keeps sparse events and aggregates crowded groups without dropping any item', () => {
+		const segments = firstDay([
+			task(1, '2026-11-03T09:00:00+08:00', '2026-11-03T12:00:00+08:00'),
+			task(2, '2026-11-03T10:00:00+08:00', '2026-11-03T11:00:00+08:00'),
+			task(3, '2026-11-03T10:30:00+08:00', '2026-11-03T11:30:00+08:00'),
+			task(4, '2026-11-03T16:00:00+08:00', '2026-11-03T17:00:00+08:00'),
+		])
+		const result = layoutCalendarTimeline(segments, 30, 2)
+		expect(result.events.map(event => [event.taskId, event.columnCount])).toEqual([[1, 2], [4, 1]])
+		expect(result.overflow).toHaveLength(1)
+		expect(result.overflow[0].segments.map(event => event.taskId)).toEqual([2, 3])
+		expect(result.overflow[0]).toMatchObject({column: 1, columnCount: 2, date: '2026-11-03'})
+		expect(segments.every(event => !('column' in event))).toBe(true)
+	})
+
+	it('bounds dense rendering while retaining every original segment for disclosure', () => {
+		const segments = firstDay(Array.from({length: 500}, (_, index) => task(
+			index + 1,
+			'2026-11-03T09:00:00+08:00',
+			'2026-11-03T10:00:00+08:00',
+		)))
+		const {events, overflow} = layoutCalendarTimeline(segments, 30, 3)
+		expect(events).toHaveLength(2)
+		expect(overflow).toHaveLength(1)
+		expect(overflow[0].segments).toHaveLength(498)
+		expect(events.every(event => event.columnCount === 3)).toBe(true)
+		expect(layoutCalendarTimeline(segments, 30, Number.NaN).events).toHaveLength(0)
 	})
 })
 

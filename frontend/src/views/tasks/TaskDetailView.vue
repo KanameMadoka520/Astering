@@ -244,6 +244,14 @@
 							{{ $t('misc.retry') }}
 						</BaseButton>
 					</p>
+					<TaskAllDayDates
+						:key="task.id"
+						:task="task"
+						:can-write="canWrite && !isProjectArchived"
+						:timezone="authStore.settings.timezone || 'UTC'"
+						:save="saveAllDayDates"
+						@dirty="setAllDayDraftDirty"
+					/>
 					<div
 						v-if="hasFieldPanel"
 						class="task-fields"
@@ -377,7 +385,7 @@
 								appear
 							>
 								<div
-									v-if="activeFields.startDate"
+									v-if="activeFields.startDate && !task.all_day"
 									class="column"
 									:aria-busy="isFieldSaving('startDate') || undefined"
 								>
@@ -416,7 +424,7 @@
 								appear
 							>
 								<div
-									v-if="activeFields.endDate"
+									v-if="activeFields.endDate && !task.all_day"
 									class="column"
 									:aria-busy="isFieldSaving('endDate') || undefined"
 								>
@@ -798,6 +806,7 @@
 								{{ $t('task.detail.actions.dueDate') }}
 							</XButton>
 							<XButton
+								v-if="!task.all_day"
 								variant="tertiary"
 								icon="play"
 								@click="setFieldActive('startDate')"
@@ -805,6 +814,7 @@
 								{{ $t('task.detail.actions.startDate') }}
 							</XButton>
 							<XButton
+								v-if="!task.all_day"
 								variant="tertiary"
 								icon="stop"
 								@click="setFieldActive('endDate')"
@@ -963,6 +973,7 @@ import ColorPicker from '@/components/input/ColorPicker.vue'
 import Comments from '@/components/tasks/partials/Comments.vue'
 import CreatedUpdated from '@/components/tasks/partials/CreatedUpdated.vue'
 import Datepicker from '@/components/input/Datepicker.vue'
+import TaskAllDayDates from '@/components/tasks/partials/TaskAllDayDates.vue'
 import Description from '@/components/tasks/partials/Description.vue'
 import EditAssignees from '@/components/tasks/partials/EditAssignees.vue'
 import EditLabels from '@/components/tasks/partials/EditLabels.vue'
@@ -1718,7 +1729,17 @@ const unsavedFieldLabels = computed(() => {
 	return [...new Set(fields.map(field => t(DRAFT_FIELD_LABELS[field])))]
 })
 const hasUnsavedFailedFields = computed(() => unsavedFieldLabels.value.length > 0)
-const {leaveTarget, stay, discardAndLeave} = useUnsavedLeaveGuard(hasUnsavedFailedFields)
+const allDayDraftDirty = ref<{id: number, dirty: boolean}>({id: 0, dirty: false})
+function setAllDayDraftDirty(id: number, dirty: boolean) {
+	if (id === task.value.id) allDayDraftDirty.value = {id, dirty}
+}
+const hasUnsavedTaskEdits = computed(() => hasUnsavedFailedFields.value
+	|| (allDayDraftDirty.value.id === task.value.id && allDayDraftDirty.value.dirty))
+const {leaveTarget, stay, discardAndLeave} = useUnsavedLeaveGuard(hasUnsavedTaskEdits)
+
+function saveAllDayDates(changes: Partial<ITask>, id: number) {
+	return saveTask(changes, undefined, id)
+}
 
 function retryFailedSave() {
 	return saveTask({}, undefined, task.value.id)

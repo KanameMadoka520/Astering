@@ -197,6 +197,20 @@ func GetCaldavTodosForTasks(project *models.ProjectWithTasksAndBuckets, projectT
 		}
 		var alarms []Alarm
 		for _, reminder := range t.Reminders {
+			if reminder.RelativeTo == models.ReminderRelationRoutinePeriodEnd {
+				// Dynamic routine periods cannot be represented as a static VALARM.
+				continue
+			}
+			if t.AllDay {
+				if reminder.Reminder.IsZero() {
+					// A missing timed anchor pauses a relative reminder; it is not a year-1 alarm.
+					continue
+				}
+				// RELATED=END would point at civil duration, not our independent
+				// due instant. Use the already resolved absolute reminder instead.
+				alarms = append(alarms, Alarm{Time: reminder.Reminder})
+				continue
+			}
 			alarms = append(alarms, Alarm{
 				Time:       reminder.Reminder,
 				Duration:   time.Duration(reminder.RelativePeriod) * time.Second,
@@ -225,6 +239,9 @@ func GetCaldavTodosForTasks(project *models.ProjectWithTasksAndBuckets, projectT
 			Categories:  categories,
 			Priority:    t.Priority,
 			Start:       t.StartDate,
+			AllDay:      t.AllDay,
+			AllDayStart: t.AllDayStart,
+			AllDayEnd:   t.AllDayEnd,
 			End:         t.EndDate,
 			Created:     t.Created,
 			Updated:     t.Updated,
@@ -270,6 +287,7 @@ func getHexColorFromCaldavColor(caldavColor string) string {
 // update overlays only those. True only when present *and* understood; an empty value
 // is an explicit clear. Labels, reminders and relations signal presence out of band.
 type ParsedVTODOProperties struct {
+	AllDay      bool
 	Title       bool
 	Description bool
 	Done        bool
@@ -422,6 +440,21 @@ func ParseTaskFromVTODO(content string) (vTask *models.Task, props ParsedVTODOPr
 		}
 	}
 
+	allDay, civilStart, civilEnd, civilErr := parseAllDayVTODO(task)
+	if civilErr != nil {
+		return nil, props, civilErr
+	}
+	if allDay {
+		startDate, endDate = time.Time{}, time.Time{}
+		// Civil DUE belongs to the all-day interval. An independent due instant
+		// round-trips only through our namespaced extension, never a midnight guess.
+		dueProp, hasDue = task["X-VIKUNJA-DUE"]
+		dueDate = caldavTimeToTimestamp(dueProp)
+		if hasDue && dueProp.Value != "" && dueDate.IsZero() {
+			return nil, props, errors.New("invalid X-VIKUNJA-DUE timestamp")
+		}
+	}
+
 	hexColor := getHexColorFromCaldavColor(color)
 
 	vTask = &models.Task{
@@ -433,6 +466,9 @@ func ParseTaskFromVTODO(content string) (vTask *models.Task, props ParsedVTODOPr
 		DueDate:     dueDate,
 		Updated:     caldavTimeToTimestamp(task["DTSTAMP"]),
 		StartDate:   startDate,
+		AllDay:      allDay,
+		AllDayStart: civilStart,
+		AllDayEnd:   civilEnd,
 		EndDate:     endDate,
 		DoneAt:      caldavTimeToTimestamp(task["COMPLETED"]),
 		HexColor:    hexColor,
@@ -485,13 +521,14 @@ func ParseTaskFromVTODO(content string) (vTask *models.Task, props ParsedVTODOPr
 	}
 
 	props = ParsedVTODOProperties{
+		AllDay:      allDay,
 		Title:       hasSummary,
 		Description: hasDescription,
 		Done:        hasStatus || hasCompleted,
 		Priority:    hasPriority,
 		DueDate:     parsedDateProperty(dueProp, hasDue, dueDate),
-		StartDate:   parsedDateProperty(dtStartProp, hasDTStart, startDate),
-		EndDate:     hasEndDate,
+		StartDate:   allDay || parsedDateProperty(dtStartProp, hasDTStart, startDate),
+		EndDate:     allDay || hasEndDate,
 		Color:       hasColor && (color == "" || hexColor != ""),
 	}
 

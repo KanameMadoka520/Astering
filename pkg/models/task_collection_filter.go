@@ -453,6 +453,12 @@ func getValueForField(field reflect.StructField, rawValue string, loc *time.Loca
 	case reflect.Float64:
 		value, err = strconv.ParseFloat(rawValue, 64)
 	case reflect.String:
+		if (field.Name == "AllDayStart" || field.Name == "AllDayEnd") && rawValue != "" {
+			// Civil dates are canonical labels, never instants or relative date math.
+			if _, err := calendarCivil(rawValue); err != nil {
+				return nil, err
+			}
+		}
 		value = rawValue
 	case reflect.Bool:
 		value, err = strconv.ParseBool(rawValue)

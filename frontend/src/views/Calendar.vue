@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed, ref, shallowRef, watch} from 'vue'
+import {computed, nextTick, ref, shallowRef, watch} from 'vue'
 import {useMediaQuery} from '@vueuse/core'
 import {useRoute, useRouter, type LocationQuery, type LocationQueryRaw} from 'vue-router'
 import {useI18n} from 'vue-i18n'
@@ -73,6 +73,14 @@ const dayCount = computed<CalendarWeekDays>(() => {
 	return value === 3 || value === 14 ? value : 7
 })
 const range = computed(() => calendarRange(view.value, date.value, auth.settings.week_start ?? 0, dayCount.value))
+const selectedDate = computed(() => {
+	const selected = clampCalendarDate(queryValue('selected'))
+	return selected && range.value.dates.includes(selected) ? selected : date.value
+})
+const pickerDates = computed(() => calendarRange('month', selectedDate.value, auth.settings.week_start ?? 0).dates)
+const showLunar = computed(() => queryValue('lunar') ? queryValue('lunar') === '1' : locale.value.startsWith('zh'))
+const monthCollapsed = computed(() => queryValue('fold') === 'week')
+const pickerExpanded = ref(false)
 const projectId = computed(() => /^[1-9]\d*$/.test(queryValue('project')) ? Number(queryValue('project')) : undefined)
 const hideDone = computed(() => queryValue('done') !== 'all')
 const important = computed(() => queryValue('important') === '1')
@@ -96,6 +104,15 @@ const count = computed(() => new Set([...segments.value.values()].flatMap(events
 const failed = computed(() => query.isError.value && !isRequestContextAbort(query.error.value))
 const projectChoices = computed(() => projects.projectsArray.filter(project => project.id > 0 && !project.is_archived))
 const createOpen = ref(false)
+const createSequence = ref(0)
+type CreateSelection = {
+	date: string
+	start?: string
+	end?: string
+	allDay?: boolean
+}
+const initialCreateSelection = () => ({date: date.value})
+const createSelection = shallowRef<CreateSelection>(initialCreateSelection())
 const periodLabel = computed(() => {
 	if (view.value === 'month') return calendarDateLabel(date.value, locale.value, {year: 'numeric', month: 'long'})
 	if (view.value === 'day') return calendarDateLabel(date.value, locale.value, {year: 'numeric', month: 'long', day: 'numeric'})
@@ -109,7 +126,7 @@ const periodLabel = computed(() => {
 
 function updateQuery(patch: LocationQueryRaw) {
 	if (route.path !== '/calendar') return
-	void router.replace({
+	return router.replace({
 		path: '/calendar',
 		query: {
 			...savedQuery.value,
@@ -122,14 +139,38 @@ function updateQuery(patch: LocationQueryRaw) {
 
 function selectDate(value: string) {
 	const next = clampCalendarDate(value)
-	if (next) updateQuery({date: next})
+	if (!next) return
+	const sameMonth = view.value !== 'month' || next.slice(0, 7) === date.value.slice(0, 7)
+	if (view.value !== 'day' && sameMonth && range.value.dates.includes(next)) return updateQuery({selected: next})
+	return updateQuery({date: next, selected: undefined})
+}
+
+function jumpToDate(value: string) {
+	const next = clampCalendarDate(value)
+	if (next) updateQuery({date: next, selected: undefined})
+}
+
+async function revealDay(value: string) {
+	await selectDate(value)
+	await nextTick()
+	if (view.value === 'agenda') {
+		document.querySelector<HTMLElement>(`[data-agenda-date="${value}"]`)?.scrollIntoView({block: 'nearest'})
+	} else {
+		document.getElementById('calendar-selected-day')?.scrollIntoView({block: 'nearest'})
+	}
+}
+
+function openCreate(selection: string | CreateSelection = selectedDate.value) {
+	createSelection.value = typeof selection === 'string' ? {date: selection} : {...selection}
+	createSequence.value++
+	createOpen.value = true
 }
 
 function navigate(direction: number) {
 	const next = view.value === 'month'
 		? addCalendarMonths(date.value, direction)
 		: addCalendarDays(range.value.from, direction * range.value.dates.length)
-	selectDate(next)
+	jumpToDate(next)
 }
 
 function created(taskId: number) {
@@ -162,7 +203,7 @@ function created(taskId: number) {
 				<button
 					type="button"
 					class="calendar-control is-primary"
-					@click="createOpen = true"
+					@click="openCreate()"
 				>
 					{{ t('calendar.create.label') }}
 				</button>
@@ -182,7 +223,7 @@ function created(taskId: number) {
 				<button
 					type="button"
 					class="calendar-control"
-					@click="selectDate(today)"
+					@click="jumpToDate(today)"
 				>
 					{{ t('calendar.today') }}
 				</button>
@@ -197,11 +238,11 @@ function created(taskId: number) {
 				<input
 					type="date"
 					class="calendar-control calendar-date-input"
-					:value="date"
+					:value="selectedDate"
 					min="1971-01-01"
 					max="9997-12-31"
 					:aria-label="t('calendar.chooseDate')"
-					@change="selectDate(($event.target as HTMLInputElement).value)"
+					@change="jumpToDate(($event.target as HTMLInputElement).value)"
 				>
 			</div>
 			<label class="calendar-mode-picker">
@@ -219,6 +260,22 @@ function created(taskId: number) {
 					>{{ t(`calendar.views.${mode}`) }}</option>
 				</select>
 			</label>
+		</div>
+
+		<div
+			class="calendar-presentation"
+			role="group"
+			:aria-label="t('calendar.presentation')"
+		>
+			<button
+				v-for="mode in ['agenda', 'week', 'month'] as const"
+				:key="mode"
+				type="button"
+				:aria-pressed="mode === 'week' ? view === 'week' || view === 'day' : view === mode"
+				@click="updateQuery({view: mode, date: selectedDate, selected: undefined})"
+			>
+				{{ t(`calendar.presentations.${mode}`) }}
+			</button>
 		</div>
 
 		<div class="calendar-period-heading">
@@ -301,6 +358,14 @@ function created(taskId: number) {
 						>
 						{{ t('calendar.compactMonth') }}
 					</label>
+					<label class="calendar-check">
+						<input
+							type="checkbox"
+							:checked="showLunar"
+							@change="updateQuery({lunar: ($event.target as HTMLInputElement).checked ? '1' : '0'})"
+						>
+						{{ t('calendar.showLunar') }}
+					</label>
 					<p>{{ t('calendar.displayHint') }}</p>
 				</div>
 			</details>
@@ -319,28 +384,49 @@ function created(taskId: number) {
 			:retry="() => query.refetch()"
 		/>
 		<div
-			v-if="query.data.value"
+			v-if="query.data.value || query.isFetching.value"
 			class="calendar-content"
 			:class="{'is-month': view === 'month'}"
 		>
 			<template v-if="view === 'month'">
-				<CalendarMonthView
-					:dates="range.dates"
-					:anchor="date"
-					:selected-date="date"
-					:today="today"
-					:segments="segments"
-					:timezone="timezone"
-					:dense="dense"
-					@select="selectDate"
-				/>
-				<CalendarAgenda
-					:dates="[date]"
-					:segments="segments"
-					:timezone="timezone"
-					:today="today"
-					show-empty
-				/>
+				<div class="calendar-month-panel">
+					<div class="calendar-date-panel-header">
+						<span>{{ t('calendar.chooseDayHint') }}</span>
+						<button
+							type="button"
+							class="calendar-control"
+							:aria-expanded="!monthCollapsed"
+							@click="updateQuery({fold: monthCollapsed ? undefined : 'week'})"
+						>
+							{{ t(monthCollapsed ? 'calendar.expandMonth' : 'calendar.collapseMonth') }}
+						</button>
+					</div>
+					<CalendarMonthView
+						:dates="range.dates"
+						:anchor="date"
+						:selected-date="selectedDate"
+						:today="today"
+						:segments="segments"
+						:timezone="timezone"
+						:dense="dense"
+						:show-lunar="showLunar"
+						:collapsed="monthCollapsed"
+						@select="selectDate"
+						@create="openCreate"
+					/>
+				</div>
+				<div id="calendar-selected-day">
+					<CalendarAgenda
+						:dates="[selectedDate]"
+						:segments="segments"
+						:timezone="timezone"
+						:today="today"
+						show-empty
+						:loading="query.isFetching.value && !query.data.value"
+						allow-create
+						@create="openCreate"
+					/>
+				</div>
 			</template>
 			<template v-else-if="view === 'week' || view === 'day'">
 				<CalendarTimeGrid
@@ -348,30 +434,69 @@ function created(taskId: number) {
 					:segments="segments"
 					:timezone="timezone"
 					:today="today"
-					:selected-date="date"
+					:selected-date="selectedDate"
+					:show-lunar="showLunar"
 					:hour-height="calendarHourHeight(zoom)"
 					:now="now"
 					@select="selectDate"
+					@showDay="revealDay"
+					@create="openCreate"
 				/>
-				<div class="calendar-selected-agenda">
+				<div
+					id="calendar-selected-day"
+					class="calendar-selected-agenda"
+				>
 					<CalendarAgenda
-						:dates="[date]"
+						:dates="[selectedDate]"
 						:segments="segments"
 						:timezone="timezone"
 						:today="today"
 						show-empty
+						:loading="query.isFetching.value && !query.data.value"
+						allow-create
+						@create="openCreate"
 					/>
 				</div>
 			</template>
 			<template v-else>
+				<div class="calendar-date-panel">
+					<div class="calendar-date-panel-header">
+						<strong>{{ calendarDateLabel(selectedDate, locale, {year: 'numeric', month: 'long'}) }}</strong>
+						<button
+							type="button"
+							class="calendar-control"
+							:aria-expanded="pickerExpanded"
+							@click="pickerExpanded = !pickerExpanded"
+						>
+							{{ t(pickerExpanded ? 'calendar.collapseMonth' : 'calendar.expandMonth') }}
+						</button>
+					</div>
+					<CalendarMonthView
+						:dates="pickerDates"
+						:anchor="selectedDate"
+						:selected-date="selectedDate"
+						:today="today"
+						:segments="segments"
+						:timezone="timezone"
+						:show-lunar="showLunar"
+						:collapsed="!pickerExpanded"
+						:dense="true"
+						picker
+						@select="revealDay"
+						@create="openCreate"
+					/>
+				</div>
 				<CalendarAgenda
 					:dates="range.dates"
 					:segments="segments"
 					:timezone="timezone"
 					:today="today"
+					allow-create
+					:loading="query.isFetching.value && !query.data.value"
+					@create="openCreate"
 				/>
 				<p
-					v-if="count === 0"
+					v-if="count === 0 && !query.isFetching.value"
 					class="calendar-empty"
 				>
 					{{ t('calendar.emptyRange') }}
@@ -381,9 +506,32 @@ function created(taskId: number) {
 		<p class="calendar-footnote">
 			{{ t('calendar.dateSemantics') }}
 		</p>
+		<nav
+			class="calendar-mobile-actions"
+			:aria-label="t('calendar.quickActions')"
+		>
+			<button
+				type="button"
+				class="calendar-control"
+				@click="jumpToDate(today)"
+			>
+				{{ t('calendar.today') }}
+			</button>
+			<button
+				type="button"
+				class="calendar-control is-primary"
+				@click="openCreate()"
+			>
+				<Icon icon="plus" />{{ t('calendar.create.label') }}
+			</button>
+		</nav>
 		<CalendarCreateDialog
 			v-if="createOpen"
-			:date="date"
+			:key="createSequence"
+			:date="createSelection.date"
+			:initial-start="createSelection.start"
+			:initial-end="createSelection.end"
+			:initial-all-day="createSelection.allDay"
 			:timezone="timezone"
 			:project-id="projectId"
 			@close="createOpen = false"
@@ -400,6 +548,60 @@ function created(taskId: number) {
 	max-inline-size: 100%;
 	color: var(--text-primary);
 }
+
+.calendar-presentation {
+	display: inline-flex;
+	justify-self: start;
+	gap: var(--space-1);
+	max-inline-size: 100%;
+	padding: var(--space-1);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-full);
+	background: var(--surface-sunken);
+
+	button {
+		min-block-size: var(--target-min);
+		padding-inline: var(--space-4);
+		border: 0;
+		border-radius: var(--radius-full);
+		background: transparent;
+		color: var(--text-secondary);
+		font: inherit;
+		font-size: var(--text-sm);
+		cursor: pointer;
+
+		&[aria-pressed='true'] {
+			background: var(--surface);
+			color: var(--text-primary);
+			box-shadow: var(--shadow-sm);
+		}
+
+		&:focus-visible { outline: 2px solid var(--focus-ring-color); }
+	}
+}
+
+.calendar-date-panel-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	min-inline-size: 0;
+	margin-block-end: var(--space-2);
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+
+	> span { min-inline-size: 0; }
+	> button { flex-shrink: 0; }
+}
+
+.calendar-month-panel,
+.calendar-date-panel,
+#calendar-selected-day {
+	min-inline-size: 0;
+	scroll-margin-block-start: var(--space-4);
+}
+
+.calendar-mobile-actions { display: none; }
 
 .calendar-heading,
 .calendar-heading-actions,
@@ -574,7 +776,7 @@ function created(taskId: number) {
 }
 
 .calendar-selected-agenda {
-	display: none;
+	display: block;
 }
 
 .calendar-empty {
@@ -590,6 +792,38 @@ function created(taskId: number) {
 @media (width <= 640px) {
 	.calendar-page {
 		gap: var(--space-3);
+		padding-block-end: 5rem;
+	}
+
+	.calendar-heading-actions .is-primary { display: none; }
+
+	.calendar-presentation {
+		justify-self: stretch;
+
+		button {
+			flex: 1;
+			padding-inline: var(--space-2);
+		}
+	}
+
+	.calendar-mobile-actions {
+		position: fixed;
+		z-index: 25;
+		inset-inline: var(--space-3) 4.75rem;
+		inset-block-end: calc(env(safe-area-inset-bottom, 0px) + var(--space-3));
+		display: flex;
+		gap: var(--space-2);
+		padding: var(--space-2);
+		border: 1px solid var(--border-subtle);
+		border-radius: var(--radius-full);
+		background: var(--surface);
+		box-shadow: var(--shadow-md);
+
+		.calendar-control {
+			flex: 1;
+			gap: var(--space-2);
+			border-radius: var(--radius-full);
+		}
 	}
 
 	.calendar-heading {

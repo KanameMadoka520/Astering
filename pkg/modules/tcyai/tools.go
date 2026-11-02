@@ -64,6 +64,10 @@ func taskProperties() map[string]any {
 	props["repeat_mode"] = map[string]any{"type": "integer", "enum": []int{0, 1, 2}, "description": "重复 recurrence：0 按上次日期加间隔，1 按月，2 从完成当天加间隔。"}
 	props["project_id"] = map[string]any{"type": "integer", "minimum": 1, "description": "目标项目 ID；修改时用于移动 move，源和目标都须在本轮允许修改范围内。"}
 	props["cover_image_attachment_id"] = map[string]any{"type": "integer", "minimum": 0, "description": "封面 cover：从 get_task 的附件中选已有图片的真实附件 ID；0 移除封面。"}
+	props["all_day"] = map[string]any{"type": "boolean", "description": "明确全天日程；不得从午夜推断。true时必须设置all_day_start/end并清空start_date/end_date；false时清空两civil日期。"}
+	for _, key := range []string{"all_day_start", "all_day_end"} {
+		props[key] = map[string]any{"type": "string", "maxLength": 10, "description": "全天civil日期YYYY-MM-DD，不带时区；start含、end不含，单日end=下一日。空字符串清除。与due_date独立。"}
+	}
 	props["reminders"] = taskReminderSchema()
 	return props
 }
@@ -292,18 +296,38 @@ func ValidateTool(name string, raw json.RawMessage, in RunInput) (json.RawMessag
 	return json.Marshal(instance)
 }
 
+func validateToolDateField(key string, value any) error {
+	switch key {
+	case "all_day_start", "all_day_end":
+		label, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("INVALID_ARGUMENTS: %s must be a civil date or empty", key)
+		}
+		if label == "" {
+			return nil
+		}
+		parsed, err := time.Parse(time.DateOnly, label)
+		if err != nil || parsed.Format(time.DateOnly) != label {
+			return fmt.Errorf("INVALID_ARGUMENTS: %s must use YYYY-MM-DD", key)
+		}
+	case "due_date", "start_date", "end_date", "reminder":
+		instant, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("INVALID_ARGUMENTS: %s must be RFC3339", key)
+		}
+		if _, err := time.Parse(time.RFC3339, instant); err != nil {
+			return fmt.Errorf("INVALID_ARGUMENTS: %s must be RFC3339 with timezone", key)
+		}
+	}
+	return nil
+}
+
 func validateDates(value any) error {
 	switch v := value.(type) {
 	case map[string]any:
 		for k, val := range v {
-			if k == "due_date" || k == "start_date" || k == "end_date" || k == "reminder" {
-				s, ok := val.(string)
-				if !ok {
-					return fmt.Errorf("INVALID_ARGUMENTS: %s must be RFC3339", k)
-				}
-				if _, err := time.Parse(time.RFC3339, s); err != nil {
-					return fmt.Errorf("INVALID_ARGUMENTS: %s must be RFC3339 with timezone", k)
-				}
+			if err := validateToolDateField(k, val); err != nil {
+				return err
 			}
 			if err := validateDates(val); err != nil {
 				return err

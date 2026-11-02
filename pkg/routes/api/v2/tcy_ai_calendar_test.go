@@ -58,11 +58,11 @@ func TestTCYAICalendarRouting(t *testing.T) {
 	assert.Equal(t, "25", query.Get("per_page"))
 }
 
-func calendarMutationPreview(t *testing.T, id int64) tcyai.Operation {
+func calendarMutationPreview(t *testing.T) tcyai.Operation {
 	t.Helper()
 	s := db.NewSession()
 	defer s.Close()
-	task := &models.Task{ID: id}
+	task := &models.Task{ID: 1}
 	require.NoError(t, task.ReadOne(s, &user.User{ID: 1}))
 	data, err := json.Marshal(task)
 	require.NoError(t, err)
@@ -82,7 +82,7 @@ func TestTCYAICalendarExistingScheduleWrites(t *testing.T) {
 	ctx := context.Background()
 	writer := aiBucketWriter()
 	raw := json.RawMessage(`{"id":1,"start_date":"2024-03-10T09:00:00+08:00","end_date":"2024-03-10T10:00:00+08:00","due_date":"2024-03-11T12:00:00+08:00"}`)
-	preview := calendarMutationPreview(t, 1)
+	preview := calendarMutationPreview(t)
 	_, err := writer.mutateTasks(ctx, "update_task", raw, preview)
 	require.NoError(t, err)
 	saved := aiBucketTestTask(t, 1)
@@ -95,7 +95,7 @@ func TestTCYAICalendarExistingScheduleWrites(t *testing.T) {
 		Mode:            "write",
 		WriteProjectIDs: []int64{10},
 	})
-	preview = calendarMutationPreview(t, 1)
+	preview = calendarMutationPreview(t)
 	_, err = restricted.mutateTasks(ctx, "update_task", raw, preview)
 	requireAIBucketCode(t, err, "SCOPE_DENIED")
 	forbidden := &aiExecution{

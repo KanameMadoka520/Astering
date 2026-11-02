@@ -218,6 +218,33 @@ describe('calendar creation draft ownership', () => {
 		expect(created).toHaveBeenCalledExactlyOnceWith(41)
 	})
 
+	it('stores typed notes as escaped task description paragraphs through the real mutation', async () => {
+		const view = await setup()
+		await view.get('textarea').setValue('Room <img src=x onerror="bad()">\nBring A & B')
+		await view.get('form').trigger('submit')
+		await flushPromises()
+		expect(sdk.tasksCreate).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+			body: expect.objectContaining({
+				description: '<p>Room &lt;img src=x onerror="bad()"&gt;</p><p>Bring A &amp; B</p>',
+			}),
+		}))
+		expect(created).toHaveBeenCalledExactlyOnceWith(41)
+	})
+
+	it('protects a notes-only draft when navigating to another date', async () => {
+		const view = await setup()
+		await view.get('input[maxlength="250"]').setValue('')
+		await view.get('textarea').setValue('Keep this location note')
+		await router.push('/calendar?date=2026-11-04')
+		await flushPromises()
+		expect(router.currentRoute.value.query.date).toBe('2026-11-03')
+		expect(view.find('[data-stay]').exists()).toBe(true)
+		await view.get('[data-stay]').trigger('click')
+		await flushPromises()
+		expect(view.get<HTMLTextAreaElement>('textarea').element.value).toBe('Keep this location note')
+		expect(sdk.tasksCreate).not.toHaveBeenCalled()
+	})
+
 	it('closes the discarded draft after a guarded same-calendar query navigation', async () => {
 		const view = await setup()
 		await router.push('/calendar?date=2026-11-04')

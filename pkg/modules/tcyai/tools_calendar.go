@@ -22,7 +22,7 @@ func calendarTools() []map[string]any {
 		"type":    "string",
 		"pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
 	}
-	return []map[string]any{tool("list_calendar_events", "日历 calendar agenda 日程 预约 时间安排：读取有权限任务的实际开始/结束/截止时间，按任务ID稳定分页。from含、to不含，最多62个当地日；timezone省略用账户时区。完整起止区间与窗口重叠或任一日期点在窗口内即返回，每任务一次。缺少日期不虚构预约，不推断全天，不展开未来重复；截止独立于结束。默认仅未完成且非归档项目。需详细描述用get_task；增改日程用create_task/update_task/bulk_update_tasks，删除整个任务用delete_task，取消安排仅清空相应日期。", map[string]any{
+	return []map[string]any{tool("list_calendar_events", "日历 calendar agenda 日程 预约 时间安排：读取有权限任务的实际开始/结束/截止时间，按任务ID稳定分页。from含、to不含，最多62个当地日；timezone省略用账户时区。完整起止区间与窗口重叠或任一日期点在窗口内即返回，每任务一次。全天按显式all_day_start/all_day_end日期范围重叠返回（end不含），跨时区不漂移。缺少日期不虚构预约，不从午夜推断全天，不展开未来重复；截止独立于结束。默认仅未完成且非归档项目。需详细描述用get_task；增改日程用create_task/update_task/bulk_update_tasks，删除整个任务用delete_task，取消安排仅清空相应日期。", map[string]any{
 		"from": civil,
 		"to":   civil,
 		"timezone": map[string]any{

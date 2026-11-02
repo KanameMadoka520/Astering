@@ -115,3 +115,101 @@ func TestTCYFreeTimes(t *testing.T) {
 	assert.Equal(t, []tcyshowcase.Interval{{Start: at(9), End: at(10)}, {Start: at(13), End: at(17)}}, tcyshowcase.FreeTimes(day, day, d, events))
 	assert.Equal(t, []tcyshowcase.Interval{{Start: at(15), End: at(17)}}, tcyshowcase.FreeTimes(day, at(15), d, events))
 }
+
+func TestTCYShowcaseAllDayPrivacyAndAvailability(t *testing.T) {
+	i18n.Init()
+	e, err := setupTestEnv()
+	require.NoError(t, err)
+	token := humaTokenFor(t, &testuser1)
+	other := humaTokenFor(t, &testuser2)
+	oldPath := config.FilesBasePath.GetString()
+	config.FilesBasePath.Set(t.TempDir())
+	t.Cleanup(func() { config.FilesBasePath.Set(oldPath) })
+	created := humaRequest(t, e, "POST", "/api/v2/projects", `{"title":"PRIVATE CIVIL PROJECT"}`, token, "")
+	require.Equal(t, 201, created.Code, created.Body.String())
+	var project struct {
+		ID int64 `json:"id"`
+	}
+	require.NoError(t, json.Unmarshal(created.Body.Bytes(), &project))
+	zone := time.FixedZone("Asia/Shanghai", 8*3600)
+	now := time.Now().In(zone)
+	tomorrow := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, zone)
+	end := tomorrow.AddDate(0, 0, 2)
+	body := fmt.Sprintf(`{"title":"PRIVATE CIVIL TASK","all_day":true,"all_day_start":%q,"all_day_end":%q}`, tomorrow.Format(time.DateOnly), end.Format(time.DateOnly))
+	created = humaRequest(t, e, "POST", fmt.Sprintf("/api/v2/projects/%d/tasks", project.ID), body, token, "")
+	require.Equal(t, 201, created.Code, created.Body.String())
+	var task struct {
+		ID int64 `json:"id"`
+	}
+	require.NoError(t, json.Unmarshal(created.Body.Bytes(), &task))
+	draft := tcyshowcase.Default()
+	draft.Slug = "civil-availability"
+	draft.Days = 5
+	draft.Weekdays = []int{0, 1, 2, 3, 4, 5, 6}
+	draft.Projects = []tcyshowcase.ProjectRule{{ID: project.ID, Alias: "Public alias", Mode: "busy"}}
+	payload := func() string { b, err := json.Marshal(draft); require.NoError(t, err); return string(b) }
+	denied := humaRequest(t, e, "POST", "/api/v2/showcase/preview", payload(), other, "")
+	require.GreaterOrEqual(t, denied.Code, 400)
+	preview := humaRequest(t, e, "POST", "/api/v2/showcase/preview", payload(), token, "")
+	require.Equal(t, 200, preview.Code, preview.Body.String())
+	var p tcyshowcase.Preview
+	require.NoError(t, json.Unmarshal(preview.Body.Bytes(), &p))
+	require.Len(t, p.Page.Events, 1)
+	require.Len(t, p.Sources, 1)
+	assert.True(t, p.Page.Events[0].AllDay)
+	assert.Equal(t, "busy", p.Page.Events[0].Kind)
+	assert.Equal(t, "Busy", p.Page.Events[0].Title)
+	assert.True(t, p.Page.Events[0].Start.Equal(tomorrow))
+	assert.True(t, p.Page.Events[0].End.Equal(end))
+	for _, free := range p.Page.Free {
+		assert.False(t, free.Start.Before(end) && free.End.After(tomorrow), "Explicit all-day busy dates cannot be reported free")
+	}
+	published := humaRequest(t, e, "POST", "/api/v2/showcase/publish", payload(), token, "")
+	require.Equal(t, 200, published.Code, published.Body.String())
+	public := humaRequest(t, e, "GET", "/api/v2/public/civil-availability", "", "", "")
+	require.Equal(t, 200, public.Code, public.Body.String())
+	for _, secret := range []string{"PRIVATE", `"sources"`, `"project_id"`, `"id"`} {
+		assert.NotContains(t, public.Body.String(), secret)
+	}
+	assert.Contains(t, public.Body.String(), `"all_day":true`)
+	// A valid civil range outside the public horizon must still expose its
+	// independently selected deadline, without turning it into a busy block.
+	due := tomorrow.Add(12 * time.Hour)
+	path := fmt.Sprintf("/api/v2/tasks/%d", task.ID)
+	patch := fmt.Sprintf(`{"all_day_start":%q,"all_day_end":%q,"due_date":%q}`, tomorrow.AddDate(0, 0, -3).Format(time.DateOnly), tomorrow.AddDate(0, 0, -2).Format(time.DateOnly), due.Format(time.RFC3339))
+	updated := humaRequest(t, e, "PATCH", path, patch, token, "")
+	require.Equal(t, 200, updated.Code, updated.Body.String())
+	public = humaRequest(t, e, "GET", "/api/v2/public/civil-availability", "", "", "")
+	require.Equal(t, 200, public.Code, public.Body.String())
+	var page tcyshowcase.Page
+	require.NoError(t, json.Unmarshal(public.Body.Bytes(), &page))
+	require.Len(t, page.Events, 1)
+	assert.Equal(t, "deadline", page.Events[0].Kind)
+	assert.False(t, page.Events[0].AllDay)
+	assert.True(t, page.Events[0].Start.Equal(due))
+	assert.True(t, page.Events[0].End.Equal(due))
+	assert.NotContains(t, public.Body.String(), "PRIVATE")
+	// Bringing the range back retains the established one-event busy priority,
+	// even though its independent deadline also falls within this window.
+	patch = fmt.Sprintf(`{"all_day_start":%q,"all_day_end":%q}`, tomorrow.Format(time.DateOnly), end.Format(time.DateOnly))
+	updated = humaRequest(t, e, "PATCH", path, patch, token, "")
+	require.Equal(t, 200, updated.Code, updated.Body.String())
+	public = humaRequest(t, e, "GET", "/api/v2/public/civil-availability", "", "", "")
+	require.Equal(t, 200, public.Code, public.Body.String())
+	require.NoError(t, json.Unmarshal(public.Body.Bytes(), &page))
+	require.Len(t, page.Events, 1)
+	assert.Equal(t, "busy", page.Events[0].Kind)
+	assert.True(t, page.Events[0].AllDay)
+	draft.Tasks = []tcyshowcase.TaskRule{{ID: task.ID, Hidden: true}}
+	preview = humaRequest(t, e, "POST", "/api/v2/showcase/preview", payload(), token, "")
+	require.Equal(t, 200, preview.Code, preview.Body.String())
+	require.NoError(t, json.Unmarshal(preview.Body.Bytes(), &p))
+	assert.Empty(t, p.Page.Events)
+	draft.Tasks = nil
+	draft.Projects[0].Mode = "hidden"
+	preview = humaRequest(t, e, "POST", "/api/v2/showcase/preview", payload(), token, "")
+	require.Equal(t, 200, preview.Code, preview.Body.String())
+	require.NoError(t, json.Unmarshal(preview.Body.Bytes(), &p))
+	assert.Empty(t, p.Page.Events)
+	assert.Empty(t, p.Sources)
+}

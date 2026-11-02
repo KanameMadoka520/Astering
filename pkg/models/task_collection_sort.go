@@ -39,6 +39,9 @@ const (
 	taskPropertyPriority      string = "priority"
 	taskPropertyStartDate     string = "start_date"
 	taskPropertyEndDate       string = "end_date"
+	taskPropertyAllDay        string = "all_day"
+	taskPropertyAllDayStart   string = "all_day_start"
+	taskPropertyAllDayEnd     string = "all_day_end"
 	taskPropertyHexColor      string = "hex_color"
 	taskPropertyPercentDone   string = "percent_done"
 	taskPropertyUID           string = "uid"
@@ -110,6 +113,9 @@ func validateTaskFieldForSorting(fieldName string) error {
 		taskPropertyPriority,
 		taskPropertyStartDate,
 		taskPropertyEndDate,
+		taskPropertyAllDay,
+		taskPropertyAllDayStart,
+		taskPropertyAllDayEnd,
 		taskPropertyHexColor,
 		taskPropertyPercentDone,
 		taskPropertyUID,

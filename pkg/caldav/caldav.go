@@ -61,6 +61,9 @@ type Todo struct {
 	Color       string
 	Categories  []string
 	Start       time.Time
+	AllDay      bool
+	AllDayStart string
+	AllDayEnd   string
 	End         time.Time
 	DueDate     time.Time
 	Duration    time.Duration
@@ -171,7 +174,16 @@ UID:` + escapeICalText(t.UID) + `
 DTSTAMP:` + makeCalDavTimeFromTimeStamp(t.Timestamp) + `
 SUMMARY:` + escapeICalText(t.Summary) + getCaldavColor(t.Color)
 
-		if t.Start.Unix() > 0 {
+		if t.AllDay {
+			// Validate fixed civil labels before concatenating into iCalendar.
+			start, startErr := time.Parse(time.DateOnly, t.AllDayStart)
+			end, endErr := time.Parse(time.DateOnly, t.AllDayEnd)
+			if startErr == nil && endErr == nil && end.After(start) {
+				caldavtodos += "\nDTSTART;VALUE=DATE:" + start.Format("20060102")
+				caldavtodos += "\nDURATION:P" + strconv.FormatInt((end.Unix()-start.Unix())/86400, 10) + "D"
+			}
+		}
+		if !t.AllDay && t.Start.Unix() > 0 {
 			caldavtodos += `
 DTSTART:` + makeCalDavTimeFromTimeStamp(t.Start)
 			if t.Duration != 0 && t.DueDate.Unix() == 0 {
@@ -179,7 +191,7 @@ DTSTART:` + makeCalDavTimeFromTimeStamp(t.Start)
 DURATION:PT` + formatDuration(t.Duration)
 			}
 		}
-		if t.End.Unix() > 0 {
+		if !t.AllDay && t.End.Unix() > 0 {
 			caldavtodos += `
 DTEND:` + makeCalDavTimeFromTimeStamp(t.End)
 		}
@@ -216,8 +228,13 @@ ORGANIZER;CN=:` + escapeICalText(t.Organizer.Username)
 		}
 
 		if t.DueDate.Unix() > 0 {
-			caldavtodos += `
-DUE:` + makeCalDavTimeFromTimeStamp(t.DueDate)
+			property := "DUE:"
+			if t.AllDay {
+				// RFC 5545 VTODO: DATE DTSTART cannot pair with DATE-TIME DUE.
+				// Preserve Vikunja's independent instant without changing its type.
+				property = "X-VIKUNJA-DUE:"
+			}
+			caldavtodos += "\n" + property + makeCalDavTimeFromTimeStamp(t.DueDate)
 		}
 
 		if t.Created.Unix() > 0 {
@@ -232,8 +249,11 @@ PRIORITY:` + strconv.Itoa(mapPriorityToCaldav(t.Priority))
 
 		if t.RepeatAfter > 0 || t.RepeatMode == models.TaskRepeatModeMonth {
 			if t.RepeatMode == models.TaskRepeatModeMonth {
-				caldavtodos += `
-RRULE:FREQ=MONTHLY;BYMONTHDAY=` + t.DueDate.Format("02") // Day of the month
+				day := t.DueDate.Format("02")
+				if t.AllDay && len(t.AllDayStart) == 10 {
+					day = t.AllDayStart[8:]
+				}
+				caldavtodos += "\nRRULE:FREQ=MONTHLY;BYMONTHDAY=" + day
 			} else {
 				freq, interval := getRruleFromInterval(t.RepeatAfter)
 				caldavtodos += `

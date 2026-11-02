@@ -345,3 +345,48 @@ func TestProjectTimelineDateFactsIndependent(t *testing.T) {
 		})
 	}
 }
+
+func TestProjectTimelineAllDayCivilCoverage(t *testing.T) {
+	db.LoadAndAssertFixtures(t)
+	s := db.NewSession()
+	defer s.Close()
+	_, err := s.Where("project_id = ?", 1).Delete(new(Task))
+	require.NoError(t, err)
+	rows := []Task{
+		{Title: "Civil across year", ProjectID: 1, Index: 60047, AllDay: true, AllDayStart: "2023-12-31", AllDayEnd: "2024-01-03"},
+		{Title: "Civil DST", ProjectID: 1, Index: 60048, AllDay: true, AllDayStart: "2024-03-09", AllDayEnd: "2024-03-12", DueDate: timelineDate("2024-03-15T12:00:00Z")},
+		{Title: "Must remain private", ProjectID: 2, Index: 60047, AllDay: true, AllDayStart: "2090-01-01", AllDayEnd: "2090-12-31"},
+	}
+	_, err = s.Insert(&rows)
+	require.NoError(t, err)
+	for _, timezone := range []string{"America/New_York", "Pacific/Kiritimati"} {
+		opts := ProjectTimelineOptions{Year: 2024, Timezone: timezone, ProjectID: 1, Page: 1}
+		result, err := getProjectTimelineAt(s, &user.User{ID: 1}, opts, timelineDate("2024-03-11T12:00:00Z"))
+		require.NoError(t, err)
+		require.Equal(t, 2, result.DatedTasks)
+		require.Equal(t, 2, result.RangedTasks)
+		require.Zero(t, result.UndatedTasks)
+		require.Equal(t, 5, result.ScheduledDays)
+		require.Equal(t, 5, result.ElapsedDays)
+		require.Nil(t, result.Days["2024-01-03"])
+		require.Nil(t, result.Days["2024-03-12"])
+		loc, err := time.LoadLocation(timezone)
+		require.NoError(t, err)
+		require.Equal(t, 1, result.Days[rows[1].DueDate.In(loc).Format(time.DateOnly)].Deadlines)
+		require.Equal(t, 2023, result.FirstYear)
+		require.Equal(t, 2024, result.LastYear)
+		require.Len(t, result.Items, 1)
+		require.Equal(t, "2023-12-31", result.Items[0].StartDate)
+		require.Equal(t, "2024-03-11", result.Items[0].EndDate)
+		opts.Day = "2024-03-10"
+		result, err = GetProjectTimeline(s, &user.User{ID: 1}, opts)
+		require.NoError(t, err)
+		require.Len(t, result.Items, 1)
+		opts.ProjectID = 2
+		result, err = GetProjectTimeline(s, &user.User{ID: 1}, opts)
+		require.NoError(t, err)
+		require.Empty(t, result.Items)
+		require.Zero(t, result.DatedTasks)
+		require.Zero(t, result.FirstYear)
+	}
+}

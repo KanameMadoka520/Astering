@@ -734,6 +734,15 @@ export type CalendarDayBoundary = {
 };
 
 export type CalendarTask = {
+    all_day?: boolean;
+    /**
+     * Exclusive civil date; a one-day event ends on the following date.
+     */
+    all_day_end?: string;
+    /**
+     * Inclusive civil date, unchanged across timezones.
+     */
+    all_day_start?: string;
     done?: boolean;
     /**
      * Independent stored deadline instant; year 1 means unset.
@@ -1737,6 +1746,10 @@ export type ErrorDetail = {
 };
 
 export type Event = {
+    /**
+     * Explicit civil all-day interval, projected to the public page timezone; never inferred from midnight.
+     */
+    all_day?: boolean;
     /**
      * End in RFC3339; equals start for a deadline.
      */
@@ -4638,6 +4651,18 @@ export type Task = {
      */
     readonly $schema?: string;
     /**
+     * Explicit all-day intent; never inferred from a midnight timestamp.
+     */
+    all_day?: boolean;
+    /**
+     * Exclusive civil YYYY-MM-DD end date, strictly after all_day_start. A single day uses next day's date.
+     */
+    all_day_end?: string;
+    /**
+     * Inclusive civil YYYY-MM-DD date. Must be empty unless all_day is true; does not shift with timezone.
+     */
+    all_day_start?: string;
+    /**
      * The users assigned to this task. Read-only here; use the task-assignee endpoints to change assignments.
      */
     readonly assignees?: Array<User> | null;
@@ -5100,6 +5125,18 @@ export type TaskReadOneBody = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    /**
+     * Explicit all-day intent; never inferred from a midnight timestamp.
+     */
+    all_day?: boolean;
+    /**
+     * Exclusive civil YYYY-MM-DD end date, strictly after all_day_start. A single day uses next day's date.
+     */
+    all_day_end?: string;
+    /**
+     * Inclusive civil YYYY-MM-DD date. Must be empty unless all_day is true; does not shift with timezone.
+     */
+    all_day_start?: string;
     /**
      * The users assigned to this task. Read-only here; use the task-assignee endpoints to change assignments.
      */
@@ -8718,6 +8755,18 @@ export type SteeringInputWritable = {
 
 export type TaskWritable = {
     /**
+     * Explicit all-day intent; never inferred from a midnight timestamp.
+     */
+    all_day?: boolean;
+    /**
+     * Exclusive civil YYYY-MM-DD end date, strictly after all_day_start. A single day uses next day's date.
+     */
+    all_day_end?: string;
+    /**
+     * Inclusive civil YYYY-MM-DD date. Must be empty unless all_day is true; does not shift with timezone.
+     */
+    all_day_start?: string;
+    /**
      * The bucket the task is in. Only populated when the task is accessed via a view with buckets. To move a task between buckets, the new bucket must be in the same view as the old one.
      */
     bucket_id?: number;
@@ -8900,6 +8949,18 @@ export type TaskPositionWritable = {
 };
 
 export type TaskReadOneBodyWritable = {
+    /**
+     * Explicit all-day intent; never inferred from a midnight timestamp.
+     */
+    all_day?: boolean;
+    /**
+     * Exclusive civil YYYY-MM-DD end date, strictly after all_day_start. A single day uses next day's date.
+     */
+    all_day_end?: string;
+    /**
+     * Inclusive civil YYYY-MM-DD date. Must be empty unless all_day is true; does not shift with timezone.
+     */
+    all_day_start?: string;
     /**
      * The bucket the task is in. Only populated when the task is accessed via a view with buckets. To move a task between buckets, the new bucket must be in the same view as the old one.
      */

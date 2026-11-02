@@ -3,7 +3,7 @@ import {computed, nextTick, ref, watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {marked} from 'marked'
 import DOMPurify from 'dompurify'
-import type {TcyShowcasePublicResponse} from '@/client/generated'
+import type {Event as ShowcaseEvent, TcyShowcasePublicResponse} from '@/client/generated'
 import TcyBrand from '@/components/home/TcyBrand.vue'
 import {useColorScheme} from '@/composables/useColorScheme'
 
@@ -34,6 +34,16 @@ const formatTime = (value?: string) => value
 		weekday: 'short',
 	})
 	: ''
+function allDayLabel(event: ShowcaseEvent) {
+	const format = (value: Date) => value.toLocaleDateString(locale.value, {
+		timeZone: 'Asia/Shanghai', month: 'short', day: 'numeric', weekday: 'short',
+	})
+	const first = new Date(event.start!)
+	const last = new Date(Date.parse(event.end!) - 1)
+	const start = format(first)
+	const end = format(last)
+	return `${start}${start === end ? '' : ` – ${end}`} · ${t('calendar.allDay')}`
+}
 const escape = (value: string) => value
 	.replaceAll('&', '&amp;')
 	.replaceAll('<', '&lt;')
@@ -86,8 +96,9 @@ const frameStyle = computed(() => {
 const custom = computed(() => {
 	if (!props.page.content) return ''
 	const schedule = '<ul>' + events.value.map(e => {
-		const end = e.kind === 'busy' ? ' — ' + escape(formatTime(e.end)) : t('tcymc.text.due')
-		return `<li>${escape(formatTime(e.start))}${end} · ${escape(e.title ?? '')} · ${escape(e.project ?? '')}</li>`
+		const when = e.all_day ? allDayLabel(e)
+			: formatTime(e.start) + (e.kind === 'busy' ? ' — ' + formatTime(e.end) : t('tcymc.text.due'))
+		return `<li>${escape(when)} · ${escape(e.title ?? '')} · ${escape(e.project ?? '')}</li>`
 	}).join('') + '</ul>'
 	const availability = '<ul>'
 		+ free.value.map(f => `<li>${escape(formatTime(f.start))} — ${escape(formatTime(f.end))}</li>`).join('')
@@ -167,9 +178,14 @@ const custom = computed(() => {
 						:class="event.kind === 'busy' ? 'is-busy' : 'is-due'"
 					>
 						<p class="event-when">
-							<time :datetime="event.start">{{ formatTime(event.start) }}</time>
-							<template v-if="event.kind === 'busy'">
-								{{ ' – ' }}<time :datetime="event.end">{{ formatTime(event.end) }}</time>
+							<template v-if="event.all_day">
+								{{ allDayLabel(event) }}
+							</template>
+							<template v-else>
+								<time :datetime="event.start">{{ formatTime(event.start) }}</time>
+								<template v-if="event.kind === 'busy'">
+									{{ ' – ' }}<time :datetime="event.end">{{ formatTime(event.end) }}</time>
+								</template>
 							</template>
 						</p>
 						<component
@@ -182,7 +198,7 @@ const custom = computed(() => {
 						<p class="event-meta">
 							<span class="event-kind">
 								<Icon :icon="event.kind === 'busy' ? ['far', 'clock'] : 'flag-checkered'" />
-								{{ event.kind === 'busy' ? t('tcymc.text.time_block') : t('tcymc.text.due_item') }}
+								{{ event.all_day ? t('calendar.allDay') : event.kind === 'busy' ? t('tcymc.text.time_block') : t('tcymc.text.due_item') }}
 							</span>
 							<span
 								v-if="event.project"

@@ -70,7 +70,10 @@ func validateTaskForCreation(t *Task) error {
 		return ErrTaskCannotBeEmpty{}
 	}
 
-	return validateRepeatAfter(t.RepeatAfter)
+	if err := validateRepeatAfter(t.RepeatAfter); err != nil {
+		return err
+	}
+	return validateTaskAllDay(t)
 }
 
 // Task represents a task in a project
@@ -104,6 +107,11 @@ type Task struct {
 	StartDate time.Time `xorm:"DATETIME INDEX null 'start_date'" json:"start_date" query:"-"`
 	// When this task ends.
 	EndDate time.Time `xorm:"DATETIME INDEX null 'end_date'" json:"end_date" query:"-"`
+	// Explicit civil-date interval, independent of timezone and timed scheduling.
+	AllDay      bool   `xorm:"not null default false" json:"all_day" doc:"Explicit all-day intent; never inferred from a midnight timestamp."`
+	AllDayStart string `xorm:"varchar(10) not null default ''" json:"all_day_start" maxLength:"10" doc:"Inclusive civil YYYY-MM-DD date. Must be empty unless all_day is true; does not shift with timezone."`
+	AllDayEnd   string `xorm:"varchar(10) not null default ''" json:"all_day_end" maxLength:"10" doc:"Exclusive civil YYYY-MM-DD end date, strictly after all_day_start. A single day uses next day's date."`
+
 	// An array of users who are assigned to this task
 	Assignees []*user.User `xorm:"-" json:"assignees" readOnly:"true" doc:"The users assigned to this task. Read-only here; use the task-assignee endpoints to change assignments."`
 	// An array of labels which are associated with this task. This property is read-only, you must use the separate endpoint to add labels to a task.
@@ -1366,6 +1374,9 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 		"priority",
 		"start_date",
 		"end_date",
+		"all_day",
+		"all_day_start",
+		"all_day_end",
 		"hex_color",
 		"percent_done",
 		"project_id",
@@ -1424,6 +1435,15 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 		if !fieldSet["end_date"] {
 			t.EndDate = ot.EndDate
 		}
+		if !fieldSet["all_day"] {
+			t.AllDay = ot.AllDay
+		}
+		if !fieldSet["all_day_start"] {
+			t.AllDayStart = ot.AllDayStart
+		}
+		if !fieldSet["all_day_end"] {
+			t.AllDayEnd = ot.AllDayEnd
+		}
 		if !fieldSet["hex_color"] {
 			t.HexColor = ot.HexColor
 		}
@@ -1445,6 +1465,10 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 		if !fieldSet["reminders"] {
 			t.Reminders = ot.Reminders
 		}
+	}
+
+	if err := validateTaskAllDay(t); err != nil {
+		return err
 	}
 
 	if len(fields) == 0 || fieldSet["assignees"] {
@@ -1565,8 +1589,22 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 	preRepeatDueDate, preRepeatStartDate, preRepeatEndDate := t.DueDate, t.StartDate, t.EndDate
 	preRepeatDescription := t.Description
 
+	if ot.AllDay && t.AllDay && ot.isRepeating() && !ot.Done && t.Done {
+		loc, timezoneErr := calendarTimezone(s, a, "")
+		if timezoneErr != nil {
+			return timezoneErr
+		}
+		if err := repeatTaskAllDay(&ot, t, time.Now().In(loc)); err != nil {
+			return err
+		}
+		colsToUpdate = append(colsToUpdate, "all_day_start", "all_day_end")
+	}
+
 	// When a repeating task is marked as done, we update all deadlines and reminders and set it as undone
 	updateDoneAt := updateDone(&ot, t)
+	if err := validateTaskAllDay(t); err != nil {
+		return err
+	}
 	if updateDoneAt {
 		colsToUpdate = append(colsToUpdate, "done_at")
 	}
@@ -1695,6 +1733,8 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 	if t.EndDate.IsZero() {
 		ot.EndDate = time.Time{}
 	}
+	// Explicit false/empty values must survive mergo's zero-value semantics.
+	ot.AllDay, ot.AllDayStart, ot.AllDayEnd = t.AllDay, t.AllDayStart, t.AllDayEnd
 	// Color
 	if t.HexColor == "" {
 		ot.HexColor = ""

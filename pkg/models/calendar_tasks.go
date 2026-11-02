@@ -40,6 +40,9 @@ type CalendarTask struct {
 	StartDate    time.Time `json:"start_date" doc:"Stored instant, unchanged; year 1 means unset. No all-day intent is inferred."`
 	EndDate      time.Time `json:"end_date" doc:"Stored end instant, unchanged; never substituted with the due date."`
 	DueDate      time.Time `json:"due_date" doc:"Independent stored deadline instant; year 1 means unset."`
+	AllDay       bool      `json:"all_day"`
+	AllDayStart  string    `json:"all_day_start" doc:"Inclusive civil date, unchanged across timezones."`
+	AllDayEnd    string    `json:"all_day_end" doc:"Exclusive civil date; a one-day event ends on the following date."`
 	Updated      time.Time `json:"updated"`
 }
 
@@ -206,7 +209,10 @@ func GetCalendarTasks(s *xorm.Session, a web.Auth, opts CalendarOptions) (*Calen
 	if err != nil {
 		return nil, err
 	}
-	cond := builder.And(access, taskNotDeletedCond("tasks"), calendarDateCondition(days[0].StartAt, days[len(days)-1].EndAt))
+	cond := builder.And(access, taskNotDeletedCond("tasks"), builder.Or(
+		calendarDateCondition(days[0].StartAt, days[len(days)-1].EndAt),
+		builder.And(builder.Eq{"tasks.all_day": true}, builder.Lt{"tasks.all_day_start": opts.To}, builder.Gt{"tasks.all_day_end": opts.From}),
+	))
 	if opts.ProjectID > 0 {
 		cond = cond.And(builder.Eq{"tasks.project_id": opts.ProjectID})
 	}
@@ -230,7 +236,7 @@ func GetCalendarTasks(s *xorm.Session, a web.Auth, opts CalendarOptions) (*Calen
 		return nil, fmt.Errorf("count calendar tasks: %w", err)
 	}
 	items := []CalendarTask{}
-	err = query().Select("tasks.id, tasks.title, tasks.project_id, projects.title AS project_title, projects.hex_color AS project_color, tasks.hex_color, tasks.priority, tasks.done, tasks.start_date, tasks.end_date, tasks.due_date, tasks.updated").
+	err = query().Select("tasks.id, tasks.title, tasks.project_id, projects.title AS project_title, projects.hex_color AS project_color, tasks.hex_color, tasks.priority, tasks.done, tasks.start_date, tasks.end_date, tasks.due_date, tasks.all_day, tasks.all_day_start, tasks.all_day_end, tasks.updated").
 		OrderBy("tasks.id asc").Limit(opts.PerPage, (opts.Page-1)*opts.PerPage).Find(&items)
 	if err != nil {
 		return nil, fmt.Errorf("read calendar tasks: %w", err)

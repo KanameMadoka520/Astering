@@ -166,7 +166,7 @@ func compactTaskListResult(name string, value any) (any, bool) {
 		if !ok {
 			return nil, false
 		}
-		keys := []string{"id", "title", "project_id", "done", "due_date", "start_date", "end_date", "priority", "hex_color", "percent_done", "is_favorite", "repeat_after", "repeat_mode", "routine", "identifier", "parent_project_id", "is_archived", "is_completed", "completed_at"}
+		keys := []string{"id", "title", "project_id", "done", "due_date", "start_date", "end_date", "all_day", "all_day_start", "all_day_end", "priority", "hex_color", "percent_done", "is_favorite", "repeat_after", "repeat_mode", "routine", "identifier", "parent_project_id", "is_archived", "is_completed", "completed_at"}
 		summary := selectFields(item, keys...)
 		for _, key := range []string{"labels", "assignees"} {
 			if entries, ok := item[key].([]any); ok && len(entries) > 0 {
@@ -302,7 +302,7 @@ func (state *AgentState) modelMessages(mustSearch bool) []Message {
 }
 
 func compactTaskDetails(item map[string]any) map[string]any {
-	summary := selectFields(item, "id", "title", "description", "project_id", "done", "due_date", "start_date", "end_date", "priority", "hex_color", "percent_done", "is_favorite", "repeat_after", "repeat_mode", "routine", "reminders", "cover_image_attachment_id", "updated", "created", "labels")
+	summary := selectFields(item, "id", "title", "description", "project_id", "done", "due_date", "start_date", "end_date", "all_day", "all_day_start", "all_day_end", "priority", "hex_color", "percent_done", "is_favorite", "repeat_after", "repeat_mode", "routine", "reminders", "cover_image_attachment_id", "updated", "created", "labels")
 	for _, key := range []string{"assignees", "attachments"} {
 		if entries, ok := item[key].([]any); ok {
 			rows := []any{}

@@ -105,6 +105,9 @@ type ProjectTimelineOptions struct {
 }
 
 type timelineTask struct {
+	AllDay      bool
+	AllDayStart string
+	AllDayEnd   string
 	ProjectID   int64
 	Title       string
 	HexColor    string
@@ -143,7 +146,7 @@ func getProjectTimelineAt(s *xorm.Session, a web.Auth, opts ProjectTimelineOptio
 	yearEnd := yearStart.AddDate(1, 0, 0)
 	// One streaming query: do not retain arbitrary descriptions or all task rows.
 	err = s.Table("tasks").Join("INNER", "projects", "projects.id = tasks.project_id").
-		Select("tasks.project_id, tasks.start_date, tasks.end_date, tasks.due_date, tasks.done_at, tasks.done, tasks.percent_done, projects.title, projects.hex_color, projects.is_completed, projects.is_archived").
+		Select("tasks.all_day, tasks.all_day_start, tasks.all_day_end, tasks.project_id, tasks.start_date, tasks.end_date, tasks.due_date, tasks.done_at, tasks.done, tasks.percent_done, projects.title, projects.hex_color, projects.is_completed, projects.is_archived").
 		Where(cond).Iterate(new(timelineTask), func(_ int, bean interface{}) error {
 		task := bean.(*timelineTask)
 		start, end, ranged, validDue, eligible := timelineDates(task, result, opts.Year, loc)
@@ -262,7 +265,20 @@ func timelineDates(task *timelineTask, result *ProjectTimeline, year int, loc *t
 		end = task.DueDate
 	}
 	invalid := false
-	if !task.StartDate.IsZero() && !end.IsZero() {
+	if task.AllDay {
+		var startErr, endErr error
+		start, startErr = calendarCivil(task.AllDayStart)
+		end, endErr = calendarCivil(task.AllDayEnd)
+		if startErr != nil || endErr != nil || !end.After(start) {
+			invalid = true
+		} else {
+			// Timeline coverage is inclusive by civil day; task end is exclusive.
+			end = end.AddDate(0, 0, -1)
+			includeTimelineYear(result, start.Year())
+			includeTimelineYear(result, end.Year())
+			ranged = start.Year() <= year && end.Year() >= year
+		}
+	} else if !task.StartDate.IsZero() && !end.IsZero() {
 		start, end = task.StartDate.In(loc), end.In(loc)
 		if end.Before(start) || start.Year() < 1970 || end.Year() > 9998 {
 			invalid = true
@@ -285,10 +301,10 @@ func timelineDates(task *timelineTask, result *ProjectTimeline, year int, loc *t
 	switch {
 	case invalid:
 		result.InvalidTasks++
-	case task.StartDate.IsZero() && task.EndDate.IsZero() && task.DueDate.IsZero():
+	case !task.AllDay && task.StartDate.IsZero() && task.EndDate.IsZero() && task.DueDate.IsZero():
 		result.UndatedTasks++
 		result.ExcludedTasks++
-	case (task.StartDate.IsZero() || end.IsZero()) && !validDue:
+	case !task.AllDay && (task.StartDate.IsZero() || end.IsZero()) && !validDue:
 		result.IncompleteTasks++
 		result.ExcludedTasks++
 	}

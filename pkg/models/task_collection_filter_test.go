@@ -544,3 +544,34 @@ func TestZeroDateFilterBoundary(t *testing.T) {
 		})
 	}
 }
+
+func TestParseFilterAllDayCivilValues(t *testing.T) {
+	for _, zone := range []string{"UTC", "America/New_York", "Pacific/Kiritimati"} {
+		filters, err := getTaskFiltersFromFilterString("all_day = true && all_day_start < '2026-11-04' && all_day_end > '2026-11-01'", zone)
+		require.NoError(t, err)
+		require.Len(t, filters, 3)
+		require.Equal(t, true, filters[0].value)
+		require.Equal(t, "2026-11-04", filters[1].value)
+		require.Equal(t, "2026-11-01", filters[2].value)
+	}
+	for _, field := range []string{taskPropertyAllDayStart, taskPropertyAllDayEnd} {
+		require.NoError(t, validateTaskField(field))
+		require.NoError(t, validateTaskFieldForSorting(field))
+		for _, invalid := range []string{"now", "now+1d", "2026-2-3", "2026-02-30", "2026-11-01T00:00:00Z", "1969-12-31", "9999-01-01"} {
+			_, err := getTaskFiltersFromFilterString(field+" = '"+invalid+"'", "UTC")
+			require.Error(t, err, field+"="+invalid)
+		}
+		_, err := getTaskFiltersFromFilterString(field+" in '2026-11-01,now'", "UTC")
+		require.Error(t, err)
+		filters, err := getTaskFiltersFromFilterString(field+" = ''", "UTC")
+		require.NoError(t, err)
+		require.Empty(t, filters[0].value)
+	}
+	_, err := getTaskFiltersFromFilterString("all_day = 'arbitrary'", "UTC")
+	require.Error(t, err)
+	// Existing timestamp and boolean filters retain their original native types.
+	filters, err := getTaskFiltersFromFilterString("done = false && start_date = '2026-11-01'", "UTC")
+	require.NoError(t, err)
+	require.Equal(t, false, filters[0].value)
+	require.IsType(t, time.Time{}, filters[1].value)
+}

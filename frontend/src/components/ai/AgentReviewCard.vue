@@ -162,6 +162,7 @@ const rows = computed(() => {
 	} catch { return [] }
 })
 function display(value: unknown, field: string) {
+	if (field === 'all_day' && typeof value === 'boolean') return t(value ? 'calendar.yes' : 'calendar.no')
 	const tool = pending.value?.tool
 	if (tool === 'configure_task_routine') {
 		if (field === 'period' && typeof value === 'string' && ['daily', 'weekly', 'monthly'].includes(value)) {

@@ -24,7 +24,7 @@ export interface CalendarSegment {
 	id: string
 	taskId: number
 	item: CalendarItem
-	kind: 'range' | 'start' | 'end' | 'due'
+	kind: 'range' | 'start' | 'end' | 'due' | 'all_day'
 	date: string
 	startMs: number
 	endMs: number
@@ -328,7 +328,16 @@ export function calendarSegments(
 		const start = parseDateOrNull(item.start_date)?.getTime()
 		const end = parseDateOrNull(item.end_date)?.getTime()
 		const due = parseDateOrNull(item.due_date)?.getTime()
-		if (start !== undefined && end !== undefined && start < end) {
+		if (item.all_day && parseCalendarDate(item.all_day_start) && parseCalendarDate(item.all_day_end)) {
+			for (const day of windows) {
+				if (day.date < item.all_day_start! || day.date >= item.all_day_end!) continue
+				result.get(day.date)!.push({
+					...segment(item, taskId, 'all_day', day, day.startMs, day.endMs),
+					continuesBefore: day.date > item.all_day_start!,
+					continuesAfter: addCalendarDays(day.date, 1) < item.all_day_end!,
+				})
+			}
+		} else if (start !== undefined && end !== undefined && start < end) {
 			for (let index = firstWindow(windows, start); index < windows.length && windows[index].startMs < end; index++) {
 				const day = windows[index]
 				result.get(day.date)!.push(segment(item, taskId, 'range', day, start, end))
@@ -448,4 +457,69 @@ export function layoutTimedEvents(
 	return [...days.entries()]
 		.sort(([a], [b]) => compareId(a, b))
 		.flatMap(([, events]) => layoutDay(events, minimum))
+}
+
+export interface CalendarTimelineOverflow {
+	id: string
+	date: string
+	visualTopMinutes: number
+	visualDurationMinutes: number
+	column: number
+	columnCount: number
+	segments: CalendarSegment[]
+}
+
+/** Keep readable columns bounded; crowded groups open the same complete day agenda. */
+export function layoutCalendarTimeline(
+	segments: readonly CalendarSegment[],
+	minimumVisualMinutes: number,
+	maximumColumns: number,
+): {
+	events: CalendarPlacement[]
+	overflow: CalendarTimelineOverflow[]
+} {
+	const maximum = Number.isFinite(maximumColumns) ? Math.max(1, Math.floor(maximumColumns)) : 1
+	const placements = layoutTimedEvents(segments.filter(event => event.kind !== 'all_day'), minimumVisualMinutes)
+	const events: CalendarPlacement[] = []
+	const overflow: CalendarTimelineOverflow[] = []
+	let group: CalendarPlacement[] = []
+	let groupEnd = 0
+	const finish = () => {
+		if (!group.length) return
+		if (group[0].columnCount <= maximum) {
+			for (const event of group) events.push(event)
+			return
+		}
+		const hidden = group.filter(event => event.column >= maximum - 1)
+		events.push(...group.filter(event => event.column < maximum - 1).map(event => ({
+			...event,
+			columnCount: maximum,
+		})))
+		let top = Number.POSITIVE_INFINITY
+		let end = 0
+		for (const event of hidden) {
+			top = Math.min(top, event.visualTopMinutes)
+			end = Math.max(end, event.visualTopMinutes + event.visualDurationMinutes)
+		}
+		overflow.push({
+			id: `overflow:${group[0].id}`,
+			date: group[0].date,
+			visualTopMinutes: top,
+			visualDurationMinutes: end - top,
+			column: maximum - 1,
+			columnCount: maximum,
+			segments: hidden,
+		})
+	}
+	for (const event of placements) {
+		if (group.length && (event.date !== group[0].date || event.visualTopMinutes >= groupEnd)) {
+			finish()
+			group = []
+			groupEnd = 0
+		}
+		group.push(event)
+		groupEnd = Math.max(groupEnd, event.visualTopMinutes + event.visualDurationMinutes)
+	}
+	finish()
+	return {events, overflow}
 }

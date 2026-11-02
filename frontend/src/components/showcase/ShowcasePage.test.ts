@@ -82,4 +82,29 @@ describe('ShowcasePage', () => {
 		expect(wrapper!.find('h3').text()).toBe('My public schedule')
 		expect(wrapper!.findAll('h4').map(h => h.text())).toContain('Available times')
 	})
+
+	it('shows inclusive all-day dates in the public page and custom schedule without midnight times', async () => {
+		mountPage()
+		await wrapper!.setProps({page: {
+			...page,
+			content: '{{schedule}}',
+			events: [{
+				all_day: true,
+				kind: 'busy',
+				start: '2026-11-02T16:00:00Z',
+				end: '2026-11-05T16:00:00Z',
+				title: '<Private name>',
+				project: 'Alias',
+			}],
+		}})
+		const when = wrapper!.find('.event-when').text()
+		expect(when).toContain('Nov 3')
+		expect(when).toContain('Nov 5')
+		expect(when).toContain('All day')
+		expect(when).not.toMatch(/00:00|12:00|Nov 6/)
+		const frame = wrapper!.find('iframe').attributes('srcdoc')
+		expect(frame).toContain(when)
+		expect(frame).toContain('&lt;Private name&gt;')
+		expect(frame).not.toContain('<Private name>')
+	})
 })

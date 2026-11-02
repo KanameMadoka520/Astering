@@ -69,6 +69,7 @@ type State struct {
 	PublishedAt time.Time `json:"published_at" doc:"Last publication time."`
 }
 type Event struct {
+	AllDay  bool      `json:"all_day" doc:"Explicit civil all-day interval, projected to the public page timezone; never inferred from midnight."`
 	Title   string    `json:"title" doc:"Public title after applying aliases and concealment."`
 	Project string    `json:"project" doc:"Public project alias."`
 	Start   time.Time `json:"start" doc:"Start or deadline in RFC3339."`
@@ -300,7 +301,7 @@ func Build(ctx context.Context, uid int64, d Draft) (Preview, error) {
 			alias = tcylocale.Text(ctx, "privateProject")
 		}
 		preview.Page.Projects = append(preview.Page.Projects, alias)
-		filter := fmt.Sprintf(`done = false && ((start_date < '%s' && end_date > '%s') || (due_date >= '%s' && due_date < '%s'))`, until.Format(time.RFC3339), from.Format(time.RFC3339), from.Format(time.RFC3339), until.Format(time.RFC3339))
+		filter := fmt.Sprintf(`done = false && ((start_date < '%s' && end_date > '%s') || (due_date >= '%s' && due_date < '%s') || (all_day = true && all_day_start < '%s' && all_day_end > '%s'))`, until.Format(time.RFC3339), from.Format(time.RFC3339), from.Format(time.RFC3339), until.Format(time.RFC3339), until.Format(time.DateOnly), from.Format(time.DateOnly))
 		for page := 1; page <= 40; page++ {
 			collection := &models.TaskCollection{ProjectID: rule.ID, Filter: filter}
 			collection.SetForceFlatTasks()
@@ -325,8 +326,7 @@ func Build(ctx context.Context, uid int64, d Draft) (Preview, error) {
 				if override.Alias != "" {
 					title = override.Alias
 				}
-				if !task.StartDate.IsZero() && task.EndDate.After(task.StartDate) {
-					start, end := task.StartDate, task.EndDate
+				if start, end, ok := showcaseTaskRange(task, zone); ok {
 					if start.Before(from) {
 						start = from
 					}
@@ -334,9 +334,12 @@ func Build(ctx context.Context, uid int64, d Draft) (Preview, error) {
 						end = until
 					}
 					if end.After(start) {
-						preview.Page.Events = append(preview.Page.Events, Event{Title: title, Project: alias, Start: start, End: end, Kind: "busy"})
+						preview.Page.Events = append(preview.Page.Events, Event{AllDay: task.AllDay, Title: title, Project: alias, Start: start, End: end, Kind: "busy"})
+						continue
 					}
-				} else if !task.DueDate.Before(from) && task.DueDate.Before(until) {
+				}
+				// An out-of-window range must not suppress an independently visible deadline.
+				if !task.DueDate.Before(from) && task.DueDate.Before(until) {
 					preview.Page.Events = append(preview.Page.Events, Event{Title: title, Project: alias, Start: task.DueDate, End: task.DueDate, Kind: "deadline"})
 				}
 			}
@@ -351,6 +354,17 @@ func Build(ctx context.Context, uid int64, d Draft) (Preview, error) {
 	sort.Slice(preview.Page.Events, func(i, j int) bool { return preview.Page.Events[i].Start.Before(preview.Page.Events[j].Start) })
 	preview.Page.Free = FreeTimes(from, now, d, preview.Page.Events)
 	return preview, nil
+}
+
+// Public availability has always used its declared page timezone. Civil task
+// labels occupy those local days, without using the viewer/account timezone.
+func showcaseTaskRange(task *models.Task, zone *time.Location) (start, end time.Time, valid bool) {
+	if !task.AllDay {
+		return task.StartDate, task.EndDate, !task.StartDate.IsZero() && task.EndDate.After(task.StartDate)
+	}
+	start, startErr := time.ParseInLocation(time.DateOnly, task.AllDayStart, zone)
+	end, endErr := time.ParseInLocation(time.DateOnly, task.AllDayEnd, zone)
+	return start, end, startErr == nil && endErr == nil && end.After(start)
 }
 
 func FreeTimes(from, now time.Time, d Draft, events []Event) []Interval {

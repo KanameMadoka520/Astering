@@ -669,6 +669,26 @@ func applyDescriptionFromMarkdown(s *xorm.Session, vTask *models.Task, storedHTM
 	return nil
 }
 
+// applyCaldavTaskDates preserves omitted fields and treats an explicitly supplied
+// civil/timed schedule as one atomic conversion, keeping the independent due date.
+func applyCaldavTaskDates(base, vTask *models.Task, props caldav.ParsedVTODOProperties) {
+	if props.DueDate {
+		base.DueDate = vTask.DueDate
+	}
+	if props.AllDay {
+		base.AllDay, base.AllDayStart, base.AllDayEnd = vTask.AllDay, vTask.AllDayStart, vTask.AllDayEnd
+	} else if props.StartDate || props.EndDate {
+		// A client explicitly supplied timed fields (or cleared them).
+		base.AllDay, base.AllDayStart, base.AllDayEnd = false, "", ""
+	}
+	if props.StartDate {
+		base.StartDate = vTask.StartDate
+	}
+	if props.EndDate {
+		base.EndDate = vTask.EndDate
+	}
+}
+
 // UpdateResource updates a resource
 func (vcls *VikunjaCaldavProjectStorage) UpdateResource(rpath, content string) (*data.Resource, error) {
 
@@ -776,15 +796,7 @@ func (vcls *VikunjaCaldavProjectStorage) UpdateResource(rpath, content string) (
 	if props.Priority {
 		base.Priority = vTask.Priority
 	}
-	if props.DueDate {
-		base.DueDate = vTask.DueDate
-	}
-	if props.StartDate {
-		base.StartDate = vTask.StartDate
-	}
-	if props.EndDate {
-		base.EndDate = vTask.EndDate
-	}
+	applyCaldavTaskDates(&base, vTask, props)
 	if props.Color {
 		base.HexColor = vTask.HexColor
 	}
