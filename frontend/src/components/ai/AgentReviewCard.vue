@@ -6,7 +6,7 @@ import {DESTRUCTIVE_TOOLS, toolLabels} from './toolLabels'
 import BucketImpactPreview from './BucketImpactPreview.vue'
 const props = defineProps<{turn: ChatTurn; busy: boolean}>()
 const emit = defineEmits<{review: [input: ReviewInput]}>()
-const {t} = useI18n({useScope: 'global'})
+const {t, locale} = useI18n({useScope: 'global'})
 const args = ref('')
 const answer = ref('')
 const editing = ref(false)
@@ -15,6 +15,9 @@ const toolName = computed(() => {
 	const tool = pending.value?.tool ?? ''
 	return toolLabels(t)[tool] || tool
 })
+const reviewHint = computed(() => pending.value?.tool === 'set_task_routine_progress'
+	? t('agent.routineReview.absoluteProgress')
+	: pending.value?.tool === 'set_task_repeat_bucket' ? t('agent.repeatPolicy.futureOnly') : '')
 const destructive = computed(() => DESTRUCTIVE_TOOLS.has(pending.value?.tool ?? ''))
 // Deleting a bucket removes the bucket only; the generic wording would suggest its tasks go too.
 const destructiveWarning = computed(() => pending.value?.tool === 'delete_bucket'
@@ -50,15 +53,49 @@ const valid = computed(() => { try { const parsed = JSON.parse(args.value); retu
 // state, the snapshot records it), and argument names whose generic label would mislead for that tool.
 const SNAPSHOT_FIELDS: Record<string, Record<string, string>> = {
 	set_project_completed: {completed: 'is_completed'},
-	check_in_task_routine: {completed: 'routine.completed_today', date: 'routine.date'},
-	configure_task_routine: {enabled: 'routine.enabled', paused: 'routine.paused', timezone: 'routine.timezone'},
+	check_in_task_routine: {
+		completed: 'routine.completed_today',
+		date: 'routine.date',
+	},
+	set_task_routine_progress: {
+		amount: 'routine.current_amount',
+		date: 'routine.date',
+	},
+	configure_task_routine: {
+		enabled: 'routine.enabled',
+		paused: 'routine.paused',
+		timezone: 'routine.timezone',
+		period: 'routine.period',
+		reset_hour: 'routine.reset_hour',
+		reset_minute: 'routine.reset_minute',
+		week_start: 'routine.week_start',
+		month_day: 'routine.month_day',
+		target: 'routine.target',
+		unit: 'routine.unit',
+	},
 }
 function snapshotValue(entity: Record<string, unknown>, path: string): unknown {
 	return path.split('.').reduce<unknown>((value, key) =>
 		value && typeof value === 'object' ? (value as Record<string, unknown>)[key] : undefined, entity)
 }
 const FIELD_LABELS: Record<string, Record<string, string>> = {
-	check_in_task_routine: {completed: 'routine_completed'},
+	check_in_task_routine: {
+		completed: 'routine_completed',
+		date: 'routine_date',
+	},
+	set_task_routine_progress: {
+		amount: 'routine_amount',
+		date: 'routine_date',
+	},
+	configure_task_routine: {
+		period: 'routine_period',
+		reset_hour: 'routine_reset_hour',
+		reset_minute: 'routine_reset_minute',
+		week_start: 'routine_week_start',
+		month_day: 'routine_month_day',
+		target: 'routine_target',
+		unit: 'routine_unit',
+	},
 }
 // Arguments that name the target or carry a concurrency token rather than a change.
 const NOT_CHANGES = ['id', 'updates', 'task_id']
@@ -66,6 +103,9 @@ const BUCKET_LOCATORS = ['project_id', 'view_id', 'bucket_id', 'task_id']
 const TOOL_NOT_CHANGES: Record<string, string[]> = {
 	update_project_announcement: ['project_id', 'revision'],
 	configure_task_routine: ['revision'],
+	check_in_task_routine: ['revision'],
+	set_task_routine_progress: ['revision'],
+	set_task_repeat_bucket: BUCKET_LOCATORS,
 	...Object.fromEntries([...BUCKET_WRITE_TOOLS].map((tool): [string, string[]] => [tool, BUCKET_LOCATORS])),
 }
 const rows = computed(() => {
@@ -80,7 +120,7 @@ const rows = computed(() => {
 			const changes = proposed.updates?.find((u: {id: number}) => u.id === task.id)?.changes ?? proposed
 			return Object.entries(changes).filter(([field]) => !NOT_CHANGES.includes(field) && !TOOL_NOT_CHANGES[tool]?.includes(field)).map(([field, after]) => ({
 				// An announcement snapshot names its project instead of carrying an id.
-				id: task.id ?? task.project_id,
+				id: task.id ?? task.task_id ?? task.project_id,
 				title: task.title,
 				field,
 				label: FIELD_LABELS[tool]?.[field] ?? field,
@@ -90,7 +130,28 @@ const rows = computed(() => {
 		})
 	} catch { return [] }
 })
-function display(value: unknown) { return typeof value === 'string' ? value : JSON.stringify(value) ?? '—' }
+function display(value: unknown, field: string) {
+	const tool = pending.value?.tool
+	if (tool === 'configure_task_routine') {
+		if (field === 'period' && typeof value === 'string' && ['daily', 'weekly', 'monthly'].includes(value)) {
+			return t(`routineSchedule.${value}`)
+		}
+		if (field === 'unit' && value === '') return t('agent.routineReview.noUnit')
+		if (field === 'week_start' && typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 6) {
+			return new Intl.DateTimeFormat(locale.value, {weekday: 'long', timeZone: 'UTC'})
+				.format(new Date(Date.UTC(2024, 0, 7 + value)))
+		}
+	}
+	if (tool === 'set_task_repeat_bucket') {
+		if (field === 'repeat_return_mode' && typeof value === 'string' && ['default', 'keep', 'bucket'].includes(value)) {
+			return t(`agent.repeatPolicy.${value}`)
+		}
+		if (field === 'repeat_return_bucket_id' && typeof value === 'number') {
+			return value > 0 ? t('agent.repeatPolicy.bucketId', {id: value}) : t('agent.repeatPolicy.noBucket')
+		}
+	}
+	return typeof value === 'string' ? value : JSON.stringify(value) ?? '—'
+}
 function decide(decision: ReviewInput['decision']) {
 	if (props.busy) return
 	emit('review', {turn_id: props.turn.id!, operation_id: pending.value?.id ?? '', decision, arguments: decision === 'edit' ? args.value : '', answer: answer.value})
@@ -112,6 +173,9 @@ function decide(decision: ReviewInput['decision']) {
 			<p class="review-target">
 				<strong :title="pending.tool">{{ toolName }}</strong> · {{ t('agent.targets', {count: pending.units}) }}
 			</p>
+			<p v-if="reviewHint">
+				{{ reviewHint }}
+			</p>
 			<p
 				v-if="destructive"
 				class="destructive-warning"
@@ -132,7 +196,7 @@ function decide(decision: ReviewInput['decision']) {
 							v-for="(row, index) in rows"
 							:key="index"
 						>
-							<td>#{{ row.id }} {{ row.title }}</td><td>{{ t(`agent.fields.${row.label}`, row.field) }}</td><td>{{ display(row.before) }}</td><td>{{ display(row.after) }}</td>
+							<td>#{{ row.id }} {{ row.title }}</td><td>{{ t(`agent.fields.${row.label}`, row.field) }}</td><td>{{ display(row.before, row.field) }}</td><td>{{ display(row.after, row.field) }}</td>
 						</tr>
 					</tbody>
 				</table>

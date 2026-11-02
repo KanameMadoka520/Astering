@@ -25,6 +25,8 @@ const BucketTasksPerPage = 25
 var bucketToolNames = []string{
 	"list_project_views",
 	"list_buckets",
+	"get_task_repeat_bucket",
+	"set_task_repeat_bucket",
 	"create_bucket",
 	"update_bucket",
 	"move_task_to_bucket",
@@ -103,10 +105,25 @@ func bucketTools(mode string) []map[string]any {
 			"page":       id("任务页码，从 1 开始，仅在提供 bucket_id 时使用。"),
 		}, "project_id", "view_id"),
 	}
+	result = append(result, tool("get_task_repeat_bucket", "读取普通重复任务完成后的返回栏目 repeat return bucket 配置，每 task/view 独立。default回默认栏目，keep留原栏目，bucket回指定栏目；不改变任务或周期打卡。", map[string]any{
+		"project_id": project(),
+		"view_id":    view(),
+		"task_id":    id("任务ID，来自实际读取结果。"),
+	}, "project_id", "view_id", "task_id"))
 	if mode != "write" {
 		return result
 	}
 	return append(result,
+		tool("set_task_repeat_bucket", "设置普通重复任务完成后的返回栏目 repeat return bucket：default兼容回默认栏目，keep保留完成前的栏目和顺序，bucket回同一看板中指定的非完成列。每task/view独立；不会启用重复、立即移动任务或修改全看板默认栏目。目标栏目删除后安全回退。需任务与看板写权限；先读当前配置和真实栏目ID。", map[string]any{
+			"project_id": project(),
+			"view_id":    view(),
+			"task_id":    id("要配置的任务ID"),
+			"repeat_return_mode": map[string]any{
+				"type": "string",
+				"enum": []string{"default", "keep", "bucket"},
+			},
+			"repeat_return_bucket_id": optionalID("bucket模式填真实非完成列ID，其余模式填0。"),
+		}, "project_id", "view_id", "task_id", "repeat_return_mode", "repeat_return_bucket_id"),
 		tool("create_bucket", "新建栏目/桶 create kanban bucket column：在手动栏目看板中添加一列。可设置任务上限 limit 和位置 after_bucket_id；省略位置时追加到最右侧。需要项目写权限，每个视图最多 100 个栏目；按筛选生成栏目的看板不能手动加栏目。", map[string]any{
 			"project_id":      project(),
 			"view_id":         view(),
@@ -122,7 +139,7 @@ func bucketTools(mode string) []map[string]any {
 			"limit":           limit(),
 			"after_bucket_id": optionalID("移动到该栏目右侧；0 移到最左侧；不能是自身。"),
 		}, "project_id", "view_id", "bucket_id"),
-		tool("move_task_to_bucket", "把任务移动到栏目 move task to bucket：在看板栏目/桶 kanban column 之间移动任务。project_id、view_id、bucket_id、task_id 都必须来自真实读取结果，不要猜测。移入完成列 done bucket 会把任务标记完成，并同步到同一项目其他看板的完成列；重复任务则顺延日期并回到默认栏目。移出完成列会重新打开任务。受目标栏目任务上限限制。在保存的筛选器看板中，只能移动符合筛选条件的任务，且任务所在的真实项目也需要写权限。", map[string]any{
+		tool("move_task_to_bucket", "把任务移动到栏目 move task to bucket：在看板栏目/桶 kanban column 之间移动任务。project_id、view_id、bucket_id、task_id 都必须来自真实读取结果，不要猜测。移入完成列 done bucket 会把任务标记完成，并同步到同一项目其他看板的完成列；重复任务则顺延日期并按该task/view的返回策略留原栏目、回指定栏目或默认栏目。移出完成列会重新打开任务。受目标栏目任务上限限制。在保存的筛选器看板中，只能移动符合筛选条件的任务，且任务所在的真实项目也需要写权限。", map[string]any{
 			"project_id": project(),
 			"view_id":    view(),
 			"bucket_id":  id("目标栏目 ID"),

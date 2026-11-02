@@ -2,12 +2,22 @@ import {queryOptions, useMutation, type QueryClient} from '@tanstack/vue-query'
 import {
 	taskRoutineCheckIn,
 	taskRoutineHistory,
+	taskRoutineProgress,
 	taskRoutineRead,
 	taskRoutineUpdate,
 	type Task,
+	type TaskRoutineHistory,
+	type TaskRoutineProgress,
+	type TaskRoutineWritable,
 } from '@/client/generated'
 import {assertClientRequestContext} from '@/client/requestContext'
-import {normalizeTaskRoutine, routineOf, type RawTaskRoutine, type TaskRoutineSummary} from '@/helpers/taskRoutine'
+import {
+	normalizeTaskRoutine,
+	routineOf,
+	routineTimeOrEmpty,
+	type RawTaskRoutine,
+	type TaskRoutineSummary,
+} from '@/helpers/taskRoutine'
 import {contextMutationOptions} from './contextMutation'
 import {mapTaskEverywhere, recordServerTaskWrite, replaceTaskEverywhere} from './taskCache'
 
@@ -23,25 +33,14 @@ export type TaskRoutineHistoryResponse = {
 	year: number
 	month: number
 	items: TaskRoutineHistoryItem[]
+	periods: RoutinePeriodRecord[]
 	total_checkins: number
 	current_streak: number
 	longest_streak: number
 }
 
-type RawTaskRoutineHistory = {
-	timezone?: string | null
-	year?: number | null
-	month?: number | null
-	items?: {
-		date?: string | null
-		timezone?: string | null
-		completed_at?: string | null
-		completed_by_id?: number | null
-	}[] | null
-	total_checkins?: number | null
-	current_streak?: number | null
-	longest_streak?: number | null
-}
+export type RoutinePeriodRecord = Required<Omit<TaskRoutineProgress, 'completed_at'>> & {completed_at: string}
+type RawTaskRoutineHistory = TaskRoutineHistory
 
 export const taskRoutineKeys = {
 	all: ['task-routine'] as const,
@@ -67,6 +66,24 @@ export function normalizeTaskRoutineHistory(raw: RawTaskRoutineHistory): TaskRou
 			completed_at: normalizeTaskRoutine({completed_at: item.completed_at})?.completed_at ?? '',
 			completed_by_id: item.completed_by_id ?? 0,
 		})).filter(item => item.date !== ''),
+		periods: (raw.periods ?? []).map(item => ({
+			id: item.id ?? 0,
+			task_id: item.task_id ?? 0,
+			schedule_key: item.schedule_key ?? '',
+			date: item.date ?? '',
+			period: item.period ?? 'daily',
+			timezone: item.timezone ?? raw.timezone ?? '',
+			period_start_at: routineTimeOrEmpty(item.period_start_at),
+			period_end_at: routineTimeOrEmpty(item.period_end_at),
+			amount: item.amount ?? 0,
+			target: item.target || 1,
+			unit: item.unit ?? '',
+			completed_at: routineTimeOrEmpty(item.completed_at),
+			completed_by_id: item.completed_by_id ?? 0,
+			updated_by_id: item.updated_by_id ?? 0,
+			created: routineTimeOrEmpty(item.created),
+			updated: routineTimeOrEmpty(item.updated),
+		})).filter(item => item.id > 0 && item.date !== ''),
 		total_checkins: raw.total_checkins ?? 0,
 		current_streak: raw.current_streak ?? 0,
 		longest_streak: raw.longest_streak ?? 0,
@@ -100,7 +117,8 @@ function lastRoutineWrite(client: QueryClient, taskId: number): number {
 	return routineWrites.get(client)?.get(taskId) ?? 0
 }
 
-function recordRoutineWrite(client: QueryClient, taskId: number) {
+// Shared with agent receipts so an earlier focus/day refresh cannot restore their previous progress.
+export function recordRoutineWrite(client: QueryClient, taskId: number) {
 	let writes = routineWrites.get(client)
 	if (!writes) {
 		writes = new Map()
@@ -131,19 +149,16 @@ function settleRoutine(client: QueryClient, taskId: number) {
 	])
 }
 
-export type ConfigureTaskRoutineInput = {
+export type ConfigureTaskRoutineInput = TaskRoutineWritable & {
 	taskId: number
-	enabled: boolean
-	paused: boolean
-	timezone: string
 	revision: number
 }
 
 // Callers render a 409 (someone changed the routine meanwhile) themselves, so failures are not toasted here.
 export function configureTaskRoutineMutationOptions() {
 	return contextMutationOptions({
-		mutationFn: async ({taskId, enabled, paused, timezone, revision}: ConfigureTaskRoutineInput) =>
-			(await taskRoutineUpdate({path: {task: taskId}, body: {enabled, paused, timezone, revision}})).data,
+		mutationFn: async ({taskId, ...body}: ConfigureTaskRoutineInput) =>
+			(await taskRoutineUpdate({path: {task: taskId}, body})).data,
 		onSuccess: (task, _input, client) => applyRoutineTask(client, task),
 		onSettled: ({taskId}, client) => settleRoutine(client, taskId),
 		toastError: () => false,
@@ -154,12 +169,30 @@ export type TaskRoutineCheckInInput = {
 	taskId: number
 	date: string
 	completed: boolean
+	revision?: number
 }
 
 export function checkInTaskRoutineMutationOptions() {
 	return contextMutationOptions({
-		mutationFn: async ({taskId, date, completed}: TaskRoutineCheckInInput) =>
-			(await taskRoutineCheckIn({path: {task: taskId}, body: {date, completed}})).data,
+		mutationFn: async ({taskId, ...body}: TaskRoutineCheckInInput) =>
+			(await taskRoutineCheckIn({path: {task: taskId}, body})).data,
+		onSuccess: (task, _input, client) => applyRoutineTask(client, task),
+		onSettled: ({taskId}, client) => settleRoutine(client, taskId),
+		toastError: () => false,
+	})
+}
+
+export type SetTaskRoutineProgressInput = {
+	taskId: number
+	date: string
+	revision: number
+	amount: number
+}
+
+export function setTaskRoutineProgressMutationOptions() {
+	return contextMutationOptions({
+		mutationFn: async ({taskId, ...body}: SetTaskRoutineProgressInput) =>
+			(await taskRoutineProgress({path: {task: taskId}, body})).data,
 		onSuccess: (task, _input, client) => applyRoutineTask(client, task),
 		onSettled: ({taskId}, client) => settleRoutine(client, taskId),
 		toastError: () => false,
@@ -200,6 +233,10 @@ export function useConfigureTaskRoutineMutation() {
 
 export function useCheckInTaskRoutineMutation() {
 	return useMutation(checkInTaskRoutineMutationOptions())
+}
+
+export function useSetTaskRoutineProgressMutation() {
+	return useMutation(setTaskRoutineProgressMutationOptions())
 }
 
 export function useRefreshTaskRoutinesMutation() {

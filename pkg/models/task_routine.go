@@ -29,20 +29,31 @@ import (
 	"xorm.io/xorm/schemas"
 )
 
-// TaskRoutine stores daily configuration separately from ordinary repeat_after semantics.
+// TaskRoutine stores calendar-period configuration separately from ordinary repeat_after semantics.
 type TaskRoutine struct {
+	Period          string    `xorm:"varchar(10) not null default 'daily'" json:"period" enum:"daily,weekly,monthly" doc:"Calendar period; omitted legacy configurations use daily."`
+	ResetHour       int       `xorm:"not null default 0" json:"reset_hour" minimum:"0" maximum:"23" doc:"Local hour at the beginning of each period."`
+	ResetMinute     int       `xorm:"not null default 0" json:"reset_minute" minimum:"0" maximum:"59" doc:"Local minute at the beginning of each period."`
+	WeekStart       int       `xorm:"not null default 0" json:"week_start" minimum:"0" maximum:"6" doc:"Weekly anchor weekday: Sunday=0 through Saturday=6."`
+	MonthDay        int       `xorm:"not null default 1" json:"month_day" minimum:"0" maximum:"31" doc:"Monthly anchor day; zero means 1. Short months clamp to their final day."`
+	Target          int64     `xorm:"bigint not null default 1" json:"target" minimum:"0" maximum:"9007199254740991" doc:"Amount completing one period. Zero from a legacy client means 1."`
+	Unit            string    `xorm:"varchar(40) not null default ''" json:"unit" maxLength:"40" doc:"Optional unit for integer amounts, such as ml or sessions."`
+	PeriodStartAt   time.Time `xorm:"-" json:"period_start_at" readOnly:"true" doc:"Actual start instant of the current anchored calendar period."`
+	ScheduleKey     string    `xorm:"-" json:"schedule_key" readOnly:"true" doc:"Identity of the calendar and quota configuration; histories from different configurations stay separate."`
+	CurrentAmount   int64     `xorm:"-" json:"current_amount" readOnly:"true" doc:"Recorded amount in the current period, zero when no progress exists."`
+	CompletedPeriod bool      `xorm:"-" json:"completed_period" readOnly:"true" doc:"Whether the current period reached its target; completed_today remains a compatibility alias."`
 	TaskID          int64     `xorm:"bigint not null pk" json:"task_id" readOnly:"true"`
 	Enabled         bool      `xorm:"not null default false" json:"enabled"`
 	Paused          bool      `xorm:"not null default false" json:"paused"`
-	Timezone        string    `xorm:"varchar(100) not null" json:"timezone" maxLength:"100" doc:"IANA timezone defining the shared task's calendar day. Historical dates are not rewritten when this changes."`
+	Timezone        string    `xorm:"varchar(100) not null" json:"timezone" maxLength:"100" doc:"IANA timezone defining the shared task's calendar periods. Historical dates are not rewritten when this changes."`
 	Revision        int64     `xorm:"bigint not null default 0" json:"revision" minimum:"0" doc:"Expected configuration revision; stale updates fail with 409."`
 	Created         time.Time `xorm:"created not null" json:"created" readOnly:"true"`
 	Updated         time.Time `xorm:"updated not null" json:"updated" readOnly:"true"`
-	Date            string    `xorm:"-" json:"date" readOnly:"true" doc:"Current local YYYY-MM-DD in the routine timezone."`
+	Date            string    `xorm:"-" json:"date" readOnly:"true" doc:"Current period starting local YYYY-MM-DD in the routine timezone; use this server value for writes."`
 	CompletedToday  bool      `xorm:"-" json:"completed_today" readOnly:"true"`
 	CompletedAt     time.Time `xorm:"-" json:"completed_at" readOnly:"true"`
 	CompletedByID   int64     `xorm:"-" json:"completed_by_id" readOnly:"true"`
-	NextResetAt     time.Time `xorm:"-" json:"next_reset_at" readOnly:"true" doc:"Next local midnight, including DST transitions."`
+	NextResetAt     time.Time `xorm:"-" json:"next_reset_at" readOnly:"true" doc:"Next anchored local period boundary, including DST transitions."`
 	web.CRUDable    `xorm:"-" json:"-"`
 	web.Permissions `xorm:"-" json:"-"`
 }
@@ -84,33 +95,21 @@ func (r *TaskRoutine) ReadOne(s *xorm.Session, a web.Auth) error {
 	if !exists {
 		row.Timezone = routineTimezone(s, a)
 	}
-	if err = row.setDate(time.Now()); err != nil {
+	if err = row.readPeriodState(s, time.Now()); err != nil {
 		return err
-	}
-	check := &TaskRoutineCheckin{}
-	exists, err = s.Where("task_id = ? AND local_date = ?", row.TaskID, row.Date).Get(check)
-	if err != nil {
-		return err
-	}
-	if exists {
-		row.CompletedToday = true
-		row.CompletedAt = check.CompletedAt
-		row.CompletedByID = check.CompletedByID
 	}
 	*r = row
 	return nil
 }
 func (r *TaskRoutine) setDate(now time.Time) error {
-	loc, err := time.LoadLocation(r.Timezone)
-	if err != nil {
-		return InvalidFieldErrorWithMessage([]string{"timezone"}, "Use a valid IANA timezone")
-	}
-	local := now.In(loc)
-	r.Date = local.Format(time.DateOnly)
-	r.NextResetAt = time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc).AddDate(0, 0, 1)
-	return nil
+	return r.setPeriod(now)
 }
 func lockRoutineTask(s *xorm.Session, id int64) (*Task, error) {
+	if db.Type() == schemas.SQLITE {
+		if _, err := s.Table(new(Task)).Where("id = ?", id).Update(map[string]any{"id": id}); err != nil {
+			return nil, err
+		}
+	}
 	locking := s
 	if kind := db.Type(); kind == schemas.MYSQL || kind == schemas.POSTGRES {
 		locking = s.ForUpdate()
@@ -147,7 +146,7 @@ func (r *TaskRoutine) Update(s *xorm.Session, a web.Auth) error {
 		return ErrGenericForbidden{}
 	}
 	if r.Enabled && (task.Done || task.RepeatAfter != 0 || task.RepeatMode != TaskRepeatModeDefault) {
-		return ErrRoutineState{Message: "Reopen the task and remove ordinary repeat settings before enabling daily check-ins."}
+		return ErrRoutineState{Message: "Reopen the task and remove ordinary repeat settings before enabling periodic check-ins."}
 	}
 	old := &TaskRoutine{TaskID: r.TaskID}
 	exists, err := routineCurrentRead(s).ID(r.TaskID).Get(old)
@@ -157,6 +156,9 @@ func (r *TaskRoutine) Update(s *xorm.Session, a web.Auth) error {
 	if old.Revision != r.Revision {
 		return ErrRoutineConflict{}
 	}
+	if err = validateRoutineReminderSchedule(s, r); err != nil {
+		return err
+	}
 	r.Revision++
 	r.Updated = time.Now()
 	if !exists {
@@ -164,7 +166,7 @@ func (r *TaskRoutine) Update(s *xorm.Session, a web.Auth) error {
 		_, err = s.Insert(r)
 	} else {
 		var changed int64
-		changed, err = s.ID(r.TaskID).Where("revision = ?", old.Revision).Cols("enabled", "paused", "timezone", "revision", "updated").Update(r)
+		changed, err = s.ID(r.TaskID).Where("revision = ?", old.Revision).Cols("enabled", "paused", "timezone", "revision", "updated", "period", "reset_hour", "reset_minute", "week_start", "month_day", "target", "unit").Update(r)
 		if err == nil && changed == 0 {
 			return ErrRoutineConflict{}
 		}
@@ -192,10 +194,10 @@ type TaskRoutineCheckin struct {
 func (*TaskRoutineCheckin) TableName() string { return "task_routine_checkins" }
 
 // SetTaskRoutineCheckin is idempotent per task/local date and never changes task.done or task dates.
-func SetTaskRoutineCheckin(s *xorm.Session, a web.Auth, id int64, date string, completed bool) (*Task, error) {
-	return setTaskRoutineCheckinAt(s, a, id, date, completed, time.Now())
+func SetTaskRoutineCheckin(s *xorm.Session, a web.Auth, id int64, date string, completed bool, expectedRevision ...int64) (*Task, error) {
+	return setTaskRoutineCheckinAt(s, a, id, date, completed, time.Now(), expectedRevision...)
 }
-func setTaskRoutineCheckinAt(s *xorm.Session, a web.Auth, id int64, date string, completed bool, now time.Time) (*Task, error) {
+func setTaskRoutineCheckinAt(s *xorm.Session, a web.Auth, id int64, date string, completed bool, now time.Time, expectedRevision ...int64) (*Task, error) {
 	task, err := lockRoutineTask(s, id)
 	if err != nil {
 		return nil, err
@@ -213,13 +215,30 @@ func setTaskRoutineCheckinAt(s *xorm.Session, a web.Auth, id int64, date string,
 		return nil, err
 	}
 	if !exists || !r.Enabled || r.Paused {
-		return nil, ErrRoutineState{Message: "This daily routine is disabled or paused."}
+		return nil, ErrRoutineState{Message: "This routine is disabled or paused."}
 	}
 	if err = r.setDate(now); err != nil {
 		return nil, err
 	}
+	if (len(expectedRevision) > 0 && expectedRevision[0] != r.Revision) || (!r.legacyCalendar() && len(expectedRevision) == 0) {
+		return nil, ErrRoutineConflict{}
+	}
 	if date != r.Date {
-		return nil, ErrRoutineConflict{Message: "The routine's calendar day changed. Reload before checking in."}
+		return nil, ErrRoutineConflict{Message: "The routine's current period changed. Reload before checking in."}
+	}
+	useProgress, err := routineNeedsProgress(s, r)
+	if err != nil {
+		return nil, err
+	}
+	if useProgress {
+		amount := int64(0)
+		if completed {
+			if err = r.readPeriodState(s, now); err != nil {
+				return nil, err
+			}
+			amount = max(r.Target, r.CurrentAmount)
+		}
+		return writeRoutineProgress(s, a, task, r, amount, now)
 	}
 	// A row lock plus an explicit existence check makes no-op retries event-free on every DB,
 	// including MySQL connections configured to report found rather than changed rows.
@@ -233,16 +252,17 @@ func setTaskRoutineCheckinAt(s *xorm.Session, a web.Auth, id int64, date string,
 	}
 	var changed int64
 	if completed {
-		conflict := "ON CONFLICT (task_id, local_date) DO NOTHING"
-		if db.Type() == schemas.MYSQL {
-			conflict = "ON DUPLICATE KEY UPDATE task_id = task_id"
+		localDate, parseErr := time.Parse(time.DateOnly, date)
+		if parseErr != nil {
+			return nil, parseErr
 		}
-		table := s.Engine().TableName(&TaskRoutineCheckin{}, true)
-		result, e := s.Exec("INSERT INTO "+table+" (task_id, local_date, timezone, completed_at, completed_by_id) VALUES (?, ?, ?, ?, ?) "+conflict, id, date, r.Timezone, now.UTC(), a.GetID())
-		if e != nil {
-			return nil, e
-		}
-		changed, err = result.RowsAffected()
+		changed, err = s.Insert(&TaskRoutineCheckin{
+			TaskID:        id,
+			LocalDate:     localDate,
+			Timezone:      r.Timezone,
+			CompletedAt:   now.UTC(),
+			CompletedByID: a.GetID(),
+		})
 	} else {
 		changed, err = s.Where("task_id = ? AND local_date = ?", id, date).Delete(&TaskRoutineCheckin{})
 	}
@@ -270,7 +290,7 @@ func touchRoutineTask(s *xorm.Session, a web.Auth, task *Task) (*Task, error) {
 	return task, nil
 }
 
-// addRoutineInfoToTasks performs two batched reads regardless of the number of tasks.
+// addRoutineInfoToTasks batches configuration, legacy completions and period progress.
 func addRoutineInfoToTasks(s *xorm.Session, taskMap map[int64]*Task, now time.Time) error {
 	if len(taskMap) == 0 {
 		return nil
@@ -306,13 +326,15 @@ func addRoutineInfoToTasks(s *xorm.Session, taskMap map[int64]*Task, now time.Ti
 	}
 	for _, c := range checks {
 		r := taskMap[c.TaskID].Routine
-		if r != nil && c.LocalDate.Format(time.DateOnly) == r.Date {
+		if r != nil && r.legacyCalendar() && c.Timezone == r.Timezone && c.LocalDate.Format(time.DateOnly) == r.Date {
+			r.CurrentAmount = 1
+			r.CompletedPeriod = true
 			r.CompletedToday = true
 			r.CompletedAt = c.CompletedAt
 			r.CompletedByID = c.CompletedByID
 		}
 	}
-	return nil
+	return addRoutineProgressToTasks(s, taskMap, ids, minDate, maxDate)
 }
 
 // Called after the task row write: locking/current reads also see concurrent configuration commits on MySQL.
@@ -330,19 +352,20 @@ func validateTaskRoutineState(s *xorm.Session, t *Task) error {
 		return err
 	}
 	if exists && r.Enabled {
-		return ErrRoutineState{Message: "Use daily check-in for this task, or disable its daily routine before setting done or ordinary repeats."}
+		return ErrRoutineState{Message: "Use period check-in for this task, or disable its routine before setting done or ordinary repeats."}
 	}
 	return nil
 }
 
 type TaskRoutineHistory struct {
-	Timezone      string                `json:"timezone"`
-	Year          int                   `json:"year"`
-	Month         int                   `json:"month"`
-	Items         []*TaskRoutineCheckin `json:"items"`
-	TotalCheckins int                   `json:"total_checkins"`
-	CurrentStreak int                   `json:"current_streak"`
-	LongestStreak int                   `json:"longest_streak"`
+	Periods       []*TaskRoutineProgress `json:"periods" doc:"Recorded quota periods with their original calendar, target and unit; includes incomplete progress."`
+	Timezone      string                 `json:"timezone"`
+	Year          int                    `json:"year"`
+	Month         int                    `json:"month"`
+	Items         []*TaskRoutineCheckin  `json:"items"`
+	TotalCheckins int                    `json:"total_checkins"`
+	CurrentStreak int                    `json:"current_streak"`
+	LongestStreak int                    `json:"longest_streak"`
 }
 
 func GetTaskRoutineHistory(s *xorm.Session, a web.Auth, id int64, year, month int) (*TaskRoutineHistory, error) {
@@ -360,32 +383,20 @@ func GetTaskRoutineHistory(s *xorm.Session, a web.Auth, id int64, year, month in
 	if err = r.ReadOne(s, a); err != nil {
 		return nil, err
 	}
-	result := &TaskRoutineHistory{Timezone: r.Timezone, Year: year, Month: month, Items: []*TaskRoutineCheckin{}}
+	result := &TaskRoutineHistory{Periods: []*TaskRoutineProgress{}, Timezone: r.Timezone, Year: year, Month: month, Items: []*TaskRoutineCheckin{}}
 	records := []*TaskRoutineCheckin{}
 	if err = s.Where("task_id = ?", id).OrderBy("local_date ASC").Find(&records); err != nil {
 		return nil, err
 	}
 	result.TotalCheckins = len(records)
-	streak := 0
-	var previous time.Time
 	for _, c := range records {
 		c.Date = c.LocalDate.Format(time.DateOnly)
-		if previous.IsZero() || !c.LocalDate.Equal(previous.AddDate(0, 0, 1)) {
-			streak = 1
-		} else {
-			streak++
-		}
-		previous = c.LocalDate
-		if streak > result.LongestStreak {
-			result.LongestStreak = streak
-		}
 		if c.LocalDate.Year() == year && int(c.LocalDate.Month()) == month {
 			result.Items = append(result.Items, c)
 		}
 	}
-	today, _ := time.Parse(time.DateOnly, r.Date)
-	if !previous.IsZero() && (previous.Equal(today) || previous.Equal(today.AddDate(0, 0, -1))) {
-		result.CurrentStreak = streak
+	if err = addRoutineProgressHistory(s, id, year, month, r, result, records); err != nil {
+		return nil, err
 	}
 	return result, nil
 }

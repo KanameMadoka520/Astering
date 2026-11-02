@@ -109,12 +109,20 @@ func aiTaskSnapshot(raw []byte) (map[string]any, error) {
 	for _, k := range []string{"id", "project_id", "title", "description", "due_date", "start_date", "end_date", "priority", "done", "hex_color", "percent_done", "is_favorite", "repeat_after", "repeat_mode", "cover_image_attachment_id", "updated", "routine"} {
 		out[k] = task[k]
 	}
-	// Reminder row IDs may change when a reminder list is replaced; compare its actual trigger times.
+	// Row IDs may change; an equal trigger time can still have a different rescheduling anchor.
 	reminders := []string{}
 	if rs, ok := task["reminders"].([]any); ok {
 		for _, r := range rs {
 			if m, ok := r.(map[string]any); ok {
-				reminders = append(reminders, fmt.Sprint(m["reminder"]))
+				anchor, err := json.Marshal([]any{
+					m["reminder"],
+					m["relative_to"],
+					m["relative_period"],
+				})
+				if err != nil {
+					return nil, err
+				}
+				reminders = append(reminders, string(anchor))
 			}
 		}
 	}
@@ -257,7 +265,7 @@ func (e *aiExecution) execute(ctx context.Context, name string, raw json.RawMess
 	if op != nil && op.Version != "" && preview.Version != op.Version {
 		return "", tcyai.ToolFailure("STATE_CONFLICT", "The task changed after preparation. Read the current task and prepare a fresh operation.")
 	}
-	if name == "configure_task_routine" || name == "check_in_task_routine" {
+	if name == "configure_task_routine" || name == "check_in_task_routine" || name == "set_task_routine_progress" {
 		return e.mutateRoutine(ctx, name, raw, preview)
 	}
 	if name == "update_project_announcement" {

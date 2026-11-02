@@ -14,6 +14,7 @@ import {
 
 function summary(overrides: Partial<TaskRoutineSummary> = {}): TaskRoutineSummary {
 	return {
+		...normalizeTaskRoutine({enabled: true})!,
 		enabled: true,
 		paused: false,
 		timezone: 'Asia/Shanghai',
@@ -93,5 +94,36 @@ describe('routine day', () => {
 			summary({next_reset_at: '2026-11-01T09:00:00Z'}),
 		], now)).toBe(Date.parse('2026-11-01T16:00:00Z'))
 		expect(nextRoutineReset([], now)).toBeUndefined()
+	})
+
+	it('keeps a weekly quota anchored through local midnights, then refuses to guess its next date', () => {
+		const routine = summary({
+			period: 'weekly',
+			reset_hour: 6,
+			target: 7,
+			current_amount: 7,
+			date: '2026-10-26',
+			next_reset_at: '2026-11-01T22:00:00Z',
+		})
+		expect(routineStatus(routine, new Date('2026-11-01T20:00:00Z'))).toBe('done')
+		expect(routineToday(routine, new Date('2026-11-01T20:00:00Z'))).toBe('2026-10-26')
+		expect(routineMonth(routine, new Date('2026-11-01T20:00:00Z'))).toEqual({year: 2026, month: 11})
+		expect(routineStatus(routine, new Date('2026-11-01T22:00:00Z'))).toBe('pending')
+		expect(routineToday(routine, new Date('2026-11-01T22:00:00Z'))).toBe('2026-10-26')
+	})
+
+	it('preserves the server quota while defaulting legacy daily records to one', () => {
+		expect(normalizeTaskRoutine({
+			enabled: true,
+			period: 'monthly',
+			target: 100,
+			current_amount: 42,
+			unit: 'pages',
+			completed_period: false,
+		})).toMatchObject({period: 'monthly', target: 100, current_amount: 42, completed_period: false})
+		expect(normalizeTaskRoutine({
+			completed_today: true,
+			completed_at: '2026-11-01T08:30:00+08:00',
+		})).toMatchObject({period: 'daily', target: 1, current_amount: 1, completed_period: true})
 	})
 })

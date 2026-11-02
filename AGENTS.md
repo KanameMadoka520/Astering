@@ -14,6 +14,7 @@ Vikunja: self-hosted to-do app. Go API in `pkg/`, Vue 3 + TypeScript frontend in
 ## 本分支的长期约定
 
 - 产品名称为 **vikunja-x**，版本称呼为 **x版本**，使用小写 `x`；版本号兼容现有 `tcymc` 序列。
+- 品牌名称下的副标题为 **Aster的AI集成工业系统**；英文为 **Aster’s AI-integrated industrial system**。维护共用 `Logo.vue` 与 `brand.subtitle`，保留登录、页头和手机导航的适配。
 - 提交使用中文 Conventional Commits，例如 `fix(cache): 修复私人图片重验证`；作者为 `KanameMadoka520 <90090108+KanameMadoka520@users.noreply.github.com>`，不添加 `Co-Authored-By`。详见 [Git 约定](.agents/docs/git-workflow.md)。
 - 目前由当前 agent 完成开发，不调用 Claude Code；只有用户明确重新要求时才改变这一约定。
 - 不提交密码、模型密钥、SMTP 凭据、访问令牌、生产数据或含私人内容的调试附件；不要把它们复制进 agent 文档。

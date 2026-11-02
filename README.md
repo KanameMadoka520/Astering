@@ -6,12 +6,20 @@
 
 > x版本 · 个人项目、日程、记录与原生 AI 助手。
 
+品牌标识：**Aster的AI集成工业系统**（Aster’s AI-integrated industrial system）。
+
 基于 [Vikunja 官方 v2.7.1](https://github.com/go-vikunja/vikunja/releases/tag/v2.7.1) 的个人记录与团队项目管理扩展，由 **KanameMadoka520** 维护。保留上游项目、任务、甘特图、看板、提醒、CalDAV 和 MCP，增加可配置模型的 AI 助手、语音输入和独立公开主页。
 
 - 源码与问题反馈：[KanameMadoka520/vikunja-x](https://github.com/KanameMadoka520/vikunja-x)
-- 版本：`v2.7.1-tcymc.40`
+- 版本：`v2.7.1-tcymc.41`
 - 许可证：AGPL-3.0-or-later；上游版权和许可证继续适用，参见 [LICENSE](LICENSE) 与 [上游 README](README.upstream.md)。本项目是独立二次开发版。
 
+
+## 专用语音接入与周期任务（tcymc.41）
+
+语音识别按服务商卡片配置，支持百炼、火山引擎、MiMo、OpenAI、ElevenLabs、Soniox 和自建 SenseVoice 的实际协议；卡片独立保存，模型选项、默认识别器与测速集中在同一处。优先提供百炼 `qwen-audio-3.1-asr-flash-streaming` 专用任务 WebSocket，显示真实端点和识别耗时。录音与音频转换绑定开始时的账户、会话和连接，离开后释放麦克风并丢弃迟到结果。
+
+周期打卡扩展为日、周、月，可设置凌晨换日及本期目标/单位，保留原任务和真实历史。阿罗娜增加周期进度、普通循环返回栏目和相对提醒的工具能力，按需发现并遵循权限与审核。详见 [接入方式、任务规则与验证边界](docs/speech-and-routines-v41.md)。
 
 ## 异步操作与模型连接检修（tcymc.40）
 
@@ -466,9 +474,9 @@ pnpm vitest run src/i18n/coverage.test.ts src/helpers/tcyAudio.test.ts
 git clone https://github.com/KanameMadoka520/vikunja-x.git
 cd vikunja-x
 docker build -f Dockerfile.tcymc \
-  --build-arg RELEASE_VERSION=v2.7.1-tcymc.40 \
+  --build-arg RELEASE_VERSION=v2.7.1-tcymc.41 \
   --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
-  -t vikunja-x:v2.7.1-tcymc.40 .
+  -t vikunja-x:v2.7.1-tcymc.41 .
 ```
 
 `Dockerfile.tcymc` 固定基础镜像摘要，使用锁定依赖构建前端，并生成带 SQLite 支持的静态 Go 二进制，最终以 UID 1000 在最小镜像中运行。提供 CA 和时区数据。数据库支持沿用上游，包括 PostgreSQL。`SOURCE_COMMIT` 写入镜像的 OCI revision 标签，便于核对运行镜像对应的源码；正式发布从干净工作树构建，并核对源码标签、镜像 ID 与运行实例。
@@ -486,12 +494,12 @@ docker run -d --name vikunja-x --restart unless-stopped \
   -e VIKUNJA_SERVICE_SECRET=替换为随机且持久保存的长密钥 \
   -e VIKUNJA_SERVICE_ENABLEREGISTRATION=false \
   -e VIKUNJA_SERVICE_TIMEZONE=Asia/Shanghai \
-  vikunja-x:v2.7.1-tcymc.40
+  vikunja-x:v2.7.1-tcymc.41
 ```
 
 通过反向代理提供 HTTPS。创建首个账号使用 `docker exec -it vikunja-x /app/vikunja/vikunja user create --help` 查看 CLI 参数。注册默认建议关闭；SMTP 初始使用上游 `VIKUNJA_MAILER_*` 配置，也可通过上述管理员页面保存；密码勿提交源码。账号名中的 admin 不会绕过上游授权功能。
 
-Release 附带源码、Git bundle、Linux amd64 二进制、Docker 镜像包及 SHA256 校验文件；先运行 `sha256sum -c SHA256SUMS`，再使用 `docker load -i vikunja-x-v2.7.1-tcymc.40.docker.tar.gz` 导入镜像。
+Release 附带源码、Git bundle、Linux amd64 二进制、Docker 镜像包及 SHA256 校验文件；先运行 `sha256sum -c SHA256SUMS`，再使用 `docker load -i vikunja-x-v2.7.1-tcymc.41.docker.tar.gz` 导入镜像。
 
 ## 本地开发与验证
 

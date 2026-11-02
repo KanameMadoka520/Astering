@@ -54,11 +54,14 @@ type aiSettingsResponse struct {
 }
 type aiTextResponse struct {
 	Body struct {
-		Search   *tcyai.WebSearchResult `json:"search,omitempty" doc:"Native search evidence and telemetry for a search test."`
-		Endpoint string                 `json:"endpoint" doc:"Actual upstream request URL, without credentials."`
-		Text     string                 `json:"text" doc:"Processed text."`
-		Original string                 `json:"original" doc:"Original transcription, before optional cleanup."`
-		Warning  string                 `json:"warning" doc:"Non-fatal cleanup failure, if any."`
+		ElapsedMS       int64                  `json:"elapsed_ms,omitempty" doc:"Recognition request elapsed time in milliseconds, excluding optional text cleanup."`
+		AudioDurationMS int64                  `json:"audio_duration_ms,omitempty" doc:"Verified PCM audio duration; absent when the format cannot be measured locally."`
+		FirstTextMS     int64                  `json:"first_text_ms,omitempty" doc:"Time to the first nonempty upstream transcript; absent if unavailable."`
+		Search          *tcyai.WebSearchResult `json:"search,omitempty" doc:"Native search evidence and telemetry for a search test."`
+		Endpoint        string                 `json:"endpoint" doc:"Actual upstream request URL, without credentials."`
+		Text            string                 `json:"text" doc:"Processed text."`
+		Original        string                 `json:"original" doc:"Original transcription, before optional cleanup."`
+		Warning         string                 `json:"warning" doc:"Non-fatal cleanup failure, if any."`
 	}
 }
 
@@ -137,12 +140,14 @@ func RegisterTCYAIRoutes(api huma.API) {
 	})
 
 	registerAIConnectionTest(api, op)
+	registerSpeechProviders(api, op)
 
 	Register(api, op("tcy-ai-transcribe", "POST", "/ai/transcribe", "识别上传音频，可选使用独立模型整理文字"), func(ctx context.Context, in *struct {
 		Body struct {
-			Audio    string `json:"audio"`
-			Filename string `json:"filename"`
-			Cleanup  bool   `json:"cleanup"`
+			ConnectionID string `json:"connection_id,omitempty" maxLength:"80" doc:"Optional saved recognition connection belonging to the current user; empty uses the default."`
+			Audio        string `json:"audio"`
+			Filename     string `json:"filename"`
+			Cleanup      bool   `json:"cleanup"`
 		}
 	}) (*aiTextResponse, error) {
 		uid, err := aiUser(ctx)
@@ -153,7 +158,11 @@ func RegisterTCYAIRoutes(api huma.API) {
 		if err != nil {
 			return nil, aiError(ctx, err)
 		}
-		c, err := s.Find(s.Transcription, "transcription")
+		connectionID := in.Body.ConnectionID
+		if connectionID == "" {
+			connectionID = s.Transcription
+		}
+		c, err := s.Find(connectionID, "transcription")
 		if err != nil {
 			return nil, aiError(ctx, err)
 		}
@@ -161,20 +170,19 @@ func RegisterTCYAIRoutes(api huma.API) {
 		if err != nil {
 			return nil, aiError(ctx, err)
 		}
-		text, err := tcyai.Transcribe(ctx, c, in.Body.Filename, data)
+		result, err := tcyai.RecognizeSpeech(ctx, c, in.Body.Filename, data)
 		if err != nil {
 			return nil, aiError(ctx, err)
 		}
 		out := &aiTextResponse{}
-		out.Body.Text = text
-		out.Body.Original = text
+		setSpeechResponse(out, result)
 		if in.Body.Cleanup && s.Cleanup != "" {
 			c, err = s.Find(s.Cleanup, "chat")
 			if err == nil {
-				out.Body.Text, err = tcyai.Cleanup(ctx, c, text)
+				out.Body.Text, err = tcyai.Cleanup(ctx, c, result.Text)
 			}
 			if err != nil {
-				out.Body.Text = text
+				out.Body.Text = result.Text
 				out.Body.Warning = tcylocale.Text(ctx, "cleanupFailed", tcylocale.Render(ctx, err))
 			}
 		}
@@ -478,7 +486,7 @@ func aiExtendedRoute(name string, args map[string]json.RawMessage, id func(strin
 			method = "PUT"
 		}
 		return fmt.Sprintf("/projects/%d/announcement", n), method, err
-	case "get_task_routine", "configure_task_routine", "check_in_task_routine", "get_task_routine_history":
+	case "get_task_routine", "configure_task_routine", "check_in_task_routine", "set_task_routine_progress", "get_task_routine_history":
 		n, err := id("id")
 		if err != nil {
 			return "", "", err
@@ -490,6 +498,9 @@ func aiExtendedRoute(name string, args map[string]json.RawMessage, id func(strin
 		case "check_in_task_routine":
 			method = "POST"
 			path += "/check-in"
+		case "set_task_routine_progress":
+			method = "POST"
+			path += "/progress"
 		case "get_task_routine_history":
 			path += "/history"
 			for _, key := range []string{"year", "month"} {
@@ -644,7 +655,9 @@ func registerAIConnectionTest(api huma.API, op func(string, string, string, stri
 					if e != nil {
 						return nil, aiError(ctx, e)
 					}
-					out.Body.Text, err = tcyai.Transcribe(ctx, c, in.Body.Filename, data)
+					var speech tcyai.SpeechResult
+					speech, err = tcyai.RecognizeSpeech(ctx, c, in.Body.Filename, data)
+					setSpeechResponse(out, speech)
 				}
 				if err != nil {
 					return nil, aiError(ctx, err)
@@ -653,5 +666,30 @@ func registerAIConnectionTest(api huma.API, op func(string, string, string, stri
 			}
 		}
 		return nil, huma.Error404NotFound(tcylocale.Render(ctx, tcylocale.Error("e43")))
+	})
+}
+
+func setSpeechResponse(out *aiTextResponse, result tcyai.SpeechResult) {
+	out.Body.Text = result.Text
+	out.Body.Original = result.Text
+	out.Body.Endpoint = result.Endpoint
+	out.Body.ElapsedMS = result.ElapsedMS
+	out.Body.AudioDurationMS = result.AudioDurationMS
+	out.Body.FirstTextMS = result.FirstTextMS
+}
+
+func registerSpeechProviders(api huma.API, op func(string, string, string, string) huma.Operation) {
+	type response struct {
+		CacheControl string `header:"Cache-Control"`
+		Body         []tcyai.SpeechProvider
+	}
+	Register(api, op("tcy-ai-speech-providers", "GET", "/ai/speech/providers", "列出已实现的语音服务商协议、模型预设与真实参数能力；不返回凭据"), func(ctx context.Context, _ *struct{}) (*response, error) {
+		if _, err := aiUser(ctx); err != nil {
+			return nil, err
+		}
+		return &response{
+			CacheControl: "no-store",
+			Body:         tcyai.SpeechProviders(),
+		}, nil
 	})
 }

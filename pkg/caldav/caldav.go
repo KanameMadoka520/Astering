@@ -270,20 +270,23 @@ func ParseAlarms(alarms []Alarm, taskDescription string) (caldavalarms string) {
 			a.Description = taskDescription
 		}
 
-		caldavalarms += `
-BEGIN:VALARM`
+		var trigger string
 		switch a.RelativeTo {
+		case models.ReminderRelationRoutinePeriodEnd:
+			// Routine periods have no VTODO recurrence/anchor equivalent. Exporting
+			// their projected timestamp would create a stale or duplicate client alarm.
+			continue
 		case models.ReminderRelationStartDate:
-			caldavalarms += `
+			trigger = `
 TRIGGER;RELATED=START:` + makeCalDavDuration(a.Duration)
 		case models.ReminderRelationEndDate, models.ReminderRelationDueDate:
-			caldavalarms += `
+			trigger = `
 TRIGGER;RELATED=END:` + makeCalDavDuration(a.Duration)
 		default:
-			caldavalarms += `
+			trigger = `
 TRIGGER;VALUE=DATE-TIME:` + makeCalDavTimeFromTimeStamp(a.Time)
 		}
-		caldavalarms += `
+		caldavalarms += "\nBEGIN:VALARM" + trigger + `
 ACTION:DISPLAY
 DESCRIPTION:` + escapeICalText(a.Description) + `
 END:VALARM`

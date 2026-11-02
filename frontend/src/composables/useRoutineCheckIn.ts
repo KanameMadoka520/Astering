@@ -6,7 +6,7 @@ import {ApiError} from '@/client/problem'
 import {isRequestContextAbort} from '@/client/requestContext'
 import {useCheckInTaskRoutineMutation, useRefreshTaskRoutinesMutation} from '@/client/queries/taskRoutines'
 import {useGlobalNow} from '@/composables/useGlobalNow'
-import {routineOf, routineToday, type RawTaskRoutine} from '@/helpers/taskRoutine'
+import {isLegacyRoutine, routineOf, routineToday, type RawTaskRoutine} from '@/helpers/taskRoutine'
 import {playPopSound} from '@/helpers/playPop'
 import {error, success, translatedError} from '@/message'
 
@@ -45,7 +45,12 @@ export function useRoutineCheckIn() {
 		pendingTasks.add(taskId)
 		let updated: Task
 		try {
-			updated = await checkIn.mutateAsync({taskId, date, completed})
+			updated = await checkIn.mutateAsync({
+				taskId,
+				date,
+				completed,
+				revision: routine.revision,
+			})
 		} catch (cause) {
 			if (isRequestContextAbort(cause)) return false
 			// 409: the server's day or the routine changed; 20003: it was paused, disabled or turned into a
@@ -62,7 +67,9 @@ export function useRoutineCheckIn() {
 		}
 		if (completed) playPopSound()
 		success(
-			{message: t(completed ? 'task.routine.checkedInSuccess' : 'task.routine.checkInUndoneSuccess')},
+			{message: t(isLegacyRoutine(routine)
+				? completed ? 'task.routine.checkedInSuccess' : 'task.routine.checkInUndoneSuccess'
+				: completed ? 'routineSchedule.checkedSuccess' : 'routineSchedule.undoneSuccess')},
 			completed && undoable
 				? [{title: t('task.undo'), callback: () => void setCheckedIn(updated, false, false)}]
 				: [],

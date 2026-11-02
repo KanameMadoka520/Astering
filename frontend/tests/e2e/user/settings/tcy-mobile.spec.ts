@@ -74,6 +74,7 @@ for (const width of [360, 390]) {
 		expect(configuration.connections.map((c: {model: string}) => c.model)).toEqual(['my-manual-model', 'speech-model'])
 		expect(configuration.assistant).toBeTruthy()
 		await fitsScreen(page)
+		await page.getByRole('dialog', {name: 'Custom / compatible service settings', exact: true}).getByRole('button', {name: 'Close dialog', exact: true}).click()
 		await page.goto('/ai')
 		await expect(page.getByRole('heading', {name: 'Arona'})).toBeVisible()
 		await expect(page.getByLabel('Your request')).toBeVisible()

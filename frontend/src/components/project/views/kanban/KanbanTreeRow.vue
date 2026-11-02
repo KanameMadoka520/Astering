@@ -4,6 +4,7 @@ import {useI18n} from 'vue-i18n'
 import type {TaskResponse} from '@/client/queries/tasks'
 import {directSubtaskProgress, otherParents, type Trail} from '@/helpers/kanbanHierarchy'
 import {getHexColor, getTaskIdentifier} from '@/helpers/task'
+import {isLegacyRoutine, routineOf} from '@/helpers/taskRoutine'
 import {formatDateLong, formatDisplayDate, formatISO} from '@/helpers/time/formatDate'
 import {useGlobalNow} from '@/composables/useGlobalNow'
 import {useTaskDoneToggle} from '@/composables/useTaskDoneToggle'
@@ -47,7 +48,8 @@ const due = computed(() => {
 	return time > 0 ? {time, overdue: !routine.value && !props.task.done && time <= now.value.getTime()} : null
 })
 const checkLabel = computed(() => routine.value
-	? t('task.routine.checkInLabel', {task: title.value})
+	? t(routineOf(props.task) && isLegacyRoutine(routineOf(props.task)!)
+		? 'task.routine.checkInLabel' : 'routineSchedule.completeTask', {task: title.value})
 	: t(complete.value ? 'project.kanban.hierarchy.markUndone' : 'project.kanban.hierarchy.markDone', {title: title.value}))
 
 const saving = ref(false)

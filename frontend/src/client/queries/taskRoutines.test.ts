@@ -7,6 +7,8 @@ import {
 	checkInTaskRoutineMutationOptions,
 	configureTaskRoutineMutationOptions,
 	refreshTaskRoutinesMutationOptions,
+	setTaskRoutineProgressMutationOptions,
+	normalizeTaskRoutineHistory,
 	taskRoutineKeys,
 	taskRoutineQuery,
 } from './taskRoutines'
@@ -14,6 +16,7 @@ import {
 const sdk = vi.hoisted(() => ({
 	taskRoutineCheckIn: vi.fn(),
 	taskRoutineHistory: vi.fn(),
+	taskRoutineProgress: vi.fn(),
 	taskRoutineRead: vi.fn(),
 	taskRoutineUpdate: vi.fn(),
 }))
@@ -128,5 +131,67 @@ describe('routine settings', () => {
 		sdk.taskRoutineRead.mockResolvedValue({data: {enabled: false, revision: 0, timezone: 'Europe/Berlin'}})
 		const routine = await client.fetchQuery(taskRoutineQuery(5))
 		expect(routine).toMatchObject({enabled: false, revision: 0, timezone: 'Europe/Berlin', completed_today: false})
+	})
+
+	it('keeps calendar and quota fields when pausing and sends an absolute amount with its period revision', async () => {
+		const client = new QueryClient()
+		seed(client)
+		const calendar = {
+			enabled: true,
+			paused: true,
+			timezone: 'Asia/Shanghai',
+			revision: 2,
+			period: 'weekly' as const,
+			reset_hour: 6,
+			reset_minute: 30,
+			week_start: 1,
+			month_day: 31,
+			target: 5,
+			unit: 'sessions',
+		}
+		sdk.taskRoutineUpdate.mockResolvedValue({data: {id: 3, project_id: 1, routine: {...pending, ...calendar}}})
+		await run(client, configureTaskRoutineMutationOptions(), {taskId: 3, ...calendar})
+		expect(sdk.taskRoutineUpdate).toHaveBeenLastCalledWith({path: {task: 3}, body: calendar})
+		sdk.taskRoutineProgress.mockResolvedValue({data: {
+			id: 3,
+			project_id: 1,
+			routine: {...pending, period: 'weekly', current_amount: 2, target: 5},
+		}})
+		await run(client, setTaskRoutineProgressMutationOptions(), {
+			taskId: 3,
+			date: '2026-11-01',
+			revision: 2,
+			amount: 2,
+		})
+		expect(sdk.taskRoutineProgress).toHaveBeenCalledWith({
+			path: {task: 3},
+			body: {date: '2026-11-01', revision: 2, amount: 2},
+		})
+		expect((client.getQueryData(taskKeys.detail(3)) as RoutineTask).routine)
+			.toMatchObject({period: 'weekly', current_amount: 2, target: 5})
+		expect(client.getQueryState(taskRoutineKeys.history(3, 2026, 11))?.isInvalidated).toBe(true)
+	})
+
+	it('retains incomplete historic periods with their original target and unit', () => {
+		const history = normalizeTaskRoutineHistory({
+			items: [],
+			periods: [{
+				id: 9,
+				date: '2026-10-26',
+				period: 'weekly',
+				amount: 2,
+				target: 5,
+				unit: 'sessions',
+				completed_at: null,
+			}],
+		})
+		expect(history.periods).toEqual([expect.objectContaining({
+			id: 9,
+			period: 'weekly',
+			amount: 2,
+			target: 5,
+			unit: 'sessions',
+			completed_at: '',
+		})])
 	})
 })

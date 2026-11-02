@@ -38,9 +38,10 @@ type ReminderRelation string
 
 // All valid ReminderRelations
 const (
-	ReminderRelationDueDate   ReminderRelation = `due_date`
-	ReminderRelationStartDate ReminderRelation = `start_date`
-	ReminderRelationEndDate   ReminderRelation = `end_date`
+	ReminderRelationDueDate          ReminderRelation = `due_date`
+	ReminderRelationStartDate        ReminderRelation = `start_date`
+	ReminderRelationEndDate          ReminderRelation = `end_date`
+	ReminderRelationRoutinePeriodEnd ReminderRelation = `routine_period_end`
 )
 
 // TaskReminder holds a reminder on a task.
@@ -54,7 +55,7 @@ type TaskReminder struct {
 	Created  time.Time `xorm:"created not null" json:"-"`
 	// A period in seconds relative to another date argument. Negative values mean the reminder triggers before the date. Default: 0, tiggers when RelativeTo is due.
 	RelativePeriod int64 `xorm:"bigint null" json:"relative_period"`
-	// The name of the date field to which the relative period refers to.
+	// A task date or routine_period_end; the latter is recomputed from each calendar period.
 	RelativeTo ReminderRelation `xorm:"varchar(50) null" json:"relative_to"`
 }
 
@@ -269,10 +270,17 @@ func getTasksWithRemindersDueAndTheirUsers(s *xorm.Session, now time.Time) (remi
 		Where("reminder >= ? and reminder < ?", now.Add(time.Hour*-12).Format(dbTimeFormat), nextMinute.Add(time.Hour*14).Format(dbTimeFormat)).
 		And("tasks.done = false").
 		And("tasks.deleted_at IS NULL").
+		And("task_reminders.relative_to != ? OR task_reminders.relative_to IS NULL", ReminderRelationRoutinePeriodEnd).
 		Find(&reminders)
 	if err != nil {
 		return
 	}
+
+	periodReminders, err := routineRemindersDue(s, now, nextMinute)
+	if err != nil {
+		return nil, err
+	}
+	reminders = append(reminders, periodReminders...)
 
 	log.Debugf("[Task Reminder Cron] Found %d reminders", len(reminders))
 

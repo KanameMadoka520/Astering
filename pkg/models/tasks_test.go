@@ -816,6 +816,14 @@ func TestHardDeleteTask(t *testing.T) {
 	// Comment 1 belongs to task 1
 	_, err = s.Insert(&Reaction{EntityID: 1, EntityKind: ReactionKindComment, UserID: 1, Value: "👍"})
 	require.NoError(t, err)
+	routine := &TaskRoutine{
+		TaskID:   1,
+		Enabled:  true,
+		Timezone: "UTC",
+	}
+	require.NoError(t, routine.Update(s, &user.User{ID: 1}))
+	_, err = SetTaskRoutineProgress(s, &user.User{ID: 1}, 1, routine.Date, routine.Revision, 1)
+	require.NoError(t, err)
 
 	err = hardDeleteTask(s, &Task{ID: 1})
 	require.NoError(t, err)
@@ -832,6 +840,9 @@ func TestHardDeleteTask(t *testing.T) {
 		"task_positions",
 		"task_buckets",
 		"task_unread_statuses",
+		"task_routines",
+		"task_routine_checkins",
+		"task_routine_progress",
 	} {
 		db.AssertMissing(t, table, map[string]interface{}{"task_id": 1})
 	}

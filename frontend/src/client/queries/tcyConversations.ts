@@ -38,7 +38,7 @@ import {commentKeys} from './comments'
 import {bucketKeys, kanbanKeys} from './kanban'
 import {agentBoardKeys} from './kanbanServerRefresh'
 import {projectAnnouncementKeys} from './projectAnnouncements'
-import {taskRoutineKeys} from './taskRoutines'
+import {recordRoutineWrite, taskRoutineKeys} from './taskRoutines'
 import {labelKeys} from './labels'
 import {
 	mapProjectNavigationItem,
@@ -582,7 +582,8 @@ export function planAgentRefresh(receipts: readonly AgentReceipt[]): AgentRefres
 				break
 			}
 			case 'configure_task_routine':
-			case 'check_in_task_routine': {
+			case 'check_in_task_routine':
+			case 'set_task_routine_progress': {
 				// The full task comes back: patched like any task change. The routine never moves done or
 				// list membership, so open lists are not marked stale.
 				const task = positiveId(args.task_id) ?? id
@@ -592,6 +593,18 @@ export function planAgentRefresh(receipts: readonly AgentReceipt[]): AgentRefres
 				} else if (task) {
 					plan.refetchTasks.push(task)
 					plan.routines.push(task)
+				}
+				break
+			}
+			case 'set_task_repeat_bucket': {
+				// Changing a future repeat destination does not move the task now. The response wraps
+				// the actual task and policy, rather than returning a task at its root.
+				const task = positiveId(args.task_id)
+				const updated = isRecord(result) ? result.task : undefined
+				if (isTaskEntity(updated) && (task === undefined || updated.id === task)) {
+					plan.operations.push({kind: 'task', task: updated})
+				} else if (task) {
+					plan.refetchTasks.push(task)
 				}
 				break
 			}
@@ -864,6 +877,7 @@ function embedsBucket(task: unknown, buckets: readonly number[]): boolean {
 }
 
 async function settleAgentChanges(client: QueryClient, plan: AgentRefreshPlan) {
+	plan.routines.forEach(id => recordRoutineWrite(client, id))
 	const changes = taskChanges(plan)
 	const updated = changes.flatMap(change => change.kind === 'updated' ? [change.task.id!] : [])
 	const patchedProjects = plan.operations.flatMap(operation => {

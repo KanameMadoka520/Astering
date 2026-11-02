@@ -14,6 +14,7 @@
 					:aria-label="$t('navigation.home')"
 				>
 					<Logo
+						compact
 						width="164"
 						height="48"
 					/>

@@ -1,56 +1,110 @@
-// Daily routines: a task checked in once per local day of the routine's timezone, for the whole project.
-// The check-in lives in its own record; the task's `done` and repeat settings never change with it.
+import type {TaskRoutine} from '@/client/generated'
 
-export interface TaskRoutineSummary {
+export type RoutinePeriod = 'daily' | 'weekly' | 'monthly'
+
+export interface TaskRoutineSchedule {
+	period: RoutinePeriod
+	timezone: string
+	reset_hour: number
+	reset_minute: number
+	week_start: number
+	month_day: number
+	target: number
+	unit: string
+}
+
+export interface TaskRoutineSummary extends TaskRoutineSchedule {
 	enabled: boolean
 	paused: boolean
-	timezone: string
 	revision: number
-	// The server's "today" (YYYY-MM-DD in `timezone`) when the summary was computed.
+	// The current period's starting calendar date in the server's timezone.
 	date: string
 	completed_today: boolean
 	// '' when there is no check-in for `date`.
 	completed_at: string
 	completed_by_id: number
-	// The next local midnight; '' when the server sent none.
+	// The next anchored local period boundary; '' when the server sent none.
 	next_reset_at: string
+	period_start_at: string
+	schedule_key: string
+	current_amount: number
+	completed_period: boolean
 }
 
 // What the API sends: every field may be missing, and unset times arrive as Go's zero time.
-export type RawTaskRoutine = {
-	enabled?: boolean | null
-	paused?: boolean | null
-	timezone?: string | null
-	revision?: number | null
-	date?: string | null
-	completed_today?: boolean | null
-	completed_at?: string | null
-	completed_by_id?: number | null
-	next_reset_at?: string | null
-}
+export type RawTaskRoutine = {[K in keyof TaskRoutine]?: TaskRoutine[K] | null}
 
 export type RoutineStatus = 'pending' | 'done' | 'paused'
 
 const ZERO_TIME = /^0001-01-01/
 const LOCAL_DATE = /^\d{4}-\d{2}-\d{2}$/
 
-function timeOrEmpty(value?: string | null): string {
+export function routineTimeOrEmpty(value?: string | null): string {
 	return value && !ZERO_TIME.test(value) && !Number.isNaN(Date.parse(value)) ? value : ''
+}
+
+export function routineSchedule(
+	raw?: Partial<TaskRoutineSchedule> | null,
+	fallbackZone = '',
+): TaskRoutineSchedule {
+	return {
+		period: raw?.period === 'weekly' || raw?.period === 'monthly' ? raw.period : 'daily',
+		timezone: raw?.timezone || fallbackZone,
+		reset_hour: raw?.reset_hour ?? 0,
+		reset_minute: raw?.reset_minute ?? 0,
+		week_start: raw?.week_start ?? 0,
+		month_day: raw?.month_day || 1,
+		target: raw?.target && raw.target > 0 ? raw.target : 1,
+		unit: raw?.unit ?? '',
+	}
+}
+
+export function validRoutineSchedule(schedule: TaskRoutineSchedule): boolean {
+	return ['daily', 'weekly', 'monthly'].includes(schedule.period)
+		&& Boolean(schedule.timezone)
+		&& Number.isInteger(schedule.reset_hour) && schedule.reset_hour >= 0 && schedule.reset_hour <= 23
+		&& Number.isInteger(schedule.reset_minute) && schedule.reset_minute >= 0 && schedule.reset_minute <= 59
+		&& Number.isInteger(schedule.week_start) && schedule.week_start >= 0 && schedule.week_start <= 6
+		&& Number.isInteger(schedule.month_day) && schedule.month_day >= 1 && schedule.month_day <= 31
+		&& Number.isSafeInteger(schedule.target) && schedule.target >= 1
+		&& [...schedule.unit].length <= 40
+}
+
+export function isLegacyRoutine(routine: TaskRoutineSchedule): boolean {
+	return routine.period === 'daily' && routine.reset_hour === 0 && routine.reset_minute === 0
+		&& routine.target === 1 && routine.unit === ''
 }
 
 export function normalizeTaskRoutine(raw: RawTaskRoutine | null | undefined): TaskRoutineSummary | null {
 	if (!raw) return null
-	const completedAt = timeOrEmpty(raw.completed_at)
+	const completedAt = routineTimeOrEmpty(raw.completed_at)
+	const schedule = routineSchedule({
+		period: raw.period ?? undefined,
+		timezone: raw.timezone ?? undefined,
+		reset_hour: raw.reset_hour ?? undefined,
+		reset_minute: raw.reset_minute ?? undefined,
+		week_start: raw.week_start ?? undefined,
+		month_day: raw.month_day ?? undefined,
+		target: raw.target ?? undefined,
+		unit: raw.unit ?? undefined,
+	})
+	const completed = (raw.completed_period ?? raw.completed_today) === true && completedAt !== ''
 	return {
+		...schedule,
 		enabled: raw.enabled === true,
 		paused: raw.paused === true,
-		timezone: raw.timezone ?? '',
 		revision: raw.revision ?? 0,
 		date: raw.date && LOCAL_DATE.test(raw.date) ? raw.date : '',
-		completed_today: raw.completed_today === true && completedAt !== '',
+		completed_today: completed,
+		completed_period: completed,
 		completed_at: completedAt,
 		completed_by_id: raw.completed_by_id ?? 0,
-		next_reset_at: timeOrEmpty(raw.next_reset_at),
+		next_reset_at: routineTimeOrEmpty(raw.next_reset_at),
+		period_start_at: routineTimeOrEmpty(raw.period_start_at),
+		schedule_key: raw.schedule_key ?? '',
+		current_amount: Number.isSafeInteger(raw.current_amount) && raw.current_amount! >= 0
+			? raw.current_amount!
+			: completed ? schedule.target : 0,
 	}
 }
 
@@ -82,10 +136,12 @@ export function localDate(date: Date, timeZone: string): string {
 	return `${part('year')}-${part('month')}-${part('day')}`
 }
 
-/** Whether the local day the summary describes is over, so it must not be shown as today's state anymore. */
+/** Whether the stored period ended; its completion must no longer be shown as current. */
 export function hasRoutineDayEnded(routine: TaskRoutineSummary, now: Date): boolean {
 	const reset = Date.parse(routine.next_reset_at)
 	if (!Number.isNaN(reset)) return now.getTime() >= reset
+	// The browser cannot reconstruct anchored calendar periods safely across DST. Wait for a fresh server summary.
+	if (!isLegacyRoutine(routine)) return false
 	const today = localDate(now, routine.timezone)
 	return routine.date !== '' && today !== '' && routine.date !== today
 }
@@ -102,17 +158,19 @@ export function routineStatus(routine: TaskRoutineSummary | null, now: Date): Ro
 }
 
 /**
- * The date a check-in or undo sends. The server accepts only its own "today" in the routine's zone and
- * answers 409 otherwise, so a page left open over midnight cannot write the previous day.
+ * The server anchor for check-in or undo. Expired non-default calendars keep the stale anchor so the
+ * server rejects with 409 and refreshes, rather than risking a write to a browser-invented period.
  */
 export function routineToday(routine: TaskRoutineSummary, now: Date): string {
 	if (routine.date && !hasRoutineDayEnded(routine, now)) return routine.date
+	// A stale anchor deliberately produces a 409 and refresh; never write a guessed weekly/monthly period.
+	if (!isLegacyRoutine(routine)) return routine.date
 	return localDate(now, routine.timezone) || routine.date
 }
 
 /** Year and month (1–12) of the routine's current local day, for the history calendar. */
 export function routineMonth(routine: TaskRoutineSummary, now: Date): {year: number, month: number} {
-	const [year, month] = routineToday(routine, now).split('-').map(Number)
+	const [year, month] = (localDate(now, routine.timezone) || routine.date).split('-').map(Number)
 	if (year && month) return {year, month}
 	return {year: now.getUTCFullYear(), month: now.getUTCMonth() + 1}
 }

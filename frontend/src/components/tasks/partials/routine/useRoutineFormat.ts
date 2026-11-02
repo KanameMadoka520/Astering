@@ -43,6 +43,23 @@ export function useRoutineFormat() {
 	function zone(timeZone: string): string {
 		return timeZone.replace(/_/g, ' ')
 	}
+	function instant(value: string, timeZone: string): string {
+		const date = new Date(value)
+		if (!value || Number.isNaN(date.getTime())) return '–'
+		const options: Intl.DateTimeFormatOptions = {
+			year: 'numeric',
+			month: 'short',
+			day: 'numeric',
+			hour: '2-digit',
+			minute: '2-digit',
+			hourCycle: hourCycle(),
+		}
+		try {
+			return new Intl.DateTimeFormat(locale.value, {...options, timeZone: timeZone || 'UTC'}).format(date)
+		} catch {
+			return `${new Intl.DateTimeFormat(locale.value, {...options, timeZone: 'UTC'}).format(date)} UTC`
+		}
+	}
 
 	/** Records only carry an id, and there is no user-by-id read, so other members are named by id. */
 	function operator(id: number): string {
@@ -62,6 +79,7 @@ export function useRoutineFormat() {
 
 	return {
 		time,
+		instant,
 		zone,
 		operator,
 		day,

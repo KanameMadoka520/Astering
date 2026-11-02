@@ -68,6 +68,12 @@ func TestProjectAnnouncementHTTP(t *testing.T) {
 func TestTaskRoutineHTTP(t *testing.T) {
 	e, err := setupTestEnv()
 	require.NoError(t, err)
+	// Every setup must clear quota snapshots left by preceding HTTP tests.
+	s := db.NewSession()
+	progressCount, countErr := s.Count(&models.TaskRoutineProgress{})
+	s.Close()
+	require.NoError(t, countErr)
+	require.Zero(t, progressCount)
 	token := humaTokenFor(t, &testuser1)
 	path := "/api/v2/tasks/1/routine"
 	rec := humaRequest(t, e, "GET", path, "", token, "")

@@ -634,3 +634,28 @@ func TestEscapeICalText(t *testing.T) {
 		})
 	}
 }
+
+func TestParseAlarmsOmitsRoutinePeriodReminder(t *testing.T) {
+	ordinary := []Alarm{
+		{
+			RelativeTo: models.ReminderRelationStartDate,
+			Duration:   -time.Hour,
+		},
+		{
+			RelativeTo: models.ReminderRelationDueDate,
+			Duration:   -time.Minute,
+		},
+		{Time: time.Date(2026, time.November, 2, 12, 0, 0, 0, time.UTC)},
+	}
+	routine := Alarm{
+		RelativeTo:  models.ReminderRelationRoutinePeriodEnd,
+		Duration:    -time.Hour,
+		Time:        time.Date(2026, time.November, 3, 4, 0, 0, 0, time.UTC),
+		Description: "Only the routine scheduler can resolve this reminder",
+	}
+	assert.Empty(t, ParseAlarms([]Alarm{routine}, "Task"))
+	mixed := append([]Alarm{routine}, ordinary...)
+	mixed = append(mixed, routine)
+	assert.Equal(t, ParseAlarms(ordinary, "Task"), ParseAlarms(mixed, "Task"),
+		"routine reminders must not produce VALARM fragments or alter ordinary alarms")
+}

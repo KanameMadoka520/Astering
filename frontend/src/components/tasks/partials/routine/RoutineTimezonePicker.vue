@@ -31,7 +31,7 @@
 			@update:modelValue="choose"
 		/>
 		<p class="routine-timezone__hint">
-			{{ $t('task.routine.settings.timezoneHint') }}
+			{{ hint || $t('task.routine.settings.timezoneHint') }}
 		</p>
 	</div>
 </template>
@@ -49,6 +49,7 @@ type ZoneOption = {value: string, label: string}
 const props = defineProps<{
 	modelValue: string
 	disabled?: boolean
+	hint?: string
 }>()
 
 const emit = defineEmits<{

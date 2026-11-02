@@ -277,7 +277,7 @@ import {resolveUserTimezone} from '@/helpers/time/userTimezone'
 import {useAuthStore} from '@/stores/auth'
 import {useBaseStore} from '@/stores/base'
 import {useRoutineCheckIn} from '@/composables/useRoutineCheckIn'
-import {routineOf, routineStatus} from '@/helpers/taskRoutine'
+import {isLegacyRoutine, routineOf, routineStatus} from '@/helpers/taskRoutine'
 
 const props = withDefaults(defineProps<{
 	theTask: ITask,
@@ -335,7 +335,8 @@ const showProjectContext = computed(() => Boolean(project.value) && (props.showP
 
 const checkboxLabel = computed(() => {
 	const label = isRoutine.value
-		? t('task.routine.checkInLabel', {task: task.value.title})
+		? t(routine.value && isLegacyRoutine(routine.value)
+			? 'task.routine.checkInLabel' : 'routineSchedule.completeTask', {task: task.value.title})
 		: t('task.detail.markAsDone', {task: task.value.title})
 	// The tooltip on a disabled checkbox never reaches keyboard or screen reader users.
 	if (!props.canMarkAsDone) return `${label}. ${t('task.readOnlyCheckbox')}`

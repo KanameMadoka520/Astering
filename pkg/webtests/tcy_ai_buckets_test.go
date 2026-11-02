@@ -138,6 +138,32 @@ func TestTCYAIBucketAgent(t *testing.T) {
 	db.AssertExists(t, "tasks", map[string]interface{}{"id": 1, "done": true}, false)
 	db.AssertExists(t, "task_buckets", map[string]interface{}{"task_id": 1, "project_view_id": 4, "bucket_id": 3}, false)
 
+	_, conv = start("set_task_repeat_bucket", map[string]any{
+		"project_id":              1,
+		"view_id":                 4,
+		"task_id":                 28,
+		"repeat_return_mode":      "keep",
+		"repeat_return_bucket_id": 0,
+	}, "smart")
+	require.Equal(t, "completed", conv.Turns[0].Status)
+	require.True(t, conv.Turns[0].Result.Actions[1].Success, conv.Turns[0].Result.Actions[1].Result)
+	policy := humaRequest(t, e, "GET", "/api/v2/tasks/28/repeat-buckets/4", "", token, "")
+	require.Equal(t, 200, policy.Code, policy.Body.String())
+	require.Contains(t, policy.Body.String(), `"repeat_return_mode":"keep"`)
+	_, conv = start("move_task_to_bucket", map[string]any{
+		"project_id": 1,
+		"view_id":    4,
+		"bucket_id":  3,
+		"task_id":    28,
+	}, "smart")
+	require.True(t, conv.Turns[0].Result.Actions[1].Success, conv.Turns[0].Result.Actions[1].Result)
+	db.AssertExists(t, "task_buckets", map[string]any{
+		"task_id":            28,
+		"project_view_id":    4,
+		"bucket_id":          1,
+		"repeat_return_mode": "keep",
+	}, false)
+
 	// Even in auto mode a bucket delete waits for the user, who sees where the tasks go.
 	path, conv := start("delete_bucket", map[string]any{"project_id": 1, "view_id": 4, "bucket_id": 2}, "auto")
 	require.Equal(t, "awaiting_approval", conv.Turns[0].Status)

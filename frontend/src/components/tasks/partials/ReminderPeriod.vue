@@ -41,7 +41,10 @@
 				<option value="-1">
 					{{ $t('task.reminder.beforeShort') }}
 				</option>
-				<option value="1">
+				<option
+					v-if="period.relative_to !== REMINDER_PERIOD_RELATIVE_TO_TYPES.ROUTINEPERIODEND"
+					value="1"
+				>
 					{{ $t('task.reminder.afterShort') }}
 				</option>
 			</select>
@@ -64,6 +67,12 @@
 				</option>
 				<option :value="REMINDER_PERIOD_RELATIVE_TO_TYPES.ENDDATE">
 					{{ $t('task.attributes.endDate') }}
+				</option>
+				<option
+					v-if="period.relative_to === REMINDER_PERIOD_RELATIVE_TO_TYPES.ROUTINEPERIODEND"
+					:value="REMINDER_PERIOD_RELATIVE_TO_TYPES.ROUTINEPERIODEND"
+				>
+					{{ $t('task.reminder.routinePeriodEnd') }}
 				</option>
 			</select>
 		</div>
@@ -114,6 +123,7 @@ watch(
 		period.value.durationUnit = p.unit
 		period.value.duration = Math.abs(p.amount)
 		period.value.relative_to = props.lockRelativeTo || value?.relative_to || REMINDER_PERIOD_RELATIVE_TO_TYPES.DUEDATE
+		period.value.sign = (value?.relative_period ?? 0) > 0 ? 1 : -1
 	},
 	{
 		immediate: true,

@@ -16,14 +16,44 @@ export function encodeWav(samples: Float32Array, sampleRate: number): Blob {
 
 export async function audioChatFile(file: Blob, filename: string): Promise<{file: Blob, filename: string}> {
 	if (/\.(wav|mp3)$/i.test(filename)) return {file, filename}
-	const decoder = new OfflineAudioContext(1, 1, 16000)
+	return convertSpeechAudio(file, 16000, 180)
+}
+
+export function speechSampleRate(protocol: string): number {
+	if (protocol === 'openai-realtime') return 24000
+	return ['dashscope-asr', 'qwen-asr-realtime', 'volcengine-asr', 'elevenlabs-realtime', 'soniox-realtime']
+		.includes(protocol) ? 16000 : 0
+}
+
+export async function prepareSpeechFile(
+	file: Blob,
+	filename: string,
+	protocol: string,
+): Promise<{file: Blob, filename: string}> {
+	const rate = speechSampleRate(protocol)
+	if (rate) return convertSpeechAudio(file, rate, 600)
+	if (['openai-audio', 'mimo-asr', 'dashscope-file-asr', 'sensevoice'].includes(protocol)) {
+		return audioChatFile(file, filename)
+	}
+	return {file, filename}
+}
+
+async function convertSpeechAudio(file: Blob, sampleRate: number, maxDuration: number) {
+	const decoder = new OfflineAudioContext(1, 1, sampleRate)
 	const decoded = await decoder.decodeAudioData(await file.arrayBuffer())
-	if (!Number.isFinite(decoded.duration) || decoded.duration <= 0 || decoded.duration > 180) throw new Error('audio-duration')
-	const renderer = new OfflineAudioContext(1, Math.ceil(decoded.duration * 16000), 16000)
+	if (!Number.isFinite(decoded.duration) || decoded.duration <= 0 || decoded.duration > maxDuration) {
+		throw new Error('audio-duration')
+	}
+	const samples = Math.ceil(decoded.duration * sampleRate)
+	if (44 + samples * 2 > 16 * 1024 * 1024) throw new Error('audio-size')
+	const renderer = new OfflineAudioContext(1, samples, sampleRate)
 	const source = renderer.createBufferSource()
 	source.buffer = decoded
 	source.connect(renderer.destination)
 	source.start()
 	const converted = await renderer.startRendering()
-	return {file: encodeWav(converted.getChannelData(0), 16000), filename: 'recording.wav'}
+	return {
+		file: encodeWav(converted.getChannelData(0), sampleRate),
+		filename: 'recording.wav',
+	}
 }

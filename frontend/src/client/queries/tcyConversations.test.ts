@@ -19,10 +19,11 @@ import {normalizeProject, projectKeys, type ProjectListResult, type ProjectRespo
 import {projectTimelineKeys} from './projectTimeline'
 import {mapTaskEverywhere, TaskDeletedError} from './taskCache'
 import {projectAnnouncementKeys} from './projectAnnouncements'
-import {taskRoutineKeys} from './taskRoutines'
+import {refreshTaskRoutinesMutationOptions, taskRoutineKeys} from './taskRoutines'
 
 const sdk = vi.hoisted(() => ({
 	tasksRead: vi.fn(),
+	taskRoutineRead: vi.fn(),
 	// Board reconciliation: the first page of every bucket, then each further loaded page.
 	projectViewBucketsTasksList: vi.fn(),
 	projectViewTasksList: vi.fn(),
@@ -524,6 +525,101 @@ describe('receipt refresh cache writes', () => {
 		expect(client.getQueryState(taskRoutineKeys.summary(4))?.isInvalidated).toBe(false)
 		expect(client.getQueryState(projectAnnouncementKeys.detail(1))?.isInvalidated).toBe(true)
 		expect(client.getQueryState(projectAnnouncementKeys.detail(2))?.isInvalidated).toBe(false)
+	})
+
+	it('refreshes the active period summary and history after an absolute routine progress receipt', async () => {
+		const routine = {
+			enabled: true,
+			period: 'weekly',
+			date: '2026-11-02',
+			current_amount: 2,
+			target: 5,
+			completed_period: false,
+		}
+		const summaryFetch = vi.fn().mockResolvedValue(routine)
+		const historyFetch = vi.fn().mockResolvedValue({periods: [{amount: 2, target: 5}]})
+		client.setQueryData(taskRoutineKeys.summary(3), {...routine, current_amount: 0})
+		client.setQueryData(taskRoutineKeys.history(3, 2026, 11), {periods: []})
+		client.setQueryData(taskRoutineKeys.summary(4), {enabled: true})
+		const stopSummary = observe(taskRoutineKeys.summary(3), summaryFetch)
+		const stopHistory = observe(taskRoutineKeys.history(3, 2026, 11), historyFetch)
+		serverList([normalizeTask({...task, routine} as Task)])
+		await apply([receipt('set_task_routine_progress', {
+			id: 3,
+			date: '2026-11-02',
+			revision: 2,
+			amount: 2,
+		}, {...serverTask, routine})])
+		expect(summaryFetch).toHaveBeenCalledTimes(1)
+		expect(historyFetch).toHaveBeenCalledTimes(1)
+		expect(client.getQueryData(taskRoutineKeys.summary(3))).toMatchObject({current_amount: 2})
+		expect(client.getQueryData(taskRoutineKeys.history(3, 2026, 11))).toMatchObject({periods: [{amount: 2}]})
+		expect(client.getQueryData<BoardData>(boardKey)!.buckets[0].tasks[0]).toMatchObject({routine})
+		expect(client.getQueryState(taskRoutineKeys.summary(4))?.isInvalidated).toBe(false)
+		expect(client.getQueryState(projectKeys.detail(3))).toBeUndefined()
+		stopSummary()
+		stopHistory()
+	})
+
+	it('patches a repeat policy receipt task without moving its card or scheduling broad project refetches', async () => {
+		const returned = {...serverTask, title: 'Before', updated: '2026-11-02T12:00:00Z'}
+		serverList([normalizeTask({...task, ...returned})])
+		const changed = receipt('set_task_repeat_bucket', {
+			project_id: 1,
+			view_id: 4,
+			task_id: 3,
+			repeat_return_mode: 'keep',
+			repeat_return_bucket_id: 0,
+		}, {
+			task: returned,
+			repeat_bucket: {
+				task_id: 3,
+				project_view_id: 4,
+				repeat_return_mode: 'keep',
+				repeat_return_bucket_id: 0,
+			},
+		})
+		expect(planAgentRefresh([changed])).toMatchObject({
+			projectList: false,
+			refetchProjects: [],
+			history: false,
+			timeline: false,
+		})
+		await apply([changed])
+		const card = client.getQueryData<BoardData>(boardKey)!.buckets[0].tasks[0]
+		expect(card).toMatchObject({id: 3, bucket_id: 8, position: 250, updated: returned.updated})
+		expect(client.getQueryData<BoardData>(boardKey)!.pages).toEqual({8: 2})
+		expect(sdk.tasksRead).not.toHaveBeenCalled()
+		expect(boardFetch).not.toHaveBeenCalled()
+		expect(sdk.projectViewBucketsTasksList).not.toHaveBeenCalled()
+	})
+
+	it('does not let a routine refresh started before an agent write restore the old amount', async () => {
+		const before = {
+			enabled: true,
+			period: 'weekly',
+			date: '2026-11-02',
+			current_amount: 0,
+			target: 5,
+			completed_period: false,
+		}
+		const updated = {...before, current_amount: 2}
+		client.setQueryData(taskRoutineKeys.summary(3), before)
+		let finishRead!: (value: unknown) => void
+		sdk.taskRoutineRead.mockReturnValue(new Promise(resolve => { finishRead = resolve }))
+		const refresh = client.getMutationCache().build(client, refreshTaskRoutinesMutationOptions()).execute([3])
+		await vi.waitFor(() => expect(sdk.taskRoutineRead).toHaveBeenCalledOnce())
+		serverList([normalizeTask({...task, routine: updated} as Task)])
+		await apply([receipt('set_task_routine_progress', {
+			id: 3,
+			date: before.date,
+			revision: 2,
+			amount: 2,
+		}, {...serverTask, routine: updated})])
+		finishRead({data: before})
+		await refresh
+		expect(client.getQueryData<BoardData>(boardKey)!.buckets[0].tasks[0]).toMatchObject({routine: updated})
+		expect(client.getQueryData<PaginatedTaskResponse>(listKey)!.items[0]).toMatchObject({routine: updated})
 	})
 })
 

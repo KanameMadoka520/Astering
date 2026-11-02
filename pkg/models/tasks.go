@@ -502,6 +502,15 @@ func getRemindersForTasks(s *xorm.Session, taskIDs []int64) (reminders []*TaskRe
 	err = s.In("task_id", taskIDs).
 		OrderBy("reminder asc").
 		Find(&reminders)
+	if err != nil {
+		return nil, err
+	}
+	if err = projectRoutineReminderDates(s, reminders, time.Now()); err != nil {
+		return nil, err
+	}
+	sort.SliceStable(reminders, func(i, j int) bool {
+		return reminders[i].Reminder.Before(reminders[j].Reminder)
+	})
 	return
 }
 
@@ -1545,11 +1554,9 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 		}
 	}
 
-	// Repeating tasks don't stay in the done bucket — route them back
-	// to the default bucket so the next iteration shows up in the
-	// "To-Do" column. See #2573.
+	// Repeating tasks reopen in the return bucket configured for each view.
 	if t.ProjectID == ot.ProjectID && t.isRepeating() && !ot.Done && t.Done {
-		err = t.moveTaskToDefaultBuckets(s, a, views)
+		err = t.moveTaskToRepeatBuckets(s, a, views)
 		if err != nil {
 			return
 		}
@@ -1844,33 +1851,25 @@ func (t *Task) moveTaskToDoneBuckets(s *xorm.Session, a web.Auth, views []*Proje
 	return nil
 }
 
-// moveTaskToDefaultBuckets moves the task to the default bucket of
-// every provided view. It's the counterpart to moveTaskToDoneBuckets
-// and is used when a repeating task is marked done: repeating tasks
-// don't stay in the done bucket, so they should be routed back to
-// the default ("To-Do") bucket so the next iteration is visible there.
-// When no explicit default bucket is configured, the task stays in its
-// current bucket — no update needed.
-func (t *Task) moveTaskToDefaultBuckets(s *xorm.Session, a web.Auth, views []*ProjectView) error {
+func (t *Task) moveTaskToRepeatBuckets(s *xorm.Session, a web.Auth, views []*ProjectView) error {
 	for _, view := range views {
-		if view.DefaultBucketID != 0 {
-			tb := &TaskBucket{
-				BucketID:      view.DefaultBucketID,
-				TaskID:        t.ID,
-				ProjectViewID: view.ID,
-				ProjectID:     t.ProjectID,
-			}
-			if err := updateTaskBucket(s, a, tb); err != nil {
-				return err
-			}
+		current := &TaskBucket{}
+		if _, err := s.Where("task_id = ? AND project_view_id = ?", t.ID, view.ID).Get(current); err != nil {
+			return err
 		}
-
-		tp := TaskPosition{
-			TaskID:        t.ID,
-			ProjectViewID: view.ID,
-			Position:      calculateDefaultPosition(t.Index, t.Position),
+		bucketID, err := ResolveTaskRepeatBucket(s, view, current)
+		if err != nil {
+			return err
 		}
-		if err := updateTaskPosition(s, a, &tp); err != nil {
+		if bucketID == current.BucketID {
+			continue
+		}
+		tb := &TaskBucket{BucketID: bucketID, TaskID: t.ID, ProjectViewID: view.ID, ProjectID: t.ProjectID}
+		if err = updateTaskBucket(s, a, tb); err != nil {
+			return err
+		}
+		tp := &TaskPosition{TaskID: t.ID, ProjectViewID: view.ID, Position: calculateDefaultPosition(t.Index, t.Position)}
+		if err = updateTaskPosition(s, a, tp); err != nil {
 			return err
 		}
 	}
@@ -2114,6 +2113,9 @@ func updateDone(oldTask *Task, newTask *Task) (updateDoneAt bool) {
 // Set the absolute trigger dates for Reminders with relative period
 func updateRelativeReminderDates(task *Task) (err error) {
 	for _, reminder := range task.Reminders {
+		if reminder.RelativePeriod < -MaxTaskRepeatAfterSeconds || reminder.RelativePeriod > MaxTaskRepeatAfterSeconds {
+			return InvalidFieldErrorWithMessage([]string{"relative_period"}, "Reminder offsets must be within ten years")
+		}
 		relativeDuration := time.Duration(reminder.RelativePeriod) * time.Second
 		if reminder.RelativeTo != "" {
 			reminder.Reminder = time.Time{}
@@ -2131,8 +2133,10 @@ func updateRelativeReminderDates(task *Task) (err error) {
 			if !task.EndDate.IsZero() {
 				reminder.Reminder = task.EndDate.Add(relativeDuration)
 			}
+		case ReminderRelationRoutinePeriodEnd:
+			// The database-backed calendar is resolved by updateRoutineReminderDates.
 		default:
-			if reminder.RelativePeriod != 0 {
+			if reminder.RelativeTo != "" || reminder.RelativePeriod != 0 {
 				err = ErrReminderRelativeToMissing{
 					TaskID: task.ID,
 				}
@@ -2161,10 +2165,20 @@ func (t *Task) updateReminders(s *xorm.Session, task *Task) (err error) {
 		return
 	}
 
+	if err = updateRoutineReminderDates(s, task, time.Now()); err != nil {
+		return err
+	}
+
 	// Resolve duplicates and sort them
-	reminderMap := make(map[int64]*TaskReminder, len(task.Reminders))
+	reminderMap := make(map[string]*TaskReminder, len(task.Reminders))
 	for _, reminder := range task.Reminders {
-		reminderMap[reminder.Reminder.UTC().Unix()] = reminder
+		// Absolute reminders retain the established second-level precision. Relative
+		// reminders have independent future schedules even if they trigger together.
+		key := fmt.Sprintf("absolute:%d", reminder.Reminder.Unix())
+		if reminder.RelativeTo != "" {
+			key = fmt.Sprintf("%s:%d", reminder.RelativeTo, reminder.RelativePeriod)
+		}
+		reminderMap[key] = reminder
 	}
 
 	t.Reminders = make([]*TaskReminder, 0, len(reminderMap))
@@ -2264,6 +2278,9 @@ func (t *Task) Delete(s *xorm.Session, a web.Auth) (err error) {
 // task was soft-deleted by the user.
 func hardDeleteTask(s *xorm.Session, t *Task) (err error) {
 	if _, err = s.Where("task_id = ?", t.ID).Delete(&TaskRoutineCheckin{}); err != nil {
+		return err
+	}
+	if _, err = s.Where("task_id = ?", t.ID).Delete(&TaskRoutineProgress{}); err != nil {
 		return err
 	}
 	if _, err = s.ID(t.ID).Delete(&TaskRoutine{}); err != nil {

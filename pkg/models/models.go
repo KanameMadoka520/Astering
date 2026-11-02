@@ -54,6 +54,7 @@ func GetTables() []interface{} {
 		&compassEntryMedia{},
 		&TaskRoutine{},
 		&TaskRoutineCheckin{},
+		&TaskRoutineProgress{},
 		&Task{},
 		&ProjectTaskCounter{},
 		&TaskIndexAlias{},

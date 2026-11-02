@@ -121,6 +121,44 @@ func selectFields(item map[string]any, keys ...string) map[string]any {
 	return result
 }
 
+func compactTaskListResult(name string, value any) (any, bool) {
+	envelope, ok := value.(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	items, ok := envelope["items"].([]any)
+	if !ok {
+		return nil, false
+	}
+	summaries := make([]any, 0, len(items))
+	for _, v := range items {
+		item, ok := v.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		keys := []string{"id", "title", "project_id", "done", "due_date", "start_date", "end_date", "priority", "hex_color", "percent_done", "is_favorite", "repeat_after", "repeat_mode", "routine", "identifier", "parent_project_id", "is_archived", "is_completed", "completed_at"}
+		summary := selectFields(item, keys...)
+		for _, key := range []string{"labels", "assignees"} {
+			if entries, ok := item[key].([]any); ok && len(entries) > 0 {
+				short := []any{}
+				for _, entry := range entries {
+					short = append(short, selectFields(asObject(entry), "id", "title", "username", "hex_color"))
+				}
+				summary[key] = short
+			}
+		}
+		summaries = append(summaries, summary)
+	}
+	result := selectFields(envelope, "total", "page", "per_page", "total_pages")
+	result["items"] = summaries
+	result["details_omitted"] = true
+	result["detail_tool"] = "get_task"
+	if name == "list_projects" {
+		result["detail_tool"] = "get_project"
+	}
+	return result, true
+}
+
 // Project new results once, before appending them. The original action result
 // remains in the audit/UI; earlier messages are never rewritten on later rounds.
 func compactToolResult(name string, raw json.RawMessage, data string) string {
@@ -135,41 +173,11 @@ func compactToolResult(name string, raw json.RawMessage, data string) string {
 	var output any
 	switch name {
 	case "list_tasks", "list_projects":
-		envelope, ok := value.(map[string]any)
+		var ok bool
+		output, ok = compactTaskListResult(name, value)
 		if !ok {
 			return data
 		}
-		items, ok := envelope["items"].([]any)
-		if !ok {
-			return data
-		}
-		summaries := make([]any, 0, len(items))
-		for _, v := range items {
-			item, ok := v.(map[string]any)
-			if !ok {
-				return data
-			}
-			keys := []string{"id", "title", "project_id", "done", "due_date", "start_date", "end_date", "priority", "hex_color", "percent_done", "is_favorite", "repeat_after", "repeat_mode", "routine", "identifier", "parent_project_id", "is_archived", "is_completed", "completed_at"}
-			summary := selectFields(item, keys...)
-			for _, key := range []string{"labels", "assignees"} {
-				if entries, ok := item[key].([]any); ok && len(entries) > 0 {
-					short := []any{}
-					for _, entry := range entries {
-						short = append(short, selectFields(asObject(entry), "id", "title", "username", "hex_color"))
-					}
-					summary[key] = short
-				}
-			}
-			summaries = append(summaries, summary)
-		}
-		result := selectFields(envelope, "total", "page", "per_page", "total_pages")
-		result["items"] = summaries
-		result["details_omitted"] = true
-		result["detail_tool"] = "get_task"
-		if name == "list_projects" {
-			result["detail_tool"] = "get_project"
-		}
-		output = result
 	case "get_task":
 		item := asObject(value)
 		if item["id"] == nil {
@@ -191,8 +199,16 @@ func compactToolResult(name string, raw json.RawMessage, data string) string {
 		output = selectFields(asObject(value), "years", "unknown", "milestones", "projects", "active_days", "items", "total", "page", "total_pages")
 	case "set_project_completed":
 		output = selectFields(asObject(value), "id", "title", "is_completed", "completed_at", "is_archived", "updated")
-	case "configure_task_routine", "check_in_task_routine":
+	case "configure_task_routine", "check_in_task_routine", "set_task_routine_progress":
 		output = selectFields(asObject(value), "id", "project_id", "title", "done", "routine", "updated")
+	case "set_task_repeat_bucket":
+		envelope := asObject(value)
+		output = map[string]any{
+			"task":          selectFields(asObject(envelope["task"]), "id", "title", "project_id", "done", "updated"),
+			"repeat_bucket": envelope["repeat_bucket"],
+			"success":       envelope["success"],
+			"verified":      envelope["verified"],
+		}
 	case "create_task", "update_task", "create_project", "update_project":
 		item, ok := value.(map[string]any)
 		if !ok {

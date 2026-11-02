@@ -75,23 +75,24 @@
 			<dl class="routine-history__stats">
 				<div class="routine-stat">
 					<dt>{{ $t('task.routine.history.monthCount') }}</dt>
-					<dd>{{ history ? days(history.items.length) : '–' }}</dd>
+					<dd>{{ history ? completions(monthCompletions) : '–' }}</dd>
 				</div>
 				<div class="routine-stat">
 					<dt>{{ $t('task.routine.history.currentStreak') }}</dt>
-					<dd>{{ totals ? days(totals.current_streak) : '–' }}</dd>
+					<dd>{{ totals ? counts(totals.current_streak) : '–' }}</dd>
 				</div>
 				<div class="routine-stat">
 					<dt>{{ $t('task.routine.history.longestStreak') }}</dt>
-					<dd>{{ totals ? days(totals.longest_streak) : '–' }}</dd>
+					<dd>{{ totals ? counts(totals.longest_streak) : '–' }}</dd>
 				</div>
 				<div class="routine-stat">
 					<dt>{{ $t('task.routine.history.total') }}</dt>
-					<dd>{{ totals ? days(totals.total_checkins) : '–' }}</dd>
+					<dd>{{ totals ? completions(totals.total_checkins) : '–' }}</dd>
 				</div>
 			</dl>
 
 			<table
+				v-if="showDailyCalendar"
 				class="routine-calendar"
 				:class="{'is-loading': !history}"
 			>
@@ -146,6 +147,7 @@
 			</table>
 
 			<p
+				v-if="showDailyCalendar"
 				class="routine-history__legend"
 				aria-hidden="true"
 			>
@@ -159,7 +161,11 @@
 				</span>
 			</p>
 
-			<h4 class="routine-history__records-title">
+			<RoutinePeriodRecords :periods="history?.periods ?? []" />
+			<h4
+				v-if="showDailyCalendar"
+				class="routine-history__records-title"
+			>
 				{{ $t('task.routine.history.records') }}
 			</h4>
 			<p
@@ -170,13 +176,13 @@
 				{{ $t('misc.loading') }}
 			</p>
 			<p
-				v-else-if="records.length === 0"
+				v-else-if="records.length === 0 && !history.periods.length"
 				class="routine-history__empty"
 			>
 				{{ $t('task.routine.history.empty') }}
 			</p>
 			<ol
-				v-else
+				v-else-if="records.length"
 				class="routine-history__records"
 			>
 				<li
@@ -229,6 +235,8 @@ import {formatCalendarMonth} from '@/helpers/projectHistoryFormat'
 import {routineMonth, routineToday, type TaskRoutineSummary} from '@/helpers/taskRoutine'
 import {useAuthStore} from '@/stores/auth'
 import {useRoutineFormat} from './useRoutineFormat'
+import RoutinePeriodRecords from './RoutinePeriodRecords.vue'
+import {isLegacyRoutine, localDate} from '@/helpers/taskRoutine'
 
 type MonthRef = {year: number, month: number}
 type CalendarDay = {date: string, day: number}
@@ -248,24 +256,28 @@ const authStore = useAuthStore()
 const format = useRoutineFormat()
 const headingId = useId()
 
-const today = computed(() => routineToday(props.routine, now.value))
+const today = computed(() => localDate(now.value, props.routine.timezone) || routineToday(props.routine, now.value))
 const latest = computed(() => routineMonth(props.routine, now.value))
 const earliest = computed<MonthRef>(() => {
 	const created = Date.parse(props.since)
 	if (Number.isNaN(created) || created <= 0) return {year: 1970, month: 1}
-	// One day earlier: in a zone behind UTC a record's local date can precede the creation instant's UTC date.
-	const start = new Date(created - 86_400_000)
+	// A recorded week/month can start before configuration, with a further day for timezone offsets.
+	const start = new Date(created - 32 * 86_400_000)
 	return {year: start.getUTCFullYear(), month: start.getUTCMonth() + 1}
 })
 
 const monthIndex = (value: MonthRef) => value.year * 12 + value.month - 1
 
-// null follows the routine's current month, which moves on at its midnight; paging back pins a month.
-// A pinned month after the current one (the zone changed while open) is never shown.
+const periodMonth = computed<MonthRef>(() => {
+	const [year, month] = props.routine.date.split('-').map(Number)
+	return year && month ? {year, month} : latest.value
+})
+// Start with the current period's record, including a week/month anchored in the previous month.
 const picked = ref<MonthRef | null>(null)
-const shown = computed<MonthRef>(() => picked.value && monthIndex(picked.value) < monthIndex(latest.value)
-	? picked.value
-	: latest.value)
+const shown = computed<MonthRef>(() => {
+	const desired = picked.value ?? periodMonth.value
+	return monthIndex(desired) <= monthIndex(latest.value) ? desired : latest.value
+})
 
 const canGoBack = computed(() => monthIndex(shown.value) > monthIndex(earliest.value))
 const canGoForward = computed(() => monthIndex(shown.value) < monthIndex(latest.value))
@@ -273,12 +285,10 @@ const canGoForward = computed(() => monthIndex(shown.value) < monthIndex(latest.
 function step(delta: number) {
 	if (delta < 0 ? !canGoBack.value : !canGoForward.value) return
 	const index = monthIndex(shown.value) + delta
-	picked.value = index >= monthIndex(latest.value)
-		? null
-		: {
-			year: Math.floor(index / 12),
-			month: index % 12 + 1,
-		}
+	picked.value = {
+		year: Math.floor(index / 12),
+		month: index % 12 + 1,
+	}
 }
 
 const {history, isPending, error, refetch} = useTaskRoutineHistory(
@@ -303,6 +313,9 @@ function retry() {
 const checkedDates = computed(() => new Set(history.value?.items.map(item => item.date) ?? []))
 
 const records = computed(() => [...(history.value?.items ?? [])].sort((a, b) => b.date.localeCompare(a.date)))
+const showDailyCalendar = computed(() => isLegacyRoutine(props.routine) || records.value.length > 0)
+const monthCompletions = computed(() => records.value.length
+	+ (history.value?.periods.filter(period => period.completed_at).length ?? 0))
 
 const monthLabel = computed(() => formatCalendarMonth(shown.value.year, shown.value.month - 1, locale.value, {
 	month: 'long',
@@ -360,8 +373,12 @@ function cellLabel(date: string): string {
 	return t(checked ? 'task.routine.history.dayChecked' : 'task.routine.history.dayNotChecked', {date: label})
 }
 
-function days(count: number): string {
-	return t('task.routine.history.days', {n: count}, count)
+function counts(count: number): string {
+	return t(isLegacyRoutine(props.routine) ? 'task.routine.history.days' : 'routineSchedule.periodCount', {n: count}, count)
+}
+
+function completions(count: number): string {
+	return t('task.routine.history.completionCount', {n: count}, count)
 }
 </script>
 

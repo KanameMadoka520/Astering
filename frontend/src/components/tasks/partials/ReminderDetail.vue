@@ -10,7 +10,7 @@
 			<template #trigger="{toggle}">
 				<SimpleButton
 					ref="trigger"
-					v-tooltip="reminder.reminder && reminder.relative_to !== '' ? formatDisplayDate(reminder.reminder) : null"
+					v-tooltip="parseDateOrNull(reminder.reminder) && reminder.relative_to !== '' ? formatDisplayDate(reminder.reminder) : null"
 					class="reminder-trigger"
 					@click.prevent.stop="toggle()"
 				>
@@ -82,6 +82,19 @@
 				</Card>
 			</template>
 		</Popup>
+		<p
+			v-if="isRoutinePeriodReminder"
+			class="help"
+		>
+			{{ $t('task.reminder.routineIncompleteOnly') }}
+		</p>
+		<p
+			v-if="hasUnscheduledRoutineReminder"
+			class="help is-danger"
+			role="alert"
+		>
+			{{ $t('task.reminder.routineNeedsUpdate') }}
+		</p>
 	</div>
 </template>
 
@@ -96,6 +109,7 @@ import {useIsMobile} from '@/composables/useIsMobile'
 import {type PeriodUnit, secondsToPeriod} from '@/helpers/time/period'
 import type {TaskReminder as ITaskReminder} from '@/client/generated'
 import {formatDisplayDate} from '@/helpers/time/formatDate'
+import {parseDateOrNull} from '@/helpers/parseDateOrNull'
 import {createReminderDraft} from '@/helpers/task'
 
 import DatepickerInline from '@/components/input/DatepickerInline.vue'
@@ -140,8 +154,14 @@ const reminderDate = ref<Date | null>(null)
 
 const isMobile = useIsMobile()
 const showFormSwitch = ref<null | 'relative' | 'absolute'>(null)
+const isRoutinePeriodReminder = computed(() => reminder.value.relative_to === REMINDER_PERIOD_RELATIVE_TO_TYPES.ROUTINEPERIODEND)
+const hasUnscheduledRoutineReminder = computed(() => isRoutinePeriodReminder.value &&
+	Boolean(props.modelValue?.reminder) && parseDateOrNull(props.modelValue?.reminder) === null)
 
 const activeForm = computed(() => {
+	if (isRoutinePeriodReminder.value) {
+		return 'relative'
+	}
 	if (props.defaultRelativeTo === null && props.allowAbsolute) {
 		return 'absolute'
 	}
@@ -150,6 +170,9 @@ const activeForm = computed(() => {
 })
 
 const lockedRelativeTo = computed(() => {
+	if (isRoutinePeriodReminder.value) {
+		return REMINDER_PERIOD_RELATIVE_TO_TYPES.ROUTINEPERIODEND
+	}
 	if (props.allowAbsolute) {
 		return null
 	}
@@ -236,6 +259,8 @@ function formatReminder(reminder: ITaskReminder) {
 				return t('task.reminder.onStartDate')
 			case REMINDER_PERIOD_RELATIVE_TO_TYPES.ENDDATE:
 				return t('task.reminder.onEndDate')
+			case REMINDER_PERIOD_RELATIVE_TO_TYPES.ROUTINEPERIODEND:
+				return t('task.reminder.onRoutinePeriodEnd')
 		}
 	}
 
@@ -251,6 +276,9 @@ function formatReminder(reminder: ITaskReminder) {
 			break
 		case REMINDER_PERIOD_RELATIVE_TO_TYPES.ENDDATE:
 			relative_to = t('task.attributes.endDate')
+			break
+		case REMINDER_PERIOD_RELATIVE_TO_TYPES.ROUTINEPERIODEND:
+			relative_to = t('task.reminder.routinePeriodEnd')
 			break
 	}
 

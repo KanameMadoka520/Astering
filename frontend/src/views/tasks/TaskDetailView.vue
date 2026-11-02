@@ -152,7 +152,7 @@
 									:aria-describedby="routineState === 'paused' ? routinePausedNoteId : undefined"
 									@click="toggleRoutineCheckIn"
 								>
-									{{ routineState === 'done' ? $t('task.routine.detail.undoCheckIn') : $t('task.routine.detail.checkIn') }}
+									{{ routineActionLabel }}
 								</XButton>
 								<span
 									v-if="canEditRoutine && routineState === 'paused'"
@@ -1015,7 +1015,7 @@ import {useTaskDetailShortcuts} from '@/composables/useTaskDetailShortcuts'
 import {useDelayedLoading} from '@/composables/useDelayedLoading'
 import {useGlobalNow} from '@/composables/useGlobalNow'
 import {useRoutineCheckIn} from '@/composables/useRoutineCheckIn'
-import {routineOf, routineStatus} from '@/helpers/taskRoutine'
+import {isLegacyRoutine, routineOf, routineStatus} from '@/helpers/taskRoutine'
 
 import {error, success} from '@/message'
 import type {Action as MessageAction} from '@/message'
@@ -1234,6 +1234,12 @@ const isRoutine = computed(() => taskRoutine.value?.enabled === true)
 // A routine that was turned off keeps its configuration and history.
 const hasRoutineRecord = computed(() => (taskRoutine.value?.revision ?? 0) > 0)
 const routineState = computed(() => routineStatus(taskRoutine.value, now.value))
+const routineActionLabel = computed(() => {
+	const legacy = taskRoutine.value && isLegacyRoutine(taskRoutine.value)
+	return t(routineState.value === 'done'
+		? legacy ? 'task.routine.detail.undoCheckIn' : 'routineSchedule.undo'
+		: legacy ? 'task.routine.detail.checkIn' : 'routineSchedule.complete')
+})
 const routineCheckingIn = computed(() => routineCheckIn.isPending(task.value.id))
 const routinePausedNoteId = useId()
 

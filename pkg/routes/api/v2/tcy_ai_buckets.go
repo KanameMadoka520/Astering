@@ -43,16 +43,18 @@ import (
 // compact, and every write runs its official Can* check, change and verification in one transaction.
 
 type aiBucketArgs struct {
-	ProjectID       int64   `json:"project_id"`
-	ViewID          int64   `json:"view_id"`
-	BucketID        *int64  `json:"bucket_id"`
-	TaskID          int64   `json:"task_id"`
-	Page            int     `json:"page"`
-	Title           *string `json:"title"`
-	Limit           *int64  `json:"limit"`
-	AfterBucketID   *int64  `json:"after_bucket_id"`
-	DefaultBucketID *int64  `json:"default_bucket_id"`
-	DoneBucketID    *int64  `json:"done_bucket_id"`
+	ProjectID            int64   `json:"project_id"`
+	ViewID               int64   `json:"view_id"`
+	BucketID             *int64  `json:"bucket_id"`
+	TaskID               int64   `json:"task_id"`
+	Page                 int     `json:"page"`
+	Title                *string `json:"title"`
+	Limit                *int64  `json:"limit"`
+	AfterBucketID        *int64  `json:"after_bucket_id"`
+	DefaultBucketID      *int64  `json:"default_bucket_id"`
+	DoneBucketID         *int64  `json:"done_bucket_id"`
+	RepeatReturnMode     string  `json:"repeat_return_mode"`
+	RepeatReturnBucketID int64   `json:"repeat_return_bucket_id"`
 }
 
 func (a aiBucketArgs) bucketID() int64 {
@@ -322,9 +324,12 @@ func (e *aiExecution) readBuckets(ctx context.Context, name string, raw json.Raw
 	// Never commit a read: kanban reads may materialize saved-filter task positions as a side effect.
 	defer func() { _ = s.Rollback() }()
 	var out any
-	if name == "list_project_views" {
+	switch name {
+	case "list_project_views":
 		out, err = e.listProjectViews(s, a)
-	} else {
+	case "get_task_repeat_bucket":
+		out, err = e.readRepeatBucket(s, a)
+	default:
 		out, err = e.listBuckets(s, a)
 	}
 	if err != nil {
@@ -548,6 +553,7 @@ type aiBucketPlan struct {
 	liveTasks    int64
 	defaultID    int64
 	doneID       int64
+	repeatPolicy *models.TaskRepeatBucketPolicy
 }
 
 func (p *aiBucketPlan) version() (string, error) {
@@ -598,6 +604,8 @@ func (e *aiExecution) buildBucketPlan(s *xorm.Session, name string, a aiBucketAr
 		err = e.planUpdateBucket(s, a, plan, preview)
 	case "move_task_to_bucket":
 		err = e.planMoveTask(s, a, plan, preview)
+	case "set_task_repeat_bucket":
+		err = e.planRepeatBucket(s, a, plan, preview)
 	case "set_view_buckets":
 		err = e.planViewBuckets(s, a, plan)
 	case "delete_bucket":
@@ -805,8 +813,72 @@ func (e *aiExecution) planMoveTask(s *xorm.Session, a aiBucketArgs, plan *aiBuck
 	}
 	plan.fromID = current.BucketID
 
-	// Expectations mirror updateTaskBucket, which owns the done-bucket rules.
 	repeating := task.RepeatAfter > 0 || task.RepeatMode == models.TaskRepeatModeMonth
+	if err = e.planMoveTaskEffects(s, &task, current, target, plan, repeating); err != nil {
+		return err
+	}
+	doneViews := make([]map[string]int64, 0, len(plan.doneViews))
+	for _, other := range plan.doneViews {
+		doneViews = append(doneViews, map[string]int64{
+			"view_id":        other.ID,
+			"done_bucket_id": other.DoneBucketID,
+		})
+	}
+	plan.state["task"] = map[string]any{
+		"id":                      task.ID,
+		"project_id":              task.ProjectID,
+		"title":                   task.Title,
+		"done":                    task.Done,
+		"repeat_after":            task.RepeatAfter,
+		"repeat_mode":             task.RepeatMode,
+		"due_date":                task.DueDate,
+		"start_date":              task.StartDate,
+		"end_date":                task.EndDate,
+		"bucket_id":               current.BucketID,
+		"repeat_return_mode":      current.RepeatReturnMode,
+		"repeat_return_bucket_id": current.RepeatReturnBucketID,
+	}
+	plan.state["done_views"] = doneViews
+	if !preview {
+		return nil
+	}
+	destination, _ := board.find(plan.expectBucket)
+	if current.BucketID != plan.expectBucket && destination != nil && destination.Limit > 0 {
+		count, err := aiBucketTaskCount(s, e.auth, view, destination.ID)
+		if err != nil {
+			return err
+		}
+		if count >= destination.Limit {
+			return tcyai.ToolFailure("BUCKET_LIMIT_EXCEEDED", fmt.Sprintf("Bucket %d (%s) is full: %d of %d tasks. Raise its limit or move another task out first.", destination.ID, destination.Title, count, destination.Limit))
+		}
+	}
+	plan.before = []map[string]any{{
+		"id":                  task.ID,
+		"title":               task.Title,
+		"task_id":             task.ID,
+		"project_id":          a.ProjectID,
+		"view_id":             view.ID,
+		"bucket_id":           current.BucketID,
+		"bucket_title":        board.title(current.BucketID),
+		"target_bucket_title": target.Title,
+		"done":                task.Done,
+		"repeating":           repeating,
+		"task_project_id":     task.ProjectID,
+		"effects":             plan.effects,
+	}}
+	plan.after = map[string]any{
+		"bucket_id":    plan.expectBucket,
+		"bucket_title": board.title(plan.expectBucket),
+		"done":         plan.expectDone,
+		"effects":      plan.effects,
+		"done_views":   doneViews,
+	}
+	return nil
+}
+
+// Expectations mirror updateTaskBucket, which owns the done-bucket rules.
+func (e *aiExecution) planMoveTaskEffects(s *xorm.Session, task *models.Task, current *models.TaskBucket, target *models.Bucket, plan *aiBucketPlan, repeating bool) (err error) {
+	view := plan.board.view
 	doneID := view.DoneBucketID
 	plan.expectBucket = target.ID
 	plan.expectDone = task.Done
@@ -816,14 +888,17 @@ func (e *aiExecution) planMoveTask(s *xorm.Session, a aiBucketArgs, plan *aiBuck
 		plan.effects = append(plan.effects, "already_in_bucket")
 	case doneID != 0 && target.ID == doneID && !task.Done && repeating:
 		plan.effects = append(plan.effects, "repeating_task_advances_dates")
-		plan.expectBucket = current.BucketID
-		if view.DefaultBucketID != 0 {
-			plan.expectBucket = view.DefaultBucketID
+		plan.expectBucket, err = models.ResolveTaskRepeatBucket(s, view, current)
+		if err != nil {
+			return err
 		}
-		if plan.expectBucket == current.BucketID {
+		switch plan.expectBucket {
+		case current.BucketID:
 			plan.effects = append(plan.effects, "stays_in_current_bucket")
-		} else {
+		case view.DefaultBucketID:
 			plan.effects = append(plan.effects, "returns_to_default_bucket")
+		default:
+			plan.effects = append(plan.effects, "returns_to_configured_bucket")
 		}
 	case doneID != 0 && target.ID == doneID && !task.Done:
 		plan.expectDone = true
@@ -850,59 +925,6 @@ func (e *aiExecution) planMoveTask(s *xorm.Session, a aiBucketArgs, plan *aiBuck
 	case doneID != 0 && current.BucketID == doneID && task.Done:
 		plan.expectDone = false
 		plan.effects = append(plan.effects, "reopens_task")
-	}
-	doneViews := make([]map[string]int64, 0, len(plan.doneViews))
-	for _, other := range plan.doneViews {
-		doneViews = append(doneViews, map[string]int64{
-			"view_id":        other.ID,
-			"done_bucket_id": other.DoneBucketID,
-		})
-	}
-	plan.state["task"] = map[string]any{
-		"id":           task.ID,
-		"project_id":   task.ProjectID,
-		"title":        task.Title,
-		"done":         task.Done,
-		"repeat_after": task.RepeatAfter,
-		"repeat_mode":  task.RepeatMode,
-		"due_date":     task.DueDate,
-		"start_date":   task.StartDate,
-		"end_date":     task.EndDate,
-		"bucket_id":    current.BucketID,
-	}
-	plan.state["done_views"] = doneViews
-	if !preview {
-		return nil
-	}
-	if current.BucketID != target.ID && target.Limit > 0 {
-		count, err := aiBucketTaskCount(s, e.auth, view, target.ID)
-		if err != nil {
-			return err
-		}
-		if count >= target.Limit {
-			return tcyai.ToolFailure("BUCKET_LIMIT_EXCEEDED", fmt.Sprintf("Bucket %d (%s) is full: %d of %d tasks. Raise its limit or move another task out first.", target.ID, target.Title, count, target.Limit))
-		}
-	}
-	plan.before = []map[string]any{{
-		"id":                  task.ID,
-		"title":               task.Title,
-		"task_id":             task.ID,
-		"project_id":          a.ProjectID,
-		"view_id":             view.ID,
-		"bucket_id":           current.BucketID,
-		"bucket_title":        board.title(current.BucketID),
-		"target_bucket_title": target.Title,
-		"done":                task.Done,
-		"repeating":           repeating,
-		"task_project_id":     task.ProjectID,
-		"effects":             plan.effects,
-	}}
-	plan.after = map[string]any{
-		"bucket_id":    plan.expectBucket,
-		"bucket_title": board.title(plan.expectBucket),
-		"done":         plan.expectDone,
-		"effects":      plan.effects,
-		"done_views":   doneViews,
 	}
 	return nil
 }
@@ -1179,6 +1201,8 @@ func (e *aiExecution) executeBucket(ctx context.Context, name string, raw json.R
 		result, err = e.applyUpdateBucket(s, a, plan)
 	case "move_task_to_bucket":
 		result, err = e.applyMoveTask(s, a, plan)
+	case "set_task_repeat_bucket":
+		result, err = e.applyRepeatBucket(s, plan)
 	case "set_view_buckets":
 		result, err = e.applyViewBuckets(s, plan)
 	case "delete_bucket":

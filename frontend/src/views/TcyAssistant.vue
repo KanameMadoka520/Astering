@@ -4,7 +4,8 @@ import {useI18n} from 'vue-i18n'
 import {useRoute, useRouter} from 'vue-router'
 import {useQuery, useQueryClient} from '@tanstack/vue-query'
 import {useDocumentVisibility, useMediaQuery} from '@vueuse/core'
-import {audioChatFile} from '@/helpers/tcyAudio'
+import {prepareSpeechFile, speechSampleRate} from '@/helpers/tcyAudio'
+import {useSpeechRecording} from '@/composables/useSpeechRecording'
 import {useConversationEvents} from '@/client/queries/conversationEvents'
 import {aiSettingsQuery, useCleanupAI, useTranscribeAI} from '@/client/queries/tcyAi'
 import AssistantPreferences from '@/components/ai/AssistantPreferences.vue'
@@ -501,9 +502,17 @@ const effectivePrompt = useQuery(computed(() => promptQuery(projectID.value, mod
 const tidy = ref(true)
 const original = ref('')
 const audioInput = ref<HTMLInputElement>()
-const recording = ref(false)
 const audioStage = ref('')
-const elapsed = ref(0)
+const microphone = useSpeechRecording({
+	capture: captureSpeechOwner,
+	isCurrent: speechOwnerIsCurrent,
+	onComplete: (blob, name, owner) => { void processAudio(blob, name, owner) },
+	onError: kind => showNotice(t(kind === 'unsupported'
+		? 'tcymc.text.this_browser_cannot_record_audio_please_upload_an'
+		: kind === 'permission' ? 'tcymc.text.cannot_access_the_microphone_check_your_browser_s'
+			: 'tcymc.text.recording_was_interrupted_please_try_again')),
+})
+const {recording, requesting: microphonePending, elapsed} = microphone
 const editingBusy = computed(() => Boolean(pendingMessage.value)
 	|| chatUploads.running.value
 	|| drivePicking.value
@@ -516,7 +525,7 @@ const editingBusy = computed(() => Boolean(pendingMessage.value)
 	|| action.isPending.value
 	|| transcribe.isPending.value
 	|| cleanup.isPending.value
-	|| recording.value)
+	|| recording.value || microphonePending.value)
 const busy = computed(() => !optionsReady.value || editingBusy.value || activeRun.value || Boolean(paused.value))
 watch([activeRun, editingBusy, () => steer.isPending.value], ([running, editing, steering]) => {
 	emit('activity', running || editing)
@@ -754,13 +763,12 @@ const liveStatus = computed(() => t(events.connected.value ? 'flow.liveConnected
 const liveLabel = computed(() => t(events.connected.value
 	? 'assistantUI.statusLive'
 	: activeRun.value ? 'assistantUI.statusPolling' : 'assistantUI.statusReconnecting'))
-const hasSpeech = computed(() => Boolean(settings.data.value?.transcription))
+const speechConnection = computed(() => settings.data.value?.connections.find(connection =>
+	connection.id === settings.data.value?.transcription && connection.kind === 'transcription' && !connection.speech?.disabled))
+const hasSpeech = computed(() => Boolean(speechConnection.value))
 const nextProjectTitle = computed(() => projectID.value
 	? projectList.projectsArray.find(p => p.id === projectID.value)?.title || `#${projectID.value}`
 	: '')
-let recorder: MediaRecorder | undefined
-let stream: MediaStream | undefined
-let timer: ReturnType<typeof setInterval> | undefined
 let disposed = false
 
 // Only turns appended to the open conversation fade in; opening or switching a chat renders at once, and so does
@@ -1065,7 +1073,33 @@ onBeforeUnmount(() => {
 	contentObserver?.disconnect()
 })
 
-async function processAudio(file: Blob, filename: string) {
+function captureSpeechOwner() {
+	const connection = speechConnection.value
+	return {
+		context: captureClientRequestContext(),
+		chat: chatID.value,
+		connectionID: connection?.id ?? '',
+		protocol: connection?.protocol ?? 'openai-transcription',
+		configuration: JSON.stringify(connection),
+		cleanup: tidy.value,
+	}
+}
+type SpeechOwner = ReturnType<typeof captureSpeechOwner>
+function speechOwnerIsCurrent(owner: SpeechOwner) {
+	return !disposed && isClientRequestContextCurrent(owner.context) && chatID.value === owner.chat
+		&& owner.connectionID !== '' && owner.configuration === JSON.stringify(speechConnection.value)
+}
+let audioOperation = 0
+let audioController: AbortController | undefined
+// The input and conversion belong to the account, chat and recognizer selected at the gesture.
+watch([chatID, () => JSON.stringify(speechConnection.value)], () => {
+	microphone.cancel()
+	audioController?.abort()
+	audioOperation++
+	audioStage.value = ''
+})
+async function processAudio(file: Blob, filename: string, owner = captureSpeechOwner()) {
+	if (!speechOwnerIsCurrent(owner) || audioStage.value) return
 	if (file.size > 16 * 1024 * 1024) {
 		showNotice(t('tcymc.text.audio_must_not_exceed_16_mib'))
 		return
@@ -1074,95 +1108,58 @@ async function processAudio(file: Blob, filename: string) {
 		showNotice(t('tcymc.text.the_recording_is_empty_please_try_again'))
 		return
 	}
+	const operation = ++audioOperation
+	const controller = new AbortController()
+	audioController = controller
+	const current = () => operation === audioOperation && !controller.signal.aborted && speechOwnerIsCurrent(owner)
 	dismissNotice()
 	audioStage.value = 'preparing'
-	const connection = settings.data.value?.connections.find(c => c.id === settings.data.value?.transcription)
-	if (connection?.protocol === 'openai-audio') {
-		try {
-			audioStage.value = 'audioConverting'
-			const converted = await audioChatFile(file, filename)
-			file = converted.file
-			filename = converted.filename
-		} catch {
-			audioStage.value = ''
-			showNotice(t('tcymc.audioConversionFailed'))
-			return
-		}
-	}
 	try {
+		if (speechSampleRate(owner.protocol) || ['openai-audio', 'mimo-asr', 'dashscope-file-asr', 'sensevoice'].includes(owner.protocol)) {
+			audioStage.value = 'audioConverting'
+			try {
+				const converted = await prepareSpeechFile(file, filename, owner.protocol)
+				file = converted.file
+				filename = converted.filename
+			} catch {
+				if (current()) showNotice(t('tcymc.audioConversionFailed'))
+				return
+			}
+		}
+		if (!current()) return
 		const audio = await new Promise<string>((resolve, reject) => {
 			const reader = new FileReader()
 			reader.onload = () => resolve(String(reader.result).split(',')[1])
 			reader.onerror = reject
 			reader.readAsDataURL(file)
 		})
+		if (!current()) return
 		audioStage.value = 'audioProcessing'
-		const result = await transcribe.mutateAsync({audio, filename, cleanup: tidy.value})
-		if (disposed) return
+		const result = await transcribe.mutateAsync({audio, filename, connection_id: owner.connectionID, cleanup: owner.cleanup, signal: controller.signal})
+		if (!current()) return
 		original.value = result.original ?? ''
 		prompt.value = [prompt.value, result.text].filter(Boolean).join('\n')
 		if (result.warning) showNotice(result.warning)
 		else showNotice(t('tcymc.text.transcription_complete_edit_the_text_if_needed_then'), 'info')
 	} catch (e) {
-		if (isRequestContextAbort(e)) return
+		if (!current() || isRequestContextAbort(e)) return
 		showNotice(t('tcymc.text.speech_recognition_failed_check_the_model_settings_or'))
-	} finally { audioStage.value = '' }
-}
-
-function stopTracks() {
-	stream?.getTracks().forEach(track => track.stop())
-	if (timer) clearInterval(timer)
+	} finally {
+		if (operation === audioOperation) { audioStage.value = ''; audioController = undefined }
+	}
 }
 
 async function toggleRecording() {
-	if (busy.value && !recording.value) return
-	if (!hasSpeech.value) return
-	if (recording.value) {
-		recorder?.stop()
-		return
-	}
-	if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-		showNotice(t('tcymc.text.this_browser_cannot_record_audio_please_upload_an'))
-		return
-	}
-	try {
-		stream = await navigator.mediaDevices.getUserMedia({audio: true})
-		if (disposed) {
-			stopTracks()
-			return
-		}
-		const mimeType = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find(type => MediaRecorder.isTypeSupported(type))
-		recorder = new MediaRecorder(stream, mimeType ? {mimeType} : undefined)
-		const chunks: Blob[] = []
-		recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data) }
-		recorder.onstop = () => {
-			recording.value = false
-			stopTracks()
-			const name = mimeType?.includes('mp4') ? 'recording.m4a' : 'recording.webm'
-			if (!disposed) void processAudio(new Blob(chunks, {type: recorder?.mimeType}), name)
-		}
-		recorder.onerror = () => {
-			recording.value = false
-			stopTracks()
-			showNotice(t('tcymc.text.recording_was_interrupted_please_try_again'))
-		}
-		recorder.start(1000)
-		recording.value = true
-		elapsed.value = 0
-		timer = setInterval(() => {
-			elapsed.value++
-			if (elapsed.value >= 180 && recorder?.state === 'recording') recorder.stop()
-		}, 1000)
-	} catch {
-		stopTracks()
-		showNotice(t('tcymc.text.cannot_access_the_microphone_check_your_browser_s'))
-	}
+	if (microphonePending.value) { microphone.cancel(); return }
+	if (recording.value) { microphone.stop(); return }
+	if (busy.value || !hasSpeech.value) return
+	await microphone.start()
 }
 
 async function upload(event: Event) {
 	const input = event.target as HTMLInputElement
 	const file = input.files?.[0]
-	if (file) await processAudio(file, file.name)
+	if (file && !busy.value) await processAudio(file, file.name)
 	input.value = ''
 }
 
@@ -1177,8 +1174,8 @@ async function tidyText() {
 
 onBeforeUnmount(() => {
 	disposed = true
-	if (recorder?.state === 'recording') recorder.stop()
-	stopTracks()
+	audioController?.abort()
+	microphone.cancel()
 })
 </script>
 
@@ -1638,11 +1635,11 @@ onBeforeUnmount(() => {
 								type="button"
 								class="is-small"
 								:shadow="false"
-								:icon="recording ? 'stop' : 'microphone'"
-								:aria-disabled="(busy && !recording) || !hasSpeech"
+								:icon="recording || microphonePending ? 'stop' : 'microphone'"
+								:aria-disabled="(busy && !recording && !microphonePending) || !hasSpeech"
 								@click="toggleRecording"
 							>
-								{{ recording ? t('tcymc.stopRecording', {seconds: elapsed}) : t('tcymc.text.record_audio') }}
+								{{ microphonePending ? t('speechSettings.cancelMicrophone') : recording ? t('tcymc.stopRecording', {seconds: elapsed}) : t('tcymc.text.record_audio') }}
 							</XButton><XButton
 								variant="secondary"
 								class="is-small"
@@ -1672,11 +1669,11 @@ onBeforeUnmount(() => {
 							</XButton>
 						</div>
 						<p
-							v-if="audioStage || cleanup.isPending.value"
+							v-if="microphonePending || audioStage || cleanup.isPending.value"
 							class="audio-progress"
 							role="status"
 						>
-							<progress :aria-label="t(`flow.${audioStage || 'audioProcessing'}`)" /> {{ t(`flow.${audioStage || 'audioProcessing'}`) }}
+							<progress :aria-label="microphonePending ? t('speechSettings.waitingForMicrophone') : t(`flow.${audioStage || 'audioProcessing'}`)" /> {{ microphonePending ? t('speechSettings.waitingForMicrophone') : t(`flow.${audioStage || 'audioProcessing'}`) }}
 						</p>
 						<div
 							class="composer-tools"
@@ -1691,13 +1688,13 @@ onBeforeUnmount(() => {
 								/>
 								<BaseButton
 									class="toolbar-button"
-									:title="recording ? t('tcymc.stopRecording', {seconds: elapsed}) : t('assistantUI.voiceTools')"
-									:aria-label="recording ? t('tcymc.stopRecording', {seconds: elapsed}) : t('assistantUI.voiceTools')"
+									:title="microphonePending ? t('speechSettings.cancelMicrophone') : recording ? t('tcymc.stopRecording', {seconds: elapsed}) : t('assistantUI.voiceTools')"
+									:aria-label="microphonePending ? t('speechSettings.cancelMicrophone') : recording ? t('tcymc.stopRecording', {seconds: elapsed}) : t('assistantUI.voiceTools')"
 									:aria-expanded="voiceOpen"
 									:class="{'is-recording': recording}"
-									@click="recording ? toggleRecording() : (voiceOpen = !voiceOpen)"
+									@click="recording || microphonePending ? toggleRecording() : (voiceOpen = !voiceOpen)"
 								>
-									<Icon :icon="recording ? 'stop' : 'microphone'" />
+									<Icon :icon="recording || microphonePending ? 'stop' : 'microphone'" />
 								</BaseButton>
 								<label
 									class="composer-chip profile-switch"

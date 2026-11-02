@@ -38,7 +38,7 @@ func RegisterTaskBucketRoutes(api huma.API) {
 		OperationID: "task-bucket-update",
 		Summary:     "Place a task in a kanban bucket",
 		Description: "Moves a task into the given bucket of a project's kanban view. Requires write access to the project. " +
-			"Idempotent: re-sending the same bucket is a no-op. Side effects: moving a task into the view's done bucket marks it done (and out of it un-marks it); a repeating task moved into the done bucket is reopened and routed back to the default bucket instead. " +
+			"Idempotent: re-sending the same bucket is a no-op. Side effects: moving a task into the view's done bucket marks it done (and out of it un-marks it); a repeating task is reopened and follows its task/view return policy: default bucket, pre-completion bucket, or a configured non-done bucket. The response identifies its actual destination. " +
 			"Moving a task into a bucket that is already at its task limit is rejected with 412. A bucket that does not resolve under the project and view in the path is rejected with 404.",
 		Method: http.MethodPut,
 		Path:   "/projects/{project}/views/{view}/buckets/{bucket}/tasks",

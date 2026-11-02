@@ -400,21 +400,74 @@ func TestTCYAIAgentExecution(t *testing.T) {
 	assert.Contains(t, readTask(two), `"cover_image_attachment_id":0`)
 	// New deferred tools obey the same scope/review layer and return actual daily state.
 	daily := createTask("Daily routine")
-	_, conv = start("configure_task_routine", map[string]any{"id": daily, "enabled": true, "paused": false, "timezone": "UTC", "revision": 0}, "auto", []int64{project.ID}, 0)
+	_, conv = start("configure_task_routine", map[string]any{
+		"id":           daily,
+		"enabled":      true,
+		"paused":       false,
+		"timezone":     "UTC",
+		"revision":     0,
+		"period":       "daily",
+		"reset_hour":   0,
+		"reset_minute": 0,
+		"week_start":   0,
+		"month_day":    1,
+		"target":       1,
+		"unit":         "",
+	}, "auto", []int64{project.ID}, 0)
 	require.True(t, conv.Turns[0].Result.Actions[1].Success, conv.Turns[0].Result.Actions[1].Result)
 	var dailyTask struct {
 		Routine struct {
 			Date           string `json:"date"`
+			Revision       int64  `json:"revision"`
 			CompletedToday bool   `json:"completed_today"`
+			CurrentAmount  int64  `json:"current_amount"`
 		} `json:"routine"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(readTask(daily)), &dailyTask))
-	_, conv = start("check_in_task_routine", map[string]any{"id": daily, "date": dailyTask.Routine.Date, "completed": true}, "auto", []int64{project.ID}, 0)
+	_, conv = start("check_in_task_routine", map[string]any{
+		"id":        daily,
+		"date":      dailyTask.Routine.Date,
+		"revision":  dailyTask.Routine.Revision,
+		"completed": true,
+	}, "auto", []int64{project.ID}, 0)
 	require.True(t, conv.Turns[0].Result.Actions[1].Success, conv.Turns[0].Result.Actions[1].Result)
 	require.NoError(t, json.Unmarshal([]byte(readTask(daily)), &dailyTask))
 	require.True(t, dailyTask.Routine.CompletedToday)
-	_, conv = start("check_in_task_routine", map[string]any{"id": daily, "date": dailyTask.Routine.Date, "completed": false}, "auto", []int64{project.ID + 9999}, 0)
+	_, conv = start("check_in_task_routine", map[string]any{
+		"id":        daily,
+		"date":      dailyTask.Routine.Date,
+		"revision":  dailyTask.Routine.Revision,
+		"completed": false,
+	}, "auto", []int64{project.ID + 9999}, 0)
 	require.Contains(t, conv.Turns[0].Result.Actions[1].Result, "SCOPE_DENIED")
+	_, conv = start("configure_task_routine", map[string]any{
+		"id":           daily,
+		"enabled":      true,
+		"paused":       false,
+		"timezone":     "UTC",
+		"revision":     dailyTask.Routine.Revision,
+		"period":       "weekly",
+		"reset_hour":   5,
+		"reset_minute": 0,
+		"week_start":   1,
+		"month_day":    1,
+		"target":       3,
+		"unit":         "sessions",
+	}, "auto", []int64{project.ID}, 0)
+	require.True(t, conv.Turns[0].Result.Actions[1].Success, conv.Turns[0].Result.Actions[1].Result)
+	require.NoError(t, json.Unmarshal([]byte(readTask(daily)), &dailyTask))
+	for range 2 {
+		_, conv = start("set_task_routine_progress", map[string]any{
+			"id":       daily,
+			"date":     dailyTask.Routine.Date,
+			"revision": dailyTask.Routine.Revision,
+			"amount":   2,
+		}, "auto", []int64{project.ID}, 0)
+		require.True(t, conv.Turns[0].Result.Actions[1].Success, conv.Turns[0].Result.Actions[1].Result)
+	}
+	require.NoError(t, json.Unmarshal([]byte(readTask(daily)), &dailyTask))
+	require.Equal(t, int64(2), dailyTask.Routine.CurrentAmount, "retrying an absolute quota must not add it twice")
+	require.False(t, dailyTask.Routine.CompletedToday)
 	path, conv = start("update_project_announcement", map[string]any{"id": project.ID, "title": "Notice", "content": "<p>Daily briefing</p>", "revision": 0}, "auto", []int64{project.ID}, 0)
 	require.Equal(t, "awaiting_approval", conv.Turns[0].Status)
 	require.Equal(t, 201, review(path, conv, "approve", "").Code)

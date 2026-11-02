@@ -19,7 +19,7 @@ import type {IconProp} from '@fortawesome/fontawesome-svg-core'
 
 import Icon from '@/components/misc/Icon'
 import {useGlobalNow} from '@/composables/useGlobalNow'
-import {routineOf, routineStatus, type RawTaskRoutine} from '@/helpers/taskRoutine'
+import {isLegacyRoutine, routineOf, routineStatus, type RawTaskRoutine} from '@/helpers/taskRoutine'
 
 const props = defineProps<{
 	task: {routine?: RawTaskRoutine | null}
@@ -40,6 +40,17 @@ const icon = computed<IconProp>(() => {
 })
 
 const label = computed(() => {
+	const routine = routineOf(props.task)
+	if (routine && !isLegacyRoutine(routine)) {
+		if (status.value === 'paused') return t('task.routine.status.paused')
+		return t('routineSchedule.chip', {
+			amount: status.value === 'pending' && Date.parse(routine.next_reset_at) <= now.value.getTime()
+				? 0 : routine.current_amount,
+			target: routine.target,
+			unit: routine.unit,
+			period: t(`routineSchedule.${routine.period}`),
+		})
+	}
 	switch (status.value) {
 		case 'done': return t('task.routine.status.done')
 		case 'paused': return t('task.routine.status.paused')
@@ -61,7 +72,9 @@ const label = computed(() => {
 	font-size: var(--text-xs);
 	font-weight: var(--weight-semibold);
 	line-height: var(--leading-normal);
-	white-space: nowrap;
+	max-inline-size: 100%;
+	white-space: normal;
+	overflow-wrap: anywhere;
 
 	&.is-pending {
 		border-color: hsla(var(--warning-h), var(--warning-s), var(--warning-l), .45);

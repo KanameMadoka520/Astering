@@ -25,7 +25,12 @@ function type(event: Event) {
 }
 async function keydown(event: KeyboardEvent) {
 	if (event.isComposing) return
-	if (event.key === 'Escape') { open.value = false; event.stopPropagation(); return }
+	if (event.key === 'Escape' && open.value) {
+		open.value = false
+		event.preventDefault()
+		event.stopPropagation()
+		return
+	}
 	if (event.key === 'Tab') { open.value = false; return }
 	if (event.key === 'Enter' && open.value && cursor.value >= 0) { event.preventDefault(); choose(matches.value[cursor.value]); return }
 	if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return

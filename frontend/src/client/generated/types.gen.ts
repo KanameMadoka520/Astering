@@ -181,9 +181,21 @@ export type AiTextResponseBody = {
      */
     readonly $schema?: string;
     /**
+     * Verified PCM audio duration; absent when the format cannot be measured locally.
+     */
+    audio_duration_ms?: number;
+    /**
+     * Recognition request elapsed time in milliseconds, excluding optional text cleanup.
+     */
+    elapsed_ms?: number;
+    /**
      * Actual upstream request URL, without credentials.
      */
     endpoint?: string;
+    /**
+     * Time to the first nonempty upstream transcript; absent if unavailable.
+     */
+    first_text_ms?: number;
     /**
      * Original transcription, before optional cleanup.
      */
@@ -1125,7 +1137,7 @@ export type Connection = {
      */
     input_types?: Array<string> | null;
     /**
-     * chat uses chat/completions; transcription uses audio/transcriptions.
+     * Text-model or speech-recognition connection; the explicit protocol chooses the upstream API.
      */
     kind?: 'chat' | 'transcription';
     /**
@@ -1151,11 +1163,15 @@ export type Connection = {
     /**
      * Wire protocol. Omitted legacy values are inferred from kind.
      */
-    protocol?: 'openai-chat' | 'openai-responses' | 'anthropic' | 'gemini' | 'openai-transcription' | 'openai-audio';
+    protocol?: 'openai-chat' | 'openai-responses' | 'anthropic' | 'gemini' | 'openai-transcription' | 'openai-audio' | 'dashscope-asr' | 'qwen-asr-realtime' | 'dashscope-file-asr' | 'volcengine-asr' | 'openai-realtime' | 'elevenlabs-transcription' | 'elevenlabs-realtime' | 'soniox-realtime' | 'mimo-asr' | 'sensevoice';
     /**
      * Effective capacities and input types, resolved by the server; never accepted as configuration.
      */
     readonly resolved?: ModelCapabilities;
+    /**
+     * Optional provider-specific speech recognition configuration.
+     */
+    speech?: SpeechOptions;
     /**
      * Optional search API base on the same origin as this connection. Empty uses the chat base (official DeepSeek uses /v1).
      */
@@ -4060,6 +4076,127 @@ export type Source = {
     title?: string;
 };
 
+export type SpeechModel = {
+    /**
+     * Adapter accepts the optional Volcengine application ID for legacy credentials.
+     */
+    app_id?: boolean;
+    /**
+     * Default API base or full endpoint; workspace placeholders require configuration.
+     */
+    base_url?: string;
+    /**
+     * Adapter supports inline vocabulary hints.
+     */
+    hotwords?: boolean;
+    /**
+     * Actual upstream model ID; display labels are never used as API identifiers.
+     */
+    id?: string;
+    /**
+     * Adapter supports an explicit language hint.
+     */
+    language?: boolean;
+    /**
+     * Display name.
+     */
+    name?: string;
+    /**
+     * Adapter supports recognition context.
+     */
+    prompt?: boolean;
+    /**
+     * Implemented wire adapter for this model.
+     */
+    protocol?: string;
+    /**
+     * Suggested starting model within this provider.
+     */
+    recommended?: boolean;
+    /**
+     * Adapter needs a Volcengine service resource ID.
+     */
+    resource_id?: boolean;
+    /**
+     * Required browser-converted mono PCM sample rate, or zero for file input.
+     */
+    sample_rate?: number;
+    /**
+     * Adapter supports a compiled vocabulary ID.
+     */
+    vocabulary?: boolean;
+    /**
+     * Preset uses a dedicated Alibaba workspace hostname.
+     */
+    workspace?: boolean;
+};
+
+export type SpeechOptions = {
+    /**
+     * Volcengine application ID/app key; the access token is stored in api_key.
+     */
+    app_id?: string;
+    /**
+     * Disabled speech connections cannot be used as the default recognizer.
+     */
+    disabled?: boolean;
+    /**
+     * Optional vocabulary hints, only sent by adapters that support them.
+     */
+    hotwords?: Array<string> | null;
+    /**
+     * Recognition language hint; empty or auto lets the provider detect it.
+     */
+    language?: string;
+    /**
+     * Optional recognition context, only sent by adapters that support it.
+     */
+    prompt?: string;
+    /**
+     * Speech provider preset; empty preserves a custom or legacy connection.
+     */
+    provider?: string;
+    /**
+     * Volcengine speech service resource identifier.
+     */
+    resource_id?: string;
+    /**
+     * Provider-created vocabulary identifier when supported.
+     */
+    vocabulary_id?: string;
+    /**
+     * Alibaba workspace ID used to resolve the dedicated inference hostname.
+     */
+    workspace_id?: string;
+};
+
+export type SpeechProvider = {
+    /**
+     * Official API or self-hosting documentation.
+     */
+    docs_url?: string;
+    /**
+     * Stable provider preset identifier.
+     */
+    id?: string;
+    /**
+     * Provider console, not an API credential.
+     */
+    key_url?: string;
+    /**
+     * Requires a separately hosted local recognition service; not browser-local inference.
+     */
+    local?: boolean;
+    /**
+     * Verified presets; users can still enter their own supported model ID.
+     */
+    models?: Array<SpeechModel> | null;
+    /**
+     * Provider display name.
+     */
+    name?: string;
+};
+
 export type State = {
     /**
      * A URL to the JSON Schema for this object.
@@ -4378,13 +4515,36 @@ export type TaskRoutineCheckInRequest = {
      */
     readonly $schema?: string;
     /**
-     * True checks in; false undoes today's check-in.
+     * True completes the current period; false undoes its completion.
      */
     completed: boolean;
     /**
      * The current date returned by task.routine; do not compute it in the browser's timezone.
      */
     date: string;
+    /**
+     * Expected configuration revision; required for non-default calendars or quotas.
+     */
+    revision?: number;
+};
+
+export type TaskRoutineProgressRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Absolute quantity for this period; it is not an increment.
+     */
+    amount: number;
+    /**
+     * Current period date returned by the server, not the browser calendar date.
+     */
+    date: string;
+    /**
+     * Configuration revision read with the current period.
+     */
+    revision: number;
 };
 
 export type TaskAssginee = {
@@ -4446,6 +4606,14 @@ export type TaskBucket = {
      * The view the bucket belongs to. On /api/v2 this is taken from the URL; a value in the body is ignored.
      */
     project_view_id?: number;
+    /**
+     * Return bucket when repeat_return_mode is bucket; belongs to this view and is not its done bucket.
+     */
+    readonly repeat_return_bucket_id?: number;
+    /**
+     * Repeating task return policy for this view: default, keep, or bucket. Configure through the repeat-buckets endpoint.
+     */
+    readonly repeat_return_mode?: string;
     /**
      * The task as it stands after the move, reflecting any done-state change.
      */
@@ -4766,6 +4934,29 @@ export type TaskReminder = {
     reminder?: string;
 };
 
+export type TaskRepeatBucketPolicy = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Manual kanban view identified by the endpoint path.
+     */
+    readonly project_view_id?: number;
+    /**
+     * A non-done bucket in this view when mode is bucket; otherwise zero.
+     */
+    repeat_return_bucket_id?: number;
+    /**
+     * default follows the view's default bucket; keep preserves the pre-completion bucket; bucket uses repeat_return_bucket_id.
+     */
+    repeat_return_mode?: 'default' | 'keep' | 'bucket';
+    /**
+     * Task identified by the endpoint path.
+     */
+    readonly task_id?: number;
+};
+
 export type TaskRoutine = {
     /**
      * A URL to the JSON Schema for this object.
@@ -4773,28 +4964,72 @@ export type TaskRoutine = {
     readonly $schema?: string;
     readonly completed_at?: string;
     readonly completed_by_id?: number;
+    /**
+     * Whether the current period reached its target; completed_today remains a compatibility alias.
+     */
+    readonly completed_period?: boolean;
     readonly completed_today?: boolean;
     readonly created?: string;
     /**
-     * Current local YYYY-MM-DD in the routine timezone.
+     * Recorded amount in the current period, zero when no progress exists.
+     */
+    readonly current_amount?: number;
+    /**
+     * Current period starting local YYYY-MM-DD in the routine timezone; use this server value for writes.
      */
     readonly date?: string;
     enabled?: boolean;
     /**
-     * Next local midnight, including DST transitions.
+     * Monthly anchor day; zero means 1. Short months clamp to their final day.
+     */
+    month_day?: number;
+    /**
+     * Next anchored local period boundary, including DST transitions.
      */
     readonly next_reset_at?: string;
     paused?: boolean;
     /**
+     * Calendar period; omitted legacy configurations use daily.
+     */
+    period?: 'daily' | 'weekly' | 'monthly';
+    /**
+     * Actual start instant of the current anchored calendar period.
+     */
+    readonly period_start_at?: string;
+    /**
+     * Local hour at the beginning of each period.
+     */
+    reset_hour?: number;
+    /**
+     * Local minute at the beginning of each period.
+     */
+    reset_minute?: number;
+    /**
      * Expected configuration revision; stale updates fail with 409.
      */
     revision?: number;
+    /**
+     * Identity of the calendar and quota configuration; histories from different configurations stay separate.
+     */
+    readonly schedule_key?: string;
+    /**
+     * Amount completing one period. Zero from a legacy client means 1.
+     */
+    target?: number;
     readonly task_id?: number;
     /**
-     * IANA timezone defining the shared task's calendar day. Historical dates are not rewritten when this changes.
+     * IANA timezone defining the shared task's calendar periods. Historical dates are not rewritten when this changes.
      */
     timezone?: string;
+    /**
+     * Optional unit for integer amounts, such as ml or sessions.
+     */
+    unit?: string;
     readonly updated?: string;
+    /**
+     * Weekly anchor weekday: Sunday=0 through Saturday=6.
+     */
+    week_start?: number;
 };
 
 export type TaskRoutineCheckin = {
@@ -4815,9 +5050,80 @@ export type TaskRoutineHistory = {
     items?: Array<TaskRoutineCheckin> | null;
     longest_streak?: number;
     month?: number;
+    /**
+     * Recorded quota periods with their original calendar, target and unit; includes incomplete progress.
+     */
+    periods?: Array<TaskRoutineProgress> | null;
     timezone?: string;
     total_checkins?: number;
     year?: number;
+};
+
+export type TaskRoutineProgress = {
+    /**
+     * Absolute recorded quantity, including incomplete periods.
+     */
+    readonly amount?: number;
+    /**
+     * First attainment of target; null when the recorded amount is below target.
+     */
+    readonly completed_at?: string | null;
+    /**
+     * Actor who first reached the target; zero while incomplete.
+     */
+    readonly completed_by_id?: number;
+    /**
+     * First recording time.
+     */
+    readonly created?: string;
+    /**
+     * Period starting local calendar date.
+     */
+    readonly date?: string;
+    /**
+     * Progress record identifier.
+     */
+    readonly id?: number;
+    /**
+     * Original daily, weekly or monthly period.
+     */
+    readonly period?: string;
+    /**
+     * Original next reset instant.
+     */
+    readonly period_end_at?: string;
+    /**
+     * Original period start instant.
+     */
+    readonly period_start_at?: string;
+    /**
+     * Original calendar and quota configuration identity.
+     */
+    readonly schedule_key?: string;
+    /**
+     * Target applying when this period was recorded.
+     */
+    readonly target?: number;
+    /**
+     * Shared task this record belongs to.
+     */
+    readonly task_id?: number;
+    /**
+     * Original IANA timezone.
+     */
+    readonly timezone?: string;
+    /**
+     * Original quantity unit.
+     */
+    readonly unit?: string;
+    /**
+     * Last quantity update time.
+     */
+    readonly updated?: string;
+    /**
+     * Last progress editor.
+     */
+    readonly updated_by_id?: number;
 };
 
 export type TaskRule = {
@@ -4938,6 +5244,10 @@ export type TcyAiTranscribeRequest = {
     readonly $schema?: string;
     audio?: string;
     cleanup?: boolean;
+    /**
+     * Optional saved recognition connection belonging to the current user; empty uses the default.
+     */
+    connection_id?: string;
     filename?: string;
 };
 
@@ -6045,9 +6355,21 @@ export type AdminUserWritable = {
 
 export type AiTextResponseBodyWritable = {
     /**
+     * Verified PCM audio duration; absent when the format cannot be measured locally.
+     */
+    audio_duration_ms?: number;
+    /**
+     * Recognition request elapsed time in milliseconds, excluding optional text cleanup.
+     */
+    elapsed_ms?: number;
+    /**
      * Actual upstream request URL, without credentials.
      */
     endpoint?: string;
+    /**
+     * Time to the first nonempty upstream transcript; absent if unavailable.
+     */
+    first_text_ms?: number;
     /**
      * Original transcription, before optional cleanup.
      */
@@ -6437,7 +6759,7 @@ export type ConnectionWritable = {
      */
     input_types?: Array<string> | null;
     /**
-     * chat uses chat/completions; transcription uses audio/transcriptions.
+     * Text-model or speech-recognition connection; the explicit protocol chooses the upstream API.
      */
     kind?: 'chat' | 'transcription';
     /**
@@ -6463,7 +6785,11 @@ export type ConnectionWritable = {
     /**
      * Wire protocol. Omitted legacy values are inferred from kind.
      */
-    protocol?: 'openai-chat' | 'openai-responses' | 'anthropic' | 'gemini' | 'openai-transcription' | 'openai-audio';
+    protocol?: 'openai-chat' | 'openai-responses' | 'anthropic' | 'gemini' | 'openai-transcription' | 'openai-audio' | 'dashscope-asr' | 'qwen-asr-realtime' | 'dashscope-file-asr' | 'volcengine-asr' | 'openai-realtime' | 'elevenlabs-transcription' | 'elevenlabs-realtime' | 'soniox-realtime' | 'mimo-asr' | 'sensevoice';
+    /**
+     * Optional provider-specific speech recognition configuration.
+     */
+    speech?: SpeechOptions;
     /**
      * Optional search API base on the same origin as this connection. Empty uses the chat base (official DeepSeek uses /v1).
      */
@@ -7934,13 +8260,32 @@ export type TaskWritable = {
 
 export type TaskRoutineCheckInRequestWritable = {
     /**
-     * True checks in; false undoes today's check-in.
+     * True completes the current period; false undoes its completion.
      */
     completed: boolean;
     /**
      * The current date returned by task.routine; do not compute it in the browser's timezone.
      */
     date: string;
+    /**
+     * Expected configuration revision; required for non-default calendars or quotas.
+     */
+    revision?: number;
+};
+
+export type TaskRoutineProgressRequestWritable = {
+    /**
+     * Absolute quantity for this period; it is not an increment.
+     */
+    amount: number;
+    /**
+     * Current period date returned by the server, not the browser calendar date.
+     */
+    date: string;
+    /**
+     * Configuration revision read with the current period.
+     */
+    revision: number;
 };
 
 export type TaskAssgineeWritable = {
@@ -8055,17 +8400,56 @@ export type TaskRelationWritable = {
     relation_kind?: 'subtask' | 'parenttask' | 'related' | 'duplicateof' | 'duplicates' | 'blocking' | 'blocked' | 'precedes' | 'follows' | 'copiedfrom' | 'copiedto';
 };
 
+export type TaskRepeatBucketPolicyWritable = {
+    /**
+     * A non-done bucket in this view when mode is bucket; otherwise zero.
+     */
+    repeat_return_bucket_id?: number;
+    /**
+     * default follows the view's default bucket; keep preserves the pre-completion bucket; bucket uses repeat_return_bucket_id.
+     */
+    repeat_return_mode?: 'default' | 'keep' | 'bucket';
+};
+
 export type TaskRoutineWritable = {
     enabled?: boolean;
+    /**
+     * Monthly anchor day; zero means 1. Short months clamp to their final day.
+     */
+    month_day?: number;
     paused?: boolean;
+    /**
+     * Calendar period; omitted legacy configurations use daily.
+     */
+    period?: 'daily' | 'weekly' | 'monthly';
+    /**
+     * Local hour at the beginning of each period.
+     */
+    reset_hour?: number;
+    /**
+     * Local minute at the beginning of each period.
+     */
+    reset_minute?: number;
     /**
      * Expected configuration revision; stale updates fail with 409.
      */
     revision?: number;
     /**
-     * IANA timezone defining the shared task's calendar day. Historical dates are not rewritten when this changes.
+     * Amount completing one period. Zero from a legacy client means 1.
+     */
+    target?: number;
+    /**
+     * IANA timezone defining the shared task's calendar periods. Historical dates are not rewritten when this changes.
      */
     timezone?: string;
+    /**
+     * Optional unit for integer amounts, such as ml or sessions.
+     */
+    unit?: string;
+    /**
+     * Weekly anchor weekday: Sunday=0 through Saturday=6.
+     */
+    week_start?: number;
 };
 
 export type TaskRoutineHistoryWritable = {
@@ -8073,6 +8457,10 @@ export type TaskRoutineHistoryWritable = {
     items?: Array<unknown> | null;
     longest_streak?: number;
     month?: number;
+    /**
+     * Recorded quota periods with their original calendar, target and unit; includes incomplete progress.
+     */
+    periods?: Array<unknown> | null;
     timezone?: string;
     total_checkins?: number;
     year?: number;
@@ -8146,6 +8534,10 @@ export type TcyAiTestRequestWritable = {
 export type TcyAiTranscribeRequestWritable = {
     audio?: string;
     cleanup?: boolean;
+    /**
+     * Optional saved recognition connection belonging to the current user; empty uses the default.
+     */
+    connection_id?: string;
     filename?: string;
 };
 
@@ -9862,6 +10254,31 @@ export type TcyAiSaveSettingsResponses = {
 };
 
 export type TcyAiSaveSettingsResponse = TcyAiSaveSettingsResponses[keyof TcyAiSaveSettingsResponses];
+
+export type TcyAiSpeechProvidersData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/ai/speech/providers';
+};
+
+export type TcyAiSpeechProvidersErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type TcyAiSpeechProvidersError = TcyAiSpeechProvidersErrors[keyof TcyAiSpeechProvidersErrors];
+
+export type TcyAiSpeechProvidersResponses = {
+    /**
+     * OK
+     */
+    200: Array<SpeechProvider> | null;
+};
+
+export type TcyAiSpeechProvidersResponse = TcyAiSpeechProvidersResponses[keyof TcyAiSpeechProvidersResponses];
 
 export type TcyAiTestData = {
     body: TcyAiTestRequestWritable;
@@ -15439,6 +15856,90 @@ export type TasksRelationsDeleteResponses = {
 
 export type TasksRelationsDeleteResponse = TasksRelationsDeleteResponses[keyof TasksRelationsDeleteResponses];
 
+export type TaskRepeatBucketReadData = {
+    body?: never;
+    path: {
+        task: number;
+        view: number;
+    };
+    query?: never;
+    url: '/tasks/{task}/repeat-buckets/{view}';
+};
+
+export type TaskRepeatBucketReadErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type TaskRepeatBucketReadError = TaskRepeatBucketReadErrors[keyof TaskRepeatBucketReadErrors];
+
+export type TaskRepeatBucketReadResponses = {
+    /**
+     * OK
+     */
+    200: TaskRepeatBucketPolicy;
+};
+
+export type TaskRepeatBucketReadResponse = TaskRepeatBucketReadResponses[keyof TaskRepeatBucketReadResponses];
+
+export type PatchTaskRepeatBucketReadData = {
+    body: Array<JsonPatchOp> | null;
+    path: {
+        task: number;
+        view: number;
+    };
+    query?: never;
+    url: '/tasks/{task}/repeat-buckets/{view}';
+};
+
+export type PatchTaskRepeatBucketReadErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type PatchTaskRepeatBucketReadError = PatchTaskRepeatBucketReadErrors[keyof PatchTaskRepeatBucketReadErrors];
+
+export type PatchTaskRepeatBucketReadResponses = {
+    /**
+     * OK
+     */
+    200: TaskRepeatBucketPolicy;
+};
+
+export type PatchTaskRepeatBucketReadResponse = PatchTaskRepeatBucketReadResponses[keyof PatchTaskRepeatBucketReadResponses];
+
+export type TaskRepeatBucketUpdateData = {
+    body: TaskRepeatBucketPolicyWritable;
+    path: {
+        task: number;
+        view: number;
+    };
+    query?: never;
+    url: '/tasks/{task}/repeat-buckets/{view}';
+};
+
+export type TaskRepeatBucketUpdateErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type TaskRepeatBucketUpdateError = TaskRepeatBucketUpdateErrors[keyof TaskRepeatBucketUpdateErrors];
+
+export type TaskRepeatBucketUpdateResponses = {
+    /**
+     * OK
+     */
+    200: TaskRepeatBucketPolicy;
+};
+
+export type TaskRepeatBucketUpdateResponse = TaskRepeatBucketUpdateResponses[keyof TaskRepeatBucketUpdateResponses];
+
 export type TaskRoutineReadData = {
     body?: never;
     path: {
@@ -15576,6 +16077,33 @@ export type TaskRoutineHistoryResponses = {
 };
 
 export type TaskRoutineHistoryResponse = TaskRoutineHistoryResponses[keyof TaskRoutineHistoryResponses];
+
+export type TaskRoutineProgressData = {
+    body: TaskRoutineProgressRequestWritable;
+    path: {
+        task: number;
+    };
+    query?: never;
+    url: '/tasks/{task}/routine/progress';
+};
+
+export type TaskRoutineProgressErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type TaskRoutineProgressError = TaskRoutineProgressErrors[keyof TaskRoutineProgressErrors];
+
+export type TaskRoutineProgressResponses = {
+    /**
+     * OK
+     */
+    200: Task;
+};
+
+export type TaskRoutineProgressResponse = TaskRoutineProgressResponses[keyof TaskRoutineProgressResponses];
 
 export type TeamsListData = {
     body?: never;

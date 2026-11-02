@@ -60,6 +60,7 @@ func SetupTests() {
 		"compass_entry_media",
 		"task_routines",
 		"task_routine_checkins",
+		"task_routine_progress",
 		"label_tasks",
 		"labels",
 		"link_shares",

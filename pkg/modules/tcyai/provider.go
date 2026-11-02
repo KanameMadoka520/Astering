@@ -195,6 +195,11 @@ func openAIChat(ctx context.Context, c Connection, input map[string]any, tools [
 }
 
 func Transcribe(ctx context.Context, c Connection, filename string, audio []byte) (string, error) {
+	result, err := RecognizeSpeech(ctx, c, filename, audio)
+	return result.Text, err
+}
+
+func transcribeLegacy(ctx context.Context, c Connection, filename string, audio []byte) (string, error) {
 	if c.EffectiveProtocol() == "openai-audio" || c.EffectiveProtocol() == "gemini" {
 		return transcribeMultimodal(ctx, c, filename, audio)
 	}
@@ -205,6 +210,18 @@ func Transcribe(ctx context.Context, c Connection, filename string, audio []byte
 	}
 	if err := w.WriteField("response_format", "json"); err != nil {
 		return "", err
+	}
+	if c.Speech != nil {
+		if language := c.Speech.Language; language != "" && language != "auto" {
+			if err := w.WriteField("language", language); err != nil {
+				return "", err
+			}
+		}
+		if c.Speech.Prompt != "" {
+			if err := w.WriteField("prompt", c.Speech.Prompt); err != nil {
+				return "", err
+			}
+		}
 	}
 	p, err := w.CreateFormFile("file", filepath.Base(filename))
 	if err != nil {
@@ -235,6 +252,9 @@ func Cleanup(ctx context.Context, c Connection, text string) (string, error) {
 
 // Endpoint is also returned to the UI for diagnostics, without credentials or query strings.
 func Endpoint(c Connection) string {
+	if isNativeSpeechProtocol(c.EffectiveProtocol()) {
+		return speechEndpoint(c)
+	}
 	suffix := map[string]string{"openai-chat": "/chat/completions", "openai-responses": "/responses", "anthropic": "/messages", "openai-transcription": "/audio/transcriptions", "openai-audio": "/chat/completions"}[c.EffectiveProtocol()]
 	if c.EffectiveProtocol() == "gemini" {
 		suffix = "/models/" + url.PathEscape(strings.TrimPrefix(c.Model, "models/")) + ":generateContent"

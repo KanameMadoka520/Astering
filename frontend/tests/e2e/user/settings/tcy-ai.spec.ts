@@ -156,6 +156,7 @@ test('connection saves are isolated across tabs and retain other unfinished draf
  await speech.getByRole('button', {name: '保存此连接'}).click()
  const two = await (await savedSpeech).json()
  expect(two.connections.map((c: any) => c.name)).toEqual(['Updated LLM', 'Saved speech'])
+ await page.getByRole('dialog', {name: '自定义 / 兼容服务设置', exact: true}).getByRole('button', {name: '关闭对话框', exact: true}).click()
  await page.getByRole('button', {name: '功能分配', exact: true}).click()
  await page.getByLabel(/^阿罗娜(?!的)/).selectOption({label: 'Updated LLM · chat-model'})
  await page.getByLabel('语音识别', {exact: false}).selectOption({label: 'Saved speech · whisper-model'})
@@ -182,7 +183,157 @@ test('connection saves are isolated across tabs and retain other unfinished draf
 
 })
 
+function testAudioFile(name: string) {
+	const frames = 3200
+	const data = Buffer.alloc(44 + frames * 2)
+	data.write('RIFF', 0)
+	data.writeUInt32LE(data.length - 8, 4)
+	data.write('WAVEfmt ', 8)
+	data.writeUInt32LE(16, 16)
+	data.writeUInt16LE(1, 20)
+	data.writeUInt16LE(1, 22)
+	data.writeUInt32LE(16000, 24)
+	data.writeUInt32LE(32000, 28)
+	data.writeUInt16LE(2, 32)
+	data.writeUInt16LE(16, 34)
+	data.write('data', 36)
+	data.writeUInt32LE(frames * 2, 40)
+	return {
+		name,
+		mimeType: 'audio/wav',
+		buffer: data,
+	}
+}
+
+for (const width of [1440, 320]) {
+	test(`speech provider modal saves a default, tests a file and disables it at ${width}px`, async ({authenticatedPage: page, apiContext, userToken}, testInfo) => {
+		await page.setViewportSize({width, height: 900})
+		const headers = {Authorization: `Bearer ${userToken}`}
+		const catalog = await apiContext.get(`${api}/ai/speech/providers`, {headers})
+		expect(catalog.ok()).toBeTruthy()
+		const providers = await catalog.json() as Array<{
+			id: string
+			models: Array<{
+				id: string
+				name: string
+				protocol: string
+			}>
+		}>
+		const model = providers.find(provider => provider.id === 'openai')!.models[0]
+		await page.goto('/user/settings/ai')
+		await page.getByRole('button', {name: /^语音识别/}).click()
+		const providerCard = page.getByRole('button', {name: '配置OpenAI', exact: true})
+		await expect(providerCard).toBeVisible()
+		await page.screenshot({path: testInfo.outputPath(`speech-providers-${width}.png`), animations: 'disabled'})
+		await providerCard.click()
+		const dialog = page.getByRole('dialog', {name: 'OpenAI设置', exact: true})
+		await expect(dialog).toBeVisible()
+		await expect(dialog.getByRole('link', {name: '获取 API 密钥', exact: true})).toHaveAttribute('target', '_blank')
+		await dialog.getByLabel('API 密钥', {exact: true}).fill('fixture-speech-only-key')
+		const card = dialog.locator('.speech-model').filter({hasText: model.name || model.id}).first()
+		const saved = page.waitForResponse(response => response.url().endsWith('/ai/settings') && response.request().method() === 'POST')
+		await card.getByRole('button', {name: '保存为默认识别模型', exact: true}).click()
+		const response = await saved
+		expect(response.ok()).toBeTruthy()
+		const settings = await response.json()
+		const connection = settings.connections.find((item: {id: string}) => item.id === settings.transcription)
+		expect(connection).toMatchObject({model: model.id, protocol: model.protocol, speech: {provider: 'openai'}})
+		expect(connection.api_key).toBeUndefined()
+		await expect(card.getByRole('button', {name: '当前使用', exact: true})).toBeVisible()
+		await expect(dialog.getByLabel('API 密钥', {exact: true})).toHaveValue('')
+		let tests = 0
+		await page.route('**/api/v2/ai/test', async route => {
+			const body = route.request().postDataJSON()
+			expect(body.connection_id).toBe(connection.id)
+			expect(Buffer.from(body.audio, 'base64').subarray(0, 4).toString()).toBe('RIFF')
+			tests++
+			await route.fulfill({json: {
+				endpoint: 'wss://provider.example/v1/realtime?intent=transcription',
+				text: '这是一段测试语音。',
+				elapsed_ms: 123,
+				first_text_ms: 12,
+				audio_duration_ms: 200,
+			}})
+		})
+		await dialog.locator('input[type="file"]').setInputFiles(testAudioFile('first.wav'))
+		await expect(dialog.locator('audio')).toBeVisible()
+		await dialog.getByRole('button', {name: '运行识别测试', exact: true}).click()
+		await expect(dialog.getByText('这是一段测试语音。', {exact: true})).toBeVisible()
+		await expect(dialog.getByText('处理耗时：0.12 秒', {exact: true})).toBeVisible()
+		await page.screenshot({path: testInfo.outputPath(`speech-dialog-${width}.png`), animations: 'disabled'})
+		expect(tests).toBe(1)
+		await dialog.locator('input[type="file"]').setInputFiles(testAudioFile('second.wav'))
+		await expect(dialog.getByText('这是一段测试语音。', {exact: true})).toHaveCount(0)
+		const sizes = await page.evaluate(() => ({
+			page: document.documentElement.scrollWidth,
+			viewport: innerWidth,
+		}))
+		expect(sizes.page).toBeLessThanOrEqual(sizes.viewport + 1)
+		const bounds = (await dialog.locator('.speech-provider-form').boundingBox())!
+		expect(bounds.x).toBeGreaterThanOrEqual(0)
+		expect(bounds.x + bounds.width).toBeLessThanOrEqual(width + 1)
+		await dialog.getByRole('switch', {name: '启用此语音连接', exact: true}).uncheck()
+		const disabled = page.waitForResponse(result => result.url().endsWith('/ai/settings') && result.request().method() === 'POST')
+		await dialog.getByRole('button', {name: '保存此连接', exact: true}).click()
+		const disabledResponse = await disabled
+		expect(disabledResponse.ok()).toBeTruthy()
+		expect((await disabledResponse.json()).transcription).toBe('')
+		await dialog.getByRole('button', {name: '关闭对话框', exact: true}).click()
+		await page.reload()
+		await page.getByRole('button', {name: /^语音识别/}).click()
+		await providerCard.click()
+		await expect(dialog.getByRole('switch', {name: '启用此语音连接', exact: true})).not.toBeChecked()
+		const stored = await (await apiContext.get(`${api}/ai/settings`, {headers})).json()
+		expect(stored.transcription).toBe('')
+		expect(stored.connections.find((item: {id: string}) => item.id === connection.id).speech.disabled).toBe(true)
+	})
+}
+
 // Real settings API with fake hosts: nothing here fetches models or calls a provider.
+test('Alibaba streaming preset persists workspace and displays the resolved endpoint', async ({authenticatedPage: page, apiContext, userToken}, testInfo) => {
+	await page.setViewportSize({width: 390, height: 844})
+	await page.goto('/user/settings/ai')
+	await page.getByRole('button', {name: /^语音识别/}).click()
+	const provider = page.getByRole('button', {name: '配置阿里云', exact: true})
+	await provider.click()
+	const dialog = page.getByRole('dialog', {name: '阿里云设置', exact: true})
+	await dialog.getByLabel('API 密钥', {exact: true}).fill('fixture-bailian-only-key')
+	await dialog.getByLabel(/^工作空间 ID/).fill('fixture-workspace')
+	await dialog.getByLabel(/^识别语言/).fill('zh')
+	await dialog.getByLabel(/^识别上下文/).fill('项目管理与日程安排')
+	await dialog.getByLabel(/^热词/).fill('阿罗娜\nvikunja')
+	const model = dialog.locator('.speech-model').filter({hasText: 'qwen-audio-3.1-asr-flash-streaming'})
+	const saved = page.waitForResponse(response => response.url().endsWith('/ai/settings') && response.request().method() === 'POST')
+	await model.getByRole('button', {name: '保存为默认识别模型', exact: true}).click()
+	const response = await saved
+	expect(response.ok()).toBe(true)
+	const settings = await response.json() as Settings
+	const connection = settings.connections!.find(item => item.id === settings.transcription)!
+	expect(connection).toMatchObject({
+		model: 'qwen-audio-3.1-asr-flash-streaming',
+		protocol: 'dashscope-asr',
+		speech: {
+			workspace_id: 'fixture-workspace',
+			language: 'zh',
+			prompt: '项目管理与日程安排',
+			hotwords: ['阿罗娜', 'vikunja'],
+		},
+	})
+	expect(connection.api_key).toBeUndefined()
+	await dialog.getByRole('button', {name: '关闭对话框', exact: true}).click()
+	await page.reload()
+	await page.getByRole('button', {name: /^语音识别/}).click()
+	await provider.click()
+	await expect(dialog.getByLabel(/^工作空间 ID/)).toHaveValue('fixture-workspace')
+	await expect(dialog.getByLabel('API 密钥', {exact: true})).toHaveValue('')
+	await expect(model.getByRole('button', {name: '当前使用', exact: true})).toBeVisible()
+	await expect(dialog.locator('code').filter({hasText: 'wss://fixture-workspace.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference'})).toBeVisible()
+	expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+	await page.screenshot({path: testInfo.outputPath('bailian-streaming-390.png'), animations: 'disabled'})
+	const stored = await apiContext.get(`${api}/ai/settings`, {headers: {Authorization: `Bearer ${userToken}`}})
+	expect((await stored.json()).transcription).toBe(connection.id)
+})
+
 test('automatic compaction settings persist per connection and leave its capacity untouched', async ({authenticatedPage: page, apiContext, userToken}) => {
 	const headers = {Authorization: `Bearer ${userToken}`}
 	const seeded: Connection[] = [

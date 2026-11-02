@@ -99,7 +99,8 @@ func (e *aiExecution) mutateRoutine(ctx context.Context, name string, raw json.R
 	}
 	id := changes[0].ID
 	var task *models.Task
-	if name == "configure_task_routine" {
+	switch name {
+	case "configure_task_routine":
 		var r models.TaskRoutine
 		if err = json.Unmarshal(raw, &r); err != nil {
 			return "", err
@@ -112,15 +113,29 @@ func (e *aiExecution) mutateRoutine(ctx context.Context, name string, raw json.R
 		if err = task.ReadOne(s, e.auth); err != nil {
 			return "", err
 		}
-	} else {
+	case "check_in_task_routine":
 		var a struct {
 			Date      string `json:"date"`
+			Revision  int64  `json:"revision"`
 			Completed bool   `json:"completed"`
 		}
 		if err = json.Unmarshal(raw, &a); err != nil {
 			return "", err
 		}
-		task, err = models.SetTaskRoutineCheckin(s, e.auth, id, a.Date, a.Completed)
+		task, err = models.SetTaskRoutineCheckin(s, e.auth, id, a.Date, a.Completed, a.Revision)
+		if err != nil {
+			return "", err
+		}
+	default:
+		var a struct {
+			Date     string `json:"date"`
+			Revision int64  `json:"revision"`
+			Amount   int64  `json:"amount"`
+		}
+		if err = json.Unmarshal(raw, &a); err != nil {
+			return "", err
+		}
+		task, err = models.SetTaskRoutineProgress(s, e.auth, id, a.Date, a.Revision, a.Amount)
 		if err != nil {
 			return "", err
 		}

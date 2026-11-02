@@ -17,7 +17,7 @@
 					:icon="['far', 'sun']"
 					class="task-routine__title-icon"
 				/>
-				{{ $t('task.routine.settings.title') }}
+				{{ $t(legacyPresentation ? 'task.routine.settings.title' : 'routineSchedule.title') }}
 			</h2>
 			<RoutineStatusChip
 				v-if="routine?.enabled"
@@ -97,8 +97,12 @@
 						icon="globe"
 						class="task-routine__fact-icon"
 					/>
-					{{ $t('task.routine.settings.dayInfo', {
+					{{ legacy ? $t('task.routine.settings.dayInfo', {
 						date: format.day(today, {year: 'numeric', month: 'long', day: 'numeric'}),
+						timezone: format.zone(routine.timezone),
+					}) : $t('routineSchedule.periodInfo', {
+						start: periodInstant(routine.period_start_at),
+						end: periodInstant(routine.next_reset_at),
 						timezone: format.zone(routine.timezone),
 					}) }}
 				</li>
@@ -107,7 +111,7 @@
 						:icon="['far', 'calendar-check']"
 						class="task-routine__fact-icon"
 					/>
-					{{ $t('task.routine.settings.streak', {
+					{{ $t(legacy ? 'task.routine.settings.streak' : 'routineSchedule.streak', {
 						current: days(streak.current_streak),
 						longest: days(streak.longest_streak),
 					}) }}
@@ -117,9 +121,44 @@
 						icon="users"
 						class="task-routine__fact-icon"
 					/>
-					{{ $t('task.routine.settings.shared') }}
+					{{ $t(legacy ? 'task.routine.settings.shared' : 'routineSchedule.shared') }}
 				</li>
 			</ul>
+			<RoutineProgressControl
+				v-if="!legacy"
+				:task-id="task.id"
+				:routine="routine"
+				:can-edit="canEdit"
+			/>
+			<div
+				v-if="editingSchedule && canEdit"
+				class="task-routine__zone-editor"
+			>
+				<RoutineScheduleEditor
+					v-model="scheduleDraft"
+					:saving="saving"
+				/>
+				<p class="task-routine__hint">
+					{{ $t('routineSchedule.changeHint') }}
+				</p>
+				<div class="task-routine__actions">
+					<XButton
+						type="button"
+						:loading="savingIntent === 'schedule'"
+						:aria-disabled="saving || !scheduleValid"
+						@click="saveSchedule"
+					>
+						{{ $t('routineSchedule.saveSchedule') }}
+					</XButton>
+					<XButton
+						type="button"
+						variant="tertiary"
+						@click="stopScheduleEdit"
+					>
+						{{ $t('misc.cancel') }}
+					</XButton>
+				</div>
+			</div>
 
 			<div
 				v-if="editingZone && canEdit"
@@ -128,6 +167,7 @@
 				<RoutineTimezonePicker
 					:model-value="zoneDraft"
 					:disabled="saving"
+					:hint="legacy ? undefined : $t('routineSchedule.timezoneHint')"
 					@update:modelValue="zoneChoice = $event"
 				/>
 				<div class="task-routine__actions">
@@ -170,7 +210,7 @@
 					{{ routine.paused ? $t('task.routine.settings.resume') : $t('task.routine.settings.pause') }}
 				</XButton>
 				<XButton
-					v-if="!editingZone"
+					v-if="!editingZone && !editingSchedule"
 					variant="tertiary"
 					class="is-small"
 					icon="globe"
@@ -179,6 +219,15 @@
 					@click="startZoneEdit"
 				>
 					{{ $t('task.routine.settings.changeTimezone') }}
+				</XButton>
+				<XButton
+					v-if="!editingSchedule && !editingZone"
+					variant="tertiary"
+					class="is-small"
+					:aria-disabled="saving || undefined"
+					@click="startScheduleEdit"
+				>
+					{{ $t('routineSchedule.editSchedule') }}
 				</XButton>
 				<XButton
 					variant="tertiary"
@@ -221,14 +270,14 @@
 		<!-- Setting up: explain, block on done/repeat without touching them, pick the zone. -->
 		<template v-else-if="mode === 'setup' && canEdit">
 			<p class="task-routine__text">
-				{{ $t('task.routine.settings.intro') }}
+				{{ $t(isLegacyRoutine(scheduleDraft) ? 'task.routine.settings.intro' : 'routineSchedule.intro') }}
 			</p>
 			<p class="task-routine__hint">
 				<Icon
 					icon="users"
 					class="task-routine__fact-icon"
 				/>
-				{{ $t('task.routine.settings.shared') }}
+				{{ $t(isLegacyRoutine(scheduleDraft) ? 'task.routine.settings.shared' : 'routineSchedule.shared') }}
 			</p>
 
 			<Message
@@ -284,10 +333,9 @@
 				</div>
 			</Message>
 
-			<RoutineTimezonePicker
-				:model-value="zoneDraft"
-				:disabled="saving"
-				@update:modelValue="zoneChoice = $event"
+			<RoutineScheduleEditor
+				v-model="scheduleDraft"
+				:saving="saving"
 			/>
 
 			<div class="task-routine__actions">
@@ -297,11 +345,11 @@
 					:icon="['far', 'sun']"
 					:shadow="false"
 					:loading="savingIntent === 'enable'"
-					:aria-disabled="isBlocked || saving || undefined"
+					:aria-disabled="isBlocked || saving || !scheduleValid || undefined"
 					:aria-describedby="isBlocked ? blockersId : undefined"
 					@click="enable"
 				>
-					{{ $t('task.routine.settings.enable') }}
+					{{ $t(legacyPresentation ? 'task.routine.settings.enable' : 'routineSchedule.enable') }}
 				</XButton>
 				<XButton
 					variant="tertiary"
@@ -350,7 +398,7 @@
 			@submit="disable"
 		>
 			<template #header>
-				<span>{{ $t('task.routine.settings.disableConfirmTitle') }}</span>
+				<span>{{ $t(legacy ? 'task.routine.settings.disableConfirmTitle' : 'routineSchedule.disableConfirmTitle') }}</span>
 			</template>
 			<template #text>
 				<p class="tw:text-balance">
@@ -362,7 +410,7 @@
 </template>
 
 <script setup lang="ts">
-import {computed, nextTick, ref, useId, useTemplateRef, watch} from 'vue'
+import {computed, nextTick, onBeforeUnmount, ref, useId, useTemplateRef, watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import type {IconProp} from '@fortawesome/fontawesome-svg-core'
 
@@ -372,11 +420,17 @@ import Modal from '@/components/misc/Modal.vue'
 import RoutineStatusChip from '@/components/tasks/partials/RoutineStatusChip.vue'
 import RoutineTimezonePicker from './RoutineTimezonePicker.vue'
 import TaskRoutineHistory from './TaskRoutineHistory.vue'
+import RoutineScheduleEditor from './RoutineScheduleEditor.vue'
+import RoutineProgressControl from './RoutineProgressControl.vue'
 import {useRoutineFormat} from './useRoutineFormat'
 
 import type {Task} from '@/client/generated'
 import {ApiError} from '@/client/problem'
-import {isRequestContextAbort} from '@/client/requestContext'
+import {
+	captureClientRequestContext,
+	isClientRequestContextCurrent,
+	isRequestContextAbort,
+} from '@/client/requestContext'
 import {
 	useConfigureTaskRoutineMutation,
 	useRefreshTaskRoutinesMutation,
@@ -387,8 +441,12 @@ import {useTaskRoutineHistory, useTaskRoutineSummary} from '@/composables/useTas
 import {
 	routineMonth,
 	routineOf,
+	routineSchedule,
 	routineStatus,
 	routineToday,
+	isLegacyRoutine,
+	validRoutineSchedule,
+	type TaskRoutineSchedule,
 	type TaskRoutineSummary,
 } from '@/helpers/taskRoutine'
 import {resolveUserTimezone} from '@/helpers/time/userTimezone'
@@ -397,11 +455,12 @@ import {useAuthStore} from '@/stores/auth'
 import {TASK_REPEAT_MODES} from '@/types/IRepeatMode'
 
 type Intent =
-	| {kind: 'enable', timezone: string}
+	| {kind: 'enable', schedule: TaskRoutineSchedule}
 	| {kind: 'pause'}
 	| {kind: 'resume'}
 	| {kind: 'disable'}
 	| {kind: 'timezone', timezone: string}
+	| {kind: 'schedule', schedule: TaskRoutineSchedule}
 
 type Notice = {
 	// 'conflict': the routine changed elsewhere (409); 'state': the task or routine no longer allows it (400 20003).
@@ -431,6 +490,10 @@ const {t} = useI18n({useScope: 'global'})
 const {now} = useGlobalNow()
 const authStore = useAuthStore()
 const format = useRoutineFormat()
+const owner = captureClientRequestContext()
+let disposed = false
+let generation = 0
+onBeforeUnmount(() => { disposed = true })
 
 const root = useTemplateRef<HTMLElement>('root')
 const headingId = useId()
@@ -452,6 +515,8 @@ const routine = computed<TaskRoutineSummary | null>(() => {
 })
 
 const hasRecord = computed(() => (routine.value?.revision ?? 0) > 0)
+const legacy = computed(() => !routine.value || isLegacyRoutine(routine.value))
+const periodInstant = (instant: string) => format.instant(instant, routine.value?.timezone ?? '')
 
 const setupOpen = ref(false)
 const mode = computed<'enabled' | 'disabled' | 'setup'>(() => {
@@ -485,9 +550,34 @@ const accountZone = computed(() => resolveUserTimezone(authStore.settings.timezo
 const zoneChoice = ref<string | null>(null)
 const zoneDraft = computed(() => zoneChoice.value || routine.value?.timezone || accountZone.value)
 const editingZone = ref(false)
+const editingSchedule = ref(false)
+const scheduleChoice = ref<TaskRoutineSchedule | null>(null)
+const scheduleDraft = computed({
+	get: () => scheduleChoice.value ?? routineSchedule(routine.value, accountZone.value),
+	set: (schedule: TaskRoutineSchedule) => { scheduleChoice.value = schedule },
+})
+const scheduleValid = computed(() => validRoutineSchedule(scheduleDraft.value))
+const legacyPresentation = computed(() => mode.value === 'setup' ? isLegacyRoutine(scheduleDraft.value) : legacy.value)
+
+function startScheduleEdit() {
+	if (saving.value || editingZone.value) return
+	if (!scheduleChoice.value) scheduleChoice.value = routineSchedule(routine.value, accountZone.value)
+	editingSchedule.value = true
+}
+function stopScheduleEdit() {
+	if (saving.value) return
+	editingSchedule.value = false
+	scheduleChoice.value = null
+}
+async function saveSchedule() {
+	if (saving.value || !scheduleValid.value) return
+	const schedule = {...scheduleDraft.value}
+	if (await run({kind: 'schedule', schedule})) stopScheduleEdit()
+}
 
 function startZoneEdit() {
 	if (saving.value) return
+	if (editingSchedule.value) return
 	zoneChoice.value = null
 	editingZone.value = true
 }
@@ -511,6 +601,10 @@ const todayIcon = computed<IconProp>(() => {
 const todayText = computed(() => {
 	const current = routine.value
 	if (!current) return ''
+	if (!legacy.value) {
+		if (todayState.value === 'paused') return t('task.routine.settings.statusPaused')
+		return t(todayState.value === 'done' ? 'routineSchedule.completeStatus' : 'routineSchedule.pendingStatus')
+	}
 	switch (todayState.value) {
 		case 'done': return t('task.routine.settings.statusDone', {
 			time: format.time(current.completed_at, current.timezone),
@@ -530,7 +624,7 @@ const {history: streak} = useTaskRoutineHistory(
 )
 
 function days(count: number): string {
-	return t('task.routine.history.days', {n: count}, count)
+	return t(legacy.value ? 'task.routine.history.days' : 'routineSchedule.periodCount', {n: count}, count)
 }
 
 function intentLabel(intent: Intent): string {
@@ -540,6 +634,7 @@ function intentLabel(intent: Intent): string {
 		case 'resume': return t('task.routine.settings.resume')
 		case 'disable': return t('task.routine.settings.disable')
 		case 'timezone': return t('task.routine.settings.changeTimezone')
+		case 'schedule': return t('routineSchedule.editSchedule')
 	}
 }
 
@@ -560,19 +655,46 @@ function stillApplies(intent: Intent): boolean {
 		case 'resume': return current?.enabled === true && current.paused
 		case 'disable': return current?.enabled === true
 		case 'timezone': return current?.enabled === true && current.timezone !== intent.timezone
+		case 'schedule': return current?.enabled === true
 	}
 }
 
 const canReapply = computed(() => props.canEdit && notice.value !== null && stillApplies(notice.value.intent))
 
 function changesFor(intent: Intent, current: TaskRoutineSummary | null) {
-	const timezone = current?.timezone || accountZone.value
+	const calendar = routineSchedule(current, accountZone.value)
 	switch (intent.kind) {
-		case 'enable': return {enabled: true, paused: false, timezone: intent.timezone}
-		case 'pause': return {enabled: true, paused: true, timezone}
-		case 'resume': return {enabled: true, paused: false, timezone}
-		case 'disable': return {enabled: false, paused: false, timezone}
-		case 'timezone': return {enabled: true, paused: current?.paused ?? false, timezone: intent.timezone}
+		case 'enable': return {
+			...intent.schedule,
+			enabled: true,
+			paused: false,
+		}
+		case 'pause': return {
+			...calendar,
+			enabled: true,
+			paused: true,
+		}
+		case 'resume': return {
+			...calendar,
+			enabled: true,
+			paused: false,
+		}
+		case 'disable': return {
+			...calendar,
+			enabled: false,
+			paused: false,
+		}
+		case 'timezone': return {
+			...calendar,
+			enabled: true,
+			paused: current?.paused ?? false,
+			timezone: intent.timezone,
+		}
+		case 'schedule': return {
+			...intent.schedule,
+			enabled: true,
+			paused: current?.paused ?? false,
+		}
 	}
 }
 
@@ -582,6 +704,13 @@ const SUCCESS_KEYS: Record<Intent['kind'], string> = {
 	resume: 'task.routine.settings.resumedSuccess',
 	disable: 'task.routine.settings.disabledSuccess',
 	timezone: 'task.routine.settings.timezoneSuccess',
+	schedule: 'routineSchedule.saved',
+}
+const PERIOD_SUCCESS_KEYS: Partial<Record<Intent['kind'], string>> = {
+	enable: 'routineSchedule.enableSuccess',
+	pause: 'routineSchedule.pauseSuccess',
+	resume: 'routineSchedule.resumeSuccess',
+	disable: 'routineSchedule.disableSuccess',
 }
 
 // The summary drives this panel; the task copies drive the header button and the project views.
@@ -597,8 +726,12 @@ async function reload(stale: boolean) {
 }
 
 async function run(intent: Intent): Promise<boolean> {
-	if (!props.canEdit || saving.value) return false
+	if (!props.canEdit || saving.value || !isClientRequestContextCurrent(owner)) return false
 	const taskId = props.task.id
+	const routeGeneration = generation
+	const request = captureClientRequestContext()
+	const currentRequest = () => !disposed && routeGeneration === generation
+		&& props.task.id === taskId && isClientRequestContextCurrent(request)
 	const current = routine.value
 	notice.value = null
 	savingIntent.value = intent.kind
@@ -609,7 +742,7 @@ async function run(intent: Intent): Promise<boolean> {
 			...changesFor(intent, current),
 		})
 	} catch (cause) {
-		if (isRequestContextAbort(cause)) return false
+		if (isRequestContextAbort(cause) || !currentRequest()) return false
 		if (cause instanceof ApiError && (cause.status === 409 || cause.code === 20003)) {
 			// Nothing was written: say so, read the current state, keep the user's choice on screen.
 			notice.value = {
@@ -622,15 +755,17 @@ async function run(intent: Intent): Promise<boolean> {
 		}
 		return false
 	} finally {
-		savingIntent.value = null
+		if (currentRequest()) savingIntent.value = null
 	}
-	success({message: t(SUCCESS_KEYS[intent.kind])})
+	if (!currentRequest()) return false
+	success({message: t((!legacy.value && PERIOD_SUCCESS_KEYS[intent.kind]) || SUCCESS_KEYS[intent.kind])})
 	return true
 }
 
 async function enable() {
-	if (isBlocked.value || saving.value) return
-	if (await run({kind: 'enable', timezone: zoneDraft.value})) {
+	if (isBlocked.value || saving.value || !scheduleValid.value) return
+	if (await run({kind: 'enable', schedule: {...scheduleDraft.value}})) {
+		scheduleChoice.value = null
 		zoneChoice.value = null
 		// The setup controls are gone now; keep focus inside the panel.
 		await nextTick()
@@ -657,7 +792,12 @@ function askDisable() {
 
 async function disable() {
 	if (saving.value) return
+	const taskId = props.task.id
+	const routeGeneration = generation
+	const request = captureClientRequestContext()
 	const disabled = await run({kind: 'disable'})
+	if (disposed || routeGeneration !== generation
+		|| props.task.id !== taskId || !isClientRequestContextCurrent(request)) return
 	confirmingDisable.value = false
 	if (!disabled) return
 	editingZone.value = false
@@ -683,9 +823,22 @@ function openSetup() {
 function cancelSetup() {
 	setupOpen.value = false
 	zoneChoice.value = null
+	scheduleChoice.value = null
 	if (notice.value?.intent.kind === 'enable') notice.value = null
 	if (!hasRecord.value) emit('close')
 }
+
+watch(() => props.task.id, () => {
+	generation++
+	setupOpen.value = false
+	editingZone.value = false
+	editingSchedule.value = false
+	scheduleChoice.value = null
+	zoneChoice.value = null
+	notice.value = null
+	confirmingDisable.value = false
+	savingIntent.value = null
+})
 
 defineExpose({openSetup})
 </script>

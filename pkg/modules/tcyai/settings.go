@@ -37,11 +37,12 @@ import (
 )
 
 type Connection struct {
-	AutoCompactTokens  int64  `json:"auto_compact_tokens,omitempty" minimum:"0" maximum:"9007199254740991" doc:"Soft input threshold for automatic compaction; zero derives from declared capacity or uses a 128000-token policy, never a capacity claim."`
-	DisableAutoCompact bool   `json:"disable_auto_compact,omitempty" doc:"Disable automatic context checkpoints for this connection."`
-	WebSearchProtocol  string `json:"web_search_protocol,omitempty" enum:",deepseek,openai-responses,openai-chat,anthropic,gemini" doc:"Explicit search adapter; empty disables search. Independent of chat protocol and model name."`
-	WebSearchBaseURL   string `json:"web_search_base_url,omitempty" doc:"Optional search API base on the same origin as this connection. Empty uses the chat base (official DeepSeek uses /v1)."`
-	WebSearchModel     string `json:"web_search_model,omitempty" maxLength:"150" doc:"Optional search model; empty uses this connection model. DeepSeek search does not use a model."`
+	Speech             *SpeechOptions `json:"speech,omitempty" doc:"Optional provider-specific speech recognition configuration."`
+	AutoCompactTokens  int64          `json:"auto_compact_tokens,omitempty" minimum:"0" maximum:"9007199254740991" doc:"Soft input threshold for automatic compaction; zero derives from declared capacity or uses a 128000-token policy, never a capacity claim."`
+	DisableAutoCompact bool           `json:"disable_auto_compact,omitempty" doc:"Disable automatic context checkpoints for this connection."`
+	WebSearchProtocol  string         `json:"web_search_protocol,omitempty" enum:",deepseek,openai-responses,openai-chat,anthropic,gemini" doc:"Explicit search adapter; empty disables search. Independent of chat protocol and model name."`
+	WebSearchBaseURL   string         `json:"web_search_base_url,omitempty" doc:"Optional search API base on the same origin as this connection. Empty uses the chat base (official DeepSeek uses /v1)."`
+	WebSearchModel     string         `json:"web_search_model,omitempty" maxLength:"150" doc:"Optional search model; empty uses this connection model. DeepSeek search does not use a model."`
 
 	Persona          string             `json:"-"`
 	ContextWindow    int64              `json:"context_window,omitempty" minimum:"0" maximum:"9007199254740991" doc:"Declared model context capacity in tokens; zero uses known provider metadata or remains unknown."`
@@ -50,12 +51,12 @@ type Connection struct {
 	OutputTokenField string             `json:"output_token_field,omitempty" enum:",max_tokens,max_completion_tokens" doc:"OpenAI Chat compatibility override; empty chooses the protocol default."`
 	Resolved         *ModelCapabilities `json:"resolved,omitempty" readOnly:"true" doc:"Effective capacities and input types, resolved by the server; never accepted as configuration."`
 	NonStreaming     bool               `json:"non_streaming,omitempty" doc:"Explicitly opt out of streaming. Streaming is the default for text models."`
-	Protocol         string             `json:"protocol,omitempty" enum:"openai-chat,openai-responses,anthropic,gemini,openai-transcription,openai-audio" doc:"Wire protocol. Omitted legacy values are inferred from kind."`
+	Protocol         string             `json:"protocol,omitempty" enum:"openai-chat,openai-responses,anthropic,gemini,openai-transcription,openai-audio,dashscope-asr,qwen-asr-realtime,dashscope-file-asr,volcengine-asr,openai-realtime,elevenlabs-transcription,elevenlabs-realtime,soniox-realtime,mimo-asr,sensevoice" doc:"Wire protocol. Omitted legacy values are inferred from kind."`
 	ID               string             `json:"id" minLength:"1" maxLength:"80" doc:"Stable connection identifier."`
 	Name             string             `json:"name" minLength:"1" maxLength:"100" doc:"Display name."`
 	BaseURL          string             `json:"base_url" doc:"OpenAI-compatible API base, including /v1 when required."`
 	Model            string             `json:"model" minLength:"1" maxLength:"150" doc:"Provider model identifier."`
-	Kind             string             `json:"kind" enum:"chat,transcription" doc:"chat uses chat/completions; transcription uses audio/transcriptions."`
+	Kind             string             `json:"kind" enum:"chat,transcription" doc:"Text-model or speech-recognition connection; the explicit protocol chooses the upstream API."`
 	APIKey           string             `json:"api_key,omitempty" writeOnly:"true" doc:"Write-only key. Empty preserves the saved key when the endpoint is unchanged."`
 	HasKey           bool               `json:"has_key" readOnly:"true" doc:"Whether a key is saved; the key itself is never returned."`
 }
@@ -132,6 +133,9 @@ func Redact(s Settings) Settings {
 func (s Settings) Find(id, kind string) (Connection, error) {
 	for _, c := range s.Connections {
 		if c.ID == id && c.Kind == kind {
+			if kind == "transcription" && c.Speech != nil && c.Speech.Disabled {
+				return Connection{}, tcylocale.Error("speechDisabled")
+			}
 			c.Persona = s.Persona
 			return c, nil
 		}
@@ -161,7 +165,7 @@ func Save(uid int64, s Settings) (Settings, error) {
 		if c.APIKey == "" {
 			for _, prev := range old.Connections {
 				if prev.ID == c.ID {
-					if prev.BaseURL != c.BaseURL && prev.APIKey != "" {
+					if !sameSpeechSecretDestination(prev, *c) && prev.APIKey != "" {
 						return s, tcylocale.Error("e29")
 					}
 					c.APIKey = prev.APIKey
@@ -236,8 +240,12 @@ func validateConnection(c *Connection, ids map[string]bool) error {
 		return err
 	}
 	c.BaseURL = strings.TrimRight(strings.TrimSpace(c.BaseURL), "/")
-	u, e := url.Parse(c.BaseURL)
-	if e != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Scheme != "https" {
+	if err := validateSpeech(*c); err != nil {
+		return err
+	}
+	u, e := url.Parse(speechBase(*c))
+	schemeAllowed := e == nil && (u.Scheme == "https" || (u.Scheme == "wss" && isSpeechSocketProtocol(c.EffectiveProtocol())))
+	if !schemeAllowed || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return tcylocale.Error("e35")
 	}
 	if c.ID == "" || ids[c.ID] || c.Name == "" || c.Model == "" || (c.Kind != "chat" && c.Kind != "transcription") {
@@ -268,7 +276,7 @@ func (c Connection) ValidateProtocol() error {
 	if c.Kind == "chat" && (p == "openai-chat" || p == "openai-responses" || p == "anthropic" || p == "gemini") {
 		return nil
 	}
-	if c.Kind == "transcription" && (p == "openai-transcription" || p == "openai-audio" || p == "gemini") {
+	if c.Kind == "transcription" && (p == "openai-transcription" || p == "openai-audio" || p == "gemini" || isNativeSpeechProtocol(p)) {
 		return nil
 	}
 	return tcylocale.Error("e11")
@@ -287,10 +295,28 @@ func ResolveConnection(uid int64, c Connection) (Connection, error) {
 		return c, err
 	}
 	for _, saved := range s.Connections {
-		if saved.ID == c.ID && saved.BaseURL == c.BaseURL {
+		if saved.ID == c.ID && sameSpeechSecretDestination(saved, c) {
 			c.APIKey = saved.APIKey
 			break
 		}
 	}
 	return c, nil
+}
+
+func sameSpeechSecretDestination(a, b Connection) bool {
+	if a.BaseURL != b.BaseURL {
+		return false
+	}
+	if isNativeSpeechProtocol(a.EffectiveProtocol()) || isNativeSpeechProtocol(b.EffectiveProtocol()) {
+		workspaceA, workspaceB, appA, appB := "", "", "", ""
+		if a.Speech != nil {
+			workspaceA, appA = a.Speech.WorkspaceID, a.Speech.AppID
+		}
+		if b.Speech != nil {
+			workspaceB, appB = b.Speech.WorkspaceID, b.Speech.AppID
+		}
+		return a.EffectiveProtocol() == b.EffectiveProtocol() && speechBase(a) == speechBase(b) &&
+			workspaceA == workspaceB && appA == appB
+	}
+	return true
 }

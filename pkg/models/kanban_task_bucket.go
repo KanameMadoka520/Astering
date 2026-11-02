@@ -38,9 +38,11 @@ type TaskBucket struct {
 	TaskID int64 `xorm:"bigint not null index unique(task_view)" json:"task_id" doc:"The id of the task to place in the bucket."`
 	// The view this bucket belongs to. Combined with TaskID this forms a
 	// unique index.
-	ProjectViewID int64 `xorm:"bigint not null index unique(task_view)" json:"project_view_id" param:"view" doc:"The view the bucket belongs to. On /api/v2 this is taken from the URL; a value in the body is ignored."`
-	ProjectID     int64 `xorm:"-" json:"-" param:"project"`
-	Task          *Task `xorm:"-" json:"task" readOnly:"true" doc:"The task as it stands after the move, reflecting any done-state change."`
+	ProjectViewID        int64  `xorm:"bigint not null index unique(task_view)" json:"project_view_id" param:"view" doc:"The view the bucket belongs to. On /api/v2 this is taken from the URL; a value in the body is ignored."`
+	RepeatReturnMode     string `xorm:"varchar(10) not null default 'default'" json:"repeat_return_mode" readOnly:"true" doc:"Repeating task return policy for this view: default, keep, or bucket. Configure through the repeat-buckets endpoint."`
+	RepeatReturnBucketID int64  `xorm:"bigint not null default 0" json:"repeat_return_bucket_id" readOnly:"true" doc:"Return bucket when repeat_return_mode is bucket; belongs to this view and is not its done bucket."`
+	ProjectID            int64  `xorm:"-" json:"-" param:"project"`
+	Task                 *Task  `xorm:"-" json:"task" readOnly:"true" doc:"The task as it stands after the move, reflecting any done-state change."`
 
 	web.Permissions `xorm:"-" json:"-"`
 	web.CRUDable    `xorm:"-" json:"-"`
@@ -132,16 +134,6 @@ func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 		return err
 	}
 
-	// Check the bucket limit
-	// Only check the bucket limit if the task is being moved between buckets, allow reordering the task within a bucket
-	if b.BucketID != 0 && b.BucketID != oldTaskBucket.BucketID {
-		taskCount, err := checkBucketLimit(s, a, task, bucket, view, 0)
-		if err != nil {
-			return err
-		}
-		bucket.Count = taskCount
-	}
-
 	var updateBucket = true
 
 	// mark task done if moved into or out of the done bucket
@@ -155,13 +147,9 @@ func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 				oldTask := *task
 				oldTask.Done = false
 				updateDone(&oldTask, task)
-				// A repeating task doesn't stay in the done bucket; route
-				// it back to the view's default bucket so the user sees
-				// the next iteration waiting in the "To-Do" column.
-				if view.DefaultBucketID != 0 {
-					b.BucketID = view.DefaultBucketID
-				} else {
-					b.BucketID = oldTaskBucket.BucketID
+				b.BucketID, err = ResolveTaskRepeatBucket(s, view, oldTaskBucket)
+				if err != nil {
+					return err
 				}
 				// The task is already in the correct bucket, so there is
 				// nothing to move and no count to bump.
@@ -177,55 +165,24 @@ func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 		}
 	}
 
-	if doneChanged {
-		if task.Done {
-			task.DoneAt = time.Now()
-		} else {
-			task.DoneAt = time.Time{}
-		}
-		_, err = s.Where("id = ?", task.ID).
-			Cols(
-				"done",
-				"due_date",
-				"start_date",
-				"end_date",
-				"done_at",
-			).
-			Update(task)
+	// Recurrence may redirect a Done move; validate and report its actual destination.
+	if bucket.ID != b.BucketID {
+		bucket, err = getBucketByID(s, b.BucketID)
 		if err != nil {
-			return
-		}
-
-		if err = validateTaskRoutineState(s, task); err != nil {
 			return err
 		}
-
-		err = task.updateReminders(s, task)
+	}
+	if b.BucketID != 0 && b.BucketID != oldTaskBucket.BucketID {
+		taskCount, err := checkBucketLimit(s, a, task, bucket, view, 0)
 		if err != nil {
-			return
+			return err
 		}
+		bucket.Count = taskCount
+	}
 
-		// Since the done state of the task was changed, we need to move the task into all done buckets everywhere
-		if task.Done {
-			viewsWithDoneBucket := []*ProjectView{}
-			err = s.
-				Where("project_id = ? AND view_kind = ? AND bucket_configuration_mode = ? AND id != ? AND done_bucket_id != 0",
-					view.ProjectID, ProjectViewKindKanban, BucketConfigurationModeManual, view.ID).
-				Find(&viewsWithDoneBucket)
-			if err != nil {
-				return
-			}
-			for _, v := range viewsWithDoneBucket {
-				newBucket := &TaskBucket{
-					TaskID:        task.ID,
-					ProjectViewID: v.ID,
-					BucketID:      v.DoneBucketID,
-				}
-				err = newBucket.upsert(s)
-				if err != nil {
-					return
-				}
-			}
+	if doneChanged {
+		if err = persistTaskBucketDoneState(s, task, view); err != nil {
+			return err
 		}
 	}
 
@@ -241,6 +198,60 @@ func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 	b.Bucket = bucket
 
 	return
+}
+
+func persistTaskBucketDoneState(s *xorm.Session, task *Task, view *ProjectView) (err error) {
+	if task.Done {
+		task.DoneAt = time.Now()
+	} else {
+		task.DoneAt = time.Time{}
+	}
+	_, err = s.Where("id = ?", task.ID).
+		Cols(
+			"done",
+			"due_date",
+			"start_date",
+			"end_date",
+			"done_at",
+		).
+		Update(task)
+	if err != nil {
+		return
+	}
+
+	if err = validateTaskRoutineState(s, task); err != nil {
+		return err
+	}
+
+	err = task.updateReminders(s, task)
+	if err != nil {
+		return
+	}
+
+	// Since the done state of the task was changed, we need to move the task into all done buckets everywhere
+	if task.Done {
+		viewsWithDoneBucket := []*ProjectView{}
+		err = s.
+			Where("project_id = ? AND view_kind = ? AND bucket_configuration_mode = ? AND id != ? AND done_bucket_id != 0",
+				view.ProjectID, ProjectViewKindKanban, BucketConfigurationModeManual, view.ID).
+			Find(&viewsWithDoneBucket)
+		if err != nil {
+			return
+		}
+		for _, v := range viewsWithDoneBucket {
+			newBucket := &TaskBucket{
+				TaskID:        task.ID,
+				ProjectViewID: v.ID,
+				BucketID:      v.DoneBucketID,
+			}
+			err = newBucket.upsert(s)
+			if err != nil {
+				return
+			}
+		}
+	}
+
+	return nil
 }
 
 // Update is the handler to update a task bucket

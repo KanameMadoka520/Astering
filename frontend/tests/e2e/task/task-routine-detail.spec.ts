@@ -8,6 +8,7 @@ import {UserProjectFactory} from '../../factories/users_project'
 import {apiRootUrl} from '../../support/apiUrl'
 import {login} from '../../support/authenticateUser'
 import {updateUserSettings} from '../../support/updateUserSettings'
+import type {TaskRoutine, TaskRoutineHistory} from '../../../src/client/generated'
 
 const API = `${apiRootUrl(process.env.API_URL || 'http://127.0.0.1:3456')}/api/v2`
 // Deliberately not the browser's zone: the detail must use the routine's zone, never the viewer's.
@@ -173,6 +174,13 @@ test.describe('Daily routine in the task detail', () => {
 		await ui.panel.getByRole('button', {name: 'Turn on daily routine'}).click()
 		expect((await enabled).ok()).toBe(true)
 		expect(writes.filter(isConfigure).map(write => write.body)).toEqual([{
+			period: 'daily',
+			reset_hour: 0,
+			reset_minute: 0,
+			week_start: 0,
+			month_day: 1,
+			target: 1,
+			unit: '',
 			enabled: true,
 			paused: false,
 			timezone: ZONE,
@@ -194,7 +202,11 @@ test.describe('Daily routine in the task detail', () => {
 		expect((await checkedIn).ok()).toBe(true)
 		await expect(ui.chip).toHaveAttribute('data-routine-status', 'done')
 		await expect(ui.checkIn).toHaveText('Undo today\'s check-in')
-		expect(writes.filter(isCheckIn).map(write => write.body)).toEqual([{date: configured.date, completed: true}])
+		expect(writes.filter(isCheckIn).map(write => write.body)).toEqual([{
+			date: configured.date,
+			completed: true,
+			revision: configured.revision,
+		}])
 		const afterCheckIn = await api.task(1)
 		expect(afterCheckIn.done).toBe(false)
 		expect(afterCheckIn.routine?.completed_today).toBe(true)
@@ -255,7 +267,8 @@ test.describe('Daily routine in the task detail', () => {
 		await expect(row).toContainText(`${time} (${ZONE})`)
 		await expect(row).toContainText('by you')
 		await expect(history.locator('.routine-record')).toHaveCount(1)
-		await expect(history.locator('.routine-stat').first()).toContainText('1 day')
+		await expect(history.locator('.routine-stat').first()).toContainText('1 check-in')
+		await expect(history.locator('.routine-stat').last()).toContainText('1 check-in')
 
 		// Nothing after the routine's current month can be browsed.
 		await expect(history.getByRole('button', {name: 'Next month'})).toHaveAttribute('aria-disabled', 'true')
@@ -522,4 +535,126 @@ test.describe('Daily routine in the task detail', () => {
 		expect(after.routine ?? null).toBeNull()
 		expect(writes).toHaveLength(0)
 	})
+})
+
+test.describe('Calendar quota routines', () => {
+	test.use({timezoneId: 'America/Los_Angeles'})
+
+	for (const width of [1440, 320]) {
+		test(`weekly and monthly targets retain progress history at ${width}px`, async ({
+			authenticatedPage: page,
+			apiContext,
+			userToken,
+		}) => {
+			await page.setViewportSize({width, height: 900})
+			await useAccountZone(apiContext, userToken)
+			await ProjectFactory.create(1, {id: 1})
+			await TaskFactory.create(1, {id: 1, project_id: 1, title: 'Reading practice'})
+			const headers = {Authorization: `Bearer ${userToken}`}
+			async function readRoutine(): Promise<TaskRoutine> {
+				const response = await apiContext.get(`${API}/tasks/1/routine`, {headers})
+				expect(response.ok()).toBe(true)
+				return response.json()
+			}
+			const ui = detail(page)
+			await page.goto('/tasks/1')
+			await ui.routineAction.click()
+			await ui.panel.getByLabel('Repeat period', {exact: true}).selectOption('weekly')
+			await ui.panel.getByLabel('Start each week on', {exact: true}).selectOption('1')
+			await ui.panel.getByLabel('Start time in the selected timezone', {exact: true}).fill('06:30')
+			await ui.panel.getByLabel('Target per period', {exact: true}).fill('5')
+			await ui.panel.getByLabel('Unit (optional)', {exact: true}).fill('sessions')
+			const enabled = routineResponse(page, 1, 'configure')
+			await ui.panel.getByRole('button', {name: 'Turn on routine', exact: true}).click()
+			expect((await enabled).ok()).toBe(true)
+			const weekly = await readRoutine()
+			expect(weekly).toMatchObject({
+				period: 'weekly',
+				timezone: ZONE,
+				reset_hour: 6,
+				reset_minute: 30,
+				week_start: 1,
+				target: 5,
+				unit: 'sessions',
+				current_amount: 0,
+			})
+			await expect(ui.checkIn).toHaveText('Reach this period’s target')
+			const amount = ui.panel.getByLabel('Total recorded for this period', {exact: true})
+			await amount.fill('2')
+			const progressed = page.waitForResponse(response => response.request().method() === 'POST'
+				&& new URL(response.url()).pathname.endsWith('/tasks/1/routine/progress'))
+			await ui.panel.getByRole('button', {name: 'Save progress', exact: true}).click()
+			expect((await progressed).ok()).toBe(true)
+			expect(await readRoutine()).toMatchObject({current_amount: 2, completed_period: false})
+			await page.reload()
+			await expect(amount).toHaveValue('2')
+			await expect(ui.chip).toContainText('2/5 sessions')
+			const paused = routineResponse(page, 1, 'configure')
+			await ui.panel.getByRole('button', {name: 'Pause', exact: true}).click()
+			expect((await paused).ok()).toBe(true)
+			expect(await readRoutine()).toMatchObject({
+				period: 'weekly',
+				target: 5,
+				unit: 'sessions',
+				current_amount: 2,
+				paused: true,
+			})
+			await expect(amount).toHaveAttribute('readonly', '')
+			const resumed = routineResponse(page, 1, 'configure')
+			await ui.panel.getByRole('button', {name: 'Resume', exact: true}).click()
+			expect((await resumed).ok()).toBe(true)
+			await ui.panel.getByRole('button', {name: 'Period and target', exact: true}).click()
+			await ui.panel.getByLabel('Repeat period', {exact: true}).selectOption('monthly')
+			await ui.panel.getByLabel('Start each month on day', {exact: true}).fill('31')
+			await ui.panel.getByLabel('Target per period', {exact: true}).fill('10')
+			await ui.panel.getByLabel('Unit (optional)', {exact: true}).fill('pages')
+			const changed = routineResponse(page, 1, 'configure')
+			await ui.panel.getByRole('button', {name: 'Save period and target', exact: true}).click()
+			expect((await changed).ok()).toBe(true)
+			const monthly = await readRoutine()
+			expect(monthly).toMatchObject({period: 'monthly', month_day: 31, target: 10, unit: 'pages', current_amount: 0})
+			expect(monthly.schedule_key).not.toBe(weekly.schedule_key)
+			const [year, month] = weekly.date!.split('-').map(Number)
+			const historyResponse = await apiContext.get(`${API}/tasks/1/routine/history?year=${year}&month=${month}`, {headers})
+			expect(historyResponse.ok()).toBe(true)
+			const history = await historyResponse.json() as TaskRoutineHistory
+			expect(history.periods).toContainEqual(expect.objectContaining({
+				period: 'weekly',
+				amount: 2,
+				target: 5,
+				unit: 'sessions',
+				completed_at: null,
+				schedule_key: weekly.schedule_key,
+			}))
+			await page.reload()
+			await expect(amount).toHaveValue('0')
+			await ui.panel.getByRole('button', {name: 'View routine history', exact: true}).click()
+			const historyPanel = ui.panel.locator('.routine-history')
+			if (weekly.date!.slice(0, 7) !== monthly.date!.slice(0, 7)) {
+				await historyPanel.getByRole('button', {
+					name: weekly.date! > monthly.date! ? 'Next month' : 'Previous month',
+					exact: true,
+				}).click()
+			}
+			await expect(historyPanel.getByText('2 / 5 sessions', {exact: true})).toBeVisible()
+			await expect(historyPanel.getByText('Below target', {exact: true})).toBeVisible()
+
+			// Totals include historical calendars after returning to a daily routine; they are not days.
+			const completed = routineResponse(page, 1, 'check-in')
+			await ui.checkIn.click()
+			expect((await completed).ok()).toBe(true)
+			expect(await readRoutine()).toMatchObject({current_amount: 10, completed_period: true})
+			await ui.panel.getByRole('button', {name: 'Period and target', exact: true}).click()
+			await ui.panel.getByLabel('Repeat period', {exact: true}).selectOption('daily')
+			await ui.panel.getByLabel('Start time in the selected timezone', {exact: true}).fill('00:00')
+			await ui.panel.getByLabel('Target per period', {exact: true}).fill('1')
+			await ui.panel.getByLabel('Unit (optional)', {exact: true}).fill('')
+			const daily = routineResponse(page, 1, 'configure')
+			await ui.panel.getByRole('button', {name: 'Save period and target', exact: true}).click()
+			expect((await daily).ok()).toBe(true)
+			expect(await readRoutine()).toMatchObject({period: 'daily', current_amount: 0, target: 1, unit: ''})
+			await expect(historyPanel.locator('.routine-stat').last().locator('dd')).toHaveText('1 check-in')
+			expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+		})
+	}
 })

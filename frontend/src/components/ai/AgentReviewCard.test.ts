@@ -9,6 +9,7 @@ vi.mock('vue-i18n', () => ({
 		t: (key: string, values?: unknown) => values && typeof values === 'object'
 			? `${key}(${Object.entries(values).map(([name, value]) => `${name}=${String(value)}`).join(', ')})`
 			: key,
+		locale: {value: 'en'},
 	}),
 }))
 
@@ -54,7 +55,7 @@ describe('project completion review', () => {
 })
 
 describe('routine check-in review', () => {
-	it('compares the requested check-in with today\'s recorded state under a routine label', () => {
+	it('compares the requested check-in with the current period under a routine label', () => {
 		const wrapper = shallowMount(AgentReviewCard, {
 			props: {
 				busy: false,
@@ -79,10 +80,98 @@ describe('routine check-in review', () => {
 			},
 		})
 		const rows = wrapper.findAll('tbody tr').map(row => row.findAll('td').map(cell => cell.text()))
+		expect(wrapper.get('.review-target strong').text()).toBe('agent.tools.check_in_task_routine')
 		expect(rows).toEqual([
-			['#12 Water the plants', 'agent.fields.date', '2026-11-01', '2026-11-01'],
+			['#12 Water the plants', 'agent.fields.routine_date', '2026-11-01', '2026-11-01'],
 			['#12 Water the plants', 'agent.fields.routine_completed', 'false', 'true'],
 		])
+	})
+})
+
+describe('calendar routine and repeat return review', () => {
+	function changes(tool: string, before: object, args: object) {
+		return shallowMount(AgentReviewCard, {
+			props: {
+				busy: false,
+				turn: reviewTurn({tool, before: JSON.stringify([before]), arguments: JSON.stringify(args)}),
+			},
+			global: {stubs},
+		})
+	}
+
+	it('compares calendar and quota values against the routine snapshot and hides revision', () => {
+		const wrapper = changes('configure_task_routine', {
+			id: 12,
+			title: 'Practice',
+			routine: {
+				period: 'daily',
+				reset_hour: 0,
+				reset_minute: 0,
+				week_start: 0,
+				month_day: 1,
+				target: 1,
+				unit: '',
+			},
+		}, {
+			id: 12,
+			period: 'weekly',
+			reset_hour: 4,
+			reset_minute: 30,
+			week_start: 1,
+			month_day: 1,
+			target: 5,
+			unit: 'sessions',
+			revision: 7,
+		})
+		expect(wrapper.get('.review-target strong').text()).toBe('agent.tools.configure_task_routine')
+		const rows = wrapper.findAll('tbody tr').map(row => row.findAll('td').map(cell => cell.text()))
+		expect(rows).toContainEqual([
+			'#12 Practice', 'agent.fields.routine_period', 'routineSchedule.daily', 'routineSchedule.weekly',
+		])
+		expect(rows).toContainEqual(['#12 Practice', 'agent.fields.routine_target', '1', '5'])
+		expect(rows).toContainEqual(['#12 Practice', 'agent.fields.routine_reset_hour', '0', '4'])
+		expect(rows).toContainEqual(['#12 Practice', 'agent.fields.routine_reset_minute', '0', '30'])
+		expect(rows).toContainEqual(['#12 Practice', 'agent.fields.routine_week_start', 'Sunday', 'Monday'])
+		expect(rows).toContainEqual(['#12 Practice', 'agent.fields.routine_month_day', '1', '1'])
+		expect(rows).toContainEqual(['#12 Practice', 'agent.fields.routine_unit', 'agent.routineReview.noUnit', 'sessions'])
+		expect(rows).toHaveLength(7)
+		expect(rows.flat()).not.toContain('agent.fields.revision')
+	})
+
+	it('shows absolute progress from the current period and excludes its revision token', () => {
+		const wrapper = changes('set_task_routine_progress', {
+			id: 12,
+			title: 'Practice',
+			routine: {date: '2026-11-02', current_amount: 2},
+		}, {id: 12, date: '2026-11-02', amount: 4, revision: 7})
+		expect(wrapper.get('.review-target strong').text()).toBe('agent.tools.set_task_routine_progress')
+		expect(wrapper.findAll('tbody tr').map(row => row.findAll('td').map(cell => cell.text()))).toEqual([
+			['#12 Practice', 'agent.fields.routine_date', '2026-11-02', '2026-11-02'],
+			['#12 Practice', 'agent.fields.routine_amount', '2', '4'],
+		])
+		expect(wrapper.text()).toContain('agent.routineReview.absoluteProgress')
+	})
+
+	it('names the repeat return policy and target without pretending the task moves immediately', () => {
+		const wrapper = changes('set_task_repeat_bucket', {
+			task_id: 12,
+			project_id: 1,
+			view_id: 4,
+			repeat_return_mode: 'default',
+			repeat_return_bucket_id: 0,
+		}, {
+			project_id: 1,
+			view_id: 4,
+			task_id: 12,
+			repeat_return_mode: 'bucket',
+			repeat_return_bucket_id: 9,
+		})
+		expect(wrapper.get('.review-target strong').text()).toBe('agent.tools.set_task_repeat_bucket')
+		expect(wrapper.findAll('tbody tr').map(row => row.findAll('td').map(cell => cell.text()))).toEqual([
+			['#12', 'agent.fields.repeat_return_mode', 'agent.repeatPolicy.default', 'agent.repeatPolicy.bucket'],
+			['#12', 'agent.fields.repeat_return_bucket_id', 'agent.repeatPolicy.noBucket', 'agent.repeatPolicy.bucketId(id=9)'],
+		])
+		expect(wrapper.text()).toContain('agent.repeatPolicy.futureOnly')
 	})
 })
 

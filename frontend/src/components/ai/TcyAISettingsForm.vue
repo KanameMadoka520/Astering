@@ -1,19 +1,36 @@
 <script setup lang="ts">
-import {computed, ref, watch} from 'vue'
+import {computed, onBeforeUnmount, ref, watch} from 'vue'
 import {useEventListener} from '@vueuse/core'
+import {useQuery} from '@tanstack/vue-query'
 import {useI18n} from 'vue-i18n'
 import {onBeforeRouteLeave, onBeforeRouteUpdate, useRouter, type RouteLocationNormalized} from 'vue-router'
 import type {IconProp} from '@fortawesome/fontawesome-svg-core'
 
 import ModelPicker from './ModelPicker.vue'
 import WebSearchEvidence from './WebSearchEvidence.vue'
+import SpeechProviderGrid from './SpeechProviderGrid.vue'
+import SpeechProviderDialog from './SpeechProviderDialog.vue'
+import AIModelRoles from './AIModelRoles.vue'
 import SegmentedControl, {type SegmentedOption} from '@/components/input/SegmentedControl.vue'
 import Message from '@/components/misc/Message.vue'
 import type {ListedModel, WebSearchResult} from '@/client/generated'
 import type {AIConnection, AISettings} from '@/client/queries/tcyAi'
-import {useFetchAIModels, useSaveAISettings, useTestAIConnection} from '@/client/queries/tcyAi'
-import {isRequestContextAbort} from '@/client/requestContext'
-import {audioChatFile} from '@/helpers/tcyAudio'
+import {speechProvidersQuery, useFetchAIModels, useSaveAISettings, useTestAIConnection} from '@/client/queries/tcyAi'
+import {
+	captureClientRequestContext,
+	isClientRequestContextCurrent,
+	isRequestContextAbort,
+} from '@/client/requestContext'
+import {prepareSpeechFile} from '@/helpers/tcyAudio'
+import {speechRequestEndpoint} from '@/helpers/speechEndpoints'
+import {
+	sameSpeechSecretDestination,
+	speechAudioLimit,
+	speechProviderID,
+	speechProviderPresets,
+	type SpeechConnectionPresentation,
+	type SpeechProviderPreset,
+} from '@/helpers/speechProviders'
 
 const props = defineProps<{initial: AISettings}>()
 const {t, locale} = useI18n({useScope: 'global'})
@@ -25,7 +42,6 @@ type Tone = 'neutral' | 'warning' | 'success' | 'danger'
 
 const ROLES: Role[] = ['assistant', 'transcription', 'cleanup']
 const MAX_CONNECTIONS = 20
-const MAX_TEST_AUDIO_BYTES = 16 * 1024 * 1024
 
 function roleKind(role: Role) {
 	return role === 'transcription' ? 'transcription' : 'chat'
@@ -41,6 +57,10 @@ function initialDraft(source = props.initial): Settings {
 			web_search_base_url: c.web_search_base_url || '',
 			web_search_model: c.web_search_model || '',
 			api_key: '',
+			speech: c.speech ? {
+				...c.speech,
+				hotwords: c.speech.hotwords ? [...c.speech.hotwords] : undefined,
+			} : undefined,
 		})),
 		assistant: source.assistant,
 		persona: source.persona || 'arona',
@@ -87,7 +107,7 @@ useEventListener(window, 'vikunja:ai-settings-tab', (event: Event) => {
 	const tab = (event as CustomEvent).detail
 	if (['chat', 'transcription', 'roles'].includes(tab)) activeTab.value = tab
 })
-const visibleConnections = computed(() => draft.value.connections.filter(c => c.kind === activeTab.value))
+const visibleConnections = computed(() => activeTab.value === 'chat' ? chatModels.value : [])
 const tabOptions = computed<SegmentedOption<Tab>[]>(() => [
 	{
 		value: 'chat',
@@ -137,14 +157,124 @@ function toggleConnection(id: string) {
 const save = useSaveAISettings()
 const test = useTestAIConnection()
 const testingId = ref('')
-const testResults = ref<Record<string, {ok: boolean, text: string, endpoint: string, stamp: string}>>({})
+const testRequests = new Map<string, number>()
+let disposed = false
+onBeforeUnmount(() => { disposed = true })
+const testResults = ref<Record<string, {
+	ok: boolean
+	text: string
+	endpoint: string
+	stamp: string
+	elapsedMs?: number
+	audioDurationMs?: number
+	firstTextMs?: number
+}>>({})
 const modelFetcher = useFetchAIModels()
 const fetchingId = ref('')
 const modelLists = ref<Record<string, {models: string[], details: ListedModel[], fingerprint: string}>>({})
 const modelNotice = ref<Record<string, string>>({})
 const chatModels = computed(() => draft.value.connections.filter(c => c.kind === 'chat'))
 const speechModels = computed(() => draft.value.connections.filter(c => c.kind === 'transcription'))
-const testAudio = ref<File>()
+const speechCatalog = useQuery({...speechProvidersQuery(), enabled: computed(() => activeTab.value === 'transcription')})
+const speechPresets = computed(() => {
+	const providers = speechProviderPresets(speechCatalog.data.value ?? [])
+	for (const connection of speechModels.value) {
+		const id = speechProviderID(connection)
+		if (providers.some(provider => provider.id === id)) continue
+		providers.push({
+			id,
+			name: id,
+			mark: id.slice(0, 1).toUpperCase(),
+			tone: 'neutral',
+			models: [],
+		})
+	}
+	return providers
+})
+const speechGroups = computed(() => speechPresets.value.map(provider => {
+	const connections = speechModels.value.filter(connection => speechProviderID(connection) === provider.id)
+	const stored = props.initial.connections.filter(connection => connection.kind === 'transcription' && speechProviderID(connection) === provider.id)
+	const current = stored.find(connection => connection.id === props.initial.transcription)
+	return {
+		provider,
+		count: stored.length,
+		enabled: stored.some(connection => !connection.speech?.disabled),
+		dirty: connections.some(connection => !baselineSettings.value.connections.some(item => item.id === connection.id && cardStamp(item) === cardStamp(connection))),
+		defaultModel: current?.model,
+	}
+}))
+const selectedSpeechID = ref('')
+const newSpeechDrafts = ref<Record<string, string>>({})
+const selectedSpeech = computed(() => speechModels.value.find(connection => connection.id === selectedSpeechID.value))
+const selectedSpeechProvider = computed(() => speechPresets.value.find(provider => provider.id === (selectedSpeech.value && speechProviderID(selectedSpeech.value))))
+const providerConnections = computed(() => speechModels.value.filter(connection => selectedSpeechProvider.value?.id === speechProviderID(connection)))
+const speechPresentation = computed<SpeechConnectionPresentation | undefined>(() => {
+	const connection = selectedSpeech.value
+	if (!connection) return
+	return {
+		canAdd: draft.value.connections.length < MAX_CONNECTIONS,
+		persisted: persisted(connection.id),
+		saved: baselineSettings.value.connections.some(item => item.id === connection.id && cardStamp(item) === cardStamp(connection)),
+		saving: save.isPending.value,
+		testing: testingId.value === connection.id,
+		fetching: fetchingId.value === connection.id,
+		canTest: Boolean(savedMatches(connection)),
+		changedAddress: Boolean(changedAddress(connection)),
+		modelNotice: modelNotice.value[connection.id] || '',
+		error: cardErrors.value[connection.id] || '',
+		models: loadedModels(connection),
+		result: currentTest(connection),
+	}
+})
+
+function updateSpeech(connection: AIConnection) {
+	const index = draft.value.connections.findIndex(item => item.id === connection.id)
+	if (index >= 0) draft.value.connections[index] = connection
+}
+function openSpeechProvider(provider: SpeechProviderPreset, createNew = false) {
+	if (createNew) discardPristineSpeechDraft()
+	const connection = speechModels.value.find(item => speechProviderID(item) === provider.id)
+	if (connection && !createNew) {
+		selectedSpeechID.value = connection.id
+		return
+	}
+	if (draft.value.connections.length >= MAX_CONNECTIONS) return
+	const model = provider.models.find(item => item.recommended) ?? provider.models[0]
+	const created: AIConnection = {
+		id: crypto.randomUUID(),
+		name: provider.id === 'custom' ? '' : provider.name,
+		kind: 'transcription',
+		protocol: model?.protocol ?? 'openai-transcription',
+		base_url: model?.base_url ?? '',
+		model: model?.id ?? '',
+		api_key: '',
+		has_key: false,
+		speech: {provider: provider.id},
+	}
+	draft.value.connections.push(created)
+	newSpeechDrafts.value[created.id] = cardStamp(created)
+	selectedSpeechID.value = created.id
+}
+function discardPristineSpeechDraft() {
+	const connection = selectedSpeech.value
+	if (connection && !persisted(connection.id) && newSpeechDrafts.value[connection.id] === cardStamp(connection)) {
+		draft.value.connections = draft.value.connections.filter(item => item.id !== connection.id)
+		delete newSpeechDrafts.value[connection.id]
+	}
+}
+function closeSpeechProvider() {
+	discardPristineSpeechDraft()
+	selectedSpeechID.value = ''
+}
+function selectSpeech(id: string) {
+	discardPristineSpeechDraft()
+	selectedSpeechID.value = id
+}
+async function defaultSpeech(connection: AIConnection) {
+	if (save.isPending.value) return
+	updateSpeech(connection)
+	await saveConnection(connection, true)
+}
 
 const searchTest = useTestAIConnection()
 const searchingId = ref('')
@@ -204,6 +334,11 @@ async function testSearch(c: AIConnection) {
 
 function addConnection() {
 	const transcription = activeTab.value === 'transcription'
+	if (transcription) {
+		const custom = speechPresets.value.find(provider => provider.id === 'custom')
+		if (custom) openSpeechProvider(custom, true)
+		return
+	}
 	draft.value.connections.push({
 		id: crypto.randomUUID(),
 		name: '',
@@ -245,12 +380,13 @@ function savePayload(settings: Settings) {
 			disable_auto_compact: c.disable_auto_compact,
 			input_types: c.input_types,
 			output_token_field: c.output_token_field,
+			speech: c.speech,
 		})),
 	}
 }
 
 // Saves one connection into the saved baseline so other unfinished drafts are never submitted.
-async function saveConnection(connection: AIConnection) {
+async function saveConnection(connection: AIConnection, asSpeechDefault = false) {
 	if (save.isPending.value) return
 	const id = connection.id
 	const submitted = cardStamp(connection)
@@ -258,6 +394,9 @@ async function saveConnection(connection: AIConnection) {
 	const index = payload.connections.findIndex(c => c.id === id)
 	if (index < 0) payload.connections.push({...connection})
 	else payload.connections[index] = {...connection}
+	const previousSpeechRole = draft.value.transcription
+	if (asSpeechDefault) payload.transcription = id
+	if (connection.speech?.disabled && payload.transcription === id) payload.transcription = ''
 	// A changed connection purpose must not leave incompatible role assignments.
 	for (const role of ROLES) {
 		if (payload[role] === id && connection.kind !== roleKind(role)) payload[role] = ''
@@ -274,6 +413,10 @@ async function saveConnection(connection: AIConnection) {
 			savedCards.value[id] = cardStamp(clean)
 		}
 		baseline.value = JSON.stringify(saved)
+		if (draft.value.transcription === previousSpeechRole && (asSpeechDefault || connection.speech?.disabled)) {
+			draft.value.transcription = saved.transcription
+		}
+		delete newSpeechDrafts.value[id]
 	} catch (error) {
 		if (!isRequestContextAbort(error)) {
 			cardErrors.value[id] = error instanceof Error ? error.message : t('settingsDraft.failed')
@@ -287,6 +430,7 @@ const pendingRemove = ref<AIConnection | null>(null)
 function dropConnection(id: string) {
 	draft.value.connections = draft.value.connections.filter(c => c.id !== id)
 	for (const role of ROLES) if (draft.value[role] === id) draft.value[role] = ''
+	if (selectedSpeechID.value === id) selectedSpeechID.value = ''
 }
 function requestRemove(connection: AIConnection) {
 	if (save.isPending.value) return
@@ -362,46 +506,62 @@ async function readAudio(file: Blob) {
 	})
 }
 
-async function testConnection(connection: AIConnection) {
-	if (test.isPending.value) return
+async function testConnection(connection: AIConnection, testAudio?: File) {
+	if (test.isPending.value || testingId.value) return
 	const {id, kind} = connection
 	const stamp = cardStamp(connection)
+	const context = captureClientRequestContext()
+	const request = (testRequests.get(id) ?? 0) + 1
+	testRequests.set(id, request)
+	const current = () => !disposed && isClientRequestContextCurrent(context) && testRequests.get(id) === request
 	const fail = (text: string) => {
-		testResults.value[id] = {ok: false, text, endpoint: '', stamp}
+		if (current()) testResults.value[id] = {ok: false, text, endpoint: '', stamp}
 	}
 	delete testResults.value[id]
-	let audio = ''
-	let filename = testAudio.value?.name ?? 'audio.webm'
-	if (kind === 'transcription') {
-		if (!testAudio.value) return fail(t('tcymc.text.choose_an_audio_file_for_testing_first'))
-		if (testAudio.value.size > MAX_TEST_AUDIO_BYTES) return fail(t('tcymc.text.test_audio_must_not_exceed_16_mib'))
-		let file: Blob = testAudio.value
-		if (connection.protocol === 'openai-audio') {
+	testingId.value = id
+	const started = performance.now()
+	try {
+		let audio = ''
+		let filename = testAudio?.name ?? 'audio.webm'
+		if (kind === 'transcription') {
+			if (!testAudio) return fail(t('tcymc.text.choose_an_audio_file_for_testing_first'))
+			if (!testAudio.size) return fail(t('speechSettings.emptyAudio'))
+			if (testAudio.size > speechAudioLimit(connection)) {
+				return fail(t('speechSettings.audioLimit', {size: speechAudioLimit(connection) / 1024 / 1024}))
+			}
+			let file: Blob = testAudio
 			try {
-				const converted = await audioChatFile(file, filename)
+				const converted = await prepareSpeechFile(file, filename, connection.protocol)
 				file = converted.file
 				filename = converted.filename
 			} catch {
 				return fail(t('tcymc.audioConversionFailed'))
 			}
+			audio = await readAudio(file)
 		}
-		audio = await readAudio(file)
-	}
-	testingId.value = id
-	try {
+		if (!current()) return
 		const result = await test.mutateAsync({connection_id: id, audio, filename})
+		if (!current()) return
 		testResults.value[id] = {
 			ok: true,
 			text: [result.text, result.warning].filter(Boolean).join('\n'),
 			endpoint: result.endpoint ?? '',
 			stamp,
+			elapsedMs: result.elapsed_ms && result.elapsed_ms > 0 ? result.elapsed_ms : performance.now() - started,
+			audioDurationMs: result.audio_duration_ms,
+			firstTextMs: result.first_text_ms,
 		}
 	} catch (e) {
 		if (isRequestContextAbort(e)) return
 		fail(e instanceof Error ? e.message : t('tcymc.text.connection_test_failed_check_the_url_key_model'))
 	} finally {
-		testingId.value = ''
+		if (testingId.value === id) testingId.value = ''
 	}
+}
+function resetSpeechTest() {
+	const id = selectedSpeechID.value
+	testRequests.set(id, (testRequests.get(id) ?? 0) + 1)
+	delete testResults.value[id]
 }
 function currentTest(c: AIConnection) {
 	const result = testResults.value[c.id]
@@ -413,7 +573,7 @@ function protocols(kind: string) {
 		? ['openai-transcription', 'openai-audio', 'gemini'] as const
 		: ['openai-chat', 'openai-responses', 'anthropic', 'gemini'] as const
 }
-const protocolNames = {
+const protocolNames: Partial<Record<AIConnection['protocol'], string>> = {
 	'openai-chat': 'OpenAI Chat Completions',
 	'openai-responses': 'OpenAI Responses',
 	anthropic: 'Anthropic Messages',
@@ -430,10 +590,13 @@ function changeKind(c: AIConnection) {
 	}
 }
 function endpoint(c: AIConnection, models = false) {
+	if (c.kind === 'transcription' && !models && !['openai-transcription', 'openai-audio', 'gemini'].includes(c.protocol)) {
+		return speechRequestEndpoint(c)
+	}
 	const base = c.base_url.trim().replace(/\/+$/, '')
 	if (!base) return t('tcymc.text.enter_a_base_url_to_see_the_endpoint')
 	const geminiModel = encodeURIComponent(c.model.replace(/^models\//, '') || '{model}')
-	const paths = {
+	const paths: Partial<Record<AIConnection['protocol'], string>> = {
 		'openai-chat': '/chat/completions',
 		'openai-responses': '/responses',
 		anthropic: '/messages',
@@ -444,9 +607,9 @@ function endpoint(c: AIConnection, models = false) {
 	if (models && isOfficialDeepSeek(c)) return 'https://api.deepseek.com/models'
 	if (models) return base + '/models'
 	if (c.protocol === 'gemini' && !c.non_streaming) {
-		return base + paths.gemini.replace(':generateContent', ':streamGenerateContent?alt=sse')
+		return `${base}/models/${geminiModel}:streamGenerateContent?alt=sse`
 	}
-	return base + paths[c.protocol]
+	return base + (paths[c.protocol] ?? '')
 }
 function fingerprint(c: AIConnection) {
 	return JSON.stringify([c.base_url, c.protocol, c.kind])
@@ -510,7 +673,7 @@ function changeInputTypes(c: AIConnection, event: Event) {
 function changedAddress(c: AIConnection) {
 	const previous = props.initial.connections.find(s => s.id === c.id)
 	return previous?.has_key
-		&& previous.base_url.replace(/\/+$/, '') !== c.base_url.trim().replace(/\/+$/, '')
+		&& !sameSpeechSecretDestination(previous, c)
 		&& !c.api_key
 }
 function savedMatches(c: AIConnection) {
@@ -522,6 +685,7 @@ function savedMatches(c: AIConnection) {
 		&& saved.kind === c.kind
 		&& Boolean(saved.non_streaming) === Boolean(c.non_streaming)
 		&& capabilityKey(saved) === capabilityKey(c)
+		&& JSON.stringify(saved.speech ?? {}) === JSON.stringify(c.speech ?? {})
 		&& !c.api_key
 }
 
@@ -585,9 +749,88 @@ function connectionStatus(c: AIConnection): {tone: Tone, icon: IconProp, text: s
 			:options="tabOptions"
 			:label="t('modelSettings.tabs')"
 		/>
+		<section
+			v-if="activeTab === 'transcription'"
+			class="tcy-panel"
+			aria-labelledby="speech-providers-title"
+		>
+			<header class="tcy-panel__header">
+				<h2
+					id="speech-providers-title"
+					class="tcy-panel__title"
+				>
+					{{ t('speechSettings.title') }}
+				</h2>
+				<p class="tcy-panel__description">
+					{{ t('speechSettings.description') }}
+				</p>
+			</header>
+			<Message
+				v-if="speechCatalog.isError.value"
+				variant="danger"
+			>
+				{{ t('speechSettings.catalogFailed') }}
+				<XButton
+					type="button"
+					variant="secondary"
+					class="is-small"
+					@click="speechCatalog.refetch()"
+				>
+					{{ t('speechSettings.retry') }}
+				</XButton>
+			</Message>
+			<p
+				v-else-if="speechCatalog.isPending.value"
+				role="status"
+				class="tcy-panel__description"
+			>
+				{{ t('speechSettings.loading') }}
+			</p>
+			<SpeechProviderGrid
+				:groups="speechGroups"
+				@open="openSpeechProvider"
+			/>
+			<div class="tcy-panel__footer">
+				<XButton
+					type="button"
+					variant="secondary"
+					icon="plus"
+					:aria-disabled="draft.connections.length >= MAX_CONNECTIONS"
+					@click="addConnection"
+				>
+					{{ t('tcymc.text.add_model_connection') }}
+				</XButton>
+				<p
+					v-if="draft.connections.length >= MAX_CONNECTIONS"
+					class="tcy-panel__description"
+				>
+					{{ t('speechSettings.connectionLimit', {count: MAX_CONNECTIONS}) }}
+				</p>
+			</div>
+		</section>
+		<SpeechProviderDialog
+			v-if="selectedSpeech && selectedSpeechProvider && speechPresentation"
+			:connection="selectedSpeech"
+			:connections="providerConnections"
+			:provider="selectedSpeechProvider"
+			:default-id="props.initial.transcription"
+			:state="speechPresentation"
+			:endpoint="endpoint(selectedSpeech)"
+			:models-endpoint="endpoint(selectedSpeech, true)"
+			@close="closeSpeechProvider"
+			@update:connection="updateSpeech"
+			@select="selectSpeech"
+			@add="selectedSpeechProvider && openSpeechProvider(selectedSpeechProvider, true)"
+			@save="saveConnection($event)"
+			@default="defaultSpeech"
+			@remove="requestRemove"
+			@models="fetchModels"
+			@test="testConnection"
+			@resetTest="resetSpeechTest"
+		/>
 
 		<section
-			v-show="activeTab !== 'roles'"
+			v-show="activeTab === 'chat'"
 			class="tcy-panel"
 			aria-labelledby="ai-connections-title"
 		>
@@ -630,7 +873,7 @@ function connectionStatus(c: AIConnection): {tone: Tone, icon: IconProp, text: s
 								{{ connection.name || t('tcymc.text.new_model') }}
 							</h3>
 							<p class="connection__meta">
-								<span>{{ protocolNames[connection.protocol] }}</span>
+								<span>{{ protocolNames[connection.protocol] ?? connection.protocol }}</span>
 								<span v-if="connection.base_url">{{ host(connection.base_url) }}</span>
 								<span
 									v-if="connection.model"
@@ -1163,158 +1406,21 @@ function connectionStatus(c: AIConnection): {tone: Tone, icon: IconProp, text: s
 				>
 					{{ t('tcymc.text.add_model_connection') }}
 				</XButton>
-				<label
-					v-if="activeTab === 'transcription' && speechModels.length"
-					class="audio-test"
-				>
-					<span class="ai-field__label">{{ t('tcymc.text.audio_file_for_connection_testing') }}</span>
-					<input
-						type="file"
-						accept="audio/*"
-						@change="testAudio = ($event.target as HTMLInputElement).files?.[0]"
-					>
-				</label>
 			</div>
 		</section>
 
-		<form
-			v-show="activeTab === 'roles'"
-			class="tcy-panel"
-			aria-labelledby="ai-roles-title"
-			@submit.prevent="saveRoles"
-		>
-			<header class="tcy-panel__header">
-				<h2
-					id="ai-roles-title"
-					class="tcy-panel__title"
-					data-tour="ai-roles"
-				>
-					{{ t('tcymc.text.models_for_each_feature') }}
-				</h2>
-				<p class="tcy-panel__description">
-					{{ t('modelSettings.saveConnectionFirst') }}
-				</p>
-			</header>
-			<div class="role-list">
-				<div class="role-row">
-					<label class="role-row__field">
-						<span class="ai-field__label">{{ t('tcymc.text.task_ai_assistant') }}</span>
-						<span class="select is-fullwidth">
-							<select
-								v-model="draft.assistant"
-								aria-describedby="ai-role-assistant-hint"
-							>
-								<option value="">{{ t('tcymc.text.not_enabled') }}</option>
-								<option
-									v-for="c in chatModels"
-									:key="c.id"
-									:value="c.id"
-									:disabled="!persisted(c.id)"
-								>{{ c.name }} · {{ c.model }}</option>
-							</select>
-						</span>
-					</label>
-					<p
-						id="ai-role-assistant-hint"
-						class="ai-field__hint"
-					>
-						{{ t('tcymc.text.choose_a_model_with_tool_calling_to_read') }}
-					</p>
-				</div>
-				<div class="role-row">
-					<label class="role-row__field">
-						<span class="ai-field__label">{{ t('chatFiles.persona') }}</span>
-						<span class="select is-fullwidth">
-							<select
-								v-model="draft.persona"
-								aria-describedby="ai-role-persona-hint"
-							>
-								<option value="arona">{{ t('chatFiles.personaArona') }}</option>
-								<option value="none">{{ t('chatFiles.personaNone') }}</option>
-							</select>
-						</span>
-					</label>
-					<p
-						id="ai-role-persona-hint"
-						class="ai-field__hint"
-					>
-						{{ t('chatFiles.personaHint') }}
-					</p>
-				</div>
-				<div class="role-row">
-					<label class="role-row__field">
-						<span class="ai-field__label">{{ t('tcymc.text.speech_recognition') }}</span>
-						<span class="select is-fullwidth">
-							<select
-								v-model="draft.transcription"
-								aria-describedby="ai-role-transcription-hint"
-							>
-								<option value="">{{ t('tcymc.text.not_enabled') }}</option>
-								<option
-									v-for="c in speechModels"
-									:key="c.id"
-									:value="c.id"
-									:disabled="!persisted(c.id)"
-								>{{ c.name }} · {{ c.model }}</option>
-							</select>
-						</span>
-					</label>
-					<p
-						id="ai-role-transcription-hint"
-						class="ai-field__hint"
-					>
-						{{ t('tcymc.text.turn_recordings_or_uploaded_audio_into_text') }}
-					</p>
-				</div>
-				<div class="role-row">
-					<label class="role-row__field">
-						<span class="ai-field__label">{{ t('tcymc.text.transcript_cleanup') }}</span>
-						<span class="select is-fullwidth">
-							<select
-								v-model="draft.cleanup"
-								aria-describedby="ai-role-cleanup-hint"
-							>
-								<option value="">{{ t('tcymc.text.keep_the_original_transcript') }}</option>
-								<option
-									v-for="c in chatModels"
-									:key="c.id"
-									:value="c.id"
-									:disabled="!persisted(c.id)"
-								>{{ c.name }} · {{ c.model }}</option>
-							</select>
-						</span>
-					</label>
-					<p
-						id="ai-role-cleanup-hint"
-						class="ai-field__hint"
-					>
-						{{ t('tcymc.text.improve_wording_and_punctuation_without_changing_tasks') }}
-					</p>
-				</div>
-			</div>
-			<div class="tcy-panel__footer">
-				<XButton
-					type="submit"
-					icon="save"
-					data-tour="ai-save"
-					:loading="savingPart === 'roles'"
-				>
-					{{ t('modelSettings.saveRoles') }}
-				</XButton>
-				<span
-					class="connection__saved"
-					role="status"
-				>{{ rolesDirty
-					? t('settingsDraft.unsaved')
-					: rolesSaved === rolesStamp(draft) ? t('modelSettings.saved') : '' }}</span>
-			</div>
-			<Message
-				v-if="saveError"
-				variant="danger"
-			>
-				{{ t('settingsDraft.retained') }} {{ saveError }}
-			</Message>
-		</form>
+		<AIModelRoles
+			v-show="activeTab !== 'chat'"
+			:settings="draft"
+			:persisted-ids="props.initial.connections.map(connection => connection.id)"
+			:speech-layout="activeTab === 'transcription'"
+			:dirty="rolesDirty"
+			:saved="rolesSaved === rolesStamp(draft)"
+			:saving="savingPart === 'roles'"
+			:error="saveError"
+			@update:settings="draft = $event"
+			@save="saveRoles"
+		/>
 
 		<Modal
 			danger
@@ -1759,46 +1865,4 @@ function connectionStatus(c: AIConnection): {tone: Tone, icon: IconProp, text: s
 	min-inline-size: 0;
 }
 
-.audio-test {
-	display: grid;
-	gap: var(--space-1);
-	min-inline-size: 0;
-
-	input {
-		max-inline-size: 100%;
-		font-size: var(--text-sm);
-	}
-}
-
-.role-list {
-	display: grid;
-	border-block: 1px solid var(--border-subtle);
-}
-
-.role-row {
-	display: grid;
-	gap: var(--space-1);
-	padding-block: var(--space-3);
-
-	& + & {
-		border-block-start: 1px solid var(--border-subtle);
-	}
-}
-
-.role-row__field {
-	display: grid;
-	grid-template-columns: minmax(10rem, 2fr) minmax(0, 3fr);
-	align-items: center;
-	gap: var(--space-1) var(--space-4);
-
-	@media screen and (max-width: $tablet) {
-		grid-template-columns: minmax(0, 1fr);
-	}
-}
-
-.role-row .ai-field__hint {
-	@media screen and (min-width: $tablet + 1px) {
-		margin-inline-start: calc(40% + var(--space-2));
-	}
-}
 </style>
