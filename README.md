@@ -11,9 +11,15 @@
 基于 [Vikunja 官方 v2.7.1](https://github.com/go-vikunja/vikunja/releases/tag/v2.7.1) 的个人记录与团队项目管理扩展，由 **KanameMadoka520** 维护。保留上游项目、任务、甘特图、看板、提醒、CalDAV 和 MCP，增加可配置模型的 AI 助手、语音输入和独立公开主页。
 
 - 源码与问题反馈：[KanameMadoka520/vikunja-x](https://github.com/KanameMadoka520/vikunja-x)
-- 版本：`v2.7.1-tcymc.44`
+- 版本：`v2.7.1-tcymc.45`
 - 许可证：AGPL-3.0-or-later；上游版权和许可证继续适用，参见 [LICENSE](LICENSE) 与 [上游 README](README.upstream.md)。本项目是独立二次开发版。
 
+
+## 日历、精确排期与阿罗娜日程工具（tcymc.45）
+
+新增独立日历：月总览、周/日时间轴和议程列表共用已有任务。电脑可选择 3/7/14 天并在 25%–250% 范围调整时间轴密度，手机可点日期查看当天安排。时间段、截止与开始/结束时间点分别显示，跨天按账户时区拆分，重叠安排并排，点击打开原任务详情；无需整页刷新。
+
+可在日历新建安排，也可让阿罗娜按需读取日程并复用现有任务工具创建、改期、完成或删除。项目权限、写入范围和审核继续生效。只查询可见日期的薄数据，不重复拉取描述与附件；没有日期的待办继续留在项目中。详见[日期语义、工具协议与维护约定](docs/calendar-v45.md)。
 
 ## 按需外部 MCP 与聊天插图（tcymc.44）
 
@@ -494,9 +500,9 @@ pnpm vitest run src/i18n/coverage.test.ts src/helpers/tcyAudio.test.ts
 git clone https://github.com/KanameMadoka520/vikunja-x.git
 cd vikunja-x
 docker build -f Dockerfile.tcymc \
-  --build-arg RELEASE_VERSION=v2.7.1-tcymc.44 \
+  --build-arg RELEASE_VERSION=v2.7.1-tcymc.45 \
   --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
-  -t vikunja-x:v2.7.1-tcymc.44 .
+  -t vikunja-x:v2.7.1-tcymc.45 .
 ```
 
 `Dockerfile.tcymc` 固定基础镜像摘要，使用锁定依赖构建前端，并生成带 SQLite 支持的静态 Go 二进制，最终以 UID 1000 在最小镜像中运行。提供 CA 和时区数据。数据库支持沿用上游，包括 PostgreSQL。`SOURCE_COMMIT` 写入镜像的 OCI revision 标签，便于核对运行镜像对应的源码；正式发布从干净工作树构建，并核对源码标签、镜像 ID 与运行实例。
@@ -514,12 +520,12 @@ docker run -d --name vikunja-x --restart unless-stopped \
   -e VIKUNJA_SERVICE_SECRET=替换为随机且持久保存的长密钥 \
   -e VIKUNJA_SERVICE_ENABLEREGISTRATION=false \
   -e VIKUNJA_SERVICE_TIMEZONE=Asia/Shanghai \
-  vikunja-x:v2.7.1-tcymc.44
+  vikunja-x:v2.7.1-tcymc.45
 ```
 
 通过反向代理提供 HTTPS。创建首个账号使用 `docker exec -it vikunja-x /app/vikunja/vikunja user create --help` 查看 CLI 参数。注册默认建议关闭；SMTP 初始使用上游 `VIKUNJA_MAILER_*` 配置，也可通过上述管理员页面保存；密码勿提交源码。账号名中的 admin 不会绕过上游授权功能。
 
-Release 附带源码、Git bundle、Linux amd64 二进制、Docker 镜像包及 SHA256 校验文件；先运行 `sha256sum -c SHA256SUMS`，再使用 `docker load -i vikunja-x-v2.7.1-tcymc.44.docker.tar.gz` 导入镜像。
+Release 附带源码、Git bundle、Linux amd64 二进制、Docker 镜像包及 SHA256 校验文件；先运行 `sha256sum -c SHA256SUMS`，再使用 `docker load -i vikunja-x-v2.7.1-tcymc.45.docker.tar.gz` 导入镜像。
 
 ## 本地开发与验证
 

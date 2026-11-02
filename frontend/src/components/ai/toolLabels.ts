@@ -2,6 +2,7 @@
 const AGENT_TOOLS = [
 	'list_project_history',
 	'list_project_timeline',
+	'list_calendar_events',
 	'set_project_completed',
 	'update_project',
 	'find_tools',

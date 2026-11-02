@@ -718,6 +718,76 @@ export type BulkTaskCreation = {
     tasks?: Array<Task> | null;
 };
 
+export type CalendarDayBoundary = {
+    /**
+     * Civil YYYY-MM-DD label in timezone.
+     */
+    date?: string;
+    /**
+     * Exclusive beginning of the next civil day; a day can have fewer or more than 24 hours.
+     */
+    end_at?: string;
+    /**
+     * Inclusive instant of the local day's beginning.
+     */
+    start_at?: string;
+};
+
+export type CalendarTask = {
+    done?: boolean;
+    /**
+     * Independent stored deadline instant; year 1 means unset.
+     */
+    due_date?: string;
+    /**
+     * Stored end instant, unchanged; never substituted with the due date.
+     */
+    end_date?: string;
+    hex_color?: string;
+    /**
+     * Existing task ID; open the normal task endpoint for details or editing.
+     */
+    id?: number;
+    priority?: number;
+    project_color?: string;
+    project_id?: number;
+    project_title?: string;
+    /**
+     * Stored instant, unchanged; year 1 means unset. No all-day intent is inferred.
+     */
+    start_date?: string;
+    title?: string;
+    updated?: string;
+};
+
+export type CalendarTasksResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * All requested local days and exact instant boundaries, independent of pagination.
+     */
+    days?: Array<CalendarDayBoundary> | null;
+    /**
+     * Inclusive civil YYYY-MM-DD date.
+     */
+    from?: string;
+    items?: Array<CalendarTask> | null;
+    page?: number;
+    per_page?: number;
+    /**
+     * Effective IANA timezone, defaulting to the authenticated user's stored timezone.
+     */
+    timezone?: string;
+    /**
+     * Exclusive civil YYYY-MM-DD date.
+     */
+    to?: string;
+    total?: number;
+    total_pages?: number;
+};
+
 export type Callback = {
     /**
      * A URL to the JSON Schema for this object.
@@ -6786,6 +6856,30 @@ export type BulkTaskCreationWritable = {
      * The tasks to create. Each entry accepts the same fields as the single-task create endpoint. Creation is atomic: if one task is invalid, none are created.
      */
     tasks?: Array<TaskWritable> | null;
+};
+
+export type CalendarTasksResponseWritable = {
+    /**
+     * All requested local days and exact instant boundaries, independent of pagination.
+     */
+    days?: Array<CalendarDayBoundary> | null;
+    /**
+     * Inclusive civil YYYY-MM-DD date.
+     */
+    from?: string;
+    items?: Array<CalendarTask> | null;
+    page?: number;
+    per_page?: number;
+    /**
+     * Effective IANA timezone, defaulting to the authenticated user's stored timezone.
+     */
+    timezone?: string;
+    /**
+     * Exclusive civil YYYY-MM-DD date.
+     */
+    to?: string;
+    total?: number;
+    total_pages?: number;
 };
 
 export type CallbackWritable = {
@@ -15199,6 +15293,62 @@ export type TasksBulkUpdateResponses = {
 };
 
 export type TasksBulkUpdateResponse = TasksBulkUpdateResponses[keyof TasksBulkUpdateResponses];
+
+export type TasksCalendarData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * 1-based page number.
+         */
+        page?: number;
+        /**
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
+         */
+        per_page?: number;
+        /**
+         * Search query; filters the list to items matching this string.
+         */
+        q?: string;
+        /**
+         * Inclusive civil YYYY-MM-DD, not an ISO timestamp.
+         */
+        from: string;
+        /**
+         * Exclusive civil YYYY-MM-DD, at most 62 calendar days after from.
+         */
+        to: string;
+        /**
+         * IANA timezone; omitted uses the account's timezone (server timezone for a link share).
+         */
+        timezone?: string;
+        /**
+         * 0 or omitted means all accessible projects; a positive ID selects one project without expanding subprojects.
+         */
+        project_id?: number;
+        done?: 'all' | 'open' | 'done';
+        include_archived?: boolean;
+    };
+    url: '/tasks/calendar';
+};
+
+export type TasksCalendarErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type TasksCalendarError = TasksCalendarErrors[keyof TasksCalendarErrors];
+
+export type TasksCalendarResponses = {
+    /**
+     * OK
+     */
+    200: CalendarTasksResponse;
+};
+
+export type TasksCalendarResponse = TasksCalendarResponses[keyof TasksCalendarResponses];
 
 export type TaskTimeEntriesListData = {
     body?: never;

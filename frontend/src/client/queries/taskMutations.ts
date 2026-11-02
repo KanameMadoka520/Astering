@@ -25,6 +25,7 @@ import {
 	type JsonPatchOp,
 	type Bucket,
 } from '@/client/generated'
+import {client as sdkClient} from '@/client/generated/client.gen'
 import {assertClientRequestContext, captureClientRequestContext, isRequestContextAbort, type ClientRequestContext} from '@/client/requestContext'
 import {contextMutationOptions} from './contextMutation'
 import {normalizeTask, taskKeys, type PaginatedTaskResponse, type TaskFilterParams, type TaskResponse} from './tasks'
@@ -42,6 +43,7 @@ import {
 	taskQueryKeys,
 } from './taskCache'
 import {projectTimelineKeys, type ProjectTimelineQuery} from './projectTimeline'
+import {invalidateCalendarTasks} from './calendar'
 import {agentBoardKeys, refreshAgentBoards} from './kanbanServerRefresh'
 import {getCachedProject, projectKeys} from './projects'
 import {colorFromHex} from '@/helpers/color/colorFromHex'
@@ -195,15 +197,26 @@ export async function applyServerTaskDeleted(client: QueryClient, id: number) {
 	await applyServerTaskChanges(client, [{kind: 'deleted', id}])
 }
 
-export function createTaskMutationOptions() {
+export function createTaskMutationOptions(owner?: ClientRequestContext) {
 	return contextMutationOptions({
-		mutationFn: async (task: Task & Required<Pick<Task, 'project_id'>>) => (await tasksCreate({
-			path: {project: task.project_id},
-			body: taskWriteBody(task),
-		})).data,
+		mutationFn: async (
+			task: Task & Required<Pick<Task, 'project_id'>>,
+			{request},
+		) => {
+			const send = sdkClient.getConfig().fetch ?? globalThis.fetch
+			return (await tasksCreate({
+				path: {project: task.project_id},
+				body: taskWriteBody(task),
+				fetch: (input, init) => {
+					// SDK preparation and interceptors yield before dispatch, after the mutation's owner check.
+					assertClientRequestContext(request)
+					return send(input, init)
+				},
+			})).data
+		},
 		onSuccess: (task, _input, client) => insertTaskIntoBoards(client, task),
 		onSettled: (_task, client) => invalidateTaskMembership(client, undefined, 'active'),
-	})
+	}, owner)
 }
 
 // When each save started, keyed by its input, so its answer can tell which server writes came later.
@@ -496,8 +509,8 @@ export function moveTaskMutationOptions() {
 	})
 }
 
-export function useCreateTaskMutation() {
-	return useMutation(createTaskMutationOptions())
+export function useCreateTaskMutation(owner?: ClientRequestContext) {
+	return useMutation(createTaskMutationOptions(owner))
 }
 
 export function useUpdateTaskMutation(optimistic = false, owner?: ClientRequestContext) {
@@ -625,6 +638,7 @@ function serverChangeScope(client: QueryClient, changes: readonly ServerTaskChan
 async function refreshServerTaskMembership(client: QueryClient, scope: ServerChangeScope) {
 	const affects = (project: number | null | undefined) => !project || project < 0 || scope.projects.has(project)
 	await Promise.all([
+		invalidateCalendarTasks(client),
 		client.invalidateQueries({
 			queryKey: taskKeys.lists,
 			refetchType: 'active',

@@ -343,6 +343,14 @@ const router = createRouter({
 			component: () => import('@/views/project/ProjectHistory.vue'),
 		},
 		{
+			path: '/calendar',
+			name: 'calendar',
+			meta: {
+				title: 'calendar.title',
+			},
+			component: () => import('@/views/Calendar.vue'),
+		},
+		{
 			path: '/tasks/by/upcoming',
 			name: 'tasks.range',
 			meta: {

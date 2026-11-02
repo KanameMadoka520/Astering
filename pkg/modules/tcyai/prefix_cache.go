@@ -214,6 +214,8 @@ func compactToolResult(name string, raw json.RawMessage, data string) string {
 			return data
 		}
 		output = compactTaskDetails(item)
+	case "list_calendar_events":
+		output = selectFields(asObject(value), "items", "total", "page", "per_page", "total_pages", "timezone", "from", "to")
 	case "list_project_timeline":
 		envelope := asObject(value)
 		summary := selectFields(envelope, "year", "timezone", "today", "first_year", "last_year", "projects", "scheduled_days", "elapsed_days", "dated_tasks", "done_tasks", "overdue_tasks", "excluded_tasks", "invalid_tasks", "total", "page", "total_pages")

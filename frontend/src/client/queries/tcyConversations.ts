@@ -55,6 +55,7 @@ import {
 } from './taskCache'
 import {applyServerTaskChanges, reconcileServerBoards, type ServerTaskChange} from './taskMutations'
 import {normalizeTask, taskKeys, type TaskResponse} from './tasks'
+import {invalidateCalendarTasks} from './calendar'
 import {
 	readConversationSnapshot,
 	shareConversationSnapshot,
@@ -909,6 +910,7 @@ async function settleAgentChanges(client: QueryClient, plan: AgentRefreshPlan) {
 		applyServerTaskChanges(client, changes),
 		refreshEmbeddedTaskData(client, embeddedRequests(client, plan)),
 		...(lists ? [
+			invalidateCalendarTasks(client),
 			client.invalidateQueries({queryKey: taskKeys.lists, refetchType: lists}),
 			client.invalidateQueries({queryKey: taskKeys.allLists, refetchType: lists}),
 			// A board refetch returns only the first page per bucket, so receipts patch boards instead.
@@ -923,6 +925,7 @@ async function settleAgentChanges(client: QueryClient, plan: AgentRefreshPlan) {
 		plan.labels ? client.invalidateQueries({queryKey: labelKeys.all, refetchType: 'none'}) : undefined,
 		plan.history ? client.invalidateQueries({queryKey: projectHistoryKey}) : undefined,
 		plan.timeline ? client.invalidateQueries({queryKey: projectTimelineKeys.all}) : undefined,
+		plan.projectList ? invalidateCalendarTasks(client) : undefined,
 		...plan.announcements.map(id => client.invalidateQueries({queryKey: projectAnnouncementKeys.detail(id)})),
 		...plan.routines.map(id => client.invalidateQueries({queryKey: taskRoutineKeys.task(id)})),
 		...plan.boards.flatMap(({project, view}) => [

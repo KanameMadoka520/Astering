@@ -12,9 +12,11 @@ import {
 
 vi.mock('@/stores/base', () => ({useBaseStore: () => ({currentProjectId: 0})}))
 vi.mock('@/composables/useProjects', () => ({useProjects: () => ({projects: {}})}))
+vi.mock('@/message', () => ({error: vi.fn()}))
 import {useRouteWithModal} from './useRouteWithModal'
 import {taskModalNavigationState} from '@/helpers/taskModal'
 import {useUnsavedLeaveGuard} from './useUnsavedLeaveGuard'
+import {error} from '@/message'
 
 let wrapper: VueWrapper | undefined
 let router: Router
@@ -49,7 +51,11 @@ const Task = defineComponent({
 	},
 })
 
-async function setup(backdropView = '/projects/1', nativeFields = false) {
+async function setup(
+	backdropView = '/projects/1',
+	nativeFields = false,
+	lazyBackdrop?: () => Promise<typeof Backdrop>,
+) {
 	fieldGuardMode = nativeFields
 	fieldsDirty.value = nativeFields
 	guardCalls = []
@@ -63,11 +69,12 @@ async function setup(backdropView = '/projects/1', nativeFields = false) {
 		routes: [
 			{path: '/start', component: {render: () => null}},
 			{path: '/projects/:id', component: Backdrop},
+			{path: '/calendar', component: lazyBackdrop ?? Backdrop},
 			{path: '/tasks/:id', alias: '/task-alias/:id', name: 'task.detail', component: () => Promise.resolve(Task), props: route => ({taskId: Number(route.params.id)})},
 			{path: '/elsewhere', component: {template: '<p>Elsewhere</p>'}},
 		],
 	})
-	if (backdropView && !backdropView.startsWith('/tasks/') && !backdropView.startsWith('/task-alias/')) await router.push(backdropView)
+	if (!lazyBackdrop && backdropView && !backdropView.startsWith('/tasks/') && !backdropView.startsWith('/task-alias/')) await router.push(backdropView)
 	await router.push({path: '/tasks/1', state: backdropView ? {backdropView} : undefined})
 	const Host = defineComponent({
 		setup() {
@@ -93,6 +100,56 @@ afterEach(() => {
 })
 
 describe('real route modal guards', () => {
+	it('loads a previously unvisited lazy backdrop for a direct task modal URL', async () => {
+		let resolveBackdrop!: (component: typeof Backdrop) => void
+		const lazy = vi.fn(() => new Promise<typeof Backdrop>(resolve => {resolveBackdrop = resolve}))
+		const view = await setup('/calendar?date=2026-11-03&zoom=250', false, lazy)
+		expect(lazy).toHaveBeenCalledTimes(1)
+		expect(view.findAll('input.task')).toHaveLength(1)
+		expect(view.findAll('input.backdrop')).toHaveLength(0)
+		expect(view.text()).not.toContain('[object Promise]')
+		resolveBackdrop(Backdrop)
+		await flushPromises()
+		expect(view.findAll('input.backdrop')).toHaveLength(1)
+		expect(view.findAll('input.task')).toHaveLength(1)
+		expect(backdropMounts).toBe(1)
+		expect(taskMounts).toBe(1)
+		blockTask = false
+		await router.push('/calendar?date=2026-11-03&zoom=250')
+		await flushPromises()
+		expect(backdropMounts).toBe(1)
+		expect(view.findAll('input.task')).toHaveLength(0)
+	})
+
+	it.each(['navigate', 'unmount'])('ignores late backdrop loading after %s', async outcome => {
+		let resolveBackdrop!: (component: typeof Backdrop) => void
+		const view = await setup('/calendar', false, () => new Promise(resolve => {resolveBackdrop = resolve}))
+		if (outcome === 'navigate') {
+			blockTask = false
+			await router.push('/elsewhere')
+			await flushPromises()
+		} else {
+			view.unmount()
+			wrapper = undefined
+		}
+		resolveBackdrop(Backdrop)
+		await flushPromises()
+		expect(backdropMounts).toBe(0)
+		if (outcome === 'navigate') expect(view.text()).toContain('Elsewhere')
+	})
+
+	it('keeps the task usable and reports a failed lazy backdrop load once', async () => {
+		let rejectBackdrop!: (cause: Error) => void
+		const view = await setup('/calendar', false, () => new Promise((_, reject) => {rejectBackdrop = reject}))
+		const cause = new Error('Failed to load calendar chunk')
+		rejectBackdrop(cause)
+		await flushPromises()
+		expect(view.findAll('input.task')).toHaveLength(1)
+		expect(view.findAll('input.backdrop')).toHaveLength(0)
+		expect(view.text()).not.toContain('[object Promise]')
+		expect(error).toHaveBeenCalledWith(cause)
+	})
+
 	it.each(['/tasks/2', '/elsewhere'])('guards %s in the modal without calling the live backdrop guards', async destination => {
 		const view = await setup()
 		await view.find('input.backdrop').setValue('backdrop state')

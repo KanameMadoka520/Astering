@@ -56,9 +56,20 @@
 							:to="{ name: 'tasks.range'}"
 						>
 							<span class="menu-item-icon icon">
-								<Icon :icon="['far', 'calendar-alt']" />
+								<Icon icon="list" />
 							</span>
 							<span class="menu-item-label">{{ t('navigation.upcoming') }}</span>
+						</RouterLink>
+					</li>
+					<li>
+						<RouterLink
+							data-tour="nav-calendar"
+							:to="{name: 'calendar'}"
+						>
+							<span class="menu-item-icon icon">
+								<Icon :icon="['far', 'calendar-alt']" />
+							</span>
+							<span class="menu-item-label">{{ t('calendar.title') }}</span>
 						</RouterLink>
 					</li>
 					<li>

@@ -6,6 +6,7 @@ import {normalizeTask, taskKeys, type PaginatedTaskResponse, type TaskResponse} 
 import {kanbanKeys, type BoardData} from './kanban'
 import {totalPagesFor} from './pagination'
 import {projectTimelineKeys} from './projectTimeline'
+import {invalidateCalendarTasks} from './calendar'
 
 // Applies `update` to every cached copy of task `id` (detail, lists, boards, nested relations),
 // so a mutation response patches all mounted views without refetching them.
@@ -262,6 +263,7 @@ export async function invalidateTaskMembership(
 		...(id === undefined ? [] : [client.invalidateQueries({queryKey: [...taskKeys.details, id], refetchType})]),
 		// Dates, progress and completion feed the timeline; only a mounted timeline refetches.
 		client.invalidateQueries({queryKey: projectTimelineKeys.all}),
+		invalidateCalendarTasks(client),
 	])
 }
 

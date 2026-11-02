@@ -510,6 +510,10 @@ func aiExtendedRoute(name string, args map[string]json.RawMessage, id func(strin
 			clear(args)
 		}
 		return path, method, nil
+	case "list_calendar_events":
+		err := aiCalendarQuery(args, query)
+		clear(args)
+		return "/tasks/calendar", method, err
 	case "list_project_history", "list_project_timeline":
 		err := aiProjectHistoryQuery(args, query)
 		clear(args)

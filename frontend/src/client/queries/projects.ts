@@ -25,6 +25,7 @@ import {fetchAllPages} from './fetchAllPages'
 import {setSubscription} from './subscriptionRequests'
 import {taskKeys} from './tasks'
 import {projectTimelineKeys} from './projectTimeline'
+import {invalidateCalendarTasks} from './calendar'
 
 export type ProjectResponse = Omit<Project,
 	'id' |
@@ -303,6 +304,7 @@ export function createProjectMutationOptions() {
 			client.invalidateQueries({queryKey: projectKeys.list(), refetchType: 'none'}),
 			client.invalidateQueries({queryKey: ['project-history']}),
 			client.invalidateQueries({queryKey: projectTimelineKeys.all}),
+			invalidateCalendarTasks(client),
 		]),
 		successMessage: () => i18n.global.t('project.create.createdSuccess'),
 		toastError,
@@ -349,6 +351,7 @@ export function updateProjectMutationOptions(successMessage?: string) {
 		onSettled: ({id}, client, context) => Promise.all([
 			client.invalidateQueries({queryKey: ['project-history']}),
 			client.invalidateQueries({queryKey: projectTimelineKeys.all}),
+			invalidateCalendarTasks(client),
 			// Archive and parent changes affect descendants beyond the patched project.
 			client.invalidateQueries({
 				queryKey: projectKeys.list(),
@@ -457,6 +460,7 @@ export function deleteProjectMutationOptions() {
 			client.invalidateQueries({queryKey: projectKeys.list(), refetchType: 'none'}),
 			client.invalidateQueries({queryKey: ['project-history']}),
 			client.invalidateQueries({queryKey: projectTimelineKeys.all}),
+			invalidateCalendarTasks(client),
 		]),
 		successMessage: () => i18n.global.t('project.delete.success'),
 		toastError,
@@ -488,6 +492,7 @@ export function duplicateProjectMutationOptions() {
 			client.invalidateQueries({queryKey: projectKeys.list(), refetchType: 'none'}),
 			client.invalidateQueries({queryKey: ['project-history']}),
 			client.invalidateQueries({queryKey: projectTimelineKeys.all}),
+			invalidateCalendarTasks(client),
 		]),
 		successMessage: () => i18n.global.t('project.duplicate.success'),
 		toastError,

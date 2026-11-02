@@ -1,7 +1,8 @@
 import {computed, h, onScopeDispose, shallowRef, watch, type VNode} from 'vue'
-import {RouterView, useRoute, useRouter, type RouteLocationNormalizedGeneric, type RouteRecordNormalized} from 'vue-router'
+import {loadRouteLocation, RouterView, useRoute, useRouter, type RouteLocationNormalizedGeneric, type RouteRecordNormalized} from 'vue-router'
 import {useBaseStore} from '@/stores/base'
 import {useProjects} from '@/composables/useProjects'
+import {error} from '@/message'
 
 function displayedRecord(route: Pick<RouteLocationNormalizedGeneric, 'matched'>) {
 	const record = [...route.matched].reverse().find(record => record.components?.default)
@@ -11,10 +12,16 @@ function displayedRecord(route: Pick<RouteLocationNormalizedGeneric, 'matched'>)
 export function useRouteWithModal() {
 	const router = useRouter()
 	const route = useRoute()
-	const modalLocation = shallowRef<{record: RouteRecordNormalized, backdrop: string}>()
+	const modalLocation = shallowRef<{
+		record: RouteRecordNormalized
+		backdrop: string
+		route: RouteLocationNormalizedGeneric
+	}>()
 	const backdropView = computed(() => modalLocation.value?.backdrop)
 	const baseStore = useBaseStore()
 	const projectList = useProjects()
+	let disposed = false
+	onScopeDispose(() => {disposed = true})
 
 	let poppedEntry: {path: string, position: unknown} | undefined
 	// Browser back/forward must honor that history entry, including an intentional full-page task.
@@ -37,7 +44,30 @@ export function useRouteWithModal() {
 			modalLocation.value = undefined
 			return
 		}
-		modalLocation.value = {record, backdrop: candidate}
+		// resolve() does not load lazy components on a direct modal URL/reload.
+		const needsLoading = backdrop.matched.some(match => Object.values(match.components ?? {})
+			.some(component => typeof component === 'function' && !('displayName' in component)))
+		const location = {
+			record,
+			backdrop: candidate,
+			route: {
+				...backdrop,
+				name: backdrop.name ?? undefined,
+				matched: needsLoading ? [] : backdrop.matched,
+			},
+		}
+		modalLocation.value = location
+		if (needsLoading) {
+			void loadRouteLocation(backdrop).then(loaded => {
+				if (!disposed && modalLocation.value === location) {
+					modalLocation.value = {...location, route: loaded}
+				}
+			}).catch(cause => {
+				if (disposed || modalLocation.value !== location) return
+				modalLocation.value = undefined
+				error(cause)
+			})
+		}
 		// Hash/query links and a confirmed guard's replay omit custom state. Keep the active task modal's
 		// original board across those task navigations, retaining Vue Router's own history data. Explicit
 		// backdropView: null, another page, or a browser history entry always keeps its own presentation.
@@ -45,7 +75,7 @@ export function useRouteWithModal() {
 	}, {immediate: true, flush: 'sync'})
 
 	const routeWithModal = computed(() => backdropView.value
-		? router.resolve(backdropView.value) as RouteLocationNormalizedGeneric
+		? modalLocation.value!.route
 		: route)
 
 	// RouterView supplies matchedRouteKey and owns the route instance and guard lifecycle. A manually
