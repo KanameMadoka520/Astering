@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {computed, nextTick, onMounted, ref, watch} from 'vue'
-import {useEventListener, useMediaQuery, useResizeObserver} from '@vueuse/core'
+import {useEventListener, useResizeObserver} from '@vueuse/core'
 import {useI18n} from 'vue-i18n'
 
 import CalendarEventLink from './CalendarEventLink.vue'
@@ -12,6 +12,7 @@ import {
 	type CalendarDay,
 	type CalendarSegment,
 } from '@/helpers/calendar'
+import {useIsMobile} from '@/composables/useIsMobile'
 import {useTimeFormat} from '@/composables/useTimeFormat'
 import {TIME_FORMAT} from '@/constants/timeFormat'
 import {calendarLunarLabel} from '@/helpers/calendarDisplay'
@@ -33,7 +34,7 @@ const emit = defineEmits<{
 }>()
 const {t, locale} = useI18n({useScope: 'global'})
 const {store: timeFormat} = useTimeFormat()
-const narrow = useMediaQuery('(max-width: 640px)')
+const narrow = useIsMobile()
 const scroller = ref<HTMLElement>()
 const header = ref<HTMLElement>()
 const headerHeight = ref(0)
@@ -223,9 +224,6 @@ watch(() => props.days, async (days, previous) => {
 
 <template>
 	<div class="calendar-time-view">
-		<p class="calendar-time-help">
-			{{ t('calendar.dragHint') }}
-		</p>
 		<div
 			ref="scroller"
 			class="calendar-time-scroll"
@@ -410,6 +408,9 @@ watch(() => props.days, async (days, previous) => {
 		<p class="calendar-time-help">
 			{{ t('calendar.timeGridHint') }}
 		</p>
+		<p class="calendar-time-help">
+			{{ t('calendar.dragHint') }}
+		</p>
 		<p
 			v-if="variableDay"
 			class="calendar-time-help"
@@ -430,7 +431,7 @@ watch(() => props.days, async (days, previous) => {
 }
 .calendar-time-scroll {
 	position: relative;
-	block-size: min(68dvh, 54rem);
+	block-size: max(20rem, calc(100dvh - var(--header-height) - var(--page-gutter) - var(--calendar-command-height, 8rem) - 4rem));
 	min-block-size: 20rem;
 	overflow: auto;
 	overscroll-behavior: contain;
@@ -651,7 +652,10 @@ watch(() => props.days, async (days, previous) => {
 		content: '';
 	}
 }
-@media (width <= 640px) {
+@media (width <= 768px) {
+	.calendar-time-scroll {
+		block-size: max(20rem, calc(100dvh - var(--header-height) - var(--page-gutter) - var(--calendar-command-height, 10rem) - 8rem));
+	}
 	.calendar-time-date {
 		flex-wrap: wrap;
 		gap: var(--space-1);

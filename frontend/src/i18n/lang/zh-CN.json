@@ -1429,6 +1429,7 @@
     "hideCompleted": "隐藏已完成",
     "importantOnly": "只看高优先级",
     "important": "高优先级",
+    "filterOptions": "筛选与显示",
     "displayOptions": "显示设置",
     "visibleDays": "可见天数",
     "dayCount": "{count} 天",

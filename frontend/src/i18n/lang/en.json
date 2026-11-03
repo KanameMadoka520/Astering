@@ -1452,6 +1452,7 @@
     "hideCompleted": "Hide completed",
     "importantOnly": "High priority only",
     "important": "High priority",
+    "filterOptions": "Filters & display",
     "displayOptions": "Display options",
     "visibleDays": "Visible days",
     "dayCount": "{count} days",

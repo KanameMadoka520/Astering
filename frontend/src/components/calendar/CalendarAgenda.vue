@@ -241,10 +241,13 @@ const groups = computed(() => props.dates
 
 .calendar-agenda-events {
 	display: grid;
+	grid-template-columns: minmax(0, 1fr);
 	gap: var(--space-2);
 	margin: 0;
 	padding: 0;
 	list-style: none;
+
+	> li { min-inline-size: 0; }
 }
 
 .calendar-day-empty {

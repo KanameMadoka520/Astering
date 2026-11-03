@@ -1,5 +1,5 @@
 import {writeFile} from 'node:fs/promises'
-import type {Locator} from '@playwright/test'
+import type {Locator, Page} from '@playwright/test'
 
 import {test, expect} from '../../support/fixtures'
 import {ProjectFactory} from '../../factories/project'
@@ -44,6 +44,17 @@ const labels = {
 		important: '只看高优先级',
 		hideDone: '隐藏已完成',
 	},
+}
+
+async function ensureCalendarFiltersVisible(page: Page) {
+	await expect(page.locator('.calendar-command-bar')).toBeVisible()
+	if (!await page.evaluate(() => matchMedia('(max-width: 768px)').matches)) return
+	const toggle = page.locator('.calendar-filter-toggle')
+	await expect(toggle).toBeVisible()
+	if (await toggle.getAttribute('aria-expanded') === 'false') {
+		await toggle.click()
+		await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+	}
 }
 
 async function expectOpaqueCalendarForm(dialog: Locator) {
@@ -343,13 +354,16 @@ for (const scenario of [
 			.evaluateAll(elements => elements.map(element => element.getBoundingClientRect().width))
 		expect(overlapping).toHaveLength(2)
 		expect(overlapping.every(width => width > 0)).toBe(true)
-		await page.getByText(text.options, {exact: true}).click()
+		await ensureCalendarFiltersVisible(page)
+		await page.getByRole('button', {name: text.options, exact: true}).click()
 		const timeline = page.locator('.calendar-time-scroll')
 		await timeline.evaluate(element => { element.scrollTop = 640 })
 		const beforeZoomRequests = requests.length
 		await page.getByRole('slider', {name: text.zoom, exact: true}).focus()
 		await page.keyboard.press('End')
 		await expect(page).toHaveURL(/zoom=250/)
+		await page.keyboard.press('Escape')
+		await expect(page.getByRole('slider', {name: text.zoom, exact: true})).not.toBeVisible()
 		await expect.poll(() => timeline.evaluate(element => element.scrollTop / 160)).toBeCloseTo(10, 1)
 		expect(requests.length).toBe(beforeZoomRequests)
 		const meeting = page.locator('.calendar-time-body [data-task-id="2"][data-event-kind="range"]')
@@ -386,17 +400,22 @@ for (const scenario of [
 		await expect(page.locator('.task-view')).toBeVisible()
 		await expect(page.locator('.calendar-date-input')).toHaveValue(anchor)
 		await expect(page.locator('.calendar-mode-picker select')).toHaveValue('week')
-		await expect(page.locator('.calendar-display-fields input[type="range"]')).toHaveValue('250')
 		await page.keyboard.press('Escape')
 		await expect(page.locator('.task-view')).not.toBeVisible()
 		await expect(page).toHaveURL(/date=2026-11-03/)
 		await expect(page).toHaveURL(/zoom=250/)
+		await ensureCalendarFiltersVisible(page)
+		await page.getByRole('button', {name: text.options, exact: true}).click()
+		await expect(page.getByRole('slider', {name: text.zoom, exact: true})).toHaveValue('250')
+		await page.keyboard.press('Escape')
+		await expect(page.getByRole('slider', {name: text.zoom, exact: true})).not.toBeVisible()
 
 		await page.getByRole('combobox', {name: text.view, exact: true}).selectOption(text.month)
 		await expect(page.locator('.calendar-month-cell')).toHaveCount(42)
 		await page.locator('[data-calendar-date="2026-11-03"]').click()
 		await expect(page.locator('.calendar-agenda-day[data-agenda-date="2026-11-03"]')).toContainText('Morning meeting')
 		await expect(page.locator('.calendar-occupancy')).toBeVisible()
+		await ensureCalendarFiltersVisible(page)
 		await page.getByLabel(text.important, {exact: true}).check()
 		await expect(page.locator('.calendar-agenda')).not.toContainText('Morning meeting')
 		await expect(page.locator('.calendar-agenda')).toContainText('Across local midnight')
@@ -404,13 +423,15 @@ for (const scenario of [
 		await page.getByLabel(text.hideDone, {exact: true}).uncheck()
 		await expect(page.locator('.calendar-agenda')).toContainText('Already completed')
 		await page.reload()
+		await ensureCalendarFiltersVisible(page)
 		await expect(page.getByLabel(text.hideDone, {exact: true})).not.toBeChecked()
 		await expect(page.getByRole('combobox', {name: text.view, exact: true})).toHaveValue('month')
 		await expect(page.locator('.calendar-agenda')).toContainText('Already completed')
 		expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 		await page.screenshot({animations: 'disabled', path: testInfo.outputPath(`calendar-month-${scenario.width}-${scenario.language}.png`)})
 
-		await page.getByRole('button', {name: text.create, exact: true}).click()
+		await page.locator(scenario.width <= 768 ? '.calendar-mobile-actions' : '.calendar-heading-actions')
+			.getByRole('button', {name: text.create, exact: true}).click()
 		const dialog = page.getByRole('dialog', {name: text.dialog, exact: true})
 		await dialog.getByPlaceholder(text.title, {exact: true}).fill('Created in the account time zone')
 		await dialog.getByRole('combobox').first().selectOption(String(project.id))
@@ -1030,6 +1051,8 @@ test('dense calendar keeps zoom local, overlap groups independent and records br
 	await page.getByRole('slider', {name: 'Time scale', exact: true}).focus()
 	await page.keyboard.press('End')
 	await expect(page).toHaveURL(/zoom=250/)
+	await page.keyboard.press('Escape')
+	await expect(page.getByRole('slider', {name: 'Time scale', exact: true})).not.toBeVisible()
 	await expect.poll(() => timeline.evaluate(element => element.scrollTop / 160)).toBeCloseTo(10, 1)
 	expect(requests.length).toBe(before)
 	const zoomRequests = requests.length - before
@@ -1196,6 +1219,183 @@ for (const scenario of [
 			await expect(page.locator('.calendar-time-body .calendar-event')).toContainText('Created from a blank quarter hour')
 			expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 			await page.screenshot({animations: 'disabled', path: testInfo.outputPath(`calendar-blank-create-${scenario.width}-${scenario.language}.png`)})
+		})
+	})
+}
+
+for (const scenario of [
+	{width: 2048, height: 1070, language: 'zh-CN', mobile: false, maximumTop: 200},
+	{width: 1440, height: 900, language: 'en', mobile: false, maximumTop: 220},
+	{width: 1280, height: 720, language: 'zh-CN', mobile: false, maximumTop: 260},
+	{width: 820, height: 900, language: 'en', mobile: false, maximumTop: undefined},
+	{width: 768, height: 900, language: 'zh-CN', mobile: true, maximumTop: undefined},
+	{width: 390, height: 844, language: 'zh-CN', mobile: true, maximumTop: 280},
+	{width: 320, height: 740, language: 'en', mobile: true, maximumTop: 280},
+] as const) {
+	test.describe(`calendar toolbar geometry input ${scenario.width}px`, () => {
+		test.use({hasTouch: scenario.mobile})
+		test(`toolbarGeometry ${scenario.width}px ${scenario.language} reserves the first screen for schedules`, async ({
+			authenticatedPage: page,
+			apiContext,
+			userToken,
+			currentUser,
+		}, testInfo) => {
+			const text = labels[scenario.language]
+			const title = scenario.language === 'zh-CN'
+				? '跨团队长期研发与个人安排——用于验证日历工具栏在长项目名称下仍然紧凑且可以正常筛选'
+				: 'Long-running research and personal planning across multiple teams with a deliberately long project name'
+			await page.setViewportSize({width: scenario.width, height: scenario.height})
+			await updateUserSettings(apiContext, userToken, {
+				language: scenario.language,
+				timezone: 'Asia/Shanghai',
+				week_start: 1,
+				frontend_settings: {time_format: '24h'},
+			})
+			const [project] = await ProjectFactory.create(1, {owner_id: currentUser.id, title})
+			await createDefaultViews(project.id)
+			await TaskFactory.create(2, {
+				project_id: project.id,
+				created_by_id: currentUser.id,
+				title: (index: number) => `Toolbar first-screen fixture ${index}`,
+				start_date: '2026-11-03T01:00:00Z',
+				end_date: '2026-11-03T02:00:00Z',
+				priority: (index: number) => index === 1 ? 4 : 1,
+			})
+			// Keep installation hints and the real app shell present in these viewport measurements.
+			await page.goto(`/calendar?date=${anchor}`)
+			const view = page.getByRole('combobox', {name: text.view, exact: true})
+			await expect(view).toHaveValue(scenario.mobile ? 'agenda' : 'week')
+			const content = page.locator(scenario.mobile ? '.calendar-date-panel' : '.calendar-time-scroll')
+			await expect(content).toBeVisible()
+			await expect(page.locator(scenario.mobile
+				? '.calendar-agenda-events [data-task-id="1"]'
+				: '.calendar-time-body [data-task-id="1"]')
+				.first()).toBeVisible()
+			const bounds = await content.boundingBox()
+			expect(bounds).not.toBeNull()
+			const viewport = await page.evaluate(() => ({
+				width: innerWidth,
+				height: innerHeight,
+				scrollWidth: document.documentElement.scrollWidth,
+				scrollY,
+			}))
+			await testInfo.attach('toolbar-geometry.json', {
+				body: JSON.stringify({scenario, content: bounds, viewport}, null, 2),
+				contentType: 'application/json',
+			})
+			await page.screenshot({
+				animations: 'disabled',
+				path: testInfo.outputPath(`calendar-toolbar-${scenario.width}-${scenario.language}.png`),
+			})
+			expect(viewport.scrollY, 'The first screen must not rely on prior page scrolling').toBe(0)
+			expect(viewport.scrollWidth, 'Long project names must not widen the viewport').toBeLessThanOrEqual(viewport.width)
+			if (scenario.maximumTop !== undefined) {
+				expect(bounds!.y, 'The calendar toolbar must leave room for actual schedules')
+					.toBeLessThanOrEqual(scenario.maximumTop)
+			}
+			const projectFilter = page.locator('.calendar-project-filter')
+			await expect(projectFilter).toHaveCount(1)
+			if (!scenario.mobile) {
+				await projectFilter.selectOption(String(project.id))
+				await expect(projectFilter).toHaveValue(String(project.id))
+				const selectedBounds = await projectFilter.boundingBox()
+				expect(selectedBounds).not.toBeNull()
+				expect(selectedBounds!.x + selectedBounds!.width).toBeLessThanOrEqual(scenario.width)
+				const before = await content.evaluate(element => element.getBoundingClientRect().top)
+				await page.getByText(text.options, {exact: true}).click()
+				await expect(page.getByRole('slider', {name: text.zoom, exact: true})).toBeVisible()
+				await expect.poll(() => content.evaluate(element => element.getBoundingClientRect().top))
+					.toBeCloseTo(before, 1)
+				await page.screenshot({
+					animations: 'disabled',
+					path: testInfo.outputPath(`calendar-toolbar-options-${scenario.width}-${scenario.language}.png`),
+				})
+				await page.keyboard.press('Escape')
+				await expect(page.getByRole('slider', {name: text.zoom, exact: true})).not.toBeVisible()
+				await expect.poll(() => content.evaluate(element => element.getBoundingClientRect().top))
+					.toBeCloseTo(before, 1)
+				return
+			}
+
+			const card = page.locator('.calendar-agenda-events [data-task-id="1"]').first()
+			const cardBounds = await card.boundingBox()
+			const actionsBounds = await page.locator('.calendar-mobile-actions').boundingBox()
+			expect(cardBounds).not.toBeNull()
+			expect(actionsBounds).not.toBeNull()
+			expect(cardBounds!.y).toBeGreaterThanOrEqual(0)
+			expect(cardBounds!.y + cardBounds!.height, 'The first schedule must fit above the fixed quick actions')
+				.toBeLessThanOrEqual(Math.min(scenario.height, actionsBounds!.y))
+			await expect(page.locator('.calendar-presentation')).not.toBeVisible()
+			await expect(projectFilter).not.toBeVisible()
+			const filters = page.locator('.calendar-filter-toggle')
+			await expect(filters).toHaveAttribute('aria-expanded', 'false')
+			const targets = await page.locator('.calendar-command-bar button:visible, .calendar-mobile-actions button:visible')
+				.evaluateAll(elements => elements.map(element => ({
+					width: element.getBoundingClientRect().width,
+					height: element.getBoundingClientRect().height,
+				})))
+			expect(targets.length).toBeGreaterThan(2)
+			for (const target of targets) {
+				expect(target.width, 'Mobile calendar buttons need a 44px touch target').toBeGreaterThanOrEqual(44)
+				expect(target.height, 'Mobile calendar buttons need a 44px touch target').toBeGreaterThanOrEqual(44)
+			}
+			if (scenario.width === 390) {
+				await view.selectOption('day')
+				await ensureCalendarFiltersVisible(page)
+				await page.getByRole('button', {name: text.options, exact: true}).click()
+				const sheet = page.getByRole('dialog', {name: text.options, exact: true})
+				await expect(sheet).toBeVisible()
+				await sheet.getByRole('slider', {name: text.zoom, exact: true}).focus()
+				await page.keyboard.press('Home')
+				await expect(page).toHaveURL(/zoom=25/)
+				await page.screenshot({
+					animations: 'disabled',
+					path: testInfo.outputPath('calendar-toolbar-mobile-display-sheet.png'),
+				})
+				await page.keyboard.press('Escape')
+				await expect(sheet).not.toBeVisible()
+				await expect(page.getByRole('slider', {name: text.zoom, exact: true})).not.toBeVisible()
+				await expect(view).toHaveValue('day')
+				await expect(page.locator('.calendar-date-input')).toHaveValue(anchor)
+				await page.getByRole('button', {name: text.options, exact: true}).click()
+				await expect(sheet.getByRole('slider', {name: text.zoom, exact: true})).toHaveValue('25')
+				await page.keyboard.press('Escape')
+				await expect(sheet).not.toBeVisible()
+				await filters.click()
+				await expect(filters).toHaveAttribute('aria-expanded', 'false')
+			}
+			await view.selectOption('month')
+			await view.selectOption('agenda')
+			await filters.click()
+			await expect(filters).toHaveAttribute('aria-expanded', 'true')
+			await projectFilter.selectOption(String(project.id))
+			await page.getByRole('checkbox', {name: text.important, exact: true}).check()
+			await page.getByRole('checkbox', {name: text.hideDone, exact: true}).uncheck()
+			await filters.click()
+			await expect(filters).toHaveAttribute('aria-expanded', 'false')
+			await expect(projectFilter).not.toBeVisible()
+			await expect(page.locator('.calendar-filter-count')).toHaveText('3')
+			for (const phase of ['changed', 'reloaded']) {
+				if (phase === 'reloaded') await page.reload()
+				await expect(view).toHaveValue('agenda')
+				await expect(page.locator('.calendar-date-input')).toHaveValue(anchor)
+				await expect(page.locator('.calendar-filter-count')).toHaveText('3')
+				await expect(projectFilter).toHaveCount(1)
+				const query = new URL(page.url()).searchParams
+				if (scenario.width === 390) expect(query.get('zoom')).toBe('25')
+				expect(query.get('date')).toBe(anchor)
+				expect(query.get('view')).toBe('agenda')
+				expect(query.get('project')).toBe(String(project.id))
+				expect(query.get('important')).toBe('1')
+				expect(query.get('done')).toBe('all')
+				await expect(page.locator('.calendar-agenda-events [data-task-id="1"]')).toHaveCount(1)
+				await expect(page.locator('.calendar-agenda-events [data-task-id="2"]')).toHaveCount(0)
+			}
+			expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+			await page.screenshot({
+				animations: 'disabled',
+				path: testInfo.outputPath(`calendar-toolbar-filtered-${scenario.width}-${scenario.language}.png`),
+			})
 		})
 	})
 }

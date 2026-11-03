@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {computed, nextTick, ref, shallowRef, watch} from 'vue'
-import {useMediaQuery} from '@vueuse/core'
+import {useResizeObserver} from '@vueuse/core'
 import {useRoute, useRouter, type LocationQuery, type LocationQueryRaw} from 'vue-router'
 import {useI18n} from 'vue-i18n'
 
@@ -9,6 +9,8 @@ import CalendarCreateDialog from '@/components/calendar/CalendarCreateDialog.vue
 import CalendarMonthView from '@/components/calendar/CalendarMonthView.vue'
 import CalendarTimeGrid from '@/components/calendar/CalendarTimeGrid.vue'
 import LoadError from '@/components/misc/state/LoadError.vue'
+import Popup from '@/components/misc/Popup.vue'
+import {useIsMobile} from '@/composables/useIsMobile'
 import {useCalendarTasksQuery, type CalendarTaskOptions} from '@/client/queries/calendar'
 import {isRequestContextAbort} from '@/client/requestContext'
 import {useGlobalNow} from '@/composables/useGlobalNow'
@@ -38,7 +40,16 @@ const route = useRoute()
 const auth = useAuthStore()
 const projects = useProjects()
 const {now} = useGlobalNow()
-const narrow = useMediaQuery('(max-width: 640px)')
+const narrow = useIsMobile()
+const filtersExpanded = ref(false)
+const displayOpen = ref(false)
+const displayTrigger = ref<HTMLElement>()
+const commandBar = ref<HTMLElement>()
+const commandHeight = ref(0)
+useResizeObserver(commandBar, ([entry]) => {
+	if (!entry) return
+	commandHeight.value = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height
+})
 const defaultView: CalendarView = narrow.value ? 'agenda' : 'week'
 function initialSavedQuery(): LocationQuery {
 	if (route.path === '/calendar') return {...route.query}
@@ -84,6 +95,12 @@ const pickerExpanded = ref(false)
 const projectId = computed(() => /^[1-9]\d*$/.test(queryValue('project')) ? Number(queryValue('project')) : undefined)
 const hideDone = computed(() => queryValue('done') !== 'all')
 const important = computed(() => queryValue('important') === '1')
+const extraFilterCount = computed(() => Number(projectId.value !== undefined)
+	+ Number(!hideDone.value)
+	+ Number(important.value))
+watch([view, narrow], () => {
+	displayOpen.value = false
+})
 const zoom = computed(() => {
 	const raw = queryValue('zoom')
 	const value = raw ? Number(raw) : 100
@@ -185,32 +202,76 @@ function created(taskId: number) {
 </script>
 
 <template>
-	<section class="calendar-page">
-		<header class="calendar-heading">
-			<div>
+	<section
+		class="calendar-page"
+		:style="{'--calendar-command-height': `${commandHeight}px`}"
+	>
+		<header
+			ref="commandBar"
+			class="calendar-command-bar"
+			:class="{'has-expanded-filters': filtersExpanded}"
+		>
+			<div class="is-sr-only">
 				<h1>{{ t('calendar.title') }}</h1>
-				<p class="calendar-subtitle">
-					{{ t('calendar.subtitle') }}
-				</p>
+				<p>{{ t('calendar.subtitle') }}</p>
 			</div>
-			<div class="calendar-heading-actions">
-				<RouterLink
-					class="calendar-control"
-					:to="{name: 'tasks.range'}"
+			<div class="calendar-primary-controls">
+				<div class="calendar-period-heading">
+					<h2>{{ periodLabel }}</h2>
+					<span class="calendar-timezone">{{ timezone }}</span>
+				</div>
+				<div class="calendar-view-controls">
+					<div
+						class="calendar-presentation"
+						role="group"
+						:aria-label="t('calendar.presentation')"
+					>
+						<button
+							v-for="mode in ['agenda', 'week', 'month'] as const"
+							:key="mode"
+							type="button"
+							:aria-pressed="mode === 'week' ? view === 'week' || view === 'day' : view === mode"
+							@click="updateQuery({view: mode, date: selectedDate, selected: undefined})"
+						>
+							{{ t(`calendar.presentations.${mode}`) }}
+						</button>
+					</div>
+					<label class="calendar-mode-picker">
+						<span class="is-sr-only">{{ t('calendar.viewLabel') }}</span>
+						<select
+							class="calendar-control"
+							:value="view"
+							:aria-label="t('calendar.viewLabel')"
+							@change="updateQuery({view: ($event.target as HTMLSelectElement).value})"
+						>
+							<option
+								v-for="mode in ['month', 'week', 'day', 'agenda']"
+								:key="mode"
+								:value="mode"
+							>{{ t(`calendar.views.${mode}`) }}</option>
+						</select>
+					</label>
+				</div>
+				<div
+					v-show="!narrow || filtersExpanded"
+					id="calendar-secondary-actions"
+					class="calendar-heading-actions"
 				>
-					{{ t('calendar.tasksLink') }}
-				</RouterLink>
-				<button
-					type="button"
-					class="calendar-control is-primary"
-					@click="openCreate()"
-				>
-					{{ t('calendar.create.label') }}
-				</button>
+					<RouterLink
+						class="calendar-control"
+						:to="{name: 'tasks.range'}"
+					>
+						{{ t('calendar.tasksLink') }}
+					</RouterLink>
+					<button
+						type="button"
+						class="calendar-control is-primary"
+						@click="openCreate()"
+					>
+						{{ t('calendar.create.label') }}
+					</button>
+				</div>
 			</div>
-		</header>
-
-		<div class="calendar-toolbar">
 			<div class="calendar-date-navigation">
 				<button
 					type="button"
@@ -222,7 +283,7 @@ function created(taskId: number) {
 				</button>
 				<button
 					type="button"
-					class="calendar-control"
+					class="calendar-control calendar-today-control"
 					@click="jumpToDate(today)"
 				>
 					{{ t('calendar.today') }}
@@ -245,139 +306,146 @@ function created(taskId: number) {
 					@change="jumpToDate(($event.target as HTMLInputElement).value)"
 				>
 			</div>
-			<label class="calendar-mode-picker">
-				<span class="is-sr-only">{{ t('calendar.viewLabel') }}</span>
-				<select
-					class="calendar-control"
-					:value="view"
-					:aria-label="t('calendar.viewLabel')"
-					@change="updateQuery({view: ($event.target as HTMLSelectElement).value})"
-				>
-					<option
-						v-for="mode in ['month', 'week', 'day', 'agenda']"
-						:key="mode"
-						:value="mode"
-					>{{ t(`calendar.views.${mode}`) }}</option>
-				</select>
-			</label>
-		</div>
-
-		<div
-			class="calendar-presentation"
-			role="group"
-			:aria-label="t('calendar.presentation')"
-		>
 			<button
-				v-for="mode in ['agenda', 'week', 'month'] as const"
-				:key="mode"
 				type="button"
-				:aria-pressed="mode === 'week' ? view === 'week' || view === 'day' : view === mode"
-				@click="updateQuery({view: mode, date: selectedDate, selected: undefined})"
+				class="calendar-control calendar-filter-toggle"
+				:title="t('calendar.filterOptions')"
+				:aria-expanded="filtersExpanded"
+				aria-controls="calendar-filter-fields calendar-secondary-actions"
+				@click="filtersExpanded = !filtersExpanded"
 			>
-				{{ t(`calendar.presentations.${mode}`) }}
+				<Icon icon="filter" />
+				<span :class="{'is-sr-only': narrow}">{{ t('calendar.filterOptions') }}</span>
+				<span
+					v-if="extraFilterCount"
+					class="calendar-filter-count"
+				>{{ extraFilterCount }}</span>
 			</button>
-		</div>
-
-		<div class="calendar-period-heading">
-			<h2>{{ periodLabel }}</h2>
-			<span class="calendar-timezone">{{ timezone }}</span>
-		</div>
-
-		<div class="calendar-filters">
-			<select
-				class="calendar-control calendar-project-filter"
-				:value="projectId ?? ''"
-				:aria-label="t('calendar.projectFilter')"
-				@change="updateQuery({project: ($event.target as HTMLSelectElement).value || undefined})"
+			<div
+				v-show="!narrow || filtersExpanded"
+				id="calendar-filter-fields"
+				class="calendar-filters"
 			>
-				<option value="">
-					{{ t('calendar.allProjects') }}
-				</option>
-				<option
-					v-for="project in projectChoices"
-					:key="project.id"
-					:value="project.id"
+				<select
+					class="calendar-control calendar-project-filter"
+					:value="projectId ?? ''"
+					:aria-label="t('calendar.projectFilter')"
+					@change="updateQuery({project: ($event.target as HTMLSelectElement).value || undefined})"
 				>
-					{{ project.title }}
-				</option>
-			</select>
-			<label class="calendar-check">
-				<input
-					type="checkbox"
-					:checked="hideDone"
-					@change="updateQuery({done: ($event.target as HTMLInputElement).checked ? undefined : 'all'})"
-				>
-				{{ t('calendar.hideCompleted') }}
-			</label>
-			<label class="calendar-check">
-				<input
-					type="checkbox"
-					:checked="important"
-					@change="updateQuery({important: ($event.target as HTMLInputElement).checked ? '1' : undefined})"
-				>
-				{{ t('calendar.importantOnly') }}
-			</label>
-			<details class="calendar-display-options">
-				<summary>{{ t('calendar.displayOptions') }}</summary>
-				<div class="calendar-display-fields">
-					<label v-if="view === 'week'">
-						<span>{{ t('calendar.visibleDays') }}</span>
-						<select
-							class="calendar-control"
-							:value="dayCount"
-							:aria-label="t('calendar.visibleDays')"
-							@change="updateQuery({days: ($event.target as HTMLSelectElement).value})"
-						>
-							<option
-								v-for="amount in [3, 7, 14]"
-								:key="amount"
-								:value="amount"
-							>{{ t('calendar.dayCount', {count: amount}) }}</option>
-						</select>
-					</label>
-					<label v-if="view === 'week' || view === 'day'">
-						<span>{{ t('calendar.zoom') }} · {{ zoom }}%</span>
-						<input
-							type="range"
-							min="25"
-							max="250"
-							step="5"
-							:value="zoom"
-							:aria-label="t('calendar.zoom')"
-							@input="updateQuery({zoom: ($event.target as HTMLInputElement).value})"
-						>
-					</label>
-					<label
-						v-if="view === 'month'"
-						class="calendar-check"
+					<option value="">
+						{{ t('calendar.allProjects') }}
+					</option>
+					<option
+						v-for="project in projectChoices"
+						:key="project.id"
+						:value="project.id"
 					>
-						<input
-							type="checkbox"
-							:checked="dense"
-							@change="updateQuery({density: ($event.target as HTMLInputElement).checked ? 'compact' : undefined})"
+						{{ project.title }}
+					</option>
+				</select>
+				<label class="calendar-check">
+					<input
+						type="checkbox"
+						:checked="hideDone"
+						@change="updateQuery({done: ($event.target as HTMLInputElement).checked ? undefined : 'all'})"
+					>
+					{{ t('calendar.hideCompleted') }}
+				</label>
+				<label class="calendar-check">
+					<input
+						type="checkbox"
+						:checked="important"
+						@change="updateQuery({important: ($event.target as HTMLInputElement).checked ? '1' : undefined})"
+					>
+					{{ t('calendar.importantOnly') }}
+				</label>
+				<Popup
+					v-model:open="displayOpen"
+					:anchor="displayTrigger"
+					placement="bottom-end"
+					surface
+					sheet-on-mobile
+					:sheet-title="t('calendar.displayOptions')"
+				>
+					<template #trigger="{toggle, isOpen}">
+						<button
+							ref="displayTrigger"
+							type="button"
+							class="calendar-control calendar-display-trigger"
+							:aria-expanded="isOpen"
+							aria-controls="calendar-display-fields"
+							@click="toggle()"
 						>
-						{{ t('calendar.compactMonth') }}
-					</label>
-					<label class="calendar-check">
-						<input
-							type="checkbox"
-							:checked="showLunar"
-							@change="updateQuery({lunar: ($event.target as HTMLInputElement).checked ? '1' : '0'})"
+							<Icon icon="sliders" />
+							{{ t('calendar.displayOptions') }}
+						</button>
+					</template>
+					<template #content>
+						<div
+							id="calendar-display-fields"
+							class="calendar-display-fields"
 						>
-						{{ t('calendar.showLunar') }}
-					</label>
-					<p>{{ t('calendar.displayHint') }}</p>
-				</div>
-			</details>
-		</div>
+							<label v-if="view === 'week'">
+								<span>{{ t('calendar.visibleDays') }}</span>
+								<select
+									class="calendar-control"
+									:value="dayCount"
+									:aria-label="t('calendar.visibleDays')"
+									@change="updateQuery({days: ($event.target as HTMLSelectElement).value})"
+								>
+									<option
+										v-for="amount in [3, 7, 14]"
+										:key="amount"
+										:value="amount"
+									>{{ t('calendar.dayCount', {count: amount}) }}</option>
+								</select>
+							</label>
+							<label v-if="view === 'week' || view === 'day'">
+								<span>{{ t('calendar.zoom') }} · {{ zoom }}%</span>
+								<input
+									type="range"
+									min="25"
+									max="250"
+									step="5"
+									:value="zoom"
+									:aria-label="t('calendar.zoom')"
+									@input="updateQuery({zoom: ($event.target as HTMLInputElement).value})"
+								>
+							</label>
+							<label
+								v-if="view === 'month'"
+								class="calendar-check"
+							>
+								<input
+									type="checkbox"
+									:checked="dense"
+									@change="updateQuery({density: ($event.target as HTMLInputElement).checked ? 'compact' : undefined})"
+								>
+								{{ t('calendar.compactMonth') }}
+							</label>
+							<label class="calendar-check">
+								<input
+									type="checkbox"
+									:checked="showLunar"
+									@change="updateQuery({lunar: ($event.target as HTMLInputElement).checked ? '1' : '0'})"
+								>
+								{{ t('calendar.showLunar') }}
+							</label>
+							<p>{{ t('calendar.displayHint') }}</p>
+						</div>
+					</template>
+				</Popup>
+			</div>
+			<div
+				class="calendar-load-status"
+				:class="{'is-sr-only': narrow && !filtersExpanded}"
+				role="status"
+				aria-live="polite"
+			>
+				{{ query.isFetching.value ? t(query.data.value ? 'calendar.refreshing' : 'calendar.loading') : t('calendar.itemCount', {count}) }}
+			</div>
+		</header>
 
-		<div
-			class="calendar-load-status"
-			role="status"
-			aria-live="polite"
-		>
-			{{ query.isFetching.value ? t(query.data.value ? 'calendar.refreshing' : 'calendar.loading') : t('calendar.itemCount', {count}) }}
-		</div>
 		<LoadError
 			v-if="failed"
 			:message="t('calendar.loadFailed')"
@@ -543,7 +611,7 @@ function created(taskId: number) {
 <style scoped lang="scss">
 .calendar-page {
 	display: grid;
-	gap: var(--space-4);
+	gap: var(--space-3);
 	min-inline-size: 0;
 	max-inline-size: 100%;
 	color: var(--text-primary);
@@ -560,8 +628,8 @@ function created(taskId: number) {
 	background: var(--surface-sunken);
 
 	button {
-		min-block-size: var(--target-min);
-		padding-inline: var(--space-4);
+		min-block-size: 2.25rem;
+		padding-inline: var(--space-3);
 		border: 0;
 		border-radius: var(--radius-full);
 		background: transparent;
@@ -603,9 +671,7 @@ function created(taskId: number) {
 
 .calendar-mobile-actions { display: none; }
 
-.calendar-heading,
 .calendar-heading-actions,
-.calendar-toolbar,
 .calendar-date-navigation,
 .calendar-period-heading,
 .calendar-filters {
@@ -616,31 +682,14 @@ function created(taskId: number) {
 	min-inline-size: 0;
 }
 
-.calendar-heading,
-.calendar-toolbar {
-	justify-content: space-between;
-}
-
-.calendar-heading h1 {
-	margin: 0;
-	font-size: var(--text-2xl);
-	font-weight: var(--weight-bold);
-}
-
-.calendar-subtitle {
-	margin-block: var(--space-1) 0;
-	color: var(--text-secondary);
-	font-size: var(--text-sm);
-}
-
 .calendar-control {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
 	min-inline-size: 0;
 	max-inline-size: 100%;
-	min-block-size: 2.75rem;
-	padding: var(--space-1) var(--space-3);
+	min-block-size: 2.25rem;
+	padding: var(--space-1) var(--space-2);
 	border: 1px solid var(--border-default);
 	border-radius: var(--radius-md);
 	background: var(--surface);
@@ -667,17 +716,17 @@ function created(taskId: number) {
 }
 
 .calendar-icon-button {
-	inline-size: 2.75rem;
+	inline-size: 2.25rem;
 	padding: 0;
 }
 
 .calendar-date-input {
-	inline-size: 10rem;
+	inline-size: 9rem;
 }
 
 .calendar-period-heading h2 {
 	margin: 0;
-	font-size: var(--text-xl);
+	font-size: var(--text-lg);
 	font-weight: var(--weight-semibold);
 }
 
@@ -687,7 +736,8 @@ function created(taskId: number) {
 }
 
 .calendar-project-filter {
-	max-inline-size: 15rem;
+	inline-size: 12rem;
+	max-inline-size: 12rem;
 	text-overflow: ellipsis;
 }
 
@@ -695,7 +745,7 @@ function created(taskId: number) {
 	display: inline-flex;
 	align-items: center;
 	gap: var(--space-2);
-	min-block-size: 2.75rem;
+	min-block-size: 2.25rem;
 	font-size: var(--text-sm);
 	cursor: pointer;
 
@@ -705,20 +755,9 @@ function created(taskId: number) {
 	}
 }
 
-.calendar-display-options {
-	min-inline-size: 0;
-
-	summary {
-		display: list-item;
-		min-block-size: 2.75rem;
-		padding: var(--space-3) var(--space-2);
-		color: var(--text-secondary);
-		font-size: var(--text-sm);
-		cursor: pointer;
-	}
-}
-
 .calendar-display-fields {
+	inline-size: min(32rem, calc(100vw - 2rem));
+	color: var(--text-primary);
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
@@ -758,6 +797,10 @@ function created(taskId: number) {
 }
 
 .calendar-load-status {
+	grid-area: status;
+	justify-self: end;
+	min-inline-size: 0;
+	max-inline-size: 11rem;
 	min-block-size: 1rem;
 }
 
@@ -788,24 +831,149 @@ function created(taskId: number) {
 	color: var(--text-secondary);
 	text-align: center;
 }
-
-@media (width <= 640px) {
+.calendar-command-bar {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	grid-template-areas:
+		'primary primary primary'
+		'navigation filters status';
+	align-items: center;
+	gap: var(--space-2) var(--space-3);
+	min-inline-size: 0;
+}
+.calendar-primary-controls {
+	grid-area: primary;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto auto;
+	grid-template-areas: 'period views actions';
+	align-items: center;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+.calendar-period-heading { grid-area: period; }
+.calendar-heading-actions {
+	grid-area: actions;
+	flex-wrap: nowrap;
+	justify-content: end;
+}
+.calendar-view-controls {
+	grid-area: views;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+.calendar-date-navigation {
+	grid-area: navigation;
+	flex-wrap: nowrap;
+	> button {
+		flex-shrink: 0;
+		white-space: nowrap;
+	}
+}
+.calendar-filters { grid-area: filters; }
+.calendar-filter-toggle { display: none; }
+.calendar-filter-count {
+	display: inline-grid;
+	min-inline-size: 1.25rem;
+	block-size: 1.25rem;
+	padding-inline: var(--space-1);
+	border-radius: var(--radius-full);
+	background: var(--surface-selected-strong);
+	color: var(--accent-text);
+	font-size: var(--text-xs);
+	place-items: center;
+}
+.calendar-display-trigger {
+	gap: var(--space-2);
+	white-space: nowrap;
+}
+@media (769px <= width <= 1100px) {
+	.calendar-primary-controls { display: contents; }
+	.calendar-presentation { display: none; }
+	.calendar-command-bar {
+		grid-template-columns: minmax(0, 1fr) auto;
+		grid-template-areas:
+			'period actions'
+			'navigation views'
+			'filters status';
+	}
+	.calendar-view-controls { justify-content: end; }
+}
+@media (width <= 768px) {
 	.calendar-page {
-		gap: var(--space-3);
 		padding-block-end: 5rem;
 	}
-
-	.calendar-heading-actions .is-primary { display: none; }
-
-	.calendar-presentation {
-		justify-self: stretch;
-
-		button {
-			flex: 1;
-			padding-inline: var(--space-2);
+	.calendar-command-bar {
+		grid-template-columns: minmax(0, 1fr) auto;
+		grid-template-areas:
+			'primary primary'
+			'navigation filter-toggle';
+		&.has-expanded-filters {
+			grid-template-areas:
+				'primary primary'
+				'navigation filter-toggle'
+				'status status'
+				'filters filters';
+			.calendar-primary-controls {
+				grid-template-areas:
+					'period views'
+					'actions actions';
+			}
 		}
 	}
-
+	.calendar-primary-controls {
+		grid-template-columns: minmax(0, 1fr) auto;
+		grid-template-areas: 'period views';
+	}
+	.calendar-period-heading {
+		gap: var(--space-1) var(--space-2);
+		h2 { font-size: var(--text-base); }
+	}
+	.calendar-view-controls { justify-content: end; }
+	.calendar-presentation,
+	.calendar-heading-actions .is-primary,
+	.calendar-today-control { display: none; }
+	.calendar-control,
+	.calendar-check,
+	.calendar-presentation button { min-block-size: 2.75rem; }
+	.calendar-control { padding-inline: var(--space-3); }
+	.calendar-icon-button { inline-size: 2.75rem; }
+	.calendar-date-input {
+		flex: 1;
+		inline-size: 8rem;
+	}
+	.calendar-filter-toggle {
+		grid-area: filter-toggle;
+		position: relative;
+		display: inline-flex;
+		justify-self: end;
+		inline-size: 2.75rem;
+		padding: 0;
+	}
+	.calendar-filter-count {
+		position: absolute;
+		inset-block-start: 1px;
+		inset-inline-end: 1px;
+		min-inline-size: 1rem;
+		block-size: 1rem;
+	}
+	.calendar-project-filter {
+		flex: 1 1 100%;
+		max-inline-size: 100%;
+	}
+	.calendar-heading-actions { justify-content: start; }
+	.calendar-display-fields {
+		inline-size: 100%;
+		padding: 0;
+		border: 0;
+		border-radius: 0;
+		> label { inline-size: 100%; }
+		input[type='range'] {
+			flex: 1;
+			min-inline-size: 0;
+		}
+	}
 	.calendar-mobile-actions {
 		position: fixed;
 		z-index: 25;
@@ -826,50 +994,5 @@ function created(taskId: number) {
 		}
 	}
 
-	.calendar-heading {
-		align-items: flex-start;
-	}
-
-	.calendar-heading h1 {
-		font-size: var(--text-xl);
-	}
-
-	.calendar-subtitle {
-		max-inline-size: 26rem;
-	}
-
-	.calendar-date-navigation {
-		flex: 1 1 100%;
-	}
-
-	.calendar-date-input {
-		flex: 1;
-		inline-size: 8rem;
-	}
-
-	.calendar-mode-picker {
-		flex: 1;
-
-		select {
-			inline-size: 100%;
-		}
-	}
-
-	.calendar-project-filter {
-		flex: 1 1 100%;
-		max-inline-size: 100%;
-	}
-
-	.calendar-display-options {
-		flex: 1 1 100%;
-	}
-
-	.calendar-period-heading h2 {
-		font-size: var(--text-base);
-	}
-
-	.calendar-selected-agenda {
-		display: block;
-	}
 }
 </style>
