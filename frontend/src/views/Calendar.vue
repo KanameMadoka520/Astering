@@ -964,8 +964,9 @@ function created(taskId: number) {
 	}
 	.calendar-heading-actions { justify-content: start; }
 	.calendar-display-fields {
+		box-sizing: border-box;
 		inline-size: 100%;
-		padding: 0;
+		padding: 0 var(--space-4) var(--space-4);
 		border: 0;
 		border-radius: 0;
 		> label { inline-size: 100%; }
