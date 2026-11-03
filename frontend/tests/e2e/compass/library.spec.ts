@@ -388,6 +388,8 @@ test.describe('Compass library', () => {
 		await expect(rowTitles(page)).toHaveText(everything)
 		// The old count is not announced as if it belonged to the new filter.
 		await expect(summary(page)).toHaveText('4 entries')
+		await expect(library(page).getByRole('status').filter({hasText: 'Loading the selected category'})).toBeVisible()
+		await expect(page.getByRole('status').filter({hasText: 'Still loading from the server'})).toBeVisible()
 
 		release()
 		await expect(rowTitles(page)).toHaveText([workshop.title])
@@ -396,6 +398,30 @@ test.describe('Compass library', () => {
 		await expect(summary(page)).toHaveText('1 entry')
 		await page.unrouteAll({behavior: 'ignoreErrors'})
 	})
+
+	for (const width of [1440, 320]) {
+		test(`weak network offline category navigation ${width}px retains content and resumes once online`, async ({authenticatedPage: page, apiContext, userToken}) => {
+			await page.setViewportSize({width, height: 850})
+			const {space, promise, workshop} = await seedLibrary(apiContext, userToken)
+			await openSpace(page, space.id)
+			const kinds = library(page).getByRole('group', {name: 'Kind'})
+			await kinds.getByRole('button', {name: 'Principles', exact: true}).click()
+			await expect(rowTitles(page)).toHaveText([promise.title])
+			try {
+				await page.context().setOffline(true)
+				await kinds.getByRole('button', {name: 'Visions', exact: true}).click()
+				await expect(kinds.getByRole('button', {name: 'Visions', exact: true})).toHaveAttribute('aria-pressed', 'true')
+				await expect(library(page).getByRole('status').filter({hasText: 'Waiting for a connection'})).toBeVisible()
+				await expect(rowTitles(page)).toHaveText([promise.title])
+				await expect(page.locator('.compass-hero')).toBeVisible()
+				await expectNoHorizontalOverflow(page)
+			} finally {
+				await page.context().setOffline(false)
+			}
+			await expect(rowTitles(page)).toHaveText([workshop.title])
+			await expect(library(page).locator('.compass-library__results')).toHaveAttribute('aria-busy', 'false')
+		})
+	}
 
 	test('a failed library read shows an inline error, and Retry recovers', async ({authenticatedPage: page, apiContext, userToken}) => {
 		const {space, promise, pier, shopping, workshop} = await seedLibrary(apiContext, userToken)
@@ -416,6 +442,74 @@ test.describe('Compass library', () => {
 		await expect(rowTitles(page)).toHaveText([workshop.title, shopping.title, pier.title, promise.title])
 		await expect(library(page).getByRole('alert')).toHaveCount(0)
 		await expect(summary(page)).toHaveText('4 entries')
+	})
+
+	test('weak network keeps visited categories instant while account refresh runs in the background', async ({authenticatedPage: page, apiContext, userToken}) => {
+		const {space, promise, shopping} = await seedLibrary(apiContext, userToken)
+		await openSpace(page, space.id)
+		const kinds = library(page).getByRole('group', {name: 'Kind'})
+		await kinds.getByRole('button', {name: 'Principles', exact: true}).click()
+		await expect(rowTitles(page)).toHaveText([promise.title])
+		await kinds.getByRole('button', {name: 'Notes', exact: true}).click()
+		await expect(rowTitles(page)).toHaveText([shopping.title])
+
+		// No interception: Chromium's real network is throttled, and the existing query cache stays intact.
+		const cdp = await page.context().newCDPSession(page)
+		const calls: string[] = []
+		page.on('request', request => {
+			const path = apiPath(request.url())
+			if (path && request.method() === 'GET') calls.push(path)
+		})
+		let userReturned = false
+		page.on('response', response => {
+			if (isApiCall(response, 'GET', '/user')) userReturned = true
+		})
+		try {
+			await cdp.send('Network.enable')
+			await cdp.send('Network.emulateNetworkConditions', {
+				offline: false, latency: 1500, downloadThroughput: 100 * 1024, uploadThroughput: 50 * 1024,
+			})
+			await page.clock.setFixedTime(new Date(Date.now() + 65_000))
+			const start = await page.evaluate(() => performance.now())
+			await kinds.getByRole('button', {name: 'Principles', exact: true}).click()
+			await expect(kinds.getByRole('button', {name: 'Principles', exact: true})).toHaveAttribute('aria-pressed', 'true', {timeout: 1000})
+			await expect(rowTitles(page)).toHaveText([promise.title], {timeout: 1000})
+			const elapsed = await page.evaluate(() => performance.now()) - start
+			expect(elapsed).toBeLessThan(1200)
+			expect(userReturned).toBe(false)
+			// The category is now stale and refreshes in place; it does not wait for /user before requesting.
+			await expect.poll(() => calls.includes(`/compass/spaces/${space.id}/entries`)).toBe(true)
+			expect(userReturned).toBe(false)
+			await expect.poll(() => userReturned, {timeout: 10_000}).toBe(true)
+			expect(calls.filter(path => path === `/compass/spaces/${space.id}`)).toHaveLength(0)
+			expect(calls.filter(path => path === `/compass/spaces/${space.id}/topics`)).toHaveLength(0)
+			await test.info().attach('weak-network-category-timing', {
+				body: JSON.stringify({latencyMs: 1500, categoryFeedbackMs: Math.round(elapsed), calls}, null, 2), contentType: 'application/json',
+			})
+		} finally {
+			await cdp.send('Network.emulateNetworkConditions', {offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1})
+			await cdp.detach()
+		}
+	})
+
+	test('weak network cached refresh errors preserve rows and offer an inline retry', async ({authenticatedPage: page, apiContext, userToken}) => {
+		const {space, promise, shopping} = await seedLibrary(apiContext, userToken)
+		await openSpace(page, space.id)
+		const kinds = library(page).getByRole('group', {name: 'Kind'})
+		await kinds.getByRole('button', {name: 'Principles', exact: true}).click()
+		await expect(rowTitles(page)).toHaveText([promise.title])
+		await kinds.getByRole('button', {name: 'Notes', exact: true}).click()
+		await expect(rowTitles(page)).toHaveText([shopping.title])
+		await page.clock.setFixedTime(new Date(Date.now() + 65_000))
+		await page.route(url => apiPath(url.href) === `/compass/spaces/${space.id}/entries` && url.searchParams.get('kind') === 'principle', route => route.fulfill({status: 503, json: {message: 'Temporary outage'}}))
+		await kinds.getByRole('button', {name: 'Principles', exact: true}).click()
+		const failure = library(page).getByRole('alert')
+		await expect(failure).toContainText('Could not update these results', {timeout: 15_000})
+		await expect(rowTitles(page)).toHaveText([promise.title])
+		await page.unrouteAll({behavior: 'ignoreErrors'})
+		await failure.getByRole('button', {name: 'Retry', exact: true}).click()
+		await expect(failure).toHaveCount(0)
+		await expect(rowTitles(page)).toHaveText([promise.title])
 	})
 
 	test('pinned entries lead the space as guiding lights', async ({authenticatedPage: page, apiContext, userToken}) => {

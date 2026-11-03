@@ -131,7 +131,7 @@ func TestTCYAIBucketToolWiring(t *testing.T) {
 	// Task deletion permission does not gate bucket deletion; review does.
 	assert.Contains(t, bucketToolNamesIn(AllTools("write", false)), "delete_bucket")
 	assert.Empty(t, bucketToolNamesIn(Tools("write", true)))
-	assert.Empty(t, bucketToolNamesIn(stableEntryTools()))
+	assert.Empty(t, bucketToolNamesIn(stableEntryTools(RunInput{})))
 
 	for _, approval := range []string{"auto", "smart", "review"} {
 		assert.True(t, NeedsReview("delete_bucket", RunInput{Mode: "write", Approval: approval}), approval)

@@ -25,8 +25,12 @@ import (
 
 // Stable provider-facing entry points keep discovery from rewriting the cached
 // tool prefix. Detailed contracts are appended as tool results, not hot-swapped.
-func stableEntryTools() []map[string]any {
-	result := Tools("read", false)
+func stableEntryTools(in RunInput) []map[string]any {
+	// Local write levels do not rewrite the provider prefix; disabled modules do
+	// remove their core reads instead of advertising unavailable capabilities.
+	entryInput := in
+	entryInput.Mode = "read"
+	result := coreTools(entryInput)
 	for _, t := range AllTools("read", false) {
 		if toolName(t) == "web_search" {
 			result = append(result, t)
@@ -42,18 +46,20 @@ func stableEntryTools() []map[string]any {
 // permissions into the reusable system prefix. Context is saved with its turn.
 func executionContext(in RunInput, c Connection, staleTools ...string) string {
 	data, err := json.Marshal(struct {
-		Time                 string   `json:"time"`
-		ProjectID            int64    `json:"project_id"`
-		Mode                 string   `json:"mode"`
-		AllowDelete          bool     `json:"allow_delete"`
-		Approval             string   `json:"approval"`
-		WriteProjectIDs      []int64  `json:"write_project_ids"`
-		PageContext          string   `json:"page_context_data"`
-		SearchMode           string   `json:"search_mode"`
-		WebSearchAvailable   bool     `json:"web_search_available"`
-		SubagentsEnabled     bool     `json:"subagents_enabled"`
-		MCPServerIDs         []string `json:"mcp_server_ids"`
-		StaleToolDefinitions []string `json:"stale_tool_definitions,omitempty"`
+		Time                 string      `json:"time"`
+		ProjectID            int64       `json:"project_id"`
+		Mode                 string      `json:"mode"`
+		AllowDelete          bool        `json:"allow_delete"`
+		Approval             string      `json:"approval"`
+		WriteProjectIDs      []int64     `json:"write_project_ids"`
+		PageContext          string      `json:"page_context_data"`
+		SearchMode           string      `json:"search_mode"`
+		WebSearchAvailable   bool        `json:"web_search_available"`
+		SubagentsEnabled     bool        `json:"subagents_enabled"`
+		MCPServerIDs         []string    `json:"mcp_server_ids"`
+		ToolModules          ToolModules `json:"tool_modules"`
+		EffectiveToolModules ToolModules `json:"effective_tool_modules"`
+		StaleToolDefinitions []string    `json:"stale_tool_definitions,omitempty"`
 	}{
 		Time:                 time.Now().In(time.FixedZone("Asia/Shanghai", 8*3600)).Format(time.RFC3339),
 		ProjectID:            in.ProjectID,
@@ -66,6 +72,8 @@ func executionContext(in RunInput, c Connection, staleTools ...string) string {
 		WebSearchAvailable:   c.WebSearchProtocol != "" && in.SearchMode != "off",
 		SubagentsEnabled:     in.EnableSubagents,
 		MCPServerIDs:         append([]string{}, in.MCPServerIDs...),
+		ToolModules:          normalizedToolModules(in.ToolModules),
+		EffectiveToolModules: effectiveToolModules(in),
 		StaleToolDefinitions: staleTools,
 	})
 	if err != nil {

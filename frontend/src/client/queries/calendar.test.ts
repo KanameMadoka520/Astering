@@ -129,3 +129,70 @@ describe('calendar shared query', () => {
 		} finally { unsubscribe(); client.clear() }
 	})
 })
+
+
+describe('calendar per-page recovery', () => {
+	beforeEach(() => vi.resetAllMocks())
+	it('retries only a transient failed tail page through the real query lifecycle', async () => {
+		const client = new QueryClient({defaultOptions: {queries: {retry: 1, retryDelay: 0}}})
+		let failed = false
+		sdk.tasksCalendar.mockImplementation(async ({query}) => {
+			if (query.page === 3 && !failed) {
+				failed = true
+				throw new TypeError('Failed to fetch')
+			}
+			return response(`Page ${query.page}`, query.page, 3)
+		})
+		try {
+			const data = await client.fetchQuery(calendarTasksQuery(window))
+			expect(data.items.map(item => item.id)).toEqual([1, 2, 3])
+			expect(sdk.tasksCalendar.mock.calls.map(([request]) => request.query.page)).toEqual([1, 2, 3, 3])
+		} finally {client.clear()}
+	})
+
+	it.each([403, 404, 429])('does not restart earlier pages after a permanent tail-page HTTP %s', async status => {
+		const client = new QueryClient({defaultOptions: {queries: {retry: 1, retryDelay: 0}}})
+		sdk.tasksCalendar.mockImplementation(async ({query}) => {
+			if (query.page === 3) throw {status}
+			return response(`Page ${query.page}`, query.page, 3)
+		})
+		try {
+			await expect(client.fetchQuery(calendarTasksQuery(window))).rejects.toMatchObject({status})
+			expect(sdk.tasksCalendar.mock.calls.map(([request]) => request.query.page)).toEqual([1, 2, 3])
+			expect(client.getQueryData(calendarTasksQuery(window).queryKey)).toBeUndefined()
+		} finally {client.clear()}
+	})
+
+	it('never commits partial pages after the last page exhausts its one retry', async () => {
+		const client = new QueryClient({defaultOptions: {queries: {retry: 5, retryDelay: 0}}})
+		sdk.tasksCalendar.mockImplementation(async ({query}) => {
+			if (query.page === 3) throw new TypeError('Failed to fetch')
+			return response(`Page ${query.page}`, query.page, 3)
+		})
+		try {
+			await expect(client.fetchQuery(calendarTasksQuery(window))).rejects.toThrow('Failed to fetch')
+			expect(sdk.tasksCalendar.mock.calls.map(([request]) => request.query.page)).toEqual([1, 2, 3, 3])
+			expect(client.getQueryData(calendarTasksQuery(window).queryKey)).toBeUndefined()
+		} finally {client.clear()}
+	})
+
+	it('does not issue the next page under a newly selected API', async () => {
+		const client = new QueryClient()
+		const originalApi = globalThis.window.API_URL
+		const first = gate<ReturnType<typeof response>>()
+		sdk.tasksCalendar.mockReturnValueOnce(first.promise)
+		try {
+			const pending = client.fetchQuery(calendarTasksQuery(window))
+			await vi.waitFor(() => expect(sdk.tasksCalendar).toHaveBeenCalledOnce())
+			globalThis.window.API_URL = 'https://other.example'
+			first.resolve(response('Old page', 1, 3))
+			await expect(pending).rejects.toMatchObject({name: 'AbortError'})
+			expect(sdk.tasksCalendar).toHaveBeenCalledOnce()
+			expect(client.getQueryData(calendarTasksQuery(window).queryKey)).toBeUndefined()
+		} finally {
+			globalThis.window.API_URL = originalApi
+			client.clear()
+		}
+	})
+
+})

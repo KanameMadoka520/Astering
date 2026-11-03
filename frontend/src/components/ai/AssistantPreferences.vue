@@ -8,7 +8,12 @@ import {builtinProfileIDs, normalizeOptions, profileOptions, validOptions, type 
 import {useProjects} from '@/composables/useProjects'
 import {useAronaDisplayPreferences, defaultAronaDisplayPreferences} from '@/composables/useAronaDisplayPreferences'
 import type {AssistantPreferences} from '@/client/generated'
-const props = defineProps<{options: AssistantOptions, profile: string}>()
+import ToolModuleControls from './ToolModuleControls.vue'
+const props = defineProps<{
+	options: AssistantOptions
+	profile: string
+	locked?: boolean
+}>()
 const emit = defineEmits<{close: [], apply: [options: AssistantOptions, profile: string]}>()
 const {t} = useI18n({useScope: 'global'})
 const preferences = useQuery(assistantPreferencesQuery())
@@ -34,10 +39,11 @@ const models = computed(() => settings.data.value?.connections.filter(c => c.kin
 const defaultID = computed(() => preferences.data.value?.default_profile || 'ask')
 const optionId = useId()
 function choose(id: string) {
+	if (props.locked) return
 	selected.value = id
 	const p = custom.value.find(p => p.id === id)
 	const mcpServerIDs = [...draft.value.mcp_server_ids]
-	draft.value = p ? normalizeOptions(p.options) : {...profileOptions(id), connection_id: draft.value.connection_id, project_id: draft.value.project_id}
+	draft.value = p ? normalizeOptions(p.options) : {...profileOptions(id), connection_id: draft.value.connection_id, project_id: draft.value.project_id, tool_modules: {...draft.value.tool_modules}}
 	draft.value.mcp_server_ids = mcpServerIDs
 	name.value = p?.name ?? ''
 	sourceProfile.value = p?.id ?? ''
@@ -124,7 +130,7 @@ function clickBackdrop(event: MouseEvent) {
 	pressedBackdrop = false
 }
 function apply() {
-	if (!valid.value || save.isPending.value) return
+	if (props.locked || !valid.value || save.isPending.value) return
 	emit('apply', normalizeOptions(draft.value), selected.value)
 	emit('close')
 }
@@ -192,6 +198,13 @@ onBeforeUnmount(() => {clearTimeout(displayNoteTimer); displayNoteRequest++; dia
 					</button>
 				</header>
 				<div class="preferences-scroll">
+					<p
+						v-if="locked"
+						class="help"
+						role="status"
+					>
+						{{ t('toolModules.locked') }}
+					</p>
 					<section :aria-label="t('assistantUI.scenarios')">
 						<h3>{{ t('assistantUI.scenarios') }}</h3>
 						<div class="preset-grid">
@@ -202,6 +215,7 @@ onBeforeUnmount(() => {clearTimeout(displayNoteTimer); displayNoteRequest++; dia
 								class="preset"
 								:class="{selected: selected === id}"
 								:aria-pressed="selected === id"
+								:disabled="locked"
 								@click="choose(id)"
 							>
 								<strong>{{ t(`assistantUI.presets.${id}.name`) }}</strong><span>{{ t(`assistantUI.presets.${id}.description`) }}</span><small v-if="defaultID === id">{{ t('assistantUI.default') }}</small>
@@ -210,6 +224,7 @@ onBeforeUnmount(() => {clearTimeout(displayNoteTimer); displayNoteRequest++; dia
 						<label v-if="custom.length">{{ t('assistantUI.myTemplates') }}<select
 							class="input"
 							:value="selected.startsWith('custom-') ? selected : ''"
+							:disabled="locked"
 							@change="choose(($event.target as HTMLSelectElement).value)"
 						><option
 							value=""
@@ -268,6 +283,7 @@ onBeforeUnmount(() => {clearTimeout(displayNoteTimer); displayNoteRequest++; dia
 					>
 						<label>{{ t('chat.model') }}<select
 							v-model="draft.connection_id"
+							:disabled="locked"
 							class="input"
 						><option value="">{{ t('chat.defaultModel') }}</option><option
 							v-for="c in models"
@@ -279,6 +295,7 @@ onBeforeUnmount(() => {clearTimeout(displayNoteTimer); displayNoteRequest++; dia
 						>{{ t('assistantUI.missingModel') }} · {{ draft.connection_id }}</option></select></label>
 						<label>{{ t('tcymc.text.current_project') }}<select
 							v-model.number="draft.project_id"
+							:disabled="locked"
 							class="input"
 						><option :value="0">{{ t('tcymc.text.all_accessible_projects') }}</option><option
 							v-for="p in projectList.projectsArray.filter(p => p.id > 0 && !p.is_archived)"
@@ -290,22 +307,23 @@ onBeforeUnmount(() => {clearTimeout(displayNoteTimer); displayNoteRequest++; dia
 						>#{{ draft.project_id }} · {{ t('assistantUI.unavailableProject') }}</option></select><small>{{ t('assistantUI.contextHelp') }}</small></label>
 						<label>{{ t('tcymc.text.working_mode') }}<select
 							v-model="draft.mode"
+							:disabled="locked"
 							class="input"
 							@change="draft.mode === 'read' && (draft.allow_delete = false)"
 						><option value="read">{{ t('tcymc.text.read_only_look_up_tasks_and_suggest_changes') }}</option><option value="write">{{ t('tcymc.text.execute_allow_creation_and_changes') }}</option></select><small>{{ t('assistantUI.modeHelp') }}</small></label>
 						<label>{{ t('agent.approvalPolicy') }}<select
 							v-model="draft.approval"
 							class="input"
-							:disabled="draft.mode === 'read'"
+							:disabled="locked || draft.mode === 'read'"
 						><option value="smart">{{ t('agent.smart') }}</option><option value="review">{{ t('agent.reviewAll') }}</option><option value="auto">{{ t('agent.auto') }}</option></select><small>{{ t(`assistantUI.approval_${draft.approval}`) }}</small></label>
 						<label class="checkbox"><input
 							v-model="draft.allow_delete"
 							type="checkbox"
-							:disabled="draft.mode === 'read'"
+							:disabled="locked || draft.mode === 'read'"
 						>{{ t('tcymc.text.allow_task_deletion_for_this_request') }}</label>
 						<fieldset
 							class="project-scope"
-							:disabled="draft.mode === 'read'"
+							:disabled="locked || draft.mode === 'read'"
 						>
 							<legend>{{ t('agent.writeScope') }}</legend><p class="help">
 								{{ t('agent.scopeHelp') }}
@@ -332,10 +350,21 @@ onBeforeUnmount(() => {clearTimeout(displayNoteTimer); displayNoteRequest++; dia
 						<div class="option-switch">
 							<label class="checkbox"><input
 								v-model="draft.enable_subagents"
+								:disabled="locked"
 								type="checkbox"
 								:aria-describedby="`${optionId}-subagents`"
 							>{{ t('assistantUI.subagents') }}<span class="experimental-tag">{{ t('assistantUI.experimental') }}</span></label><small :id="`${optionId}-subagents`">{{ t('assistantUI.subagentsHelp') }}</small>
 						</div>
+					</section>
+					<section :aria-label="t('toolModules.title')">
+						<h3>{{ t('toolModules.title') }}</h3>
+						<ToolModuleControls
+							:modules="draft.tool_modules"
+							:mode="draft.mode"
+							:mcp-selected="draft.mcp_server_ids.length > 0"
+							:disabled="locked"
+							@change="Object.assign(draft, $event); edited()"
+						/>
 					</section>
 					<details class="advanced">
 						<summary>{{ t('assistantUI.advanced') }}</summary><p class="help">
@@ -349,6 +378,7 @@ onBeforeUnmount(() => {clearTimeout(displayNoteTimer); displayNoteRequest++; dia
 								:key="field"
 							>{{ t(`assistantUI.${field}`) }}<input
 								v-model.number="draft[field]"
+								:disabled="locked"
 								class="input"
 								type="number"
 								required
@@ -359,6 +389,7 @@ onBeforeUnmount(() => {clearTimeout(displayNoteTimer); displayNoteRequest++; dia
 							<div class="option-switch">
 								<label class="checkbox"><input
 									v-model="draft.stop_at_segment_limit"
+									:disabled="locked"
 									type="checkbox"
 									:aria-describedby="`${optionId}-segments`"
 								>{{ t('assistantUI.stopAtSegmentLimit') }}</label><small :id="`${optionId}-segments`">{{ t('assistantUI.stopAtSegmentLimitHelp') }}</small>
@@ -465,7 +496,7 @@ onBeforeUnmount(() => {clearTimeout(displayNoteTimer); displayNoteRequest++; dia
 					</button><button
 						class="apply-button"
 						type="submit"
-						:disabled="!valid || save.isPending.value"
+						:disabled="locked || !valid || save.isPending.value"
 					>
 						{{ t('assistantUI.apply') }}
 					</button>

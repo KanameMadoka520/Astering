@@ -223,6 +223,32 @@ func TestTCYAIConversations(t *testing.T) {
 	assert.Equal(t, 200, prompt.Code)
 	assert.NotContains(t, prompt.Body.String(), `required\\\":null`)
 	assert.Equal(t, "no-store", prompt.Header().Get("Cache-Control"))
+	// The diagnostic preview must describe the current module selection rather
+	// than exposing an unrelated full catalog, and must remain private.
+	for _, preview := range []struct {
+		query   string
+		present []string
+		absent  []string
+	}{
+		{query: "mode=write&project_tasks=off&compass=read", present: []string{"get_compass_entry", "find_tools"}, absent: []string{"list_projects", "update_task", "create_compass_entry"}},
+		{query: "mode=write&project_tasks=off&compass=off", present: []string{"find_tools"}, absent: []string{"list_projects", "get_compass_entry", "create_compass_entry"}},
+		{query: "mode=read", present: []string{"list_projects"}, absent: []string{"get_compass_entry", "update_task"}},
+	} {
+		res := humaRequest(t, e, "GET", "/api/v2/ai/prompt?"+preview.query, "", token, "")
+		require.Equal(t, 200, res.Code, res.Body.String())
+		assert.Equal(t, "no-store", res.Header().Get("Cache-Control"))
+		var body struct {
+			ToolSchema string `json:"tool_schema"`
+		}
+		require.NoError(t, json.Unmarshal(res.Body.Bytes(), &body))
+		for _, name := range preview.present {
+			assert.Contains(t, body.ToolSchema, `"name": "`+name+`"`, preview.query)
+		}
+		for _, name := range preview.absent {
+			assert.NotContains(t, body.ToolSchema, `"name": "`+name+`"`, preview.query)
+		}
+	}
+	assert.Equal(t, 422, humaRequest(t, e, "GET", "/api/v2/ai/prompt?compass=invalid", "", token, "").Code)
 	assert.NotContains(t, strings.Join([]string{create.Body.String(), compact.Body.String(), fork.Body.String()}, ""), "private-fixture")
 }
 

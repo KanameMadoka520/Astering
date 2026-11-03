@@ -1,5 +1,17 @@
 // Tools whose labels live under agent.tools.<name>.
 const AGENT_TOOLS = [
+	'list_compass_spaces',
+	'get_compass_space',
+	'list_compass_entries',
+	'get_compass_entry',
+	'list_compass_revisions',
+	'get_compass_revision',
+	'list_compass_topics',
+	'create_compass_space',
+	'update_compass_space',
+	'create_compass_entry',
+	'update_compass_entry',
+	'restore_compass_revision',
 	'list_project_history',
 	'list_project_timeline',
 	'list_calendar_events',

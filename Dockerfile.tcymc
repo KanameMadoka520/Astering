@@ -5,7 +5,7 @@ ENV PUPPETEER_SKIP_DOWNLOAD=true CYPRESS_INSTALL_BINARY=0
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
 RUN npm install -g corepack && corepack enable && pnpm install --frozen-lockfile
 COPY frontend/ ./
-ARG RELEASE_VERSION=v2.7.1-tcymc.48
+ARG RELEASE_VERSION=v2.7.1-tcymc.49
 RUN printf '{"VERSION":"%s"}\n' "$RELEASE_VERSION" > src/version.json && pnpm build
 
 FROM golang:1.27.3-alpine@sha256:f2c872bcee949b7be9c490efd02b48a8a2fbf947cdf533f1c58525ec9d8170fd AS backend
@@ -16,14 +16,14 @@ COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . ./
 COPY --from=frontend /build/dist ./frontend/dist
-ARG RELEASE_VERSION=v2.7.1-tcymc.48
+ARG RELEASE_VERSION=v2.7.1-tcymc.49
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     go build -trimpath -tags 'netgo osusergo' \
     -ldflags "-s -w -linkmode external -extldflags '-static' -X code.vikunja.io/api/pkg/version.Version=$RELEASE_VERSION" \
     -o /out/vikunja . && mkdir -p /out/tmp && chmod 1777 /out/tmp
 
 FROM scratch
-ARG RELEASE_VERSION=v2.7.1-tcymc.48
+ARG RELEASE_VERSION=v2.7.1-tcymc.49
 ARG SOURCE_COMMIT
 LABEL org.opencontainers.image.version="$RELEASE_VERSION" \
       org.opencontainers.image.revision="$SOURCE_COMMIT" \

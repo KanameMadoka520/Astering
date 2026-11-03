@@ -6,8 +6,9 @@ import {
 	type CalendarDayBoundary,
 	type CalendarTasksResponse as CalendarPage,
 } from '@/client/generated'
-import {captureClientRequestContext, isClientRequestContextCurrent} from '@/client/requestContext'
+import {assertClientRequestContext, captureClientRequestContext, isClientRequestContextCurrent} from '@/client/requestContext'
 import {fetchAllPages} from './fetchAllPages'
+import {retryRead} from '@/client/queryClient'
 
 export type CalendarTaskItem = CalendarTask
 export type CalendarDay = Required<CalendarDayBoundary>
@@ -33,9 +34,11 @@ export function calendarTasksQuery(options: CalendarTaskOptions) {
 	return queryOptions({
 		queryKey: calendarKeys.window(options),
 		queryFn: async ({signal}): Promise<CalendarTasksResponse> => {
+			const owner = captureClientRequestContext()
 			let first: CalendarPage | undefined
 			const items = await fetchAllPages<CalendarTaskItem>(async page => {
 				signal.throwIfAborted()
+				assertClientRequestContext(owner)
 				const data = (await tasksCalendar({
 					query: {
 						from: options.from,
@@ -47,9 +50,10 @@ export function calendarTasksQuery(options: CalendarTaskOptions) {
 					},
 					signal,
 				})).data!
+				assertClientRequestContext(owner)
 				first ??= data
 				return data
-			})
+			}, {signal, retryPage: retryRead})
 			signal.throwIfAborted()
 			return {
 				...first!,
@@ -61,6 +65,8 @@ export function calendarTasksQuery(options: CalendarTaskOptions) {
 				})),
 			}
 		},
+		// Earlier pages stay in this attempt; only a transient failed page retries once.
+		retry: false,
 		staleTime: 30_000,
 		gcTime: 120_000,
 		meta: {handlesError: true},

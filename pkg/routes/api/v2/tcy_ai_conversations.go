@@ -282,9 +282,11 @@ func RegisterTCYAIConversationRoutes(api huma.API) {
 		return conversationOut(ctx, value, err)
 	})
 	Register(api, op("tcy-ai-prompt", "GET", "/ai/prompt", "Inspect the effective system prompt and available tool definitions"), func(ctx context.Context, in *struct {
-		ProjectID   int64  `query:"project_id" minimum:"0" doc:"Optional project context."`
-		Mode        string `query:"mode" default:"read" enum:"read,write" doc:"read permits queries; write also allows task creation and updates."`
-		AllowDelete bool   `query:"allow_delete" doc:"Expose the deletion tool only when write mode is selected."`
+		ProjectID    int64  `query:"project_id" minimum:"0" doc:"Optional project context."`
+		Mode         string `query:"mode" default:"read" enum:"read,write" doc:"read permits queries; write also allows task creation and updates."`
+		AllowDelete  bool   `query:"allow_delete" doc:"Expose the deletion tool only when write mode is selected."`
+		ProjectTasks string `query:"project_tasks" default:"write" enum:"off,read,write" doc:"Selected project and task tool capability; global mode remains the write ceiling."`
+		Compass      string `query:"compass" default:"off" enum:"off,read,write" doc:"Selected Compass capability; off by default."`
 	}) (*struct {
 		CacheControl string `header:"Cache-Control"`
 		Body         struct {
@@ -307,8 +309,9 @@ func RegisterTCYAIConversationRoutes(api huma.API) {
 		if err != nil {
 			return nil, aiError(ctx, err)
 		}
-		body.Body.SystemPrompt = tcyai.SystemPrompt(ctx, tcyai.RunInput{Persona: settings.Persona, ProjectID: in.ProjectID, Mode: in.Mode, AllowDelete: in.AllowDelete})
-		raw, err := json.MarshalIndent(tcyai.AllTools(in.Mode, in.AllowDelete), "", "  ")
+		input := tcyai.RunInput{Persona: settings.Persona, ProjectID: in.ProjectID, Mode: in.Mode, AllowDelete: in.AllowDelete, ToolModules: tcyai.ToolModules{ProjectTasks: in.ProjectTasks, Compass: in.Compass}}
+		body.Body.SystemPrompt = tcyai.SystemPrompt(ctx, input)
+		raw, err := json.MarshalIndent(tcyai.ScopedTools(input), "", "  ")
 		if err != nil {
 			return nil, err
 		}

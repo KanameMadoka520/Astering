@@ -149,6 +149,7 @@ func CurrentOperation(ctx context.Context) *Operation {
 }
 
 func normalizeRun(in RunInput) RunInput {
+	in.ToolModules = normalizedToolModules(in.ToolModules)
 	if in.SearchMode == "" {
 		in.SearchMode = "auto"
 	}
@@ -195,7 +196,7 @@ func NewAgentState(ctx context.Context, c Connection, input RunInput) *AgentStat
 	for _, m := range messages {
 		state.Messages = append(state.Messages, storedMessage{Message: m, Native: m.Native})
 	}
-	for _, t := range Tools(in.Mode, in.AllowDelete) {
+	for _, t := range coreTools(in) {
 		state.Available = append(state.Available, toolName(t))
 	}
 	if stale := state.restoreDiscoveredTools(); len(stale) > 0 {
@@ -217,7 +218,7 @@ func (state *AgentState) messages() []Message {
 }
 func (state *AgentState) tools() []map[string]any {
 	if state.CacheStable {
-		return stableEntryTools()
+		return stableEntryTools(state.Input)
 	}
 	result := []map[string]any{}
 	for _, t := range state.catalog() {
@@ -728,6 +729,9 @@ func ReviewAgent(ctx context.Context, state *AgentState, in ReviewInput, prepare
 			r.Pending = &updated
 			return nil
 		default:
+			if _, err := ValidateTool(proposal.Tool, json.RawMessage(proposal.Arguments), state.Input); err != nil {
+				return err
+			}
 			proposal.Approved = true
 			state.Approved = &proposal
 		}
@@ -742,7 +746,7 @@ func ReviewAgent(ctx context.Context, state *AgentState, in ReviewInput, prepare
 }
 
 func (state *AgentState) catalog() []map[string]any {
-	all := AllTools(state.Input.Mode, state.Input.AllowDelete)
+	all := ScopedTools(state.Input)
 	if !state.Input.EnableSubagents {
 		all = slices.DeleteFunc(all, func(t map[string]any) bool { return toolName(t) == "delegate_tasks" })
 	}

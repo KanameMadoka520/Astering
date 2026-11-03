@@ -3,7 +3,7 @@ import {flushPromises, mount, type VueWrapper} from '@vue/test-utils'
 import {createPinia, setActivePinia} from 'pinia'
 import {createI18n} from 'vue-i18n'
 import {createMemoryHistory, createRouter} from 'vue-router'
-import {QueryClient, VueQueryPlugin} from '@tanstack/vue-query'
+import {QueryClient, VueQueryPlugin, onlineManager} from '@tanstack/vue-query'
 
 const sdk = vi.hoisted(() => ({projectHistory: vi.fn()}))
 vi.mock('@/client/generated', async original => ({...await original<typeof import('@/client/generated')>(), ...sdk}))
@@ -15,10 +15,10 @@ import en from '@/i18n/lang/en.json'
 const i18n = createI18n({legacy: false, locale: 'en', messages: {en}})
 let wrapper: VueWrapper | undefined
 let client: QueryClient
+let router: ReturnType<typeof createRouter>
 
 function history() {
 	return {data: {
-		year: 2026,
 		projects: 1,
 		milestones: 1,
 		active_days: 1,
@@ -31,7 +31,7 @@ function history() {
 }
 
 async function mountView() {
-	const router = createRouter({history: createMemoryHistory(), routes: [
+	router = createRouter({history: createMemoryHistory(), routes: [
 		{path: '/projects/history', name: 'projects.history', component: {template: '<div />'}},
 		{path: '/projects/:projectId', name: 'project.index', component: {template: '<div />'}},
 	]})
@@ -51,6 +51,7 @@ async function mountView() {
 
 beforeEach(() => {
 	setActivePinia(createPinia())
+	onlineManager.setOnline(true)
 	sdk.projectHistory.mockReset()
 	document.body.innerHTML = ''
 })
@@ -58,9 +59,23 @@ beforeEach(() => {
 afterEach(() => {
 	wrapper?.unmount()
 	wrapper = undefined
+	client?.clear()
+	onlineManager.setOnline(true)
 })
 
 describe('ProjectLifecycle', () => {
+	it('retains lifecycle records from the displayed year while a new year waits offline', async () => {
+		sdk.projectHistory.mockResolvedValue(history())
+		const view = await mountView()
+		onlineManager.setOnline(false)
+		await router.push('/projects/history?year=2027')
+		await flushPromises()
+		expect(view.text()).toContain('Garden shed')
+		expect(view.get('.history-connection-status').text()).toContain('2026')
+		expect(view.find('[data-date="2026-03-02"]').exists()).toBe(true)
+		expect(sdk.projectHistory).toHaveBeenCalledTimes(1)
+	})
+
 	it('keeps the records on screen when a background refresh fails, and says so', async () => {
 		sdk.projectHistory.mockResolvedValueOnce(history())
 		const view = await mountView()

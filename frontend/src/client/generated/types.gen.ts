@@ -296,6 +296,10 @@ export type AssistantOptions = {
      */
     token_budget?: number;
     /**
+     * Selected local module access for future runs; global mode remains the write ceiling. Legacy omitted compass stays disabled.
+     */
+    tool_modules?: ToolModules;
+    /**
      * Optional additional write restriction, never a permission grant.
      */
     write_project_ids?: Array<number> | null;
@@ -3991,6 +3995,10 @@ export type RunInput = {
      */
     token_budget?: number;
     /**
+     * Per-turn local module access. Missing project_tasks preserves legacy global mode; missing compass disables star-chart access. Each module remains capped by mode and account permissions.
+     */
+    tool_modules?: ToolModules;
+    /**
      * Optional explicit project scope for writes. Empty uses normal account access. Current project is context only.
      */
     write_project_ids?: Array<number> | null;
@@ -6003,6 +6011,17 @@ export type ToolCall = {
     function?: FunctionCall;
     id?: string;
     type?: string;
+};
+
+export type ToolModules = {
+    /**
+     * Private star-chart spaces and entries. Omission disables these tools.
+     */
+    compass?: 'off' | 'read' | 'write';
+    /**
+     * Project and task tools. Omission preserves legacy access under the global mode.
+     */
+    project_tasks?: 'off' | 'read' | 'write';
 };
 
 export type TotpDisableBodyBody = {
@@ -8479,6 +8498,10 @@ export type RunInputWritable = {
      */
     token_budget?: number;
     /**
+     * Per-turn local module access. Missing project_tasks preserves legacy global mode; missing compass disables star-chart access. Each module remains capped by mode and account permissions.
+     */
+    tool_modules?: ToolModules;
+    /**
      * Optional explicit project scope for writes. Empty uses normal account access. Current project is context only.
      */
     write_project_ids?: Array<number> | null;
@@ -10778,6 +10801,14 @@ export type TcyAiPromptData = {
          * Expose the deletion tool only when write mode is selected.
          */
         allow_delete?: boolean;
+        /**
+         * Selected project and task tool capability; global mode remains the write ceiling.
+         */
+        project_tasks?: 'off' | 'read' | 'write';
+        /**
+         * Selected Compass capability; off by default.
+         */
+        compass?: 'off' | 'read' | 'write';
     };
     url: '/ai/prompt';
 };

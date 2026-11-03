@@ -216,9 +216,6 @@ function getBuildConfig(env: Record<string, string>) {
 					],
 				},
 			}),
-			vueDevTools({
-				launchEditor: env.VUE_DEVTOOLS_LAUNCH_EDITOR || 'code',
-			}),
 			// Put the Sentry vite plugin after all other plugins
 			sentryVitePlugin(getSentryConfig(env)),
 		],
@@ -272,6 +269,12 @@ function getServeConfig(env: Record<string, string>) {
 	// override prod settings with dev settings
 	return {
 		...buildConfig,
+		plugins: [
+			...buildConfig.plugins,
+			vueDevTools({
+				launchEditor: env.VUE_DEVTOOLS_LAUNCH_EDITOR || 'code',
+			}),
+		],
 		server: {
 			...buildConfig.server,
 			...(env.DEV_PROXY && { proxy: {

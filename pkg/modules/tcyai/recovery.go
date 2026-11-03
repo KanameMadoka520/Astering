@@ -97,7 +97,8 @@ func retryableTurn(record *conversationFile, index int) bool {
 func retryInput(turn ChatTurn) RunInput {
 	o := turn.Result.Configuration
 	return RunInput{MCPServerIDs: append([]string{}, o.MCPServerIDs...), StopAtSegmentLimit: o.StopAtSegmentLimit, EnableSubagents: o.EnableSubagents, Message: turn.Prompt, RequestID: turn.RequestID, ConnectionID: o.ConnectionID,
-		ProjectID: o.ProjectID, Mode: o.Mode, AllowDelete: o.AllowDelete, Approval: o.Approval,
+		ToolModules: o.ToolModules,
+		ProjectID:   o.ProjectID, Mode: o.Mode, AllowDelete: o.AllowDelete, Approval: o.Approval,
 		WriteProjectIDs: append([]int64{}, o.WriteProjectIDs...), MaxRounds: o.MaxRounds,
 		MaxOperations: o.MaxOperations, TimeoutSeconds: o.TimeoutSeconds, TokenBudget: o.TokenBudget,
 		SearchMode: o.SearchMode}

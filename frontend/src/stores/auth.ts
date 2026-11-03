@@ -1,5 +1,5 @@
 import {CancelledError, useQuery} from '@tanstack/vue-query'
-import {currentUserQuery, normalizeUserSettings, refreshCurrentUser} from '@/client/queries/account'
+import {currentUserQuery, normalizeUserSettings, refreshCurrentUser, type UserInfoResponse} from '@/client/queries/account'
 import {computed, readonly, ref, watch} from 'vue'
 import {acceptHMRUpdate, defineStore} from 'pinia'
 
@@ -49,6 +49,12 @@ import router from '@/router'
 import {navigableUrl, useConfigStore} from '@/stores/config'
 import type {IProvider} from '@/types/IProvider'
 import {queryClient} from '@/client/queryClient'
+import {
+	captureClientRequestContext,
+	isClientRequestContextCurrent,
+	isRequestContextAbort,
+	type ClientRequestContext,
+} from '@/client/requestContext'
 import {clearStorageKeepingScopedDrafts} from '@/helpers/localDrafts'
 
 const ACCOUNT_GONE_ERROR_CODES: readonly number[] = [
@@ -68,6 +74,16 @@ type JwtClaims = SessionClaims & {
 	is_admin?: boolean,
 	sid?: string,
 }
+
+type UserInfoScope = {
+	context: ClientRequestContext
+	id: number
+	type: AuthType
+	sid: string | null
+}
+
+const USER_INFO_REFRESH_MS = 60_000
+const MAX_USER_INFO_RETRY_MS = 10 * USER_INFO_REFRESH_MS
 
 // is_admin is deliberately absent: it comes from GET /user, never from the unverified JWT.
 function userFromClaims({id, username}: JwtClaims): UserInfoBody {
@@ -169,6 +185,13 @@ export const useAuthStore = defineStore('auth', () => {
 	
 	const currentSessionId = ref<string | null>(null)
 	const lastUserInfoRefresh = ref<Date | null>(null)
+	let verifiedUserInfoScope: UserInfoScope | null = null
+	let userInfoFailures = 0
+	let nextUserInfoRetryAt = 0
+	let userInfoRefresh: {
+		scope: UserInfoScope
+		promise: Promise<UserInfoResponse | undefined>
+	} | null = null
 	// The JWT whose refresh failed for good this boot.
 	let failedRefresh: string | null = null
 	let refreshRetryTimer: ReturnType<typeof setTimeout> | undefined
@@ -190,7 +213,10 @@ export const useAuthStore = defineStore('auth', () => {
 
 	function setSession(claims: JwtClaims | null) {
 		const identityChanged = session.value?.id !== claims?.id || session.value?.type !== claims?.type
-		if (identityChanged) queryClient.clear()
+		if (identityChanged) {
+			queryClient.clear()
+			resetUserInfoVerification()
+		}
 		const usernameChanged = session.value?.username !== claims?.username
 		session.value = claims
 		if (identityChanged) useWebSocket().closeStaleConnection()
@@ -216,6 +242,28 @@ export const useAuthStore = defineStore('auth', () => {
 
 	function updateLastUserRefresh() {
 		lastUserInfoRefresh.value = new Date()
+	}
+
+	function resetUserInfoVerification() {
+		verifiedUserInfoScope = null
+		userInfoFailures = 0
+		nextUserInfoRetryAt = 0
+	}
+
+	function userInfoScope(): UserInfoScope {
+		return {
+			context: captureClientRequestContext(),
+			id: session.value?.id ?? 0,
+			type: session.value?.type ?? AUTH_TYPES.USER,
+			sid: session.value?.sid ?? null,
+		}
+	}
+
+	function isUserInfoScopeCurrent(scope: UserInfoScope): boolean {
+		return isClientRequestContextCurrent(scope.context)
+			&& scope.id === (session.value?.id ?? 0)
+			&& scope.type === (session.value?.type ?? AUTH_TYPES.USER)
+			&& scope.sid === (session.value?.sid ?? null)
 	}
 
 	function cancelRefreshRetry() {
@@ -251,11 +299,12 @@ export const useAuthStore = defineStore('auth', () => {
 		}
 	}
 
-	// The debounce reset makes the following checkAuth() parse the new JWT instead of returning early.
+	// Explicit login must verify this account before navigation can reuse its metadata.
 	function adoptSession(token: string | undefined, persist: boolean) {
 		if (!token) throw new Error('Authentication response has no token')
 		saveToken(token, persist)
 		lastUserInfoRefresh.value = null
+		resetUserInfoVerification()
 	}
 
 	// Logs a user in with a set of credentials.
@@ -408,21 +457,11 @@ export const useAuthStore = defineStore('auth', () => {
 	/**
 	 * Populates user information from jwt token saved in local storage in store
 	 */
-	async function checkAuth() {
-		const now = new Date()
-		const oneMinuteAgo = new Date(new Date().setMinutes(now.getMinutes() - 1))
-		// This function can be called from multiple places at the same time and shortly after one another.
-		// To prevent hitting the api too frequently or race conditions, we check at most once per minute.
-		if (
-			lastUserInfoRefresh.value !== null &&
-			lastUserInfoRefresh.value > oneMinuteAgo
-		) {
-			return
-		}
-
+	async function checkAuth({forceUserInfo = false}: {forceUserInfo?: boolean} = {}) {
 		const jwt = getToken()
 		let isAuthenticated = false
 		let jwtUserType: number | undefined
+		let refreshedToken = false
 		if (jwt) {
 			try {
 				const base64 = jwt
@@ -459,6 +498,7 @@ export const useAuthStore = defineStore('auth', () => {
 							const p = JSON.parse(atob(b64)) as JwtClaims
 							// The server just issued it, so it's valid even if our clock disagrees.
 							isAuthenticated = true
+							refreshedToken = true
 							currentSessionId.value = p.sid ?? null
 							setSession(p)
 						}
@@ -480,10 +520,31 @@ export const useAuthStore = defineStore('auth', () => {
 					}
 				}
 			} catch (_) {
-				logout()
+				await logout()
+				return
 			}
 
 			if (isAuthenticated && jwtUserType !== AUTH_TYPES.LINK_SHARE) {
+				// A changed API, auth epoch or login session needs a fresh account even
+				// when its numeric user ID matches. Do not reuse that scope's query.
+				if (verifiedUserInfoScope && !isUserInfoScopeCurrent(verifiedUserInfoScope)) {
+					queryClient.clear()
+					resetUserInfoVerification()
+				}
+				const established = authenticated.value
+					&& verifiedUserInfoScope !== null
+					&& isUserInfoScopeCurrent(verifiedUserInfoScope)
+					&& !refreshedToken
+				if (established && !forceUserInfo) {
+					const lastRefresh = lastUserInfoRefresh.value?.getTime() ?? 0
+					if (Date.now() >= Math.max(lastRefresh + USER_INFO_REFRESH_MS, nextUserInfoRetryAt)) {
+						// Only account metadata is refreshed in the background. The JWT and
+						// owner scope above are still checked on every navigation; API
+						// authorization continues to be enforced by the server.
+						void refreshUserInfo().catch(() => {})
+					}
+					return authenticated.value
+				}
 				const user = await refreshUserInfo()
 				if (!user) {
 					// refreshUserInfo() bailed (logout, cancelled query or vanished token) — don't override the auth state it left behind.
@@ -501,24 +562,44 @@ export const useAuthStore = defineStore('auth', () => {
 		return Promise.resolve(authenticated)
 	}
 
-	async function refreshUserInfo() {
+	function refreshUserInfo(): Promise<UserInfoResponse | undefined> {
 		const jwt = getToken()
 		if (!jwt) {
-			return
+			return Promise.resolve(undefined)
 		}
+		if (userInfoRefresh && isUserInfoScopeCurrent(userInfoRefresh.scope)) {
+			return userInfoRefresh.promise
+		}
+		const scope = userInfoScope()
+		const promise = fetchUserInfo(scope)
+		userInfoRefresh = {
+			scope,
+			promise,
+		}
+		promise.finally(() => {
+			if (userInfoRefresh?.promise === promise) userInfoRefresh = null
+		}).catch(() => {})
+		return promise
+	}
 
+	async function fetchUserInfo(scope: UserInfoScope): Promise<UserInfoResponse | undefined> {
 		try {
-			const newUser = await refreshCurrentUser(session.value?.id ?? 0, session.value?.type ?? AUTH_TYPES.USER)
+			const newUser = await refreshCurrentUser(scope.id, scope.type)
+			if (!isUserInfoScopeCurrent(scope)) return
 
 			if (newUser.settings?.language) {
 				await setLanguage(newUser.settings.language as SupportedLocale)
 			}
+			if (!isUserInfoScopeCurrent(scope)) return
 
+			verifiedUserInfoScope = scope
+			userInfoFailures = 0
+			nextUserInfoRetryAt = 0
 			updateLastUserRefresh()
 
 			return newUser
 		} catch (e) {
-			if (e instanceof CancelledError) return
+			if (e instanceof CancelledError || isRequestContextAbort(e) || !isUserInfoScopeCurrent(scope)) return
 
 			const problem = e as VikunjaErrorModel
 			if (
@@ -526,9 +607,18 @@ export const useAuthStore = defineStore('auth', () => {
 				problem?.status === 403 ||
 				(problem?.code !== undefined && ACCOUNT_GONE_ERROR_CODES.includes(problem.code))
 			) {
-				await logout()
+				// Stop exposing authenticated UI and private cached data immediately;
+				// the best-effort server logout may be slow on the same weak network.
+				setAuthenticated(false)
+				queryClient.clear()
+				await logoutCurrentScope(scope)
 				return
 			}
+			userInfoFailures = Math.min(userInfoFailures + 1, 5)
+			nextUserInfoRetryAt = Date.now() + Math.min(
+				USER_INFO_REFRESH_MS * 2 ** (userInfoFailures - 1),
+				MAX_USER_INFO_RETRY_MS,
+			)
 			
 			console.error('Error refreshing user info:', e)
 
@@ -587,7 +677,12 @@ export const useAuthStore = defineStore('auth', () => {
 		}
 	}
 
-	async function logout() {
+	function logout() {
+		return logoutCurrentScope()
+	}
+
+	async function logoutCurrentScope(expectedScope?: UserInfoScope) {
+		if (expectedScope && !isUserInfoScopeCurrent(expectedScope)) return
 		const {disconnect} = useWebSocket()
 		disconnect()
 		cancelRefreshRetry()
@@ -601,6 +696,9 @@ export const useAuthStore = defineStore('auth', () => {
 		} catch (_e) {
 			// Ignore — session will expire naturally
 		}
+		// A background rejection can finish its best-effort logout after another
+		// login has already established a replacement session in this tab.
+		if (expectedScope && !isUserInfoScopeCurrent(expectedScope)) return
 
 		removeToken()
 		const loggedInVia = getLoggedInVia()

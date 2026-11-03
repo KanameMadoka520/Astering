@@ -174,6 +174,7 @@ func AllTools(mode string, allowDelete bool) []map[string]any {
 	result = append(result, bucketTools(mode)...)
 	result = append(result, ChatImageTools(mode)...)
 	result = append(result, mcpAgentTools()...)
+	result = append(result, CompassToolDefinitions(mode)...)
 	if mode != "write" {
 		return result
 	}
@@ -219,6 +220,9 @@ func NeedsReview(name string, in RunInput) bool {
 	if !IsWriteTool(name) {
 		return false
 	}
+	if IsCompassTool(name) {
+		return true
+	}
 	if in.Approval == "review" || bucketAlwaysReviewed(name) {
 		return true
 	}
@@ -234,6 +238,9 @@ func NeedsReview(name string, in RunInput) bool {
 var schemaCache sync.Map
 
 func ValidateTool(name string, raw json.RawMessage, in RunInput) (json.RawMessage, error) {
+	if !moduleAllowsTool(in, name, false) {
+		return nil, ToolFailure("TOOL_NOT_ALLOWED", "This local module is disabled or read-only for the current turn. The user can change module access for a new request; historical tool definitions and approvals do not grant access.")
+	}
 	if isMCPAgentTool(name) && len(in.MCPServerIDs) == 0 {
 		return nil, ToolFailure("MCP_NOT_SELECTED", "No external MCP connection is selected for this turn. Continue with local tools or ask the user to select a connection; never infer access from historical turns.")
 	}
@@ -241,7 +248,7 @@ func ValidateTool(name string, raw json.RawMessage, in RunInput) (json.RawMessag
 		return nil, ToolFailure("TOOL_NOT_ALLOWED", "Subagents are disabled for this turn.")
 	}
 	var definition map[string]any
-	for _, t := range AllTools(in.Mode, in.AllowDelete) {
+	for _, t := range ScopedTools(in) {
 		if toolName(t) == name {
 			definition = t
 			break

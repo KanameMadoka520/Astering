@@ -1,15 +1,16 @@
 import {VERSION} from './version.json'
 import {getFullBaseUrl} from './helpers/getFullBaseUrl'
 import {cacheNames, clientsClaim} from 'workbox-core'
-import {cleanupOutdatedCaches, precacheAndRoute} from 'workbox-precaching'
+import {cleanupOutdatedCaches} from 'workbox-precaching'
 import {registerRoute} from 'workbox-routing'
-import {NetworkOnly} from 'workbox-strategies'
+import {CacheFirst, NetworkOnly} from 'workbox-strategies'
+import {cacheableStaticResponse, staticAssetAllowlist, staticAssetCacheNames} from './helpers/staticAssetCache'
 
 declare let self: ServiceWorkerGlobalScope
 
 const fullBaseUrl = getFullBaseUrl()
 
-// Route live documents and API responses before precaching; their HTTP headers control revalidation.
+// Route live documents and API responses before static matching; their HTTP headers control revalidation.
 registerRoute(
 	({request}) => request.mode === 'navigate',
 	new NetworkOnly({
@@ -30,21 +31,29 @@ registerRoute(
 	}),
 )
 
-// The PWA plugin adds webmanifest after build transforms; filter live entries at the final injection boundary.
-const staticManifest = self.__WB_MANIFEST.filter(entry => {
-	const url = new URL(typeof entry === 'string' ? entry : entry.url, self.location.href)
-	return url.origin === self.location.origin
-		&& !url.pathname.endsWith('/')
-		&& !/\.(?:html|webmanifest|json)$/i.test(url.pathname)
-		&& !/\/api\/v[12](?:\/|$)/.test(url.pathname)
-		&& !/(?:^|\/)(?:sw|registerSW)\.js$/i.test(url.pathname)
-})
-precacheAndRoute(staticManifest)
+// The build manifest is an allowlist, not an install-time download queue.
+const staticAssets = staticAssetAllowlist(self.__WB_MANIFEST, self.registration.scope)
+const staticCaches = staticAssetCacheNames(self.registration.scope, VERSION)
+registerRoute(
+	({url, request}) => staticAssets.has(url.href)
+		&& !request.headers.has('authorization') && !request.headers.has('range'),
+	new CacheFirst({
+		cacheName: staticCaches.current,
+		fetchOptions: {cache: 'default'},
+		plugins: [{
+			cacheWillUpdate: async ({request, response}) => cacheableStaticResponse(request, response) ? response : null,
+		}],
+	}),
+)
 cleanupOutdatedCaches()
 
 self.addEventListener('activate', event => {
-	// The former extension-based route left arbitrary resources in this scope's default runtime cache.
-	event.waitUntil(caches.delete(cacheNames.runtime))
+	event.waitUntil((async () => {
+		const names = await caches.keys()
+		await Promise.all(names.filter(name => name === cacheNames.precache || name === cacheNames.runtime
+			|| (name.startsWith(staticCaches.prefix) && name !== staticCaches.current))
+			.map(name => caches.delete(name)))
+	})())
 })
 
 // This code listens for the user's confirmation to update the app.

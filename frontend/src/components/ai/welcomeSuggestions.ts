@@ -65,6 +65,7 @@ export function suggestionOptions(profile: BuiltinProfileID, current: AssistantO
 		search_mode: current.search_mode,
 		write_project_ids: [...current.write_project_ids],
 		mcp_server_ids: [...current.mcp_server_ids],
+		tool_modules: {...current.tool_modules},
 		stop_at_segment_limit: current.stop_at_segment_limit,
 	}
 }

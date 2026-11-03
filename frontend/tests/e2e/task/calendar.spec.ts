@@ -971,6 +971,27 @@ test('calendar half-hour DST day End focuses the last real Lord Howe slot and cr
 	await page.screenshot({animations: 'disabled', path: testInfo.outputPath('calendar-dst-lord-howe-midnight-form.png')})
 })
 
+test('calendar weak network offline date change waits instead of reporting an empty schedule', async ({authenticatedPage: page, currentUser}) => {
+	const [project] = await ProjectFactory.create(1, {owner_id: currentUser.id})
+	await TaskFactory.create(1, {
+		project_id: project.id, created_by_id: currentUser.id, title: 'Schedule after reconnection', due_date: '2026-11-04T09:00:00Z',
+	})
+	await page.goto(`/calendar?view=day&date=${anchor}`)
+	await expect(page.locator('.calendar-load-status')).toContainText('0 scheduled tasks')
+	try {
+		await page.context().setOffline(true)
+		await page.getByRole('button', {name: 'Next date range', exact: true}).click()
+		await expect(page.locator('.calendar-connection-status')).toContainText('Waiting for a connection')
+		await expect(page.locator('.calendar-content')).toBeVisible()
+		await expect(page.locator('.calendar-load-status')).not.toContainText('0 scheduled tasks')
+		await expect(page.locator('.calendar-empty')).toHaveCount(0)
+	} finally {
+		await page.context().setOffline(false)
+	}
+	await expect(page.locator('.calendar-time-body')).toContainText('Schedule after reconnection')
+	await expect(page.locator('.calendar-connection-status')).toHaveCount(0)
+})
+
 test('calendar failed range load retries real data without loading undated tasks', async ({
 	authenticatedPage: page,
 	currentUser,

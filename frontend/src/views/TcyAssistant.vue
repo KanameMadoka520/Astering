@@ -10,9 +10,10 @@ import {useConversationEvents} from '@/client/queries/conversationEvents'
 import {aiSettingsQuery, useCleanupAI, useTranscribeAI} from '@/client/queries/tcyAi'
 import SpeechInputControl from '@/components/ai/SpeechInputControl.vue'
 import MCPSessionPicker from '@/components/ai/MCPSessionPicker.vue'
+import ToolModulePicker from '@/components/ai/ToolModulePicker.vue'
 import AssistantPreferences from '@/components/ai/AssistantPreferences.vue'
 import {assistantPreferencesQuery} from '@/client/queries/assistantPreferences'
-import {builtinProfileIDs, normalizeOptions, profileOptions, validOptions, type AssistantOptions} from '@/helpers/assistantProfiles'
+import {builtinProfileIDs, defaultToolModules, normalizeOptions, profileOptions, validOptions, type AssistantOptions, type ToolModules} from '@/helpers/assistantProfiles'
 import Modal from '@/components/misc/Modal.vue'
 import LoadError from '@/components/misc/state/LoadError.vue'
 import ConversationHistory from '@/components/ai/ConversationHistory.vue'
@@ -412,6 +413,7 @@ const allowDelete = ref(false)
 const approval = ref<'smart' | 'review' | 'auto'>('smart')
 const writeProjectIDs = ref<number[]>([])
 const mcpServerIDs = ref<string[]>([])
+const toolModules = ref<ToolModules>(defaultToolModules())
 const maxRounds = ref(8)
 const maxOperations = ref(20)
 const timeoutSeconds = ref(120)
@@ -432,6 +434,7 @@ const currentOptions = computed<AssistantOptions>(() => ({
 	approval: approval.value,
 	write_project_ids: writeProjectIDs.value,
 	mcp_server_ids: mcpServerIDs.value,
+	tool_modules: toolModules.value,
 	max_rounds: maxRounds.value,
 	max_operations: maxOperations.value,
 	timeout_seconds: timeoutSeconds.value,
@@ -452,6 +455,7 @@ function applyOptions(o: AssistantOptions, profile: string, remember = true) {
 	approval.value = o.approval
 	writeProjectIDs.value = [...o.write_project_ids]
 	mcpServerIDs.value = [...o.mcp_server_ids]
+	toolModules.value = {...o.tool_modules}
 	maxRounds.value = o.max_rounds
 	maxOperations.value = o.max_operations
 	timeoutSeconds.value = o.timeout_seconds
@@ -464,12 +468,23 @@ function applyOptions(o: AssistantOptions, profile: string, remember = true) {
 		showNotice(t('assistantUI.applied'), 'info')
 	}
 }
+// Initialization restores saved state independently; only user changes are locked.
+function applyUserOptions(options: AssistantOptions, profile: string) {
+	if (executionScopeLocked.value) return
+	applyOptions(options, profile)
+}
+function openPreferences() {
+	if (executionScopeLocked.value) return
+	preferencesOpen.value = true
+}
 function selectProfile(id: string) {
+	if (executionScopeLocked.value) return
 	const custom = preferences.data.value?.profiles?.find(p => p.id === id)
 	const options = custom
 		? normalizeOptions(custom.options)
 		: {...profileOptions(id), connection_id: connectionID.value, project_id: projectID.value}
 	options.mcp_server_ids = [...mcpServerIDs.value]
+	if (!custom) options.tool_modules = {...toolModules.value}
 	applyOptions(options, id)
 }
 function optionsStorageKey(id: string) {
@@ -505,7 +520,7 @@ function resizeComposer() {
 	el.style.height = `${Math.min(el.scrollHeight, 180)}px`
 }
 watch(prompt, async () => {await nextTick(); resizeComposer()})
-const effectivePrompt = useQuery(computed(() => promptQuery(projectID.value, mode.value, allowDelete.value, showSystemPrompt.value)))
+const effectivePrompt = useQuery(computed(() => promptQuery(projectID.value, mode.value, allowDelete.value, showSystemPrompt.value, toolModules.value)))
 const tidy = ref(true)
 const original = ref('')
 const audioInput = ref<HTMLInputElement>()
@@ -536,6 +551,7 @@ const editingBusy = computed(() => Boolean(pendingMessage.value)
 	|| cleanup.isPending.value
 	|| recording.value || microphonePending.value || microphoneStopping.value)
 const busy = computed(() => !optionsReady.value || editingBusy.value || activeRun.value || Boolean(paused.value))
+const executionScopeLocked = computed(() => busy.value || archived.value)
 // Dictation edits the draft, including an instruction to steer a running turn.
 const voiceBusy = computed(() => !optionsReady.value || editingBusy.value || archived.value)
 watch([activeRun, editingBusy, () => steer.isPending.value], ([running, editing, steering]) => {
@@ -817,6 +833,7 @@ async function newConversation() {
 }
 
 async function applySuggestion(suggestion: WelcomeSuggestion) {
+	if (executionScopeLocked.value) return
 	const profile = suggestionProfileSwitch(suggestion, selectedProfile.value)
 	if (profile) applyOptions(suggestionOptions(profile, currentOptions.value), profile)
 	prompt.value = t(suggestion.prompt)
@@ -849,6 +866,7 @@ async function submit() {
 		approval: approval.value,
 		write_project_ids: [...writeProjectIDs.value],
 		mcp_server_ids: [...mcpServerIDs.value],
+		tool_modules: {...toolModules.value},
 		max_rounds: maxRounds.value,
 		max_operations: maxOperations.value,
 		timeout_seconds: timeoutSeconds.value,
@@ -1532,7 +1550,7 @@ onBeforeUnmount(() => {
 					<AronaWelcome
 						v-if="showWelcome"
 						:needs-setup="needsSetup"
-						:disabled="!optionsReady"
+						:disabled="executionScopeLocked"
 						@choose="applySuggestion"
 					/>
 					<!-- Observed for size changes; unstyled, so the turns lay out as before. -->
@@ -1725,18 +1743,25 @@ onBeforeUnmount(() => {
 									@upload="chooseAudio"
 									@tidy="tidyText"
 								/>
+								<ToolModulePicker
+									:modules="toolModules"
+									:mode="mode"
+									:mcp-selected="mcpServerIDs.length > 0"
+									:disabled="executionScopeLocked"
+									@change="applyUserOptions({...currentOptions, ...$event}, '')"
+								/>
 								<MCPSessionPicker
 									:model-value="mcpServerIDs"
-									:disabled="!optionsReady || editingBusy || activeRun || Boolean(paused) || archived"
+									:disabled="executionScopeLocked"
 									:write-scoped="writeProjectIDs.length > 0"
-									@update:modelValue="mcpServerIDs = $event; applyOptions(currentOptions, '')"
+									@update:modelValue="applyUserOptions({...currentOptions, mcp_server_ids: $event}, '')"
 								/>
 								<label
 									class="composer-chip profile-switch"
 									:title="t('assistantUI.scenarios')"
 								><span class="is-sr-only">{{ t('assistantUI.scenarios') }}</span><select
 									:value="selectedProfile"
-									:disabled="!optionsReady"
+									:disabled="executionScopeLocked"
 									@change="selectProfile(($event.target as HTMLSelectElement).value)"
 								><option
 									v-if="!selectedProfile"
@@ -1754,8 +1779,8 @@ onBeforeUnmount(() => {
 									data-tour="ai-permissions"
 									:title="t('assistantUI.preferences')"
 									:aria-label="t('assistantUI.preferences')"
-									:disabled="!optionsReady"
-									@click="preferencesOpen = true"
+									:disabled="executionScopeLocked"
+									@click="openPreferences"
 								>
 									<Icon icon="cog" />
 								</BaseButton>
@@ -1764,8 +1789,8 @@ onBeforeUnmount(() => {
 									:title="t('chat.model')"
 								><span class="is-sr-only">{{ t('chat.model') }}</span><select
 									v-model="connectionID"
-									:disabled="!optionsReady"
-									@change="applyOptions(currentOptions, '')"
+									:disabled="executionScopeLocked"
+									@change="applyUserOptions(currentOptions, '')"
 								><option value="">{{ assignedModelName }}</option><option
 									v-for="c in chatModels"
 									:key="c.id"
@@ -1790,8 +1815,8 @@ onBeforeUnmount(() => {
 									<select
 										v-model="searchMode"
 										:aria-label="t('webSearch.turnMode')"
-										:disabled="!optionsReady"
-										@change="applyOptions(currentOptions, '')"
+										:disabled="executionScopeLocked"
+										@change="applyUserOptions(currentOptions, '')"
 									>
 										<option value="auto">{{ t('webSearch.auto') }}</option>
 										<option
@@ -2022,8 +2047,9 @@ onBeforeUnmount(() => {
 			v-if="preferencesOpen"
 			:options="currentOptions"
 			:profile="selectedProfile"
+			:locked="executionScopeLocked"
 			@close="preferencesOpen = false"
-			@apply="applyOptions"
+			@apply="applyUserOptions"
 		/>
 	</div>
 </template>

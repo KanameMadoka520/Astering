@@ -57,6 +57,10 @@ import ChatThread from '@/components/ai/ChatThread.vue'
 import ConversationHistory from '@/components/ai/ConversationHistory.vue'
 import ConversationMenu from '@/components/ai/ConversationMenu.vue'
 import LoadError from '@/components/misc/state/LoadError.vue'
+import AssistantPreferences from '@/components/ai/AssistantPreferences.vue'
+import ToolModulePicker from '@/components/ai/ToolModulePicker.vue'
+import MCPSessionPicker from '@/components/ai/MCPSessionPicker.vue'
+import {profileOptions} from '@/helpers/assistantProfiles'
 import TcyAssistant from './TcyAssistant.vue'
 
 enableAutoUnmount(afterEach)
@@ -359,6 +363,75 @@ describe('TcyAssistant composer', () => {
 		expect(wrapper.find('.profile-switch select').attributes('disabled')).toBeUndefined()
 		expect(wrapper.find('.preferences-toggle').attributes('disabled')).toBe('false')
 		expect(loadErrors(wrapper)).toEqual(['assistantUI.preferencesLoadFailed'])
+	})
+
+	it.each([
+		['a running turn', {turns: [streamingTurn('One')]}],
+		['a paused review', {turns: [{
+			...streamingTurn('One', 'awaiting_approval'),
+			result: {pause: 'review'},
+		}]}],
+		['compaction', {compacting: true}],
+		['an archived conversation', {archived: true}],
+	] satisfies [string, Partial<Conversation>][])('locks all composer execution settings during %s', async (_name, state) => {
+		seedSettings()
+		seedPreferences()
+		seedConversation('c1')
+		client.setQueryData<Conversation>(conversationKeys.detail('c1'), current => ({
+			...current!,
+			...state,
+		}))
+		const wrapper = mountPanel('c1')
+		await flushPromises()
+
+		expect(wrapper.findComponent(ToolModulePicker).props('disabled')).toBe(true)
+		expect(wrapper.findComponent(MCPSessionPicker).props('disabled')).toBe(true)
+		expect(wrapper.find('.profile-switch select').attributes('disabled')).toBeDefined()
+		expect(wrapper.find('.model-switch select').attributes('disabled')).toBeDefined()
+		expect(wrapper.find('.preferences-toggle').attributes('disabled')).toBe('true')
+		// A delayed component event must not bypass the disabled entry point.
+		wrapper.findComponent<typeof BaseButton>('.preferences-toggle').vm.$emit('click', new MouseEvent('click'))
+		await nextTick()
+		expect(wrapper.findComponent(AssistantPreferences).exists()).toBe(false)
+	})
+
+	it('rejects an already-open preferences apply and a delayed scenario event after a run starts', async () => {
+		seedSettings()
+		seedPreferences()
+		seedConversation('c1')
+		const wrapper = mountPanel('c1')
+		await flushPromises()
+		wrapper.findComponent<typeof BaseButton>('.preferences-toggle').vm.$emit('click', new MouseEvent('click'))
+		await nextTick()
+		const panel = wrapper.findComponent(AssistantPreferences)
+		expect(panel.props('locked')).toBeFalsy()
+		const original = {...wrapper.findComponent(ToolModulePicker).props('modules')}
+
+		seedConversation('c1', 'running')
+		await flushPromises()
+		expect(panel.props('locked')).toBe(true)
+		const next = {
+			...profileOptions('assist'),
+			tool_modules: {
+				project_tasks: 'off',
+				compass: 'write',
+			} as const,
+		}
+		panel.vm.$emit('apply', next, '')
+		const scenario = wrapper.find('.profile-switch select').element as HTMLSelectElement
+		scenario.value = 'assist'
+		scenario.dispatchEvent(new Event('change', {bubbles: true}))
+		await nextTick()
+		expect(wrapper.findComponent(ToolModulePicker).props('modules')).toEqual(original)
+		expect(panel.props('profile')).toBe('ask')
+		expect(panel.props('options').mode).toBe('read')
+		expect(Object.keys(sessionStorage).filter(key => key.startsWith('tcy-ai-options:'))).toEqual([])
+
+		seedConversation('c1')
+		await flushPromises()
+		panel.vm.$emit('apply', next, '')
+		await nextTick()
+		expect(wrapper.findComponent(ToolModulePicker).props('modules')).toEqual(next.tool_modules)
 	})
 
 	it('reports a failed settings load instead of asking to set up a model', async () => {

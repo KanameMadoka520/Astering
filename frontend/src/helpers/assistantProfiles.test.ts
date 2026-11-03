@@ -1,11 +1,40 @@
 import {describe, expect, it} from 'vitest'
-import {builtinProfileIDs, normalizeOptions, profileOptions, validOptions} from './assistantProfiles'
+import {builtinProfileIDs, changeModuleAccess, effectiveModuleAccess, normalizeOptions, profileOptions, validOptions} from './assistantProfiles'
 
 describe('assistant run options', () => {
+	it('requires explicit access to Compass and keeps legacy project access under the read-only ceiling', () => {
+		const options = normalizeOptions()
+		expect(options.tool_modules).toEqual({project_tasks: 'write', compass: 'off'})
+		expect(effectiveModuleAccess(options.tool_modules, 'project_tasks', 'read')).toBe('read')
+		expect(effectiveModuleAccess(options.tool_modules, 'compass', 'write')).toBe('off')
+		const isolated = normalizeOptions({tool_modules: {project_tasks: 'off', compass: 'write'}})
+		expect(effectiveModuleAccess(isolated.tool_modules, 'project_tasks', 'write')).toBe('off')
+		expect(effectiveModuleAccess(isolated.tool_modules, 'compass', 'write')).toBe('write')
+		const cloned = normalizeOptions(isolated)
+		cloned.tool_modules.compass = 'off'
+		expect(isolated.tool_modules.compass).toBe('write')
+		expect(validOptions({...isolated, tool_modules: {compass: 'admin'} as never})).toBe(false)
+		expect(validOptions({...isolated, tool_modules: {unknown: 'read'} as never})).toBe(false)
+		expect(normalizeOptions({tool_modules: {project_tasks: 'invalid'} as never}).tool_modules.project_tasks).toBe('off')
+	})
+	it('enabling Compass writes does not escalate previously read-only project tools', () => {
+		const previous = normalizeOptions()
+		const next = changeModuleAccess(previous.tool_modules, previous.mode, 'compass', 'write')
+		expect(next).toEqual({tool_modules: {project_tasks: 'read', compass: 'write'}, mode: 'write'})
+		expect(changeModuleAccess(next.tool_modules, next.mode, 'project_tasks', 'off').tool_modules).toEqual({project_tasks: 'off', compass: 'write'})
+		expect(previous.tool_modules.compass).toBe('off')
+	})
 	it('keeps both execution switches off in every built-in scenario', () => {
 		for (const id of builtinProfileIDs) {
 			expect(profileOptions(id)).toMatchObject({stop_at_segment_limit: false, enable_subagents: false})
 		}
+	})
+	it('preserves the MCP global ceiling when the last local write module is restricted', () => {
+		const modules = {project_tasks: 'off', compass: 'write'} as const
+		expect(changeModuleAccess(modules, 'write', 'compass', 'off')).toEqual({
+			tool_modules: {project_tasks: 'off', compass: 'off'}, mode: 'write',
+		})
+		expect(changeModuleAccess(modules, 'write', 'compass', 'read').mode).toBe('write')
 	})
 
 	it('reads templates, run configurations and tab storage saved before the switches existed as off', () => {

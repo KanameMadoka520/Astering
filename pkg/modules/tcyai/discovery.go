@@ -111,7 +111,7 @@ func (state *AgentState) trimTools() {
 	// Preserve core tools and pending calls. The working set converges back to
 	// eight deferred definitions when no additional queued calls need pinning.
 	pinned := map[string]bool{"web_search": state.SearchEnabled}
-	for _, t := range Tools(state.Input.Mode, state.Input.AllowDelete) {
+	for _, t := range coreTools(state.Input) {
 		pinned[toolName(t)] = true
 	}
 	for _, call := range state.Pending {

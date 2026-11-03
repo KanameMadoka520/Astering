@@ -17,16 +17,44 @@ const toolName = computed(() => {
 	return toolLabels(t)[tool] || tool
 })
 const external = computed(() => pending.value?.external)
+const COMPASS_WRITES = new Set([
+	'create_compass_space',
+	'update_compass_space',
+	'create_compass_entry',
+	'update_compass_entry',
+	'restore_compass_revision',
+])
+const compassTool = computed(() => !external.value && COMPASS_WRITES.has(pending.value?.tool ?? ''))
+const compassFields = computed(() => {
+	if (!compassTool.value) return []
+	try {
+		const proposed = JSON.parse(pending.value?.arguments ?? '{}')
+		if (!proposed || typeof proposed !== 'object' || Array.isArray(proposed)) return []
+		const tool = pending.value?.tool
+		const fields: {key: string, value: string}[] = []
+		if (tool === 'create_compass_space') fields.push({key: 'team', value: String(proposed.team_id ?? 0)})
+		else if (tool === 'create_compass_entry') fields.push({key: 'space', value: `#${proposed.space_id}`})
+		else fields.push({key: tool === 'update_compass_space' ? 'space' : 'entry', value: `#${proposed.id}`})
+		if (tool === 'restore_compass_revision') fields.push({key: 'sourceRevision', value: String(proposed.revision)})
+		const expected = tool === 'restore_compass_revision' ? proposed.expected_revision : proposed.revision
+		if (expected !== undefined) fields.push({key: 'expectedRevision', value: String(expected)})
+		return fields
+	} catch {
+		return []
+	}
+})
 const orderTool = computed(() => !external.value && pending.value?.tool === 'reorder_view_tasks')
 const imageTool = computed(() => ['insert_chat_image', 'update_task_description_image', 'remove_task_description_image']
 	.includes(pending.value?.tool ?? ''))
 const reviewHint = computed(() => external.value ? t('tcy.mcp.externalReview')
-	: imageTool.value ? t(pending.value?.tool === 'remove_task_description_image'
-		? 'tcy.chatImages.removeHint' : pending.value?.tool === 'update_task_description_image'
-			? 'tcy.chatImages.updateHint' : 'tcy.chatImages.shareHint')
-		: pending.value?.tool === 'set_task_routine_progress'
-			? t('agent.routineReview.absoluteProgress')
-			: pending.value?.tool === 'set_task_repeat_bucket' ? t('agent.repeatPolicy.futureOnly') : '')
+	: compassTool.value ? t(pending.value?.tool === 'restore_compass_revision'
+		? 'agent.compassReview.restoreHint' : 'agent.compassReview.hint')
+		: imageTool.value ? t(pending.value?.tool === 'remove_task_description_image'
+			? 'tcy.chatImages.removeHint' : pending.value?.tool === 'update_task_description_image'
+				? 'tcy.chatImages.updateHint' : 'tcy.chatImages.shareHint')
+			: pending.value?.tool === 'set_task_routine_progress'
+				? t('agent.routineReview.absoluteProgress')
+				: pending.value?.tool === 'set_task_repeat_bucket' ? t('agent.repeatPolicy.futureOnly') : '')
 const destructive = computed(() => external.value?.destructive === true
 	|| DESTRUCTIVE_TOOLS.has(pending.value?.tool ?? ''))
 // Deleting a bucket removes the bucket only; the generic wording would suggest its tasks go too.
@@ -142,7 +170,9 @@ const TOOL_NOT_CHANGES: Record<string, string[]> = {
 const rows = computed(() => {
 	const tool = pending.value?.tool ?? ''
 	// The impact preview describes bucket changes; the field table would list locators instead.
-	if (bucketImpact.value || external.value || orderTool.value) return []
+	// Compass preparation intentionally stores a slim snapshot, not a full entry body.
+	// Never compare an entry's proposed title/content to its parent space or pretend absent fields are empty.
+	if (bucketImpact.value || external.value || orderTool.value || compassTool.value) return []
 	try {
 		const before = JSON.parse(pending.value?.before ?? 'null')
 		const proposed = JSON.parse(pending.value?.arguments ?? '{}')
@@ -223,6 +253,18 @@ function decide(decision: ReviewInput['decision']) {
 					:key="field.key"
 				>
 					<dt>{{ t(`tcy.chatImages.fields.${field.key}`) }}</dt>
+					<dd>{{ field.value }}</dd>
+				</template>
+			</dl>
+			<dl
+				v-if="compassFields.length"
+				class="review-external review-compass"
+			>
+				<template
+					v-for="field in compassFields"
+					:key="field.key"
+				>
+					<dt>{{ t(`agent.compassReview.${field.key}`) }}</dt>
 					<dd>{{ field.value }}</dd>
 				</template>
 			</dl>

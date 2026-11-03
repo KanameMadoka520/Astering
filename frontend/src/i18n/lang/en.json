@@ -2360,7 +2360,18 @@
     "failed": "Loading failed, please {0}. If the error persists, please {1}.",
     "failedRetry": "This couldn't be loaded. Nothing was changed. You can {0}.",
     "tryAgain": "try again",
-    "contact": "contact us"
+    "contact": "contact us",
+    "chunkTitle": "Page resources could not load",
+    "chunkText": "The connection may be unstable or the site may have updated. Your open page is preserved. Try opening the destination again.",
+    "retryNavigation": "Retry navigation",
+    "retrying": "Retrying…",
+    "chunkRetryFailed": "Your browser may have retained the failed resource, and retrying did not recover it. Save your edits before refreshing the page, or dismiss this message to keep working.",
+    "chunkNoTarget": "Try the action again. Refresh the page only as a last resort.",
+    "reloadPage": "Refresh page…",
+    "reloadWarning": "Refreshing reloads the whole page. Save your edits first; existing unsaved-change warnings still apply.",
+    "reloadConfirm": "Confirm refresh",
+    "keepWorking": "Keep working",
+    "dismiss": "Dismiss"
   },
   "notification": {
     "title": "Notifications",
@@ -3193,6 +3204,18 @@
     },
     "tools": {
       "list_project_history": "Review project history",
+      "list_compass_spaces": "List Compass spaces",
+      "get_compass_space": "Read Compass space",
+      "list_compass_entries": "Find Compass entries",
+      "get_compass_entry": "Read Compass entry",
+      "list_compass_revisions": "List entry revisions",
+      "get_compass_revision": "Read entry revision",
+      "list_compass_topics": "List Compass topics",
+      "create_compass_space": "Create Compass space",
+      "update_compass_space": "Update Compass space",
+      "create_compass_entry": "Create Compass entry",
+      "update_compass_entry": "Update Compass entry",
+      "restore_compass_revision": "Restore Compass revision",
       "set_project_completed": "Complete or reopen project",
       "update_project": "Update project",
       "find_tools": "Discover and load tools",
@@ -3233,6 +3256,15 @@
       "move_task_to_bucket": "Move task to bucket",
       "set_view_buckets": "Set default and done buckets",
       "delete_bucket": "Delete kanban bucket"
+    },
+    "compassReview": {
+      "space": "Target space",
+      "entry": "Target entry",
+      "team": "Team ID (0 is personal)",
+      "sourceRevision": "Historical revision to restore",
+      "expectedRevision": "Current revision (conflict protection)",
+      "hint": "Compass changes are saved only after approval. Exact arguments and the current target summary are below. Archiving or trashing an entry does not permanently delete it.",
+      "restoreHint": "Restoring creates a new revision from the selected historical content and preserves the current pin and archive state. A newer saved revision prevents overwriting."
     },
     "routineReview": {
       "absoluteProgress": "This replaces the total recorded for the current period; it does not add to it. Setting 0 clears the period's progress.",
@@ -4306,7 +4338,8 @@
       "showArchive": "Show the archive",
       "empty": "Nothing has been written here yet.",
       "trashNote": "Entries in the trash are kept until someone deletes them permanently. They are not included in exports.",
-      "loading": "Loading entries…"
+      "loading": "Loading entries…",
+      "switching": "Loading the selected category… Previous results remain visible until it is ready."
     },
     "invite": {
       "lead": "Nothing written yet. Start with whichever question speaks to you.",
@@ -4909,5 +4942,30 @@
       "setupHint": "Choose a speech recognition model in AI and voice settings first.",
       "draftChanged": "You edited the draft while cleanup was running. Your edits are kept; run cleanup again if needed."
     }
+  },
+  "network": {
+    "retainedHistory": "Waiting for the selected range; the content below is still the last loaded result for {year}.",
+    "loadingSlowly": "Still loading from the server. You can keep using the page.",
+    "dismissActivity": "Hide loading notice",
+    "waitingForConnection": "Waiting for a connection. Loading will resume when you are online.",
+    "updating": "Updating from the server…",
+    "cachedReadFailed": "Could not update these results. The previous saved results are still shown."
+  },
+  "toolModules": {
+    "mcpWriteTitle": "Enable reviewed writes for selected MCP connections",
+    "mcpWriteHelp": "This enables write mode for the chosen module and the MCP connections already selected in this conversation. Other local modules keep their current access. Each external write still requires your approval. Continue?",
+    "confirmWrite": "Enable write mode",
+    "title": "Tool capabilities",
+    "shortTitle": "Tools",
+    "help": "Choose which parts of Vikunja Arona can access for this conversation.",
+    "project_tasks": "Projects and tasks",
+    "project_tasksHelp": "Projects, tasks, calendar, boards, routines, comments and attachments.",
+    "compass": "Compass",
+    "compassHelp": "Spaces, principles, action plans, notes and revision history. Off by default; each write requires review.",
+    "off": "Off",
+    "read": "Read only",
+    "write": "Read and write",
+    "boundary": "Off hides and blocks the tools. Read only allows queries. Writes still require your account’s permissions and follow the review policy. External MCP connections are controlled separately.",
+    "locked": "Tool capabilities cannot be changed in this state. Running turns and turns awaiting review keep their starting capabilities; stop those turns before changing them. New requests use your new selection."
   }
 }

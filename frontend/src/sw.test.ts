@@ -1,5 +1,7 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import type {RouteHandler, RouteMatchCallback} from 'workbox-core/types'
+import {staticAssetCacheNames} from './helpers/staticAssetCache'
+import {VERSION} from './version.json'
 
 const state = vi.hoisted(() => ({base: '/'}))
 vi.mock('./helpers/getFullBaseUrl', () => ({getFullBaseUrl: () => state.base}))
@@ -32,6 +34,7 @@ const cache = {
 	match: vi.fn(),
 	keys: vi.fn(),
 	delete: vi.fn(),
+	put: vi.fn(),
 }
 const storage = {
 	match: cache.match,
@@ -71,6 +74,9 @@ async function loadWorker(base = '/') {
 			{url: 'manifest.webmanifest', revision: 'live'},
 			{url: 'config.json', revision: 'live'},
 			{url: 'api/v2/private.json', revision: 'private'},
+			{url: 'favicon.png', revision: 'fixed'},
+			{url: 'api/v2/assets/private-abcdefgh.png', revision: null},
+			{url: 'https://external.example/assets/private-abcdefgh.png', revision: null},
 		],
 		addEventListener: (type: string, listener: (event: object) => void) => {
 			const registered = listeners.get(type) ?? []
@@ -121,6 +127,7 @@ beforeEach(() => {
 	deleteCache.mockResolvedValue(true)
 	cache.match.mockImplementation(async () => new Response('precached'))
 	cache.keys.mockResolvedValue([])
+	cache.put.mockResolvedValue(undefined)
 	storage.open.mockResolvedValue(cache)
 	cacheKeys.mockResolvedValue([])
 	vi.stubGlobal('fetch', network)
@@ -134,7 +141,17 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('service worker cache boundaries with the real Workbox router', () => {
-	it('shares one fetch listener between network routes and precaching', async () => {
+	it('does not download any manifest resource during installation', async () => {
+		await loadWorker()
+		cache.match.mockResolvedValue(undefined)
+		const event = new WorkerExtendableEvent('install')
+		fire('install', event)
+		await Promise.allSettled(event.pending)
+		expect(network).not.toHaveBeenCalled()
+		expect(storage.open).not.toHaveBeenCalled()
+	})
+
+	it('shares one fetch listener between network routes and on-demand assets', async () => {
 		await loadWorker()
 		expect(listeners.get('fetch')).toHaveLength(1)
 		expect(importScripts).not.toHaveBeenCalled()
@@ -150,7 +167,7 @@ describe('service worker cache boundaries with the real Workbox router', () => {
 		expect(storage.open).not.toHaveBeenCalled()
 	})
 
-	it('routes live documents and APIs through the network while build assets use the precache', async () => {
+	it('routes live documents and APIs through the network while requested build assets use their static cache', async () => {
 		await loadWorker()
 		for (const path of ['/', '/index.html', '/projects/6/35']) {
 			expect(await (await fetchResource(path, 'navigate'))?.text()).toBe('network')
@@ -161,18 +178,20 @@ describe('service worker cache boundaries with the real Workbox router', () => {
 		expect(network).not.toHaveBeenCalled()
 	})
 
-	it('does not precache HTML, manifests, configuration or API entries even when the build plugin adds them', async () => {
+	it('never installs a precache even when the build plugin adds HTML, manifests or configuration', async () => {
 		await loadWorker()
 		const {getCacheKeyForURL} = await import('workbox-precaching')
 		for (const path of ['index.html', 'manifest.webmanifest', 'config.json', 'api/v2/private.json']) {
 			expect(getCacheKeyForURL(`https://task.example/${path}`)).toBeUndefined()
 		}
-		expect(getCacheKeyForURL('https://task.example/assets/app-abcdefgh.js')).toBeDefined()
+		expect(getCacheKeyForURL('https://task.example/assets/app-abcdefgh.js')).toBeUndefined()
 	})
 
 	it('does not persist arbitrary same-origin or external extension-matched resources', async () => {
 		await loadWorker()
 		for (const path of [
+			'/favicon.png',
+			'/assets/app-abcdefgh.js?private=true',
 			'/user-upload.png',
 			'/private-report.json',
 			'https://external.example/private.png',
@@ -187,17 +206,63 @@ describe('service worker cache boundaries with the real Workbox router', () => {
 		await loadWorker()
 		const {cacheNames} = await import('workbox-core')
 		const oldPrecache = 'workbox-precache-v1-https://task.example/'
+		const current = staticAssetCacheNames('https://task.example/', VERSION).current
+		const previous = staticAssetCacheNames('https://task.example/', 'previous').current
+		const otherScope = staticAssetCacheNames('https://task.example/other/', 'previous').current
 		cacheKeys.mockResolvedValue([
 			cacheNames.precache,
 			cacheNames.runtime,
 			oldPrecache,
 			'other-app-cache',
+			current,
+			previous,
+			otherScope,
 		])
 		expect(deleteCache).not.toHaveBeenCalled()
 		const event = new WorkerExtendableEvent('activate')
 		fire('activate', event)
 		await Promise.all(event.pending)
-		expect(deleteCache.mock.calls.map(([name]) => name).sort()).toEqual([cacheNames.runtime, oldPrecache].sort())
+		expect(deleteCache.mock.calls.map(([name]) => name).sort()).toEqual([
+			cacheNames.runtime,
+			cacheNames.precache,
+			oldPrecache,
+			previous,
+		].sort())
+	})
+
+	it('downloads and persists an allowed resource only when requested, then reuses it', async () => {
+		await loadWorker('/workspace/')
+		const stored = new Map<string, Response>()
+		cache.match.mockImplementation(async (request: Request) => stored.get(request.url)?.clone())
+		cache.put.mockImplementation(async (request: Request, response: Response) => {
+			stored.set(request.url, response.clone())
+		})
+		network.mockImplementation(async () => new Response('actual-js', {headers: {
+			'Content-Type': 'text/javascript',
+			'Cache-Control': 'public, max-age=31536000, immutable',
+		}}))
+		const path = '/workspace/assets/app-abcdefgh.js'
+		expect(await (await fetchResource(path))?.text()).toBe('actual-js')
+		expect(network).toHaveBeenCalledOnce()
+		expect(cache.put).toHaveBeenCalledOnce()
+		expect([...stored.keys()]).toEqual([`https://task.example${path}`])
+		expect(await (await fetchResource(path))?.text()).toBe('actual-js')
+		expect(network).toHaveBeenCalledOnce()
+	})
+
+	it.each([
+		['text/html', 'public, max-age=31536000, immutable'],
+		['text/javascript', 'private, no-cache'],
+		['text/javascript', 'public, immutable, no-store'],
+	])('does not persist a fallback or sensitive response (%s, %s)', async (type, policy) => {
+		await loadWorker()
+		cache.match.mockResolvedValue(undefined)
+		network.mockImplementation(async () => new Response('response', {headers: {
+			'Content-Type': type,
+			'Cache-Control': policy,
+		}}))
+		expect(await (await fetchResource('/assets/app-abcdefgh.js'))?.text()).toBe('response')
+		expect(cache.put).not.toHaveBeenCalled()
 	})
 
 	it('keeps the version handshake and waits for explicit user confirmation to activate', async () => {

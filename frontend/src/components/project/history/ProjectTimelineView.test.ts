@@ -2,7 +2,9 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import {flushPromises, mount, type VueWrapper} from '@vue/test-utils'
 import {createI18n} from 'vue-i18n'
 import {createMemoryHistory, createRouter} from 'vue-router'
-import {QueryClient, VueQueryPlugin} from '@tanstack/vue-query'
+import {QueryClient, VueQueryPlugin, onlineManager} from '@tanstack/vue-query'
+
+import {createPinia, setActivePinia} from 'pinia'
 
 import type {ProjectTimelineQuery} from '@/client/queries/projectTimeline'
 
@@ -17,6 +19,8 @@ vi.mock('@/composables/useProjects', () => ({
 import ProjectTimelineView from './ProjectTimelineView.vue'
 import {invalidateTaskMembership} from '@/client/queries/taskCache'
 import enMessages from '@/i18n/lang/en.json'
+import {removeToken, saveToken} from '@/helpers/auth'
+import {useAuthStore} from '@/stores/auth'
 
 const i18n = createI18n({legacy: false, locale: 'en', messages: {en: enMessages}})
 
@@ -95,6 +99,10 @@ async function mountView(path = '/projects/history') {
 
 describe('ProjectTimelineView', () => {
 	beforeEach(() => {
+		removeToken()
+		window.API_URL = ''
+		setActivePinia(createPinia())
+		onlineManager.setOnline(true)
 		vi.resetAllMocks()
 		document.body.innerHTML = ''
 	})
@@ -102,6 +110,55 @@ describe('ProjectTimelineView', () => {
 	afterEach(() => {
 		wrapper?.unmount()
 		wrapper = undefined
+		client?.clear()
+		onlineManager.setOnline(true)
+	})
+
+	it('retains the displayed year when the requested year is paused offline', async () => {
+		sdk.projectTimeline.mockImplementation(async ({query}) => timeline(query, 0.5))
+		const view = await mountView()
+		onlineManager.setOnline(false)
+		await view.setProps({year: 2027})
+		await flushPromises()
+		expect(view.find('.lane').exists()).toBe(true)
+		expect(view.find('.timeline-skeleton').exists()).toBe(false)
+		expect(view.get('.history-connection-status').text()).toContain('2026')
+		expect(view.get('#timeline-projects-heading').text()).toContain('2026')
+		expect(sdk.projectTimeline).toHaveBeenCalledTimes(1)
+	})
+
+	it.each([403, 404])('hides retained private lanes after a same-query HTTP %s', async status => {
+		sdk.projectTimeline.mockImplementation(async ({query}) => timeline(query, 0.5))
+		const view = await mountView()
+		sdk.projectTimeline.mockRejectedValue({status})
+		await client.refetchQueries({queryKey: ['project-timeline']})
+		await flushPromises()
+		expect(view.find('.lane').exists()).toBe(false)
+		expect(view.find('[role="alert"]').exists()).toBe(true)
+	})
+
+	it.each(['clear', 'API', 'account', 'epoch'] as const)('releases its retained result after %s isolation changes', async kind => {
+		sdk.projectTimeline.mockImplementation(async ({query}) => timeline(query, 0.5))
+		saveToken(`x.${btoa(JSON.stringify({id: 1, type: 1}))}.x`, false)
+		useAuthStore().setSession({id: 1, type: 1, exp: 9999999999})
+		const view = await mountView()
+		onlineManager.setOnline(false)
+		await view.setProps({year: 2027})
+		await flushPromises()
+		expect(view.find('.lane').exists()).toBe(true)
+		if (kind === 'account') {
+			saveToken(`x.${btoa(JSON.stringify({id: 2, type: 1}))}.x`, false)
+			useAuthStore().setSession({id: 2, type: 1, exp: 9999999999})
+		} else if (kind === 'epoch') {
+			removeToken()
+			// Logout changes the reactive session as well as the non-reactive token epoch.
+			useAuthStore().setSession(null)
+		} else {
+			if (kind === 'API') window.API_URL = 'https://other.example'
+			client.clear()
+		}
+		await flushPromises()
+		expect(view.find('.lane').exists()).toBe(false)
 	})
 
 	it('explains progress, elapsed time and missing dates separately', async () => {

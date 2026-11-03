@@ -1,5 +1,30 @@
+export const toolModuleIDs = ['project_tasks', 'compass'] as const
+export type ToolModuleID = typeof toolModuleIDs[number]
+export type ToolModuleAccess = 'off' | 'read' | 'write'
+export type ToolModules = Record<ToolModuleID, ToolModuleAccess>
+export const defaultToolModules = (): ToolModules => ({project_tasks: 'write', compass: 'off'})
+export function normalizeToolModules(value?: Partial<ToolModules> | null): ToolModules {
+	return Object.fromEntries(toolModuleIDs.map(id => {
+		const access = value?.[id]
+		return [id, access === undefined ? defaultToolModules()[id]
+			: ['off', 'read', 'write'].includes(access) ? access : 'off']
+	})) as ToolModules
+}
+export function effectiveModuleAccess(modules: ToolModules, id: ToolModuleID, mode: 'read' | 'write'): ToolModuleAccess {
+	return modules[id] === 'write' && mode === 'read' ? 'read' : modules[id]
+}
+export function changeModuleAccess(modules: ToolModules, mode: 'read' | 'write', id: ToolModuleID, access: ToolModuleAccess) {
+	// Raising one module must not silently raise another module that was capped at read-only.
+	const next = Object.fromEntries(toolModuleIDs.map(key => [key, effectiveModuleAccess(modules, key, mode)])) as ToolModules
+	next[id] = access
+	// The global write ceiling also governs selected MCP servers. Turning off a
+	// local module must not silently change those independent connections.
+	return {tool_modules: next, mode: mode === 'write' || Object.values(next).includes('write') ? 'write' as const : 'read' as const}
+}
+
 export interface AssistantOptions {
- search_mode?: 'auto' | 'off' | 'required'
+	tool_modules: ToolModules
+	search_mode?: 'auto' | 'off' | 'required'
 	connection_id: string
 	project_id: number
 	mode: 'read' | 'write'
@@ -25,6 +50,7 @@ export function profileOptions(id = 'ask'): AssistantOptions {
 		approval: 'smart',
 		write_project_ids: [],
 		mcp_server_ids: [],
+		tool_modules: defaultToolModules(),
 		max_rounds: 8,
 		max_operations: 20,
 		timeout_seconds: 120,
@@ -38,21 +64,27 @@ export function profileOptions(id = 'ask'): AssistantOptions {
 	return options
 }
 // Templates, run configurations and tab storage saved before these switches existed omit them; the server omits false too.
-export function normalizeOptions(options?: Omit<Partial<AssistantOptions>, 'write_project_ids' | 'mcp_server_ids'> & {
+export function normalizeOptions(options?: Omit<Partial<AssistantOptions>, 'write_project_ids' | 'mcp_server_ids' | 'tool_modules'> & {
 	write_project_ids?: number[] | null
 	mcp_server_ids?: string[] | null
+	tool_modules?: Partial<ToolModules> | null
 }): AssistantOptions {
 	return {
 		...profileOptions(),
 		...options,
 		write_project_ids: [...(options?.write_project_ids ?? [])],
 		mcp_server_ids: [...new Set((options?.mcp_server_ids ?? []).filter(id => typeof id === 'string' && id !== ''))],
+		tool_modules: normalizeToolModules(options?.tool_modules),
 		stop_at_segment_limit: options?.stop_at_segment_limit === true,
 		enable_subagents: options?.enable_subagents === true,
 	}
 }
 export function validOptions(o: AssistantOptions) {
 	return [o.stop_at_segment_limit, o.enable_subagents].every(v => v === undefined || typeof v === 'boolean')
+		&& (o.tool_modules === undefined || (o.tool_modules !== null && typeof o.tool_modules === 'object'
+			&& !Array.isArray(o.tool_modules)
+			&& Object.entries(o.tool_modules).every(([key, value]) => toolModuleIDs.includes(key as ToolModuleID)
+				&& (value === undefined || ['off', 'read', 'write'].includes(value)))))
 		&& (o.mcp_server_ids === undefined || (Array.isArray(o.mcp_server_ids)
 			&& o.mcp_server_ids.every(id => typeof id === 'string' && id !== '')))
 		&& [[o.max_rounds, 1, 40], [o.max_operations, 1, 100], [o.timeout_seconds, 1, 600], [o.token_budget, 0, 1000000]].every(([n, min, max]) => Number.isInteger(n) && n >= min && n <= max)

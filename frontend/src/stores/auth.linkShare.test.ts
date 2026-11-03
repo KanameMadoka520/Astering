@@ -18,7 +18,8 @@ const sdk = vi.hoisted(() => ({
 	tokenRenew: vi.fn(),
 }))
 
-vi.mock('@/helpers/auth', () => ({
+vi.mock('@/helpers/auth', async (importOriginal) => ({
+	...await importOriginal<typeof import('@/helpers/auth')>(),
 	getToken: () => auth.token,
 	refreshToken: vi.fn(),
 	removeToken: vi.fn(() => {

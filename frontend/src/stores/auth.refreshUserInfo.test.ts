@@ -12,7 +12,8 @@ const {httpGetMock, routerPushMock, getTokenMock} = vi.hoisted(() => ({
 	getTokenMock: vi.fn(),
 }))
 
-vi.mock('@/helpers/auth', () => ({
+vi.mock('@/helpers/auth', async (importOriginal) => ({
+	...await importOriginal<typeof import('@/helpers/auth')>(),
 	refreshToken: vi.fn(),
 	getToken: getTokenMock,
 	saveToken: vi.fn(),

@@ -56,7 +56,9 @@ import {
 import {applyServerTaskChanges, reconcileServerBoards, type ServerTaskChange} from './taskMutations'
 import {normalizeTask, taskKeys, type TaskResponse} from './tasks'
 import {invalidateCalendarTasks} from './calendar'
+import {parseCompassReceipt, refreshCompassReceipts, type CompassReceiptChange} from './compassReceipts'
 import {applyServerTaskOrder, parseTaskOrderResult, type TaskOrderResult} from './taskOrder'
+import {defaultToolModules, type ToolModules} from '@/helpers/assistantProfiles'
 import {
 	readConversationSnapshot,
 	shareConversationSnapshot,
@@ -116,13 +118,15 @@ export function conversationQuery(id: string, streaming = false) {
 	})
 }
 
-export function promptQuery(projectId: number, mode: 'read' | 'write', allowDelete: boolean, enabled: boolean) {
+export function promptQuery(projectId: number, mode: 'read' | 'write', allowDelete: boolean, enabled: boolean, modules: ToolModules = defaultToolModules()) {
 	return queryOptions({
-		queryKey: ['tcymc-ai-prompt', projectId, mode, allowDelete],
+		queryKey: ['tcymc-ai-prompt', projectId, mode, allowDelete, modules],
 		queryFn: async ({signal}) => (await tcyAiPrompt({query: {
 			project_id: projectId,
 			mode,
 			allow_delete: allowDelete,
+			project_tasks: modules.project_tasks,
+			compass: modules.compass,
 		}, signal})).data,
 		enabled,
 	})
@@ -256,6 +260,7 @@ type AgentCacheOperation =
 	| {kind: 'viewBuckets', project: number, view: number, defaultBucket: number, doneBucket: number}
 
 export type AgentRefreshPlan = {
+	compass: CompassReceiptChange[]
 	orders: TaskOrderResult[]
 	operations: AgentCacheOperation[]
 	// Tasks whose embedded labels, assignees or relations changed without a task in the receipt.
@@ -466,6 +471,7 @@ export function takeAgentReceipts(client: QueryClient, conversation?: Conversati
 
 function emptyPlan(): AgentRefreshPlan {
 	return {
+		compass: [],
 		orders: [],
 		operations: [],
 		fetchTasks: [],
@@ -496,6 +502,15 @@ export function planAgentRefresh(receipts: readonly AgentReceipt[]): AgentRefres
 			case 'reorder_view_tasks': {
 				const order = parseTaskOrderResult(result, args)
 				if (order) plan.orders.push(order)
+				break
+			}
+			case 'create_compass_space':
+			case 'update_compass_space':
+			case 'create_compass_entry':
+			case 'update_compass_entry':
+			case 'restore_compass_revision': {
+				const change = parseCompassReceipt(tool, args, result)
+				if (change) plan.compass.push(change)
 				break
 			}
 			case 'call_mcp_tool':
@@ -671,6 +686,8 @@ export function planAgentRefresh(receipts: readonly AgentReceipt[]): AgentRefres
 				break
 			}
 			default: {
+				// Future Compass tools must never interpret their IDs as tasks or projects.
+				if (tool.includes('_compass_')) break
 				// Unknown write: the named records and stale lists only, never a refetch of everything.
 				const task = id ?? positiveId(args.task_id)
 				const project = positiveId(args.project_id) ?? id
@@ -915,6 +932,7 @@ async function settleAgentChanges(client: QueryClient, plan: AgentRefreshPlan) {
 	// Task changes refresh membership themselves: affected open lists refetch once, affected boards reload their loaded pages.
 	const lists = changes.length ? false : plan.taskLists
 	await Promise.all([
+		refreshCompassReceipts(client, plan.compass),
 		...plan.orders.map(order => applyServerTaskOrder(client, order)),
 		applyServerTaskChanges(client, changes),
 		refreshEmbeddedTaskData(client, embeddedRequests(client, plan)),

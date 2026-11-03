@@ -2337,7 +2337,18 @@
 		"failed": "加载失败，请 {0}。 如果错误仍然存在，请 {1}。",
 		"failedRetry": "无法加载，没有更改任何内容。你可以{0}。",
 		"tryAgain": "重试",
-		"contact": "联系我们"
+		"contact": "联系我们",
+		"chunkTitle": "页面资源暂时未能加载",
+		"chunkText": "可能是连接不稳定或网站刚刚更新。你当前打开的页面会保留，请先尝试重新进入目标页面。",
+		"retryNavigation": "重试打开页面",
+		"retrying": "正在重试…",
+		"chunkRetryFailed": "浏览器可能保留了加载失败的资源，直接重试仍未恢复。请先保存正在编辑的内容，再手动刷新页面；也可以关闭提示继续当前工作。",
+		"chunkNoTarget": "请重新尝试刚才的操作；刷新页面是最后的恢复方式。",
+		"reloadPage": "刷新页面…",
+		"reloadWarning": "刷新会重新加载整个页面。请先保存正在编辑的内容；未保存修改的离开提醒仍会保留。",
+		"reloadConfirm": "确认刷新页面",
+		"keepWorking": "继续当前页面",
+		"dismiss": "暂时关闭"
 	},
 	"notification": {
 		"title": "通知",
@@ -3193,6 +3204,18 @@
 		},
 		"tools": {
 			"list_project_history": "回顾项目历程",
+			"list_compass_spaces": "列出星图空间",
+			"get_compass_space": "读取星图空间",
+			"list_compass_entries": "查找星图记录",
+			"get_compass_entry": "读取星图记录",
+			"list_compass_revisions": "查看记录版本历史",
+			"get_compass_revision": "读取历史版本",
+			"list_compass_topics": "列出星图主题",
+			"create_compass_space": "新建星图空间",
+			"update_compass_space": "修改星图空间",
+			"create_compass_entry": "新建星图记录",
+			"update_compass_entry": "修改星图记录",
+			"restore_compass_revision": "恢复星图历史版本",
 			"set_project_completed": "完成或重新打开项目",
 			"update_project": "修改项目",
 			"find_tools": "发现并加载工具",
@@ -3233,6 +3256,15 @@
 			"move_task_to_bucket": "移动任务到分组",
 			"set_view_buckets": "设置默认分组与完成分组",
 			"delete_bucket": "删除看板分组"
+		},
+		"compassReview": {
+			"space": "目标空间",
+			"entry": "目标记录",
+			"team": "团队编号（0 为私人空间）",
+			"sourceRevision": "恢复的历史版本",
+			"expectedRevision": "当前版本（冲突保护）",
+			"hint": "星图变更将在批准后写入。下方为准确参数与当前目标摘要；归档或移入回收站不会永久删除记录。",
+			"restoreHint": "恢复会以所选历史内容创建一个新版本，保留当前置顶和归档状态；其他人已保存新版本时会拒绝覆盖。"
 		},
 		"routineReview": {
 			"absoluteProgress": "这会替换本期已记录的总量，不是在原有数量上累加；设为 0 会清除本期进度。",
@@ -4306,7 +4338,8 @@
 			"showArchive": "查看归档",
 			"empty": "这里还什么都没有写。",
 			"trashNote": "回收站里的条目会一直保留，直到被永久删除；导出时不包含它们。",
-			"loading": "正在读取条目…"
+			"loading": "正在读取条目…",
+			"switching": "正在加载所选栏目，完成前暂时显示上一栏的结果。"
 		},
 		"invite": {
 			"lead": "这里还什么都没有写。从最打动你的那个问题开始吧。",
@@ -4909,5 +4942,30 @@
       "setupHint": "请先在 AI 与语音设置中选择默认语音识别模型。",
       "draftChanged": "整理期间你继续编辑了文字，已保留当前草稿。如有需要，可再次整理。"
     }
-  }
+  },
+	"network": {
+		"retainedHistory": "正在等待所选范围的数据；下方仍显示 {year} 年上一次加载的内容。",
+		"loadingSlowly": "仍在从服务器加载，你可以继续操作页面。",
+		"dismissActivity": "隐藏加载提示",
+		"waitingForConnection": "正在等待网络连接，恢复联网后将继续加载。",
+		"updating": "正在获取最新内容…",
+		"cachedReadFailed": "更新失败，暂时保留上次获取的结果。请重试。"
+	},
+	"toolModules": {
+		"mcpWriteTitle": "允许已选 MCP 连接提交待审核写入",
+		"mcpWriteHelp": "开启此模块的写入也会为本对话已选中的 MCP 连接开启写入模式，其他本地模块保持当前权限。每次外部写入仍须你审核确认。是否继续？",
+		"confirmWrite": "开启写入模式",
+		"title": "工具能力范围",
+		"shortTitle": "工具",
+		"help": "为当前会话选择阿罗娜可以访问哪些板块。",
+		"project_tasks": "项目与任务",
+		"project_tasksHelp": "项目、任务、日历、看板、周期打卡、评论及附件。",
+		"compass": "星图",
+		"compassHelp": "空间、原则、行动纲领、札记及修订记录。默认关闭；每次写入均须审核。",
+		"off": "关闭",
+		"read": "只读",
+		"write": "读写",
+		"boundary": "关闭后既不提供工具，也拒绝调用；只读仅能查询。写入仍受账户权限与审核策略限制。外部 MCP 连接单独控制。",
+		"locked": "当前状态暂不能修改能力范围。执行中及等待审核的任务沿用启动时的范围，需要先停止本轮再切换；新请求使用新的选择。"
+	}
 }

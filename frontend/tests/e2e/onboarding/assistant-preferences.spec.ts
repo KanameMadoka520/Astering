@@ -275,7 +275,7 @@ test('display defaults apply at once, stay on this device after reload and resto
 }) => {
 	const id = await savedToolTurn(page)
 	await page.goto(`/ai?chat=${id}`)
-	const tool = page.locator('.timeline-step[data-round="1"] .tool-row')
+	const tool = page.locator('.timeline-step[data-round="1"] .tool-disclosure')
 	const interim = page.locator('.timeline-step[data-round="1"] .step-reply')
 	await expect(page.locator('.chat-markdown')).toHaveText(ANSWER)
 	await expect(interim).toHaveText(INTERIM)

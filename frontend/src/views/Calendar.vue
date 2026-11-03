@@ -442,7 +442,7 @@ function created(taskId: number) {
 				role="status"
 				aria-live="polite"
 			>
-				{{ query.isFetching.value ? t(query.data.value ? 'calendar.refreshing' : 'calendar.loading') : t('calendar.itemCount', {count}) }}
+				{{ query.isPaused.value ? t('network.waitingForConnection') : query.isFetching.value || query.isPending.value ? t(query.data.value ? 'calendar.refreshing' : 'calendar.loading') : failed ? t('calendar.loadFailed') : t('calendar.itemCount', {count}) }}
 			</div>
 		</header>
 
@@ -451,8 +451,15 @@ function created(taskId: number) {
 			:message="t('calendar.loadFailed')"
 			:retry="() => query.refetch()"
 		/>
+		<p
+			v-if="query.isPaused.value"
+			class="calendar-connection-status"
+			role="status"
+		>
+			{{ t('network.waitingForConnection') }}
+		</p>
 		<div
-			v-if="query.data.value || query.isFetching.value"
+			v-if="query.data.value || query.isPending.value"
 			class="calendar-content"
 			:class="{'is-month': view === 'month'}"
 		>
@@ -490,7 +497,7 @@ function created(taskId: number) {
 						:timezone="timezone"
 						:today="today"
 						show-empty
-						:loading="query.isFetching.value && !query.data.value"
+						:loading="query.isPending.value"
 						allow-create
 						@create="openCreate"
 					/>
@@ -520,7 +527,7 @@ function created(taskId: number) {
 						:timezone="timezone"
 						:today="today"
 						show-empty
-						:loading="query.isFetching.value && !query.data.value"
+						:loading="query.isPending.value"
 						allow-create
 						@create="openCreate"
 					/>
@@ -560,11 +567,11 @@ function created(taskId: number) {
 					:timezone="timezone"
 					:today="today"
 					allow-create
-					:loading="query.isFetching.value && !query.data.value"
+					:loading="query.isPending.value"
 					@create="openCreate"
 				/>
 				<p
-					v-if="count === 0 && !query.isFetching.value"
+					v-if="count === 0 && !query.isPending.value && !query.isFetching.value"
 					class="calendar-empty"
 				>
 					{{ t('calendar.emptyRange') }}

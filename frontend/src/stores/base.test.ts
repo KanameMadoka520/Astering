@@ -20,7 +20,8 @@ vi.mock('@/client/generated', async (importOriginal) => ({
 	...sdk,
 }))
 
-vi.mock('@/helpers/auth', () => ({
+vi.mock('@/helpers/auth', async (importOriginal) => ({
+	...await importOriginal<typeof import('@/helpers/auth')>(),
 	getToken: () => auth.token,
 	refreshToken: vi.fn(),
 	removeToken: vi.fn(() => {
@@ -194,6 +195,7 @@ describe('base store identity reset', () => {
 		const store = useBaseStore()
 		await store.appReady
 
+		expect(sdk.userShow).toHaveBeenCalledTimes(1)
 		expect(store.error).toBe(ERROR_RATE_LIMITED)
 	})
 })

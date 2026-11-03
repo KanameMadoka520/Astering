@@ -27,6 +27,7 @@ const {queryClientClearMock, refreshTokenMock, routerPushMock, getTokenMock} = v
 }))
 
 vi.mock('@/helpers/auth', async (importOriginal) => ({
+	...await importOriginal<typeof import('@/helpers/auth')>(),
 	RefreshTokenError: (await importOriginal<typeof import('@/helpers/auth')>()).RefreshTokenError,
 	getAuthSessionEpoch: () => 0,
 	refreshToken: refreshTokenMock,

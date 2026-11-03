@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed, onBeforeUnmount, ref, shallowRef, watch} from 'vue'
+import {computed, onBeforeUnmount, ref, watch} from 'vue'
 import {useRoute, useRouter, type LocationQueryRaw} from 'vue-router'
 import {useQuery} from '@tanstack/vue-query'
 import {useI18n} from 'vue-i18n'
@@ -13,9 +13,9 @@ import TimelineOccupancy from '@/components/project/history/TimelineOccupancy.vu
 import {
 	projectTimelineQuery,
 	type ProjectTimelineQuery,
-	type ProjectTimelineResponse,
 } from '@/client/queries/projectTimeline'
 import {useProjects} from '@/composables/useProjects'
+import {useRetainedHistoryQuery} from '@/composables/useRetainedHistoryQuery'
 import {calendarDayFormatter, parseCalendarDay} from '@/helpers/projectHistoryFormat'
 import {isRealProject} from '@/helpers/projectStatus'
 import {
@@ -83,15 +83,11 @@ const timelineQuery = computed<ProjectTimelineQuery>(() => ({
 	page: page.value,
 }))
 
-const query = useQuery(computed(() => projectTimelineQuery(timelineQuery.value)))
-
-// A new year or filter has no placeholder: keep the previous result on screen, dimmed,
-// rather than collapsing the page. Background refreshes after task edits swap in silently.
-const lastTimeline = shallowRef<ProjectTimelineResponse>()
-watch(() => query.data.value, value => {
-	if (value) lastTimeline.value = value
-}, {immediate: true})
-const timeline = computed(() => query.data.value ?? (query.isFetching.value ? lastTimeline.value : undefined))
+const queryOptions = computed(() => projectTimelineQuery(timelineQuery.value))
+const query = useQuery(queryOptions)
+const retained = useRetainedHistoryQuery(query, () => queryOptions.value.queryKey, () => props.year)
+const timeline = retained.data
+const displayedYear = computed(() => retained.year.value ?? props.year)
 const refreshing = computed(() => query.isPlaceholderData.value || (!query.data.value && timeline.value !== undefined))
 const failed = computed(() => query.isError.value && !query.isFetching.value)
 
@@ -116,7 +112,7 @@ const projectOptions = computed(() => projects.projectsArray
 		label: p.is_archived ? t('projectHistory.projectOptionArchived', {title: p.title}) : p.title,
 	})))
 
-const domain = computed(() => timelineDomain(props.year, month.value))
+const domain = computed(() => timelineDomain(displayedYear.value, month.value))
 
 const formatDate = computed(() => calendarDayFormatter(locale.value, {
 	weekday: 'short',
@@ -128,7 +124,7 @@ const formatDate = computed(() => calendarDayFormatter(locale.value, {
 // Rows and their total span the year (or the selected day); a month zoom only narrows the drawing.
 const lanesHeading = computed(() => day.value
 	? t('projectTimeline.lanes.dayHeading', {date: formatDate.value(day.value)})
-	: t('projectTimeline.lanes.heading', {year: props.year}))
+	: t('projectTimeline.lanes.heading', {year: displayedYear.value}))
 
 const filtered = computed(() => status.value !== 'all' || !!project.value || !!q.value)
 
@@ -187,7 +183,7 @@ const missing = computed(() => {
 const otherYears = computed(() => {
 	const data = timeline.value
 	if (!data?.first_year || !data.last_year) return []
-	return [...new Set([data.first_year, data.last_year])].filter(y => y !== props.year)
+	return [...new Set([data.first_year, data.last_year])].filter(y => y !== displayedYear.value)
 })
 
 function monthOf(date: string) {
@@ -247,7 +243,7 @@ const announcement = computed(() => {
 <template>
 	<div
 		class="project-timeline"
-		:aria-busy="query.isFetching.value"
+		:aria-busy="query.isFetching.value || query.isPending.value"
 	>
 		<div class="timeline-filters">
 			<SegmentedControl
@@ -300,6 +296,16 @@ const announcement = computed(() => {
 			role="status"
 		>{{ announcement }}</span>
 
+		<p
+			v-if="query.isPaused.value || refreshing"
+			class="history-connection-status"
+			role="status"
+		>
+			{{ query.isPaused.value ? t('network.waitingForConnection') : t('network.updating') }}
+			<template v-if="refreshing && timeline">
+				{{ t('network.retainedHistory', {year: displayedYear}) }}
+			</template>
+		</p>
 		<LoadError
 			v-if="failed && !timeline"
 			:message="t('projectTimeline.loadError')"
@@ -371,7 +377,7 @@ const announcement = computed(() => {
 
 			<TimelineOccupancy
 				:class="{'is-refreshing': refreshing && !query.isPlaceholderData.value}"
-				:year="year"
+				:year="displayedYear"
 				:days="timeline.days"
 				:today="timeline.today"
 				:selected-day="day"
@@ -413,7 +419,7 @@ const announcement = computed(() => {
 						v-if="timeline.items.length"
 						:items="timeline.items"
 						:domain="domain"
-						:year="year"
+						:year="displayedYear"
 						:today="timeline.today"
 						:selected-day="day"
 						:focused-project="project || undefined"
@@ -437,7 +443,7 @@ const announcement = computed(() => {
 					<EmptyState
 						v-else-if="filtered"
 						icon="filter"
-						:title="t('projectTimeline.empty.filters', {year})"
+						:title="t('projectTimeline.empty.filters', {year: displayedYear})"
 					>
 						<button
 							type="button"
@@ -451,7 +457,7 @@ const announcement = computed(() => {
 					<EmptyState
 						v-else-if="otherYears.length"
 						icon="chart-gantt"
-						:title="t('projectTimeline.empty.year', {year})"
+						:title="t('projectTimeline.empty.year', {year: displayedYear})"
 						:description="timeline.first_year === timeline.last_year
 							? t('projectTimeline.empty.otherYear', {year: timeline.first_year})
 							: t('projectTimeline.empty.otherYears', {first: timeline.first_year, last: timeline.last_year})"

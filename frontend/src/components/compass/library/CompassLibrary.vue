@@ -156,8 +156,21 @@
 				<span>{{ t('compass.library.trashNote') }}</span>
 			</p>
 
+			<p
+				v-if="isPaused || isFetching"
+				class="compass-library__activity"
+				role="status"
+			>
+				<Icon
+					:icon="isPaused ? 'exclamation-circle' : 'spinner'"
+					:spin="!isPaused"
+					aria-hidden="true"
+				/>
+				{{ isPaused ? t('network.waitingForConnection') : isPlaceholderData ? t('compass.library.switching') : t('network.updating') }}
+			</p>
+
 			<LoadError
-				v-if="isError && data === undefined"
+				v-if="isError && (data === undefined || unavailable)"
 				:retry="() => refetch()"
 			/>
 
@@ -183,8 +196,13 @@
 				v-else
 				class="compass-library__results"
 				:class="{'is-stale': isPlaceholderData}"
-				:aria-busy="isPlaceholderData"
+				:aria-busy="isFetching || isPaused"
 			>
+				<LoadError
+					v-if="isError"
+					:message="t('network.cachedReadFailed')"
+					:retry="() => refetch()"
+				/>
 				<ol
 					v-if="entries.length > 0"
 					class="compass-library__list"
@@ -261,7 +279,7 @@
 </template>
 
 <script setup lang="ts">
-import {computed, nextTick, onBeforeUnmount, ref, useTemplateRef, watch} from 'vue'
+import {computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef, watch} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {useRoute, useRouter, type RouteLocationRaw} from 'vue-router'
 import {useMediaQuery} from '@vueuse/core'
@@ -320,6 +338,17 @@ const heading = useTemplateRef<HTMLElement>('heading')
 const searchInput = useTemplateRef<HTMLInputElement>('searchInput')
 const chipRow = useTemplateRef<HTMLElement>('chipRow')
 
+// A cold URL can reach the router before the space request has mounted this anchor.
+// Back/forward navigation supplies its own saved scroll position and must keep it.
+onMounted(() => {
+	if (route.hash !== LIBRARY_HASH || window.history.state?.scroll) return
+	requestAnimationFrame(() => {
+		if (route.name === 'compass.space' && Number(route.params.spaceId) === props.space.id && route.hash === LIBRARY_HASH) {
+			root.value?.scrollIntoView({block: 'start'})
+		}
+	})
+})
+
 // ---------------------------------------------------------------------------
 // URL state
 // ---------------------------------------------------------------------------
@@ -359,9 +388,17 @@ const {
 	entries,
 	totalPages,
 	isError,
+	error,
+	isFetching,
+	isPaused,
 	isPlaceholderData,
 	refetch,
 } = useCompassEntries(() => props.space.id, filters, () => state.value.page)
+
+const unavailable = computed(() => {
+	const failure = classifyCompassFailure(error.value)
+	return failure === 'forbidden' || failure === 'missing'
+})
 
 watch([data, isPlaceholderData], ([current, placeholder]) => {
 	const page = state.value.page
@@ -925,6 +962,15 @@ async function confirmDelete() {
 	&.is-stale {
 		opacity: .6;
 	}
+}
+
+.compass-library__activity {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	color: var(--compass-ink-soft);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
 }
 
 .compass-library__list {

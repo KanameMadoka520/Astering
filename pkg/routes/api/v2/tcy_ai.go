@@ -315,8 +315,18 @@ func runAI(ctx context.Context, api huma.API, uid int64, in tcyai.RunInput) (*si
 }
 
 func dispatchAI(ctx context.Context, api huma.API, caller *http.Request, name string, raw json.RawMessage) (string, error) {
-	if _, err := tcyai.ValidateTool(name, raw, tcyai.RunInput{Mode: "write", AllowDelete: true}); err != nil {
+	if _, err := tcyai.ValidateTool(name, raw, tcyai.RunInput{
+		Mode:        "write",
+		AllowDelete: true,
+		ToolModules: tcyai.ToolModules{
+			ProjectTasks: "write",
+			Compass:      "write",
+		},
+	}); err != nil {
 		return "", err
+	}
+	if tcyai.IsCompassTool(name) {
+		return dispatchCompassAI(ctx, api, caller, name, raw)
 	}
 	var args map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &args); err != nil {

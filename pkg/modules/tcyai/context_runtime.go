@@ -258,7 +258,7 @@ func (state *AgentState) autoCompact(ctx context.Context, c Connection, persist 
 	state.Available = nil
 	state.MCPTickets = nil
 	state.closeMCP()
-	for _, t := range Tools(state.Input.Mode, state.Input.AllowDelete) {
+	for _, t := range coreTools(state.Input) {
 		state.Available = append(state.Available, toolName(t))
 	}
 	if state.SearchEnabled {

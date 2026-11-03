@@ -33,6 +33,8 @@
 		<KeyboardShortcuts v-if="keyboardShortcutsActive && !isQuickAddMode" />
 
 		<Teleport to="body">
+			<ChunkLoadRecovery />
+			<NetworkActivity />
 			<UpdateNotification v-if="!isQuickAddMode" />
 			<Notification />
 			<DiagnosticWindow />
@@ -46,6 +48,8 @@
 import {computed, watch, onBeforeUnmount} from 'vue'
 import {clearUploads} from '@/helpers/uploadTransport'
 import UploadCenter from '@/components/misc/UploadCenter.vue'
+import ChunkLoadRecovery from '@/components/misc/ChunkLoadRecovery.vue'
+import NetworkActivity from '@/components/misc/NetworkActivity.vue'
 import DiagnosticWindow from '@/components/ai/DiagnosticWindow.vue'
 import {clearDiagnostics, installBrowserDiagnostics} from '@/helpers/diagnostics'
 import {useRoute, useRouter} from 'vue-router'

@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import {computed, nextTick, onBeforeUnmount, ref, shallowRef, watch} from 'vue'
+import {computed, nextTick, onBeforeUnmount, ref, watch} from 'vue'
 import {useRoute, useRouter} from 'vue-router'
 import {useQuery} from '@tanstack/vue-query'
 import {useI18n} from 'vue-i18n'
 
 import ProjectStatusBadges from '@/components/project/partials/ProjectStatusBadges.vue'
 import LoadError from '@/components/misc/state/LoadError.vue'
-import type {ProjectHistory} from '@/client/generated'
 import {projectHistoryQuery} from '@/client/queries/projectHistory'
 import {useProjects} from '@/composables/useProjects'
+import {useRetainedHistoryQuery} from '@/composables/useRetainedHistoryQuery'
 import {projectCalendar} from '@/helpers/projectCalendar'
 import {
 	HEAT_LEVELS,
@@ -78,7 +78,7 @@ function updateSearch() {
 }
 onBeforeUnmount(() => clearTimeout(searchTimer))
 
-const query = useQuery(computed(() => projectHistoryQuery({
+const queryOptions = computed(() => projectHistoryQuery({
 	year: year.value,
 	timezone: timezone.value,
 	project: project.value,
@@ -87,15 +87,12 @@ const query = useQuery(computed(() => projectHistoryQuery({
 	unknown: unknown.value,
 	q: String(route.query.q || ''),
 	page: page.value,
-})))
+}))
 
-// Filter changes have no placeholder data. Keep the previous result on screen, dimmed,
-// instead of collapsing the page into a loading message on every change.
-const lastHistory = shallowRef<ProjectHistory>()
-watch(() => query.data.value, value => {
-	if (value) lastHistory.value = value
-}, {immediate: true})
-const history = computed(() => query.data.value ?? (query.isFetching.value ? lastHistory.value : undefined))
+const query = useQuery(queryOptions)
+const retained = useRetainedHistoryQuery(query, () => queryOptions.value.queryKey, year)
+const history = retained.data
+const displayedYear = computed(() => retained.year.value ?? year.value)
 const refreshing = computed(() => query.isPlaceholderData.value || (!query.data.value && history.value !== undefined))
 const failed = computed(() => query.isError.value && !query.isFetching.value)
 
@@ -106,9 +103,9 @@ const projectOptions = computed(() => projects.projectsArray
 		label: p.is_archived ? t('projectHistory.projectOptionArchived', {title: p.title}) : p.title,
 	})))
 
-const days = computed(() => projectCalendar(year.value))
+const days = computed(() => projectCalendar(displayedYear.value))
 const months = computed(() => Array.from({length: 12}, (_, month) => ({
-	name: formatCalendarMonth(year.value, month, locale.value),
+	name: formatCalendarMonth(displayedYear.value, month, locale.value),
 	days: days.value.filter(d => d.month === month),
 })))
 const count = (date: string) => history.value?.days?.[date] || 0
@@ -124,7 +121,7 @@ const dayLabels = computed(() => {
 	}))
 })
 const monthLabels = computed(() => monthCounts.value.map((total, index) => t('projectHistory.monthLabel', {
-	month: formatCalendarMonth(year.value, index, locale.value, {
+	month: formatCalendarMonth(displayedYear.value, index, locale.value, {
 		month: 'long',
 		year: 'numeric',
 	}),
@@ -142,7 +139,7 @@ watch(year, () => {
 const shownMonth = computed(() => {
 	if (pickedMonth.value !== null) return pickedMonth.value
 	if (day.value) return Number(day.value.slice(5, 7)) - 1
-	if (year.value === currentYear.value) {
+	if (displayedYear.value === currentYear.value) {
 		return Number(new Intl.DateTimeFormat('en', {
 			month: 'numeric',
 			timeZone: timezone.value,
@@ -183,7 +180,7 @@ async function keyboardDay(event: KeyboardEvent, date: string, monthly = false) 
 const recordsHeading = computed(() => {
 	if (unknown.value) return t('projectHistory.unknownHeading')
 	if (day.value) return formatCalendarDay(day.value, locale.value, DAY_HEADING_FORMAT)
-	return t('projectHistory.yearRecords', {year: year.value})
+	return t('projectHistory.yearRecords', {year: displayedYear.value})
 })
 const recordsCount = computed(() => {
 	const total = history.value?.total ?? 0
@@ -225,7 +222,7 @@ watch(() => query.data.value?.total_pages, total => {
 <template>
 	<section
 		class="project-lifecycle"
-		:aria-busy="query.isFetching.value"
+		:aria-busy="query.isFetching.value || query.isPending.value"
 	>
 		<div class="history-filters">
 			<label class="history-filter">
@@ -292,6 +289,16 @@ watch(() => query.data.value?.total_pages, total => {
 			role="status"
 		>{{ refreshing ? t('projectHistory.loading') : '' }}</span>
 
+		<p
+			v-if="query.isPaused.value || refreshing"
+			class="history-connection-status"
+			role="status"
+		>
+			{{ query.isPaused.value ? t('network.waitingForConnection') : t('network.updating') }}
+			<template v-if="refreshing && history">
+				{{ t('network.retainedHistory', {year: displayedYear}) }}
+			</template>
+		</p>
 		<!-- Like the timeline: a failed refresh keeps the records that are already on screen and says so above them. -->
 		<div
 			v-if="query.isError.value && !history"
@@ -503,7 +510,7 @@ watch(() => query.data.value?.total_pages, total => {
 					class="history-state-icon"
 				/>
 				<template v-if="explainEmpty">
-					<h3>{{ t('projectHistory.emptyYear', {year}) }}</h3>
+					<h3>{{ t('projectHistory.emptyYear', {year: displayedYear}) }}</h3>
 					<p class="history-state-text">
 						{{ t('projectHistory.emptyWhat') }}
 					</p>

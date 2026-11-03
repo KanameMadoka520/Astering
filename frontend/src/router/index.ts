@@ -734,7 +734,7 @@ router.beforeEach(async (to, from) => {
 	if (to.name === 'tcy-public') return
 	const authStore = useAuthStore()
 
-	await authStore.checkAuth()
+	await authStore.checkAuth({forceUserInfo: to.meta?.requiresAdminPanel === true})
 
 	if (to.meta?.requiresAdminPanel) {
 		// Await config/auth hydration so the license check doesn't race the empty default
@@ -744,7 +744,7 @@ router.beforeEach(async (to, from) => {
 		await baseStore.appReady
 		const configStore = useConfigStore()
 		const featureOn = configStore.isProFeatureEnabled(PRO_FEATURE.ADMIN_PANEL)
-		// isAdmin comes from /user, not the JWT; force-fetch in case checkAuth() was debounced.
+		// checkAuth awaited fresh /user data for this privileged route. Never trust JWT admin claims.
 		if (authStore.info?.is_admin === undefined) {
 			await authStore.refreshUserInfo()
 		}

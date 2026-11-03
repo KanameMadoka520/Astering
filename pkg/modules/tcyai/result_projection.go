@@ -104,17 +104,14 @@ func compactReceipts(receipts []Operation) []map[string]any {
 }
 
 // Joined worker receipts belong to the same conversation and stay readable after replay.
-func findToolResult(result RunResult, ref, part string) (string, bool) {
-	find := func(actions []Action) (string, bool) {
+func findToolResult(result RunResult, ref string) (Action, bool) {
+	find := func(actions []Action) (Action, bool) {
 		for _, action := range actions {
 			if action.ResultRef == ref {
-				if part == "arguments" {
-					return action.Arguments, true
-				}
-				return action.Result, true
+				return action, true
 			}
 		}
-		return "", false
+		return Action{}, false
 	}
 	if data, ok := find(result.Actions); ok {
 		return data, true
@@ -124,7 +121,7 @@ func findToolResult(result RunResult, ref, part string) (string, bool) {
 			return data, true
 		}
 	}
-	return "", false
+	return Action{}, false
 }
 
 func (state *AgentState) readToolResult(raw json.RawMessage) (string, error) {
@@ -143,22 +140,40 @@ func (state *AgentState) readToolResult(raw json.RawMessage) (string, error) {
 	if args.MaxChars == 0 {
 		args.MaxChars = 8000
 	}
-	data, found := findToolResult(state.Result, args.Ref, args.Part)
-	if !found && state.OwnerID > 0 && state.ConversationID != "" {
-		conversations.Lock()
-		record, err := readConversation(state.OwnerID, state.ConversationID)
-		if err == nil {
-			for _, turn := range record.Turns {
-				data, found = findToolResult(turn.Result, args.Ref, args.Part)
-				if found {
-					break
+	var historical []RunResult
+	historyLoaded := false
+	resolve := func(ref string) (Action, bool) {
+		if action, found := findToolResult(state.Result, ref); found {
+			return action, true
+		}
+		if !historyLoaded && state.OwnerID > 0 && state.ConversationID != "" {
+			historyLoaded = true
+			conversations.Lock()
+			record, err := readConversation(state.OwnerID, state.ConversationID)
+			if err == nil {
+				for _, turn := range record.Turns {
+					historical = append(historical, turn.Result)
 				}
 			}
+			conversations.Unlock()
 		}
-		conversations.Unlock()
+		for _, result := range historical {
+			if action, found := findToolResult(result, ref); found {
+				return action, true
+			}
+		}
+		return Action{}, false
 	}
+	action, found := resolve(args.Ref)
 	if !found {
 		return "", ToolFailure("RESULT_NOT_FOUND", "This result is not available in the current conversation; query the source again if needed.")
+	}
+	if !moduleResultReadable(state.Input, action, resolve, map[string]bool{args.Ref: true}) {
+		return "", ToolFailure("TOOL_NOT_ALLOWED", "The source module for this historical result is disabled for the current turn.")
+	}
+	data := action.Result
+	if args.Part == "arguments" {
+		data = action.Arguments
 	}
 	chars := []rune(data)
 	if args.Offset > len(chars) {

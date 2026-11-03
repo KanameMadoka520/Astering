@@ -116,4 +116,24 @@ describe('AssistantPreferences', () => {
 		await dialog.trigger('click')
 		expect(wrapper.emitted('close')).toHaveLength(1)
 	})
+
+	it('keeps an open draft but refuses applying it if execution becomes locked', async () => {
+		const wrapper = mountDialog()
+		await page().find('select[aria-label="toolModules.compass"]').setValue('write')
+		await wrapper.setProps({locked: true})
+
+		expect(page().find('select[aria-label="toolModules.compass"]').attributes('disabled')).toBeDefined()
+		expect(button('assistantUI.apply')!.attributes('disabled')).toBeDefined()
+		expect(page().text()).toContain('toolModules.locked')
+		// A submit already queued before the lock must be rejected as well.
+		await page().find('form').trigger('submit')
+		expect(wrapper.emitted('apply')).toBeUndefined()
+		expect(wrapper.emitted('close')).toBeUndefined()
+
+		await wrapper.setProps({locked: false})
+		expect(page().find('select[aria-label="toolModules.compass"]').element).toHaveProperty('value', 'write')
+		await page().find('form').trigger('submit')
+		expect(wrapper.emitted('apply')?.[0]?.[0]).toMatchObject({tool_modules: {compass: 'write'}})
+		expect(wrapper.emitted('close')).toHaveLength(1)
+	})
 })

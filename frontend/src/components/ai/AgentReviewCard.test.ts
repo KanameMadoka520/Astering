@@ -527,3 +527,51 @@ it('previews view-order changes as named sequences and boundaries without presen
 	})
 	wrapper.unmount()
 })
+
+
+describe('Compass write review', () => {
+	it('shows a new entry parent without comparing its text to the space snapshot', () => {
+		const wrapper = shallowMount(AgentReviewCard, {
+			props: {
+				busy: false,
+				turn: reviewTurn({
+					tool: 'create_compass_entry',
+					before: JSON.stringify([{id: 7, title: 'Parent sky', revision: 3}]),
+					arguments: JSON.stringify({space_id: 7, title: 'New principle', content: '<p>Remember</p>'}),
+				}),
+			},
+			global: {stubs},
+		})
+		expect(wrapper.get('.review-target strong').text()).toBe('agent.tools.create_compass_entry')
+		expect(wrapper.get('.review-compass').text()).toContain('agent.compassReview.space#7')
+		expect(wrapper.find('table').exists()).toBe(false)
+		expect(wrapper.text()).toContain('New principle')
+		expect(wrapper.text()).toContain('Parent sky')
+		expect(wrapper.text()).toContain('agent.compassReview.hint')
+	})
+
+	it('distinguishes historical source revision from the current concurrency revision', async () => {
+		const wrapper = shallowMount(AgentReviewCard, {
+			props: {
+				busy: false,
+				turn: reviewTurn({
+					tool: 'restore_compass_revision',
+					before: JSON.stringify([{id: 41, space_id: 7, title: 'Current entry', revision: 5}]),
+					arguments: JSON.stringify({id: 41, revision: 2, expected_revision: 5}),
+				}),
+			},
+			global: {stubs},
+		})
+		const fields = wrapper.get('.review-compass').text()
+		expect(fields).toContain('agent.compassReview.entry#41')
+		expect(fields).toContain('agent.compassReview.sourceRevision2')
+		expect(fields).toContain('agent.compassReview.expectedRevision5')
+		expect(wrapper.text()).toContain('agent.compassReview.restoreHint')
+		expect(wrapper.find('.is-destructive').exists()).toBe(false)
+		await wrapper.findAll('button').find(button => button.text() === 'agent.approve')!.trigger('click')
+		expect(wrapper.emitted('review')?.[0]?.[0]).toMatchObject({
+			operation_id: 'operation-bucket',
+			decision: 'approve',
+		})
+	})
+})
