@@ -543,10 +543,18 @@ func assertTaskCollectionSort(t *testing.T, body []byte, field string, descendin
 	assert.Equal(t, expectedIDs, actualIDs)
 
 	undated := false
+	unprioritized := false
 	for i, task := range tasks {
 		switch field {
 		case "priority":
-			if i == 0 {
+			// These fixtures omit priority for unprioritized rows: SQL NULL is
+			// serialized as zero, and the query deliberately uses NULLS LAST.
+			if task.Priority == 0 {
+				unprioritized = true
+				continue
+			}
+			assert.False(t, unprioritized, "fixture rows with NULL priority must follow explicit priorities")
+			if i == 0 || tasks[i-1].Priority == 0 {
 				continue
 			}
 			if descending {
