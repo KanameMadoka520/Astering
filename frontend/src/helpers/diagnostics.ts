@@ -96,7 +96,7 @@ export function openCompactDiagnostic(conversation: Conversation) {
 export function openDiagnostics() { ensureOwner(); diagnosticsOpen.value = true }
 export function diagnosticReport(entry: Diagnostic | undefined, includeDetails = false) {
 	return JSON.stringify(redactDiagnostic({
-		format: 'vikunja-x-diagnostic-v1', version: VERSION, exported_at: new Date().toISOString(),
+		format: 'astering-diagnostic-v1', version: VERSION, exported_at: new Date().toISOString(),
 		page: safeDiagnosticURL(window.location.href), viewport: {width: window.innerWidth, height: window.innerHeight},
 		browser: navigator.userAgent, language: document.documentElement.lang,
 		entry: entry ? {...entry, detail: includeDetails ? entry.detail : undefined} : undefined,

@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	e "code.vikunja.io/api/pkg/modules/keyvalue/error"
+	e "github.com/KanameMadoka520/Astering/pkg/modules/keyvalue/error"
 )
 
 // Storage is the memory implementation of a storage backend

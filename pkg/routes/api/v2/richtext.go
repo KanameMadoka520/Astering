@@ -19,10 +19,10 @@ package apiv2
 import (
 	"context"
 
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/humabridge"
-	"code.vikunja.io/api/pkg/richtext"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/humabridge"
+	"github.com/KanameMadoka520/Astering/pkg/richtext"
 
 	"github.com/danielgtaylor/huma/v2"
 )

@@ -2,36 +2,36 @@
 	"notifications": {
 		"greeting": "Merhaba %[1]s,",
 		"email_confirm": {
-			"subject": "%[1]s, lütfen Vikunja e-posta adresini doğrula",
-			"subject_new": "%[1]s + Vikunja = <3",
-			"welcome": "Vikunja'ya hoş geldin!",
+			"subject": "%[1]s, lütfen Astering e-posta adresini doğrula",
+			"subject_new": "%[1]s + Astering = <3",
+			"welcome": "Astering'ya hoş geldin!",
 			"confirm": "E-posta adresini doğrulamak için aşağıdaki bağlantıya tıklaman yeterli:"
 		},
 		"email_change": {
-			"subject": "Vikunja hesabın için e-posta değişikliği talebi alındı",
+			"subject": "Astering hesabın için e-posta değişikliği talebi alındı",
 			"requested": "Birisi hesabının e-posta adresini %[1]s olarak değiştirmek istedi. Sen yeni adresi onaylayana kadar mevcut adresin geçerli kalmaya devam edecek.",
 			"warning": "Bu talebi sen oluşturmadıysan vakit kaybetmeden şifreni değiştir ve hesap ayarlarından bekleyen bu işlemi iptal et."
 		},
 		"password": {
 			"changed": {
-				"subject": "Vikunja şifren değiştirildi",
+				"subject": "Astering şifren değiştirildi",
 				"success": "Hesap şifren başarıyla güncellendi.",
 				"warning": "Bu değişikliği sen yapmadıysan hesabın başkalarının eline geçmiş olabilir. Böyle bir durumda vakit kaybetmeden sunucu yöneticinle iletişime geç."
 			},
 			"reset": {
-				"subject": "Vikunja şifreni sıfırla",
+				"subject": "Astering şifreni sıfırla",
 				"instructions": "Şifreni sıfırlamak için aşağıdaki bağlantıya tıkla:",
 				"valid_duration": "Bu bağlantı 24 saat boyunca geçerlidir."
 			}
 		},
 		"totp": {
 			"invalid": {
-				"subject": "Birisi Vikunja hesabına girmeye çalıştı ancak başaramadı",
+				"subject": "Birisi Astering hesabına girmeye çalıştı ancak başaramadı",
 				"message": "Birisi kullanıcı adın ve şifrenle giriş yapmayı denedi fakat iki adımlı doğrulama (TOTP) kodunu yanlış girdi.",
 				"warning": "**Bu sen değilsen bir başkası şifreni öğrenmiş demektir. Derhal yeni bir şifre belirlemeni öneririz!**"
 			},
 			"account_locked": {
-				"subject": "Vikunja hesabını güvenlik nedeniyle kilitledik",
+				"subject": "Astering hesabını güvenlik nedeniyle kilitledik",
 				"message": "Birisi giriş bilgilerinle oturum açmaya çalıştı ancak geçerli bir TOTP kodu giremedi.",
 				"disabled": "Üst üste 10 başarısız denemenin ardından hesabını kilitledik ve şifreni sıfırladık. Yeni bir şifre belirlemek için az önce gönderdiğimiz e-postadaki yönergeleri izleyebilirsin.",
 				"reset_instructions": "Şifre sıfırlama e-postası ulaşmadıysa [%[1]s](%[2]s) adresinden her zaman yeni bir talep oluşturabilirsin."
@@ -39,7 +39,7 @@
 		},
 		"login": {
 			"failed": {
-				"subject": "Birisi Vikunja hesabına girmeye çalıştı ancak şifreyi bilemedi",
+				"subject": "Birisi Astering hesabına girmeye çalıştı ancak şifreyi bilemedi",
 				"message": "Birisi hesabına art arda 3 kez yanlış şifreyle giriş yapmayı denedi.",
 				"warning": "Bu denemeleri sen yapmadıysan bir başkası hesabına sızmaya çalışıyor olabilir.",
 				"enhance_security": "Hesap güvenliğini artırmak için daha güçlü bir şifre seçebilir ya da ayarlardan iki adımlı doğrulamayı (TOTP) etkinleştirebilirsin:"
@@ -48,7 +48,7 @@
 		"account": {
 			"deletion": {
 				"confirm": {
-					"subject": "Lütfen Vikunja hesabının silinmesini onayla",
+					"subject": "Lütfen Astering hesabının silinmesini onayla",
 					"request": "Hesabının silinmesi yönünde bir talep aldık. İşlemi onaylamak için lütfen aşağıdaki bağlantıya tıkla:",
 					"valid_duration": "Bu bağlantı 24 saat boyunca geçerlidir.",
 					"schedule_info": "Silme işlemini onayladığında hesabın 3 gün sonrasına planlanacak; bu süre zarfında sana durumla ilgili bir e-posta daha göndereceğiz.",
@@ -56,16 +56,16 @@
 					"changed_mind": "Böyle bir talepte bulunmadıysan ya da fikrini değiştirdiysen bu e-postayı görmezden gelebilirsin."
 				},
 				"scheduled": {
-					"subject_days": "Vikunja hesabın %[1]s gün içinde silinecek",
-					"subject_tomorrow": "Vikunja hesabın yarın silinecek",
-					"request_reminder": "Kısa süre önce Vikunja hesabının silinmesi için talepte bulunmuştun.",
+					"subject_days": "Astering hesabın %[1]s gün içinde silinecek",
+					"subject_tomorrow": "Astering hesabın yarın silinecek",
+					"request_reminder": "Kısa süre önce Astering hesabının silinmesi için talepte bulunmuştun.",
 					"deletion_time_days": "Hesabını %[1]s gün sonra kalıcı olarak sileceğiz.",
 					"deletion_time_tomorrow": "Hesabını yarın kalıcı olarak sileceğiz.",
 					"changed_mind": "Fikrinden vazgeçtiysen silme işlemini iptal etmek için aşağıdaki bağlantıya tıklayıp adımları takip etmen yeterli:"
 				},
 				"completed": {
-					"subject": "Vikunja hesabın silindi",
-					"confirmation": "Talebin üzerine Vikunja hesabını sildik.",
+					"subject": "Astering hesabın silindi",
+					"confirmation": "Talebin üzerine Astering hesabını sildik.",
 					"permanent": "Bu işlem geri alınamaz. Yedek almadıysan ve verilerine hemen ulaşman gerekiyorsa sunucu yöneticinle görüşmelisin."
 				}
 			}
@@ -116,29 +116,29 @@
 		},
 		"team": {
 			"member_added": {
-				"subject": "%[1]s seni Vikunja'daki \"%[2]s\" ekibine ekledi",
-				"message": "%[1]s az önce seni Vikunja üzerindeki %[2]s ekibine dahil etti."
+				"subject": "%[1]s seni Astering'daki \"%[2]s\" ekibine ekledi",
+				"message": "%[1]s az önce seni Astering üzerindeki %[2]s ekibine dahil etti."
 			}
 		},
 		"data_export": {
 			"ready": {
-				"subject": "Vikunja dışa aktarma dosyan hazır",
-				"message": "Vikunja verilerin indirilmeye hazır! Dosyanı hemen almak için aşağıdaki butona tıkla:",
+				"subject": "Astering dışa aktarma dosyan hazır",
+				"message": "Astering verilerin indirilmeye hazır! Dosyanı hemen almak için aşağıdaki butona tıkla:",
 				"availability": "İndirme bağlantısı önümüzdeki 7 gün boyunca geçerli kalacak."
 			}
 		},
 		"migration": {
 			"done": {
-				"subject": "%[1]s platformundan Vikunja'ya aktarım tamamlandı",
-				"imported": "Vikunja; %[1]s üzerinde erişebildiğin tüm listeleri, projeleri, görevleri, notları, hatırlatıcıları ve dosyaları başarıyla içeri aktardı.",
+				"subject": "%[1]s platformundan Astering'ya aktarım tamamlandı",
+				"imported": "Astering; %[1]s üzerinde erişebildiğin tüm listeleri, projeleri, görevleri, notları, hatırlatıcıları ve dosyaları başarıyla içeri aktardı.",
 				"have_fun": "Yeni (ama tanıdık) projelerinin keyfini çıkar!"
 			},
 			"failed": {
-				"subject": "%[1]s platformundan Vikunja'ya aktarım yapılamadı",
+				"subject": "%[1]s platformundan Astering'ya aktarım yapılamadı",
 				"message": "%[1]s üzerinden yapılan taşıma işlemi bu kez ne yazık ki planlandığı gibi gitmedi.",
 				"retry": "Hiç dert etme! Daha önce yaptığın gibi baştan başlatıp bir şans daha ver. Bazen %[1]s tarafındaki anlık aksaklıklar yüzünden böyle pürüzler çıkabiliyor; genelde tekrar denemek işi çözer.",
 				"error": "Yolda ufak bir hataya takıldık: `%[2]s`.",
-				"report": "Neyin ters gittiğini inceleyebilmemiz için [forumumuzda](https://community.vikunja.io/) ya da diğer iletişim kanallarımızda bize haber verirsen çok seviniriz.",
+				"report": "Neyin ters gittiğini inceleyebilmemiz için [forumumuzda](https://github.com/KanameMadoka520/Astering/issues) ya da diğer iletişim kanallarımızda bize haber verirsen çok seviniriz.",
 				"working_on_it": "Hata zaten radarımızda; sorunu en kısa sürede çözmek için kolları sıvadık."
 			}
 		},
@@ -159,8 +159,8 @@
 			"have_nice_day": "Güzel bir gün dileriz!",
 			"copy_url": "Yukarıdaki buton çalışmıyorsa aşağıdaki bağlantıyı kopyalayıp tarayıcının adres çubuğuna yapıştırabilirsin:",
 			"actions": {
-				"open_task": "Görevi Vikunja'da Aç",
-				"open_vikunja": "Vikunja'yı Aç",
+				"open_task": "Görevi Astering'da Aç",
+				"open_vikunja": "Astering'yı Aç",
 				"open_project": "Projeyi Aç",
 				"open_team": "Ekibi Aç",
 				"download": "İndir",
@@ -187,7 +187,7 @@
 	},
 	"feeds": {
 		"notifications": {
-			"title": "%[1]s için Vikunja bildirimleri"
+			"title": "%[1]s için Astering bildirimleri"
 		}
 	}
 }

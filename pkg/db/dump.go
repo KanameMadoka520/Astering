@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"code.vikunja.io/api/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/log"
 
 	"xorm.io/xorm/schemas"
 )

@@ -27,8 +27,8 @@ import (
 	"testing"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/db"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"

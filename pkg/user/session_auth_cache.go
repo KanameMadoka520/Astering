@@ -20,8 +20,8 @@ import (
 	"strconv"
 	"time"
 
-	"code.vikunja.io/api/pkg/events"
-	"code.vikunja.io/api/pkg/modules/keyvalue"
+	"github.com/KanameMadoka520/Astering/pkg/events"
+	"github.com/KanameMadoka520/Astering/pkg/modules/keyvalue"
 
 	"xorm.io/xorm"
 )

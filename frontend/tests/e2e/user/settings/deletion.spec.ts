@@ -40,9 +40,9 @@ test.describe('Account deletion', () => {
 		}, false)
 
 		await page.goto(`/user/settings/deletion?accountDeletionConfirm=${deletionToken}`)
-		// Scheduled-state copy: "We will delete your vikunja-x account on <date> (in …)."
+		// Scheduled-state copy: "We will delete your Astering account on <date> (in …)."
 		// The date itself is absolute, with a year; only the parentheses say how far away it is.
-		const scheduled = /we will delete your vikunja-x account on [^()]*\b\d{4}\b[^()]* \(in [^)]+\)/i
+		const scheduled = /we will delete your Astering account on [^()]*\b\d{4}\b[^()]* \(in [^)]+\)/i
 		await expect(page.locator('.card')).toContainText(scheduled)
 		await expect(page.locator('.card')).not.toContainText(/account on in /i)
 		await expect(page).not.toHaveURL(/accountDeletionConfirm/)

@@ -8,7 +8,7 @@
   "ipBlockTime": 600,
   "expireTime": 24,
   "unit": "h",
-  "name": "Vikunja AI与语音请求兼容",
+  "name": "Astering AI与语音请求兼容",
   "conditions": [
     {
       "field": "Method",

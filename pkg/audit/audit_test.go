@@ -26,12 +26,12 @@ import (
 	"testing"
 	"time"
 
-	"code.vikunja.io/api/pkg/audit"
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/events"
-	"code.vikunja.io/api/pkg/license"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/modules/keyvalue"
+	"github.com/KanameMadoka520/Astering/pkg/audit"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/events"
+	"github.com/KanameMadoka520/Astering/pkg/license"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/modules/keyvalue"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/stretchr/testify/assert"

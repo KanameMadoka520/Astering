@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	storagefiles "code.vikunja.io/api/pkg/files"
+	storagefiles "github.com/KanameMadoka520/Astering/pkg/files"
 )
 
 // PrivateImageCache must only be enabled after the caller has checked current access.

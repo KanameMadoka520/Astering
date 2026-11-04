@@ -20,13 +20,13 @@ import (
 	"context"
 	"net/http"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/modules/migration"
-	migrationHandler "code.vikunja.io/api/pkg/modules/migration/handler"
-	microsofttodo "code.vikunja.io/api/pkg/modules/migration/microsoft-todo"
-	"code.vikunja.io/api/pkg/modules/migration/todoist"
-	"code.vikunja.io/api/pkg/modules/migration/trello"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/modules/migration"
+	migrationHandler "github.com/KanameMadoka520/Astering/pkg/modules/migration/handler"
+	microsofttodo "github.com/KanameMadoka520/Astering/pkg/modules/migration/microsoft-todo"
+	"github.com/KanameMadoka520/Astering/pkg/modules/migration/todoist"
+	"github.com/KanameMadoka520/Astering/pkg/modules/migration/trello"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 
 	"github.com/danielgtaylor/huma/v2"
 )
@@ -94,6 +94,6 @@ func registerOAuthMigrator(api huma.API, enabled bool, factory func() migration.
 	migrator := func() migration.Migrator { return factory() }
 	registerMigrationStatus(api, name, tags, migrator)
 	registerMigrationMigrate[migrationMigrateBody](api, name, tags,
-		"Starts a migration of the authenticated user's data from this service into Vikunja. The migration runs asynchronously; this returns once it has been queued. Refuses with 400 if the state is missing, expired, already used or was issued to another user, and with 412 if a migration for this service is already running.",
+		"Starts a migration of the authenticated user's data from this service into Astering. The migration runs asynchronously; this returns once it has been queued. Refuses with 400 if the state is missing, expired, already used or was issued to another user, and with 412 if a migration for this service is already running.",
 		migrator)
 }

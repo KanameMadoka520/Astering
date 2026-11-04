@@ -24,7 +24,7 @@ import (
 	"sort"
 	"time"
 
-	"code.vikunja.io/api/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/log"
 )
 
 // maxPages stops the paged loops from spinning forever on a server that keeps returning cards.

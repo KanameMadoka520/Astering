@@ -19,8 +19,8 @@ package migration
 import (
 	"testing"
 
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/files"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/files"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"xorm.io/xorm"

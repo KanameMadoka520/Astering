@@ -36,7 +36,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"code.vikunja.io/api/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/log"
 
 	_ "golang.org/x/image/webp" // Register WebP decoding for MIME-independent validation.
 )

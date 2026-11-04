@@ -28,12 +28,12 @@ import (
 
 	"golang.org/x/term"
 
-	"code.vikunja.io/veans/internal/auth"
-	"code.vikunja.io/veans/internal/client"
-	"code.vikunja.io/veans/internal/config"
-	"code.vikunja.io/veans/internal/credentials"
-	"code.vikunja.io/veans/internal/output"
-	"code.vikunja.io/veans/internal/trust"
+	"github.com/KanameMadoka520/Astering/veans/internal/auth"
+	"github.com/KanameMadoka520/Astering/veans/internal/client"
+	"github.com/KanameMadoka520/Astering/veans/internal/config"
+	"github.com/KanameMadoka520/Astering/veans/internal/credentials"
+	"github.com/KanameMadoka520/Astering/veans/internal/output"
+	"github.com/KanameMadoka520/Astering/veans/internal/trust"
 )
 
 // runtime bundles the artifacts every non-init command needs: parsed config,

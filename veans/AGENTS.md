@@ -1,14 +1,15 @@
 # AGENT Instructions for veans
 
 Things to know before touching this submodule that aren't obvious from
-reading the code. The parent repo's `CLAUDE.md` covers the rest of Vikunja;
+reading the code. The parent repo's `AGENTS.md` covers the rest of Astering;
 this file is veans-specific.
 
 ## Module layout
 
-- `veans/` is its own Go module (`code.vikunja.io/veans`), separate from
-  the parent. Don't try to import `code.vikunja.io/api/...` — that pulls
-  XORM into the CLI binary. Wire types live in `internal/client/types.go`
+- `veans/` is its own Go module (`github.com/KanameMadoka520/Astering/veans`), separate from
+  the parent. Imports within `github.com/KanameMadoka520/Astering/veans/...` are
+  local to this module. Do not import the parent server
+  (`github.com/KanameMadoka520/Astering/pkg/...`) — that pulls XORM into the CLI binary. Wire types live in `internal/client/types.go`
   as plain JSON-tagged structs that mirror the parent models.
 - License headers are enforced by `goheader` in `veans/.golangci.yml`.
   Every new `.go` file needs the AGPLv3 banner from
@@ -26,25 +27,22 @@ this file is veans-specific.
   and without `VEANS_E2E_API_URL` set, the e2e tests fail loudly with
   a "configure or pass -short" hint.
 - E2e tests: `mage test:e2e` (no `-short`). Assumes an externally-
-  running Vikunja at `VEANS_E2E_API_URL`. The harness seeds its own
+  running Astering at `VEANS_E2E_API_URL`. The harness seeds its own
   admin user via `PATCH /api/v1/test/users` — same mechanism the
   playwright suite uses — so the API must be booted with
   `VIKUNJA_SERVICE_TESTINGTOKEN=<token>` and the same value passed in
   via `VEANS_E2E_TESTING_TOKEN`. Alternative path:
   `VEANS_E2E_ADMIN_TOKEN=<jwt>` skips the seed and uses the given
-  token as-is, for driving a long-lived Vikunja the suite shouldn't
+  token as-is, for driving a long-lived Astering the suite shouldn't
   mutate user rows on.
 - Local e2e loop: from the parent repo root, build the API
   (`mage build:build`), run it with sqlite-memory + a known JWT
   secret + `VIKUNJA_SERVICE_TESTINGTOKEN`, then `mage test:e2e` from
   `veans/` with `VEANS_E2E_API_URL` + `VEANS_E2E_TESTING_TOKEN`. No
   manual seeding step — the test harness handles it.
-- CI: the `test-veans-e2e` job in `.github/workflows/test.yml` consumes
-  the existing `vikunja_bin` artifact from `api-build`; don't recompile
-  the API in a parallel workflow. The `veans-test` job runs unit tests
-  with `-short` for fast feedback, independent of `api-build`.
+- 本仓库只在本机执行上述测试与编译，不使用 GitHub Actions。不要引用或恢复上游的 CI 工作流，也不要把 E2E 指向生产账户。
 
-## Vikunja wire-format gotchas
+## Astering wire-format gotchas
 
 veans targets the Huma-backed **`/api/v2`** exclusively (`apiBasePath` in
 `internal/client/client.go`). v1 is frozen, and the kanban-bucket CRUD veans
@@ -98,7 +96,7 @@ oddly, suspect one of these:
   validation. Use `client.FarFuture` (year 9999) when you mean "no
   expiry" — the frontend does the same.
 - **Task descriptions and comments are HTML, not markdown.** The
-  Vikunja web UI uses TipTap, which calls `getHTML()` on save. The
+  Astering web UI uses TipTap, which calls `getHTML()` on save. The
   stored field is therefore HTML. The agent prompt template
   (`internal/commands/prompt.tmpl`) teaches agents the canonical
   TipTap shapes — most importantly `<ul data-type="taskList">` +
@@ -110,7 +108,7 @@ oddly, suspect one of these:
 
 ## API token permissions
 
-- Vikunja validates token `permissions` against `apiTokenRoutes`, a map
+- Astering validates token `permissions` against `apiTokenRoutes`, a map
   built dynamically from registered routes. Group names are derived
   from the URL path (params stripped, joined by `_`). Examples:
   - `/projects/:project/views/:view/buckets/:bucket/tasks` →
@@ -130,7 +128,7 @@ oddly, suspect one of these:
 - `client.PermissionsForBot()` calls `GET /routes` at runtime and
   grants only the intersection of what we want and what the server
   exposes. **Don't hard-code permission group names** — they drift
-  across Vikunja versions, and discovery keeps the bot's grant valid
+  across Astering versions, and discovery keeps the bot's grant valid
   across upgrades.
 
 ## Bot ownership and token minting
@@ -145,7 +143,7 @@ oddly, suspect one of these:
 
 ## OAuth flow
 
-- Vikunja's authorization server requires PKCE/S256 and accepts either
+- Astering's authorization server requires PKCE/S256 and accepts either
   `vikunja-…://` custom schemes or RFC 8252 loopback URIs
   (`http://127.0.0.1:NNN/`, `http://localhost:NNN/`, `http://[::1]:NNN/`).
   No client registration needed — `client_id` can be any consistent
@@ -208,7 +206,7 @@ oddly, suspect one of these:
 ## Audience split
 
 The CLI is agent-only at runtime; humans never use it for day-to-day
-work (they use Vikunja's web UI). Two commands serve a human running
+work (they use Astering's web UI). Two commands serve a human running
 one-off setup:
 
 - **`init`** — bootstrap a repo: pick project + view, create bot,

@@ -20,9 +20,9 @@ import (
 	"fmt"
 	"net/url"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/models"
 )
 
 // EndSessionEndpoint returns the provider's RP-Initiated Logout endpoint

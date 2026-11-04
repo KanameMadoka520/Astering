@@ -25,7 +25,7 @@ describe('actual speech request endpoint', () => {
 	it('preserves Volcengine mode-specific endpoints and displays all ElevenLabs query options', () => {
 		expect(speechRequestEndpoint(connection({protocol: 'volcengine-asr', base_url: 'wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream'})))
 			.toBe('wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream')
-		expect(speechRequestEndpoint(connection({protocol: 'elevenlabs-realtime', base_url: 'https://api.elevenlabs.io/v1', model: 'scribe_v2_realtime', speech: {language: 'zh', hotwords: ['project name', 'vikunja-x']}})))
-			.toBe('wss://api.elevenlabs.io/v1/speech-to-text/realtime?audio_format=pcm_16000&commit_strategy=manual&language_code=zh&keyterms=project+name&keyterms=vikunja-x&model_id=scribe_v2_realtime')
+		expect(speechRequestEndpoint(connection({protocol: 'elevenlabs-realtime', base_url: 'https://api.elevenlabs.io/v1', model: 'scribe_v2_realtime', speech: {language: 'zh', hotwords: ['project name', 'Astering']}})))
+			.toBe('wss://api.elevenlabs.io/v1/speech-to-text/realtime?audio_format=pcm_16000&commit_strategy=manual&language_code=zh&keyterms=project+name&keyterms=Astering&model_id=scribe_v2_realtime')
 	})
 })

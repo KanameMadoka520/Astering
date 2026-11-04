@@ -21,9 +21,9 @@ import (
 	"testing"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/models"
 	ics "github.com/arran4/golang-ical"
 	"gopkg.in/d4l3k/messagediff.v1"
 )
@@ -962,7 +962,7 @@ func TestGetCaldavTodosForTasks(t *testing.T) {
 VERSION:2.0
 X-PUBLISHED-TTL:PT4H
 X-WR-CALNAME:List title
-PRODID:-//Vikunja Todo App//EN
+PRODID:-//Astering//EN
 BEGIN:VTODO
 UID:randomuid
 DTSTAMP:20181201T011205Z
@@ -1018,7 +1018,7 @@ END:VCALENDAR`,
 VERSION:2.0
 X-PUBLISHED-TTL:PT4H
 X-WR-CALNAME:List title
-PRODID:-//Vikunja Todo App//EN
+PRODID:-//Astering//EN
 BEGIN:VTODO
 UID:randomuid
 DTSTAMP:20181201T011205Z
@@ -1116,7 +1116,7 @@ END:VCALENDAR`,
 VERSION:2.0
 X-PUBLISHED-TTL:PT4H
 X-WR-CALNAME:List title
-PRODID:-//Vikunja Todo App//EN
+PRODID:-//Astering//EN
 BEGIN:VTODO
 UID:randomuid_parent
 DTSTAMP:20181201T011205Z

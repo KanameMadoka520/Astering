@@ -21,10 +21,10 @@ import (
 	"fmt"
 	"io"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/utils"
-	"code.vikunja.io/api/pkg/version"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/utils"
+	"github.com/KanameMadoka520/Astering/pkg/version"
 
 	"github.com/wneessen/go-mail"
 )
@@ -78,7 +78,7 @@ func SendTestMail(opts *Opts) error {
 
 func getMessage(opts *Opts) *mail.Msg {
 	m := mail.NewMsg()
-	m.SetUserAgent("Vikunja " + version.Version)
+	m.SetUserAgent("Astering " + version.Version)
 
 	// Set an RFC 5322 compliant Message-ID using the public URL domain
 	// instead of relying on os.Hostname() which is unreliable in containers.
@@ -86,7 +86,7 @@ func getMessage(opts *Opts) *mail.Msg {
 	messageID := randPart + "@" + GetMailDomain()
 	m.SetMessageIDWithValue(messageID)
 	if opts.From == "" {
-		opts.From = "Vikunja <" + config.MailerFromEmail.GetString() + ">"
+		opts.From = "Astering <" + config.MailerFromEmail.GetString() + ">"
 	}
 	_ = m.From(opts.From)
 	_ = m.To(opts.To)

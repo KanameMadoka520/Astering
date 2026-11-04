@@ -30,10 +30,10 @@ import (
 	"golang.org/x/text/encoding/unicode"
 	"golang.org/x/text/transform"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/migration"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/migration"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 )
 
 // The config is only set once the import runs in

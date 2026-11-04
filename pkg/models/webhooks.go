@@ -32,13 +32,13 @@ import (
 	"sync"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/events"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/user"
-	"code.vikunja.io/api/pkg/utils"
-	"code.vikunja.io/api/pkg/version"
-	"code.vikunja.io/api/pkg/web"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/events"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/utils"
+	"github.com/KanameMadoka520/Astering/pkg/version"
+	"github.com/KanameMadoka520/Astering/pkg/web"
 
 	"xorm.io/builder"
 	"xorm.io/xorm"
@@ -376,7 +376,7 @@ func (w *Webhook) sendWebhookPayload(p *WebhookPayload) (err error) {
 		req.Header.Add("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(w.BasicAuthUser+":"+w.BasicAuthPassword)))
 	}
 
-	req.Header.Add("User-Agent", "Vikunja/"+version.Version)
+	req.Header.Add("User-Agent", "Astering/"+version.Version)
 	req.Header.Add("Content-Type", "application/json")
 
 	client := getWebhookHTTPClient()

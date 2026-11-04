@@ -209,6 +209,8 @@ describe('service worker cache boundaries with the real Workbox router', () => {
 		const current = staticAssetCacheNames('https://task.example/', VERSION).current
 		const previous = staticAssetCacheNames('https://task.example/', 'previous').current
 		const otherScope = staticAssetCacheNames('https://task.example/other/', 'previous').current
+		const legacy = `vikunja-x-static:${encodeURIComponent('https://task.example/')}:v2.7.1-tcymc.49`
+		const legacyOtherScope = `vikunja-x-static:${encodeURIComponent('https://task.example/other/')}:v2.7.1-tcymc.49`
 		cacheKeys.mockResolvedValue([
 			cacheNames.precache,
 			cacheNames.runtime,
@@ -217,6 +219,8 @@ describe('service worker cache boundaries with the real Workbox router', () => {
 			current,
 			previous,
 			otherScope,
+			legacy,
+			legacyOtherScope,
 		])
 		expect(deleteCache).not.toHaveBeenCalled()
 		const event = new WorkerExtendableEvent('activate')
@@ -227,6 +231,7 @@ describe('service worker cache boundaries with the real Workbox router', () => {
 			cacheNames.precache,
 			oldPrecache,
 			previous,
+			legacy,
 		].sort())
 	})
 
@@ -245,6 +250,7 @@ describe('service worker cache boundaries with the real Workbox router', () => {
 		expect(await (await fetchResource(path))?.text()).toBe('actual-js')
 		expect(network).toHaveBeenCalledOnce()
 		expect(cache.put).toHaveBeenCalledOnce()
+		expect(storage.open).toHaveBeenCalledWith(`astering-static:${encodeURIComponent('https://task.example/workspace/')}:${encodeURIComponent(VERSION)}`)
 		expect([...stored.keys()]).toEqual([`https://task.example${path}`])
 		expect(await (await fetchResource(path))?.text()).toBe('actual-js')
 		expect(network).toHaveBeenCalledOnce()

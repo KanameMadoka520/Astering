@@ -25,7 +25,7 @@ import (
 	"strconv"
 	"syscall"
 
-	"code.vikunja.io/api/pkg/utils"
+	"github.com/KanameMadoka520/Astering/pkg/utils"
 	"golang.org/x/sys/unix"
 )
 
@@ -90,7 +90,7 @@ func checkDirectoryOwnership(info os.FileInfo) []CheckResult {
 	switch {
 	case currentUID != 0 && currentUID != int(uid):
 		errMsg := fmt.Sprintf(
-			"directory owned by uid %d but Vikunja runs as uid %d",
+			"directory owned by uid %d but Astering runs as uid %d",
 			uid, currentUID,
 		)
 		if nsActive {

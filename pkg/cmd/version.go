@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"runtime"
 
-	"code.vikunja.io/api/pkg/version"
+	"github.com/KanameMadoka520/Astering/pkg/version"
 	"github.com/spf13/cobra"
 )
 
@@ -30,9 +30,9 @@ func init() {
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
-	Short: "Print the version number of Vikunja",
+	Short: "Print the version number of Astering",
 	Run: func(_ *cobra.Command, _ []string) {
-		fmt.Printf("Vikunja api version %s\n", version.Version)
+		fmt.Printf("Astering api version %s\n", version.Version)
 		fmt.Printf("Built with %s\n", runtime.Version())
 	},
 }

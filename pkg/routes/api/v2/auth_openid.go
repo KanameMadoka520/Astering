@@ -21,11 +21,11 @@ import (
 	"errors"
 	"net/http"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/auth"
-	"code.vikunja.io/api/pkg/modules/auth/openid"
-	"code.vikunja.io/api/pkg/modules/humabridge"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/auth"
+	"github.com/KanameMadoka520/Astering/pkg/modules/auth/openid"
+	"github.com/KanameMadoka520/Astering/pkg/modules/humabridge"
 
 	"github.com/danielgtaylor/huma/v2"
 )
@@ -43,7 +43,7 @@ func RegisterOpenIDRoutes(api huma.API) {
 	Register(api, huma.Operation{
 		OperationID:   "auth-openid-callback",
 		Summary:       "Authenticate with OpenID Connect",
-		Description:   "Exchanges the authorization code returned by an OpenID Connect provider for a Vikunja JWT, creating or updating the matching user. A long-lived refresh token is set as an HttpOnly cookie. When the resolved user has 2FA enabled, the call returns 412 and must be retried with totp_passcode set.",
+		Description:   "Exchanges the authorization code returned by an OpenID Connect provider for a Astering JWT, creating or updating the matching user. A long-lived refresh token is set as an HttpOnly cookie. When the resolved user has 2FA enabled, the call returns 412 and must be retried with totp_passcode set.",
 		Method:        http.MethodPost,
 		Path:          "/auth/openid/{provider}/callback",
 		DefaultStatus: http.StatusOK,

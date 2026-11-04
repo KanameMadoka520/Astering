@@ -21,9 +21,9 @@ import (
 	"strconv"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/modules/keyvalue"
-	"code.vikunja.io/api/pkg/notifications"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/modules/keyvalue"
+	"github.com/KanameMadoka520/Astering/pkg/notifications"
 	"xorm.io/xorm"
 )
 

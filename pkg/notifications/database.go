@@ -20,8 +20,8 @@ import (
 	"errors"
 	"time"
 
-	"code.vikunja.io/api/pkg/events"
-	"code.vikunja.io/api/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/events"
+	"github.com/KanameMadoka520/Astering/pkg/log"
 
 	"xorm.io/builder"
 	"xorm.io/xorm"

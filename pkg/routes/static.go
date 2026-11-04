@@ -31,8 +31,8 @@ import (
 	"sync"
 	"text/template"
 
-	"code.vikunja.io/api/frontend"
-	"code.vikunja.io/api/pkg/config"
+	"github.com/KanameMadoka520/Astering/frontend"
+	"github.com/KanameMadoka520/Astering/pkg/config"
 
 	etaggenerator "github.com/hhsnopek/etag"
 	"github.com/labstack/echo/v5"
@@ -271,7 +271,7 @@ func getCacheControlHeader(info os.FileInfo, file io.ReadSeeker, requestPath str
 
 func serveFile(c *echo.Context, file io.ReadSeeker, info os.FileInfo, etag string) error {
 
-	c.Response().Header().Set("Server", "Vikunja")
+	c.Response().Header().Set("Server", "Astering")
 	c.Response().Header().Set("Vary", "Accept-Encoding")
 	if etag != "" {
 		c.Response().Header().Set("Etag", etag)

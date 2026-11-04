@@ -23,10 +23,10 @@ import (
 	"testing"
 	"time"
 
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/files"
-	"code.vikunja.io/api/pkg/notifications"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/files"
+	"github.com/KanameMadoka520/Astering/pkg/notifications"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/stretchr/testify/assert"

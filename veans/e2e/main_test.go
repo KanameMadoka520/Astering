@@ -24,7 +24,7 @@ import (
 
 // TestMain follows the parent monorepo's `pkg/webtests` convention:
 // `-short` skips the whole package so a plain `go test ./...` from the
-// repo root (or `mage test`) doesn't try to drive a live Vikunja. Run
+// repo root (or `mage test`) doesn't try to drive a live Astering. Run
 // `mage test:e2e` to execute it.
 func TestMain(m *testing.M) {
 	flag.Parse()

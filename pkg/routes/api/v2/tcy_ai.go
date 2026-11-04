@@ -33,11 +33,11 @@ import (
 	"sync"
 	"time"
 
-	"code.vikunja.io/api/pkg/modules/tcylocale"
+	"github.com/KanameMadoka520/Astering/pkg/modules/tcylocale"
 
-	"code.vikunja.io/api/pkg/modules/humabridge"
-	"code.vikunja.io/api/pkg/modules/tcyai"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/modules/humabridge"
+	"github.com/KanameMadoka520/Astering/pkg/modules/tcyai"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 	"github.com/danielgtaylor/huma/v2"
 )
 
@@ -617,7 +617,7 @@ func registerAIPreferences(api huma.API, op func(string, string, string, string)
 func testAISearch(ctx context.Context, c tcyai.Connection) (*aiTextResponse, error) {
 	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
-	result, err := tcyai.SearchWeb(ctx, c, "Vikunja official documentation")
+	result, err := tcyai.SearchWeb(ctx, c, "Astering official documentation")
 	if err != nil {
 		return nil, aiError(ctx, err)
 	}

@@ -25,7 +25,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"code.vikunja.io/veans/internal/output"
+	"github.com/KanameMadoka520/Astering/veans/internal/output"
 )
 
 func newAPICmd() *cobra.Command {

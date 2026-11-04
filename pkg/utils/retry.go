@@ -20,7 +20,7 @@ import (
 	"errors"
 	"time"
 
-	"code.vikunja.io/api/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/log"
 )
 
 // ErrDoNotRetry marks an error as permanent: RetryWithBackoff returns it after the first attempt.

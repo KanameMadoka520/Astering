@@ -20,10 +20,10 @@ import (
 	"regexp"
 	"strings"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/events"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/notifications"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/events"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/notifications"
 	"golang.org/x/crypto/bcrypt"
 	"xorm.io/xorm"
 )

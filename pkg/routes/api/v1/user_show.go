@@ -20,14 +20,14 @@ import (
 	"net/http"
 	"time"
 
-	"code.vikunja.io/api/pkg/routes/api/shared"
+	"github.com/KanameMadoka520/Astering/pkg/routes/api/shared"
 
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/auth"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/auth"
 
-	"code.vikunja.io/api/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/db"
 
 	"github.com/labstack/echo/v5"
 )

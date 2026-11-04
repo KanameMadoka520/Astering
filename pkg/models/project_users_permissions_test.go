@@ -20,10 +20,10 @@ import (
 	"testing"
 	"time"
 
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 
-	"code.vikunja.io/api/pkg/web"
+	"github.com/KanameMadoka520/Astering/pkg/web"
 )
 
 func TestProjectUser_CanDoSomething(t *testing.T) {

@@ -1,83 +1,58 @@
-publiccode-yml-version: '0.2'
-name: 'Vikunja'
-url: 'https://code.vikunja.io/vikunja'
-landingURL: 'https://vikunja.io'
-isBasedOn: 'https://go.dev/'
-softwareVersion: 'v2.7.1'
-releaseDate: '2026-10-20'
-logo: 'https://vikunja.io/images/vikunja-logo.svg'
+publiccodeYmlVersion: '0.2'
+name: Astering
+url: 'https://github.com/KanameMadoka520/Astering'
+landingURL: 'https://github.com/KanameMadoka520/Astering'
+isBasedOn: 'https://github.com/go-vikunja/vikunja'
+softwareVersion: 'v2.7.1-aster.50'
+releaseDate: '2026-11-04'
+logo: 'frontend/public/images/brand/logo.png'
 platforms:
-  - 'web'
-  - 'linux'
-  - 'windows'
-  - 'mac'
-  - 'lxc'
-  - 'docker'
-  - 'k8s'
-  - 'debian'
+  - web
+  - linux
 categories:
-  - 'agile-project-management'
-  - 'enterprise-project-management'
-  - 'project-management'
-  - 'task-management'
-  - 'workflow-management'
-usedBy:
-  - 'City of Treuchtlingen'
-roadmap: 'https://my.vikunja.cloud/projects/16/list#share-auth-token=QFyzYEmEYfSyQfTOmIRSwLUpkFjboaBqQCnaPmWd'
-developmentStatus: 'stable'
-softwareType: 'standalone/web'
-intendedAudience:
-  scope:
-    - 'Providers of standard based workflow management services who wish or are required to use Open Source solutions'
+  - project-management
+  - task-management
+  - workflow-management
+developmentStatus: stable
+softwareType: standalone/web
 description:
-  en: ' The open-source, self-hostable to-do app. Organize everything, on all platforms.'
-documentation: 'https://vikunja.io/docs/'
-apiDocumentation: 'https://vikunja.io/docs/api-documentation/'
-features:
-  - 'workflow management'
-  - 'CalDAV provider'
-  - 'kanban tool'
-  - 'gantt display tool'
-  - 'ticket system'
-screenshots:
-  - 'https://vikunja.io/images/vikunja/09-task-detail-dark.webp'
-videos:
-  - 'none'
+  en:
+    shortDescription: 'Self-hosted projects, schedules, records and native AI assistance, based on Vikunja.'
+    longDescription: >-
+      Astering combines task and project views, a calendar, recurring routines,
+      personal files, long-term records and Arona, an assistant with explicit
+      permissions and reviewable tool operations. It preserves the upstream
+      Vikunja copyright and AGPL license. Builds and releases are produced locally.
+    documentation: 'https://github.com/KanameMadoka520/Astering/blob/main/README.md'
+    features:
+      - Project and task management
+      - Calendar and CalDAV
+      - Kanban and Gantt views
+      - Personal records and reusable attachments
+      - Permission-scoped native AI tools
+  zh-CN:
+    shortDescription: '基于 Vikunja 的自托管项目、日程、记录与原生 AI 助手。'
+    longDescription: >-
+      Astering 将真实任务、日历、周期打卡、个人网盘和星图记录连接起来，
+      由具有明确权限与审核边界的阿罗娜辅助执行。保留上游 Vikunja
+      版权及 AGPL 许可证，本机测试、编译并手工发布。
+    documentation: 'https://github.com/KanameMadoka520/Astering/blob/main/README.md'
+    features:
+      - 项目与任务管理
+      - 日历与 CalDAV
+      - 看板与甘特图
+      - 长期记录与附件复用
+      - 受权限约束的 AI 工具
 legal:
-  license: 'GNU AFFERO GENERAL PUBLIC LICENSE Version 3'
-  mainCopyrightOwner: 'Konrad Langenberg Software'
-  repoOwner: 'Konrad Langenberg Software'
-  authorsFile: 'hello@vikunja.io'
+  license: AGPL-3.0-or-later
+  mainCopyrightOwner: 'Vikunja and contributors; Astering contributors'
+  repoOwner: KanameMadoka520
 maintenance:
-  type: 'https://vikunja.cloud/'
-  contractors:
-    - name: 'Vikunja Cloud '
+  type: internal
+  contacts:
+    - name: KanameMadoka520
 localisation:
-  localisationReady: 'true'
+  localisationReady: true
   availableLanguages:
-    - 'en'
-    - 'de-de'
-    - 'ru-ru'
-    - 'fr-fr'
-    - 'vi-vn'
-    - 'it-it'
-    - 'cs-cz'
-    - 'pl-pl'
-    - 'nl-nl'
-    - 'pt-pt'
-    - 'zh-cn'
-    - 'no-no'
-    - 'es-es'
-    - 'da-dk'
-    - 'ja-jp'
-    - 'hu-hu'
-    - 'sl-si'
-dependsOn:
-  open:
-    - name: 'CalDAV'
-    - name: 'GoLANG'
-    - name: 'Vue.js'
-    - name: 'HTTP-Proxy'
-    - name: 'SSL'
-    - name: 'Unit file (SystemD)'
-    - name: 'Firewall Rules (Web: 443)'
+    - en
+    - zh-CN

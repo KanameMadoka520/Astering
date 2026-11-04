@@ -20,11 +20,11 @@ import (
 	"strconv"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/log"
-	e "code.vikunja.io/api/pkg/modules/keyvalue/error"
-	"code.vikunja.io/api/pkg/modules/keyvalue/memory"
-	"code.vikunja.io/api/pkg/modules/keyvalue/redis"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	e "github.com/KanameMadoka520/Astering/pkg/modules/keyvalue/error"
+	"github.com/KanameMadoka520/Astering/pkg/modules/keyvalue/memory"
+	"github.com/KanameMadoka520/Astering/pkg/modules/keyvalue/redis"
 )
 
 // Storage defines an interface for saving key-value pairs

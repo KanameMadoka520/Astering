@@ -24,8 +24,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"code.vikunja.io/veans/internal/client"
-	"code.vikunja.io/veans/internal/config"
+	"github.com/KanameMadoka520/Astering/veans/internal/client"
+	"github.com/KanameMadoka520/Astering/veans/internal/config"
 )
 
 func TestBackfillFrontendURL(t *testing.T) {
@@ -34,7 +34,7 @@ func TestBackfillFrontendURL(t *testing.T) {
 		frontendURL string
 		want        func(server string) string
 	}{
-		{"uses /info", "https://vikunja.example.com/", func(string) string { return "https://vikunja.example.com/" }},
+		{"uses /info", "https://astering.example.com/", func(string) string { return "https://astering.example.com/" }},
 		{"falls back to server when unset", "", func(server string) string { return server }},
 	}
 	for _, tc := range cases {
@@ -93,7 +93,7 @@ func TestBackfillFrontendURL_InfoFailsLeavesConfig(t *testing.T) {
 
 func TestBackfillFrontendURL_DoesNotFollowSymlinkOutOfRepo(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"frontend_url":"https://vikunja.example.com/"}`))
+		_, _ = w.Write([]byte(`{"frontend_url":"https://astering.example.com/"}`))
 	}))
 	defer srv.Close()
 

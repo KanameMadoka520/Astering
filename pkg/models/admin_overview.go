@@ -17,7 +17,7 @@
 package models
 
 import (
-	"code.vikunja.io/api/pkg/license"
+	"github.com/KanameMadoka520/Astering/pkg/license"
 
 	"xorm.io/xorm"
 )

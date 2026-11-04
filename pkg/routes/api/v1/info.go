@@ -19,7 +19,7 @@ package v1
 import (
 	"net/http"
 
-	"code.vikunja.io/api/pkg/routes/api/shared"
+	"github.com/KanameMadoka520/Astering/pkg/routes/api/shared"
 
 	"github.com/labstack/echo/v5"
 )

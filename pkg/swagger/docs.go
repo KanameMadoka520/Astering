@@ -10,13 +10,12 @@ const docTemplate = `{
         "description": "{{escape .Description}}",
         "title": "{{.Title}}",
         "contact": {
-            "name": "General Vikunja contact",
-            "url": "https://vikunja.io/contact/",
-            "email": "hello@vikunja.io"
+            "name": "Astering maintainers",
+            "url": "https://github.com/KanameMadoka520/Astering/issues"
         },
         "license": {
             "name": "AGPL-3.0-or-later",
-            "url": "https://code.vikunja.io/api/src/branch/main/LICENSE"
+            "url": "https://github.com/KanameMadoka520/Astering/blob/main/LICENSE"
         },
         "version": "{{.Version}}"
     },
@@ -1663,7 +1662,7 @@ const docTemplate = `{
                         "JWTKeyAuth": []
                     }
                 ],
-                "description": "Returns the auth url where the user needs to get its auth code. This code can then be used to migrate everything from trello to Vikunja.",
+                "description": "Returns the auth url where the user needs to get its auth code. This code can then be used to migrate everything from trello to Astering.",
                 "produces": [
                     "application/json"
                 ],
@@ -9167,38 +9166,6 @@ const docTemplate = `{
                 }
             }
         },
-        "code_vikunja_io_api_pkg_modules_auth_openid.Provider": {
-            "type": "object",
-            "properties": {
-                "auth_url": {
-                    "type": "string"
-                },
-                "client_id": {
-                    "type": "string"
-                },
-                "email_fallback": {
-                    "type": "boolean"
-                },
-                "force_user_info": {
-                    "type": "boolean"
-                },
-                "key": {
-                    "type": "string"
-                },
-                "logout_url": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "scope": {
-                    "type": "string"
-                },
-                "username_fallback": {
-                    "type": "boolean"
-                }
-            }
-        },
         "csv.ColumnMapping": {
             "type": "object",
             "properties": {
@@ -9343,6 +9310,38 @@ const docTemplate = `{
                 },
                 "size": {
                     "type": "integer"
+                }
+            }
+        },
+        "github_com_KanameMadoka520_Astering_pkg_modules_auth_openid.Provider": {
+            "type": "object",
+            "properties": {
+                "auth_url": {
+                    "type": "string"
+                },
+                "client_id": {
+                    "type": "string"
+                },
+                "email_fallback": {
+                    "type": "boolean"
+                },
+                "force_user_info": {
+                    "type": "boolean"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "logout_url": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "scope": {
+                    "type": "string"
+                },
+                "username_fallback": {
+                    "type": "boolean"
                 }
             }
         },
@@ -9594,7 +9593,7 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "language": {
-                    "description": "The language of the new user. Must be a valid IETF BCP 47 language code and exist in Vikunja.",
+                    "description": "The language of the new user. Must be a valid IETF BCP 47 language code and exist in Astering.",
                     "type": "string"
                 },
                 "name": {
@@ -9602,7 +9601,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "password": {
-                    "description": "The user's password in clear text. Only used when registering the user. The maximum limi is 72 bytes, which may be less than 72 characters. This is due to the limit in the bcrypt hashing algorithm used to store passwords in Vikunja.",
+                    "description": "The user's password in clear text. Only used when registering the user. The maximum limi is 72 bytes, which may be less than 72 characters. This is due to the limit in the bcrypt hashing algorithm used to store passwords in Astering.",
                     "type": "string",
                     "maxLength": 72,
                     "minLength": 8
@@ -9824,6 +9823,9 @@ const docTemplate = `{
                 "background_information": {
                     "description": "Holds extra information about the background set since some background providers require attribution or similar. If not null, the background can be accessed at /projects/{projectID}/background"
                 },
+                "completed_at": {
+                    "type": "string"
+                },
                 "created": {
                     "description": "A timestamp when this project was created. You cannot change this value.",
                     "type": "string"
@@ -9849,6 +9851,10 @@ const docTemplate = `{
                 },
                 "is_archived": {
                     "description": "Whether a project is archived.",
+                    "type": "boolean"
+                },
+                "is_completed": {
+                    "description": "Completion is explicit, independent of archive state and task completion.",
                     "type": "boolean"
                 },
                 "is_favorite": {
@@ -10111,12 +10117,14 @@ const docTemplate = `{
             "enum": [
                 "due_date",
                 "start_date",
-                "end_date"
+                "end_date",
+                "routine_period_end"
             ],
             "x-enum-varnames": [
                 "ReminderRelationDueDate",
                 "ReminderRelationStartDate",
-                "ReminderRelationEndDate"
+                "ReminderRelationEndDate",
+                "ReminderRelationRoutinePeriodEnd"
             ]
         },
         "models.RouteDetail": {
@@ -10227,6 +10235,18 @@ const docTemplate = `{
         "models.Task": {
             "type": "object",
             "properties": {
+                "all_day": {
+                    "description": "Explicit civil-date interval, independent of timezone and timed scheduling.",
+                    "type": "boolean"
+                },
+                "all_day_end": {
+                    "type": "string",
+                    "maxLength": 10
+                },
+                "all_day_start": {
+                    "type": "string",
+                    "maxLength": 10
+                },
                 "assignees": {
                     "description": "An array of users who are assigned to this task",
                     "type": "array",
@@ -10391,6 +10411,14 @@ const docTemplate = `{
                         }
                     ]
                 },
+                "routine": {
+                    "description": "Daily check-in state is computed, not an alternate writable done field.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.TaskRoutine"
+                        }
+                    ]
+                },
                 "start_date": {
                     "description": "When this task starts.",
                     "type": "string"
@@ -10461,6 +10489,12 @@ const docTemplate = `{
                 "project_view_id": {
                     "description": "The view this bucket belongs to. Combined with TaskID this forms a\nunique index.",
                     "type": "integer"
+                },
+                "repeat_return_bucket_id": {
+                    "type": "integer"
+                },
+                "repeat_return_mode": {
+                    "type": "string"
                 },
                 "task": {
                     "$ref": "#/definitions/models.Task"
@@ -10595,7 +10629,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "relative_to": {
-                    "description": "The name of the date field to which the relative period refers to.",
+                    "description": "A task date or routine_period_end; the latter is recomputed from each calendar period.",
                     "allOf": [
                         {
                             "$ref": "#/definitions/models.ReminderRelation"
@@ -10620,6 +10654,93 @@ const docTemplate = `{
                 "TaskRepeatModeMonth",
                 "TaskRepeatModeFromCurrentDate"
             ]
+        },
+        "models.TaskRoutine": {
+            "type": "object",
+            "properties": {
+                "completed_at": {
+                    "type": "string"
+                },
+                "completed_by_id": {
+                    "type": "integer"
+                },
+                "completed_period": {
+                    "type": "boolean"
+                },
+                "completed_today": {
+                    "type": "boolean"
+                },
+                "created": {
+                    "type": "string"
+                },
+                "current_amount": {
+                    "type": "integer"
+                },
+                "date": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "month_day": {
+                    "type": "integer",
+                    "maximum": 31,
+                    "minimum": 0
+                },
+                "next_reset_at": {
+                    "type": "string"
+                },
+                "paused": {
+                    "type": "boolean"
+                },
+                "period": {
+                    "type": "string"
+                },
+                "period_start_at": {
+                    "type": "string"
+                },
+                "reset_hour": {
+                    "type": "integer",
+                    "maximum": 23,
+                    "minimum": 0
+                },
+                "reset_minute": {
+                    "type": "integer",
+                    "maximum": 59,
+                    "minimum": 0
+                },
+                "revision": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "schedule_key": {
+                    "type": "string"
+                },
+                "target": {
+                    "type": "integer",
+                    "maximum": 9007199254740991,
+                    "minimum": 0
+                },
+                "task_id": {
+                    "type": "integer"
+                },
+                "timezone": {
+                    "type": "string",
+                    "maxLength": 100
+                },
+                "unit": {
+                    "type": "string",
+                    "maxLength": 40
+                },
+                "updated": {
+                    "type": "string"
+                },
+                "week_start": {
+                    "type": "integer",
+                    "maximum": 6,
+                    "minimum": 0
+                }
+            }
         },
         "models.TaskUnreadStatus": {
             "type": "object",
@@ -11207,7 +11328,7 @@ const docTemplate = `{
                 "providers": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/code_vikunja_io_api_pkg_modules_auth_openid.Provider"
+                        "$ref": "#/definitions/github_com_KanameMadoka520_Astering_pkg_modules_auth_openid.Provider"
                     }
                 }
             }
@@ -11534,7 +11655,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "password": {
-                    "description": "The user's password in clear text. Only used when registering the user. The maximum limi is 72 bytes, which may be less than 72 characters. This is due to the limit in the bcrypt hashing algorithm used to store passwords in Vikunja.",
+                    "description": "The user's password in clear text. Only used when registering the user. The maximum limi is 72 bytes, which may be less than 72 characters. This is due to the limit in the bcrypt hashing algorithm used to store passwords in Astering.",
                     "type": "string",
                     "maxLength": 72,
                     "minLength": 8
@@ -11651,7 +11772,7 @@ var SwaggerInfo = &swag.Spec{
 	Host:             "",
 	BasePath:         "/api/v1",
 	Schemes:          []string{},
-	Title:            "Vikunja API",
+	Title:            "Astering API",
 	Description:      "# Pagination\nEvery endpoint capable of pagination will return two headers:\n* `x-pagination-total-pages`: The total number of available pages for this request\n* `x-pagination-result-count`: The number of items returned for this request.\n# Permissions\nAll endpoints which return a single item (project, task, etc.) - no array - will also return a `x-max-permission` header with the max permission the user has on this item as an int where `0` is `Read Only`, `1` is `Read & Write` and `2` is `Admin`.\nThis can be used to show or hide ui elements based on the permissions the user has.\n# Errors\nAll errors have an error code and a human-readable error message in addition to the http status code. You should always check for the status code in the response, not only the http status code.\nDue to limitations in the swagger library we're using for this document, only one error per http status code is documented here. Make sure to check the [error docs](https://vikunja.io/docs/errors/) in Vikunja's documentation for a full list of available error codes.\n# Authorization\n**JWT-Auth:** Main authorization method, used for most of the requests. Needs `Authorization: Bearer <jwt-token>`-header to authenticate successfully.\n\n**API Token:** You can create scoped API tokens for your user and use the token to make authenticated requests in the context of that user. The token must be provided via an `Authorization: Bearer <token>` header, similar to jwt auth. See the documentation for the `api` group to manage token creation and revocation.\n\n**BasicAuth:** Only used when requesting tasks via CalDAV.\n<!-- ReDoc-Inject: <security-definitions> -->",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,

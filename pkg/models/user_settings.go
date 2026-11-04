@@ -19,9 +19,9 @@ package models
 import (
 	"context"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/modules/avatar"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/modules/avatar"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 
 	"xorm.io/xorm"
 )

@@ -27,10 +27,10 @@ import (
 	"testing"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/modules/keyvalue"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/modules/keyvalue"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
@@ -214,7 +214,7 @@ func ValidateFileStorage(ctx context.Context) error {
 
 	diag := storageDiagSuffix(config.FilesBasePath.GetString())
 
-	filename := fmt.Sprintf(".vikunja-check-%d", time.Now().UnixNano())
+	filename := fmt.Sprintf(".astering-check-%d", time.Now().UnixNano())
 
 	write, remove := storage.Write, storage.Remove
 	if cs, ok := storage.(contextStorage); ok {

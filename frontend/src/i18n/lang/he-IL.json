@@ -12,8 +12,8 @@
 		"addToHomeScreen": "הוסף אפליקציה זו למסך אם שלך לגישה מהירה וחוויה משופרה.",
 		"goToOverview": "לדף הסקירה הכללית",
 		"project": {
-			"importText": "ייבוא פרויקטים ומטלות משירותים אחרים ל-vikunja-x:",
-			"import": "ייבוא נתונים שלך ל-vikunja-x"
+			"importText": "ייבוא פרויקטים ומטלות משירותים אחרים ל-Astering:",
+			"import": "ייבוא נתונים שלך ל-Astering"
 		}
 	},
 	"demo": {
@@ -140,7 +140,7 @@
 			},
 			"apiTokens": {
 				"title": "אסימוני API",
-				"general": "אסימוני API מאפשרים שימוש ב-vikunja-x's API בלי credentials של המשתמש.",
+				"general": "אסימוני API מאפשרים שימוש ב-Astering's API בלי credentials של המשתמש.",
 				"apiDocs": "לבדוק תעוד api",
 				"createAToken": "ליצור אסימון",
 				"createToken": "ליצור אסימון",
@@ -166,7 +166,7 @@
 			}
 		},
 		"deletion": {
-			"title": "מחיקת חשבון vikunja-x שלך",
+			"title": "מחיקת חשבון Astering שלך",
 			"text1": "מחיקת חשבון לצמיתות ולא ניתן לבטל. נמחק כל הפרויקטים ומטלות שלך וכל הקשור להם.",
 			"text2": "הכנס סיסמה כדי להתקדם. יישלח אימייל עם הוראות.",
 			"text3": "ללחוץ על הכפתור מתחת כדי להתקדם. יישלח אימייל עם הוראות.",
@@ -174,7 +174,7 @@
 			"requestSuccess": "הבקשה התקבלה. יישלח אימייל עם הוראות.",
 			"passwordRequired": "נא להכניס סיסמתך.",
 			"confirmSuccess": "אישרת ביטול חשבונך בהצלחה. החשבון יתבטל בעוד שלושה ימים.",
-			"scheduled": "נבטל חשבון vikunja-x שלך ב-{date} ({dateSince}).",
+			"scheduled": "נבטל חשבון Astering שלך ב-{date} ({dateSince}).",
 			"scheduledCancel": "הקש כאן לבטל ביטול חשבונך.",
 			"scheduledCancelText": "הכנס סיסמתך להלן כדי לבטל את ביטול חשבונך:",
 			"scheduledCancelButton": "נא ללחוץ על הכפתור מתחת כדי לבטל את פעולת ביטול חשבונך.",
@@ -182,12 +182,12 @@
 			"scheduledCancelSuccess": "לא נמחק חשבונך."
 		},
 		"export": {
-			"title": "יצוא נתוני vikunja-x",
-			"description": "אפשר לבקש עותק של כל נתוני Vikunja שלך הכולל פרויקטים, מטלות וכל הקשור להם. ניתן לייבא נתונים אלו לכל מופע Vikunja דרך פעולת הניוד.",
+			"title": "יצוא נתוני Astering",
+			"description": "אפשר לבקש עותק של נתוני Astering שלך, כולל פרויקטים, משימות ונתונים קשורים. אפשר לייבא את הקובץ המיוצא באמצעות פעולת הניוד למופע של Astering או Vikunja שתומך בפורמט הייצוא הזה.",
 			"descriptionPasswordRequired": "נא להכניס סיסמה כדי להתקדם:",
-			"request": "בקשת עותק נתוני vikunja-x שלי",
-			"success": "ביקשת נתוני vikunja-x בהצלחה! יישלח לך אימייל כשיהיה מוכן להודה.",
-			"downloadTitle": "הורד נתוני vikunja-x המיוצא שלך"
+			"request": "בקשת עותק נתוני Astering שלי",
+			"success": "ביקשת נתוני Astering בהצלחה! יישלח לך אימייל כשיהיה מוכן להודה.",
+			"downloadTitle": "הורד נתוני Astering המיוצא שלך"
 		}
 	},
 	"project": {
@@ -267,7 +267,7 @@
 			"links": {
 				"title": "לשתף לינקים",
 				"what": "מהו לינק משותף?",
-				"explanation": "שיתוף לינקים מאפשר לשתף פרויקט עם משתמשים אחרים בלי חשבון vikunja-x.",
+				"explanation": "שיתוף לינקים מאפשר לשתף פרויקט עם משתמשים אחרים בלי חשבון Astering.",
 				"create": "ליצור לינק לשיתוף",
 				"name": "שם (אופציונלי)",
 				"namePlaceholder": "למשל פלוני אלמוני",
@@ -455,18 +455,18 @@
 	},
 	"migrate": {
 		"title": "ייבוא משירותים אחרים",
-		"titleService": "לייבוא הנתונים שלך מ-{name} ל-vikunja-x",
+		"titleService": "לייבוא הנתונים שלך מ-{name} ל-Astering",
 		"description": "הקלק על הלוגו של אחד משירותי צד שלישי למטה כדי להתחיל.",
-		"descriptionDo": "vikunja-x תייבא כל הרשימות, מטלות, רשומות, תזכורות וקבצים שיש לך הרשאת גישה אליהם.",
-		"authorize": "הקש למטה כדי להרשות ל-vikunja-x גישה לחשבון {name}.",
+		"descriptionDo": "Astering תייבא כל הרשימות, מטלות, רשומות, תזכורות וקבצים שיש לך הרשאת גישה אליהם.",
+		"authorize": "הקש למטה כדי להרשות ל-Astering גישה לחשבון {name}.",
 		"getStarted": "התחל",
 		"inProgress": "יבוא בפעולה…",
 		"alreadyMigrated1": "נראה שכבר ייבאת החומר שלך מ-{name} בתאריך {date}.",
 		"alreadyMigrated2": "ייבוא חוזר אפשרי אבל יכול ליצור כפילויות. בטוח?",
 		"confirm": "כן, בטוח. התחל ניוד כעת!",
-		"importUpload": "כדי לייבא נתונים בשם {name} לתוך vikunja-x, יש ללחוץ על הכפתור מתחת לבחור קובץ.",
+		"importUpload": "כדי לייבא נתונים בשם {name} לתוך Astering, יש ללחוץ על הכפתור מתחת לבחור קובץ.",
 		"upload": "העלאת קובץ",
-		"migrationStartedWillReciveEmail": "vikunja-x תייבא כעת רשימות/פרויקטים, מטלות, רשומות, תזכורות וקבצים שלך משירות {service}",
+		"migrationStartedWillReciveEmail": "Astering תייבא כעת רשימות/פרויקטים, מטלות, רשומות, תזכורות וקבצים שלך משירות {service}",
 		"migrationInProgress": "ניוד מתנהל כעת. נא להמתין עד סיומו."
 	},
 	"label": {

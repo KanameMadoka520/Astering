@@ -21,9 +21,9 @@ import (
 	"errors"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/red"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/red"
 )
 
 // Check verifies dependencies within a bounded shared-monitor probe.

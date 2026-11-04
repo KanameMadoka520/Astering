@@ -10,7 +10,7 @@
       "ipBlockTime": 600,
       "expireTime": 24,
       "unit": "h",
-      "name": "Vikunja 网盘文件上传兼容",
+      "name": "Astering 网盘文件上传兼容",
       "description": "仅 task.tcymc.space 网盘指定接口及 Bearer 请求。应用继续校验身份、文件归属、项目权限、记录版本与删除确认。",
       "conditions": [
         {
@@ -49,7 +49,7 @@
       "ipBlockTime": 600,
       "expireTime": 24,
       "unit": "h",
-      "name": "Vikunja 网盘元数据与引用操作兼容",
+      "name": "Astering 网盘元数据与引用操作兼容",
       "description": "仅 task.tcymc.space 网盘指定接口及 Bearer 请求。应用继续校验身份、文件归属、项目权限、记录版本与删除确认。",
       "conditions": [
         {
@@ -88,7 +88,7 @@
       "ipBlockTime": 600,
       "expireTime": 24,
       "unit": "h",
-      "name": "Vikunja 网盘文件名与分类搜索兼容",
+      "name": "Astering 网盘文件名与分类搜索兼容",
       "description": "仅 task.tcymc.space 网盘指定接口及 Bearer 请求。应用继续校验身份、文件归属、项目权限、记录版本与删除确认。",
       "conditions": [
         {

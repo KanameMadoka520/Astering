@@ -22,10 +22,10 @@ import (
 	"strconv"
 	"testing"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/auth"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/auth"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

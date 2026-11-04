@@ -22,7 +22,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"code.vikunja.io/api/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/config"
 
 	"github.com/go-testfixtures/testfixtures/v3"
 	"github.com/stretchr/testify/require"

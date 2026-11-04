@@ -21,9 +21,9 @@ import (
 	"net/http"
 	"time"
 
-	"code.vikunja.io/api/pkg/modules/avatar"
-	"code.vikunja.io/api/pkg/modules/humabridge"
-	webfiles "code.vikunja.io/api/pkg/web/files"
+	"github.com/KanameMadoka520/Astering/pkg/modules/avatar"
+	"github.com/KanameMadoka520/Astering/pkg/modules/humabridge"
+	webfiles "github.com/KanameMadoka520/Astering/pkg/web/files"
 
 	"github.com/danielgtaylor/huma/v2"
 )

@@ -27,10 +27,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"code.vikunja.io/veans/internal/auth"
-	"code.vikunja.io/veans/internal/config"
-	"code.vikunja.io/veans/internal/credentials"
-	"code.vikunja.io/veans/internal/trust"
+	"github.com/KanameMadoka520/Astering/veans/internal/auth"
+	"github.com/KanameMadoka520/Astering/veans/internal/config"
+	"github.com/KanameMadoka520/Astering/veans/internal/credentials"
+	"github.com/KanameMadoka520/Astering/veans/internal/trust"
 )
 
 //go:embed prompt.tmpl
@@ -57,7 +57,7 @@ func newPrimeCmd() *cobra.Command {
 		Long: `Renders the embedded prompt template against this repo's .veans.yml and
 prints it to stdout. Designed to be wired into Claude Code's SessionStart
 and PreCompact hooks (or the OpenCode equivalent) so coding agents always
-have an up-to-date Vikunja cheat sheet in context.
+have an up-to-date Astering cheat sheet in context.
 
 If no .veans.yml is found upward from the current directory, prime exits
 silently with status 0 — that makes the hook safe to install globally.`,

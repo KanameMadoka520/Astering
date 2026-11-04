@@ -23,8 +23,8 @@ import (
 	"net/http"
 	"strings"
 
-	"code.vikunja.io/api/pkg/utils"
-	"code.vikunja.io/api/pkg/web"
+	"github.com/KanameMadoka520/Astering/pkg/utils"
+	"github.com/KanameMadoka520/Astering/pkg/web"
 
 	"github.com/labstack/echo/v5"
 )

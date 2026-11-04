@@ -20,10 +20,10 @@ import (
 	"strings"
 	"testing"
 
-	"code.vikunja.io/api/pkg/modules/avatar/empty"
-	"code.vikunja.io/api/pkg/modules/avatar/initials"
-	"code.vikunja.io/api/pkg/modules/avatar/marble"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/modules/avatar/empty"
+	"github.com/KanameMadoka520/Astering/pkg/modules/avatar/initials"
+	"github.com/KanameMadoka520/Astering/pkg/modules/avatar/marble"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 )
 
 func TestAsDataURI(t *testing.T) {

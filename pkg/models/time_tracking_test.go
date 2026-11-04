@@ -22,11 +22,11 @@ import (
 	"testing"
 	"time"
 
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/events"
-	"code.vikunja.io/api/pkg/license"
-	"code.vikunja.io/api/pkg/user"
-	"code.vikunja.io/api/pkg/web"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/events"
+	"github.com/KanameMadoka520/Astering/pkg/license"
+	"github.com/KanameMadoka520/Astering/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/web"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

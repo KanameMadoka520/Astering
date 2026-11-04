@@ -27,8 +27,8 @@ import (
 	"testing"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/version"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/version"
 
 	"code.dny.dev/ssrf"
 	"github.com/stretchr/testify/assert"
@@ -245,7 +245,7 @@ func TestNewSSRFSafeHTTPClientProxy(t *testing.T) {
 		require.Error(t, get(t, NewSSRFSafeHTTPClient(), "https://vikunja-proxy-test.invalid/"))
 		assert.Equal(t, int32(1), proxy.hits.Load())
 		assert.Equal(t, "Basic "+base64.StdEncoding.EncodeToString([]byte("vikunja:secret")), proxy.proxyAuth.Load())
-		assert.Equal(t, "Vikunja/"+version.Version, proxy.userAgent.Load())
+		assert.Equal(t, "Astering/"+version.Version, proxy.userAgent.Load())
 	})
 
 	t.Run("adds the proxy password to a proxy url username", func(t *testing.T) {

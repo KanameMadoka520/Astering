@@ -21,8 +21,8 @@ import (
 	"errors"
 	"net/http"
 
-	"code.vikunja.io/api/pkg/modules/mailsettings"
-	"code.vikunja.io/api/pkg/modules/tcylocale"
+	"github.com/KanameMadoka520/Astering/pkg/modules/mailsettings"
+	"github.com/KanameMadoka520/Astering/pkg/modules/tcylocale"
 	"github.com/danielgtaylor/huma/v2"
 )
 
@@ -50,7 +50,16 @@ func requireMailAdmin(ctx context.Context) error {
 	return nil
 }
 func RegisterSystemMailSettingsRoutes(api huma.API) {
-	Register(api, huma.Operation{OperationID: "system-settings-access", Method: http.MethodGet, Path: "/system/settings-access", Tags: []string{"system"}, Summary: "Read custom site-settings permissions", Description: "Only authenticated human sessions. The server-configured TCYMC_SETTINGS_ADMIN_IDS list grants access to the custom SMTP settings, independently of other administrator roles."}, func(ctx context.Context, _ *struct{}) (*settingsAccessBody, error) {
+	Register(api, huma.Operation{
+		OperationID: "system-settings-access",
+		Method:      http.MethodGet,
+		Path:        "/system/settings-access",
+		Tags:        []string{"system"},
+		Summary:     "Read custom site-settings permissions",
+		Description: "Only authenticated human sessions. ASTERING_SETTINGS_ADMIN_IDS grants custom SMTP settings access " +
+			"independently of other administrator roles. The legacy TCYMC_SETTINGS_ADMIN_IDS list is used only when " +
+			"the new variable is absent; an explicitly empty new variable revokes these grants.",
+	}, func(ctx context.Context, _ *struct{}) (*settingsAccessBody, error) {
 		uid, err := aiUser(ctx)
 		if err != nil {
 			return nil, err

@@ -1,29 +1,30 @@
-# Merge into the existing Vikunja Compose configuration to enable host metrics.
+# Merge into the Astering Compose configuration to enable host metrics.
+# For an existing install, adapt the service key to its current name; never create a second app against the same data.
 # Only these four aggregate kernel files are exposed, all read-only.
 services:
-  vikunja:
+  astering:
     volumes:
       - type: bind
         source: /proc/stat
-        target: /run/tcymc-host-proc/stat
+        target: /run/aster-host-proc/stat
         read_only: true
         bind:
           create_host_path: false
       - type: bind
         source: /proc/meminfo
-        target: /run/tcymc-host-proc/meminfo
+        target: /run/aster-host-proc/meminfo
         read_only: true
         bind:
           create_host_path: false
       - type: bind
         source: /proc/loadavg
-        target: /run/tcymc-host-proc/loadavg
+        target: /run/aster-host-proc/loadavg
         read_only: true
         bind:
           create_host_path: false
       - type: bind
         source: /proc/uptime
-        target: /run/tcymc-host-proc/uptime
+        target: /run/aster-host-proc/uptime
         read_only: true
         bind:
           create_host_path: false

@@ -140,7 +140,7 @@ const heroText = computed(() => {
 		flex-direction: column;
 		justify-content: flex-end;
 		padding: var(--space-6);
-		background: #edf2e4 url("/images/brand/avatar.webp?v=x40") no-repeat center 22% / 90% auto;
+		background: #080a32 url("/images/brand/avatar.webp?v=aster50") no-repeat center / cover;
 
 		// The brand portrait is shared by both themes; keep the overlaid welcome text readable.
 		// Two layers keep the lower third dark enough for the heading without dimming the whole image.

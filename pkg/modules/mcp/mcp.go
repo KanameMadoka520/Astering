@@ -26,11 +26,11 @@ import (
 	"io"
 	"net/http"
 
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/humabridge"
-	apiv2 "code.vikunja.io/api/pkg/routes/api/v2"
-	"code.vikunja.io/api/pkg/version"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/humabridge"
+	apiv2 "github.com/KanameMadoka520/Astering/pkg/routes/api/v2"
+	"github.com/KanameMadoka520/Astering/pkg/version"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/labstack/echo/v5"
@@ -59,7 +59,7 @@ type Module struct {
 }
 
 // Tools come from api's operations, so apiv2.RegisterAll must have run — AutoPatch adds its PATCH ops there.
-// allowOrigin (nil trusts none) admits the wildcard-port origins Vikunja's CORS config allows and the stdlib check does not.
+// allowOrigin (nil trusts none) admits the wildcard-port origins Astering's CORS config allows and the stdlib check does not.
 func New(api huma.API, allowOrigin func(origin string) bool) (*Module, error) {
 	index, order, err := buildTools(api.OpenAPI(), apiv2.GroupPrefix)
 	if err != nil {
@@ -83,7 +83,7 @@ func (m *Module) Register(group *echo.Group) {
 
 func (m *Module) newServerForRequest(req *http.Request) *mcp.Server {
 	srv := mcp.NewServer(&mcp.Implementation{
-		Name:    "vikunja",
+		Name:    "Astering",
 		Version: version.Version,
 	}, &mcp.ServerOptions{Instructions: serverInstructions})
 	m.addToolsAuthorizedBy(srv, tokenFrom(humabridge.EchoContextFrom(req.Context())))

@@ -17,9 +17,9 @@
 package models
 
 import (
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/user"
-	"code.vikunja.io/api/pkg/utils"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/utils"
 
 	"xorm.io/xorm"
 )

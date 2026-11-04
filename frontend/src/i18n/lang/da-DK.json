@@ -39,8 +39,8 @@
 		"addToHomeScreen": "Føj denne app til din startskærm for at få hurtigere adgang og en bedre oplevelse.",
 		"goToOverview": "Gå til oversigt",
 		"project": {
-			"importText": "Importer dine projekter og opgaver fra andre tjenester til vikunja-x:",
-			"import": "Importer dine data til vikunja-x"
+			"importText": "Importer dine projekter og opgaver fra andre tjenester til Astering:",
+			"import": "Importer dine data til Astering"
 		}
 	},
 	"demo": {
@@ -49,7 +49,7 @@
 		"accountWillBeDeleted": "Din konto vil blive slettet, herunder alle projekter, opgaver og vedhæftede filer, du måtte have oprettet."
 	},
 	"ready": {
-		"loading": "vikunja-x er ved at indlæse…",
+		"loading": "Astering er ved at indlæse…",
 		"errorOccured": "Der opstod en fejl:",
 		"checkApiUrl": "Tjek venligst om api url er korrekt.",
 		"noApiUrlConfigured": "Ingen API url er konfigureret. Angiv venligst en nedenfor:"
@@ -64,7 +64,7 @@
 			"usernameEmail": "Brugernavn eller e-mailadresse",
 			"usernamePlaceholder": "f.eks. Frederick",
 			"email": "E-mailadresse",
-			"emailPlaceholder": "f.eks. frederic{'@'}vikunja.io",
+			"emailPlaceholder": "f.eks. aster{'@'}example.com",
 			"password": "Kodeord",
 			"passwordPlaceholder": "Din adgangskode",
 			"forgotPassword": "Har du glemt din adgangskode?",
@@ -85,7 +85,7 @@
 			"oauthRedirectedToApp": "Du er blevet omdirigeret til appen. Du kan nu lukke denne fane.",
 			"desktopTryDemo": "Prøv demoen",
 			"desktopCustomServer": "Brugerdefineret server-URL",
-			"desktopCustomServerDescription": "Indtast URL-adressen til din vikunja-x-server for at komme i gang.",
+			"desktopCustomServerDescription": "Indtast URL-adressen til din Astering-server for at komme i gang.",
 			"desktopWaitingForAuth": "Venter på godkendelse…",
 			"desktopOAuthError": "Godkendelse mislykkedes: {error}",
 			"logout": "Log ud",
@@ -222,7 +222,7 @@
 			},
 			"caldav": {
 				"title": "CalDAV",
-				"howTo": "Du kan forbinde vikunja-x med CalDAV klienter for at se, og administrere alle dine opgaver fra forskellige klienter. Indtast denne URL i din klient:",
+				"howTo": "Du kan forbinde Astering med CalDAV klienter for at se, og administrere alle dine opgaver fra forskellige klienter. Indtast denne URL i din klient:",
 				"more": "Mere information om CalDAV i Vikunja",
 				"tokens": "CalDAV Tokens",
 				"tokensHowTo": "Til CalDAV godkendelse kan du enten bruge din normale kontoadgangskode eller et særligt CalDAV token.",
@@ -235,7 +235,7 @@
 			},
 			"feeds": {
 				"title": "Atom feed",
-				"howTo": "Du kan abonnere på dine vikunja-x notifikationer fra enhver Atom kompatibel feedlæser. Anvend følgende URL:",
+				"howTo": "Du kan abonnere på dine Astering notifikationer fra enhver Atom kompatibel feedlæser. Anvend følgende URL:",
 				"usernameIs": "Dit brugernavn til feedet er: {0}",
 				"apiTokenHint": "Godkend med et API token som har {scope} rettigheden. Opret en i {link}.",
 				"tokenTitle": "Atom feed"
@@ -256,7 +256,7 @@
 				"title": "Hurtigtilføjelsemagi Tilstand",
 				"disabled": "Deaktiveret",
 				"todoist": "Todoist",
-				"vikunja": "vikunja-x"
+				"vikunja": "Astering"
 			},
 			"appearance": {
 				"title": "Farvetema",
@@ -275,7 +275,7 @@
 			},
 			"apiTokens": {
 				"title": "API tokens",
-				"general": "Med API tokens kan du bruge vikunja-xs API uden brugeroplysninger.",
+				"general": "Med API tokens kan du bruge Asterings API uden brugeroplysninger.",
 				"apiDocs": "Se dokumentationen til API'et",
 				"createAToken": "Opret et token",
 				"createToken": "Opret token",
@@ -342,7 +342,7 @@
 			}
 		},
 		"deletion": {
-			"title": "Slet din vikunja-x konto",
+			"title": "Slet din Astering konto",
 			"text1": "Sletningen af din konto er permanent og kan ikke fortrydes. Vi sletter alle dine projekter, opgaver og alt, hvad der er knyttet hertil.",
 			"text2": "For at fortsætte, skal du indtaste din adgangskode. Du vil modtage en e-mail med yderligere instruktioner.",
 			"text3": "Klik på knappen nedenfor for at fortsætte. Du vil modtage en e-mail med yderligere instruktioner.",
@@ -350,7 +350,7 @@
 			"requestSuccess": "Anmodningen blev gennemført. Du vil modtage en e-mail med yderligere instruktioner.",
 			"passwordRequired": "Indtast venligst din adgangskode.",
 			"confirmSuccess": "Du har bekræftet sletningen af din konto. Vi vil slette din konto om tre dage.",
-			"scheduled": "Vi sletter din vikunja-x-konto {date} ({dateSince}).",
+			"scheduled": "Vi sletter din Astering-konto {date} ({dateSince}).",
 			"scheduledCancel": "Klik her for at annullere sletningen af din konto.",
 			"scheduledCancelText": "For at annullere sletningen af din konto, skal du indtaste din adgangskode nedenfor:",
 			"scheduledCancelButton": "Hvis du vil annullere sletningen af din konto, skal du klikke på knappen nedenfor:",
@@ -358,11 +358,11 @@
 			"scheduledCancelSuccess": "Vi sletter ikke din konto."
 		},
 		"export": {
-			"title": "Eksporter dine vikunja-x-data",
+			"title": "Eksporter dine Astering-data",
 			"descriptionPasswordRequired": "Indtast venligst din adgangskode for at fortsætte:",
-			"request": "Anmod om en kopi af mine vikunja-x-data",
-			"success": "Du har anmodet om dine vikunja-x-data! Vi sender dig en e-mail, når den er klar til hentning.",
-			"downloadTitle": "Download dine eksporterede vikunja-x-data",
+			"request": "Anmod om en kopi af mine Astering-data",
+			"success": "Du har anmodet om dine Astering-data! Vi sender dig en e-mail, når den er klar til hentning.",
+			"downloadTitle": "Download dine eksporterede Astering-data",
 			"ready": "Din eksport er klar til download. Du kan downloade den indtil kl. {0}.",
 			"requestNew": "Anmod om en ny eksport"
 		}
@@ -442,7 +442,7 @@
 			"links": {
 				"title": "Del links",
 				"what": "Hvad er et delingslink?",
-				"explanation": "Med delingslinks kan du nemt dele et projekt med andre brugere, der ikke har en konto på vikunja-x.",
+				"explanation": "Med delingslinks kan du nemt dele et projekt med andre brugere, der ikke har en konto på Astering.",
 				"create": "Opret et link til deling",
 				"name": "Navn (valgfrit)",
 				"namePlaceholder": "f.eks. Lorem Ipsum",
@@ -647,18 +647,18 @@
 	},
 	"migrate": {
 		"title": "Import fra andre tjenester",
-		"titleService": "Importer dine data fra {name} til vikunja-x",
+		"titleService": "Importer dine data fra {name} til Astering",
 		"description": "Klik på logoet for en af de tredjeparts tjenester nedenfor for at komme i gang.",
-		"descriptionDo": "vikunja-x vil importere alle lister, opgaver, noter, påmindelser og filer, du har adgang til.",
-		"authorize": "For at give vikunja-x tilladelse til at tilgå din {name} konto, klik på knappen nedenfor.",
+		"descriptionDo": "Astering vil importere alle lister, opgaver, noter, påmindelser og filer, du har adgang til.",
+		"authorize": "For at give Astering tilladelse til at tilgå din {name} konto, klik på knappen nedenfor.",
 		"getStarted": "Kom i gang",
 		"inProgress": "Importerer…",
 		"alreadyMigrated1": "Det ser ud til, at du allerede har importeret dine ting fra {name} på {date}.",
 		"alreadyMigrated2": "Du kan godt importere igen, men kan der kan opstå dubletter. Er du sikker?",
 		"confirm": "Jeg er sikker, start migreringen nu!",
-		"importUpload": "For at importere data fra {name} til vikunja-x, skal du klikke på knappen nedenfor for at vælge en fil.",
+		"importUpload": "For at importere data fra {name} til Astering, skal du klikke på knappen nedenfor for at vælge en fil.",
 		"upload": "Upload fil",
-		"migrationStartedWillReciveEmail": "vikunja-x importerer nu dine lister/projekter, opgaver, noter, påmindelser og filer fra {service}. Da dette vil tage et stykke tid, sender vi dig en e-mail, når det er færdigt. Du kan lukke dette vindue nu.",
+		"migrationStartedWillReciveEmail": "Astering importerer nu dine lister/projekter, opgaver, noter, påmindelser og filer fra {service}. Da dette vil tage et stykke tid, sender vi dig en e-mail, når det er færdigt. Du kan lukke dette vindue nu.",
 		"migrationInProgress": "Der er i øjeblikket en overførsel i gang. Vent venligst, indtil den er færdig."
 	},
 	"label": {
@@ -705,7 +705,7 @@
 		"searchPlaceholder": "Skriv for at søge…",
 		"previous": "Forrige",
 		"next": "Næste",
-		"poweredBy": "Drevet af Vikunja",
+		"poweredBy": "Drevet af Astering",
 		"create": "Opret",
 		"doit": "Gør det!",
 		"saving": "Gemmer…",
@@ -1067,7 +1067,7 @@
 			"intro": "Når du opretter en opgave, kan du bruge specielle søgeord til direkte at tilføje attributter til den nyoprettede opgave. Dette giver muligheden for at tilføje almindeligt anvendte attributter til opgaver meget hurtigere.",
 			"multiple": "Du kan bruge dette flere gange.",
 			"label1": "For at tilføje en etiket, skal du blot præfikse navnet på etiketten med {prefix}.",
-			"label2": "vikunja-x vil først kontrollere, om etiketten allerede findes, og oprette den hvis ikke.",
+			"label2": "Astering vil først kontrollere, om etiketten allerede findes, og oprette den hvis ikke.",
 			"label3": "For at bruge mellemrum, skal du blot tilføje \" eller ' omkring etikettens navn.",
 			"label4": "For eksempel: {prefix}\"Etiket med mellemrum\".",
 			"priority1": "For at sætte en opgaves prioritet, tilføj et nummer 1-5, præfikset med {prefix}.",
@@ -1188,11 +1188,11 @@
 		"views": "Visninger"
 	},
 	"apiConfig": {
-		"url": "vikunja-x URL",
+		"url": "Astering URL",
 		"urlPlaceholder": "f.eks. https://localhost:3456",
 		"change": "ændr",
-		"use": "Brug vikunja-x-installationen på {0}",
-		"success": "Bruger vikunja-x-installationen på \"{domain}\".",
+		"use": "Brug Astering-installationen på {0}",
+		"success": "Bruger Astering-installationen på \"{domain}\".",
 		"urlRequired": "En url er påkrævet."
 	},
 	"loadingError": {

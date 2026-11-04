@@ -1,5 +1,7 @@
 {
 	"brand": {
+		"name": "Astering",
+		"source": "Astering 开源仓库",
 		"subtitle": "Aster的AI集成工业系统"
 	},
 	"bark": {
@@ -242,7 +244,7 @@
 	"systemStatus": {
 		"appCPUScale": "100% = 1 核",
 		"host": "服务器",
-		"application": "vikunja-x 应用",
+		"application": "Astering 应用",
 		"appCPU": "应用 CPU",
 		"gpu": "GPU",
 		"gpuNone": "未分配 GPU",
@@ -253,11 +255,11 @@
 		"appDisk": "应用数据合计",
 		"appCPUHelp": "应用 CPU 的 100% 表示占满 1 个逻辑核。读取应用容器 cgroup，不包含独立数据库容器的 CPU。",
 		"appStorageHelp": "应用文件大小加 PostgreSQL 数据库大小（含索引）。不含镜像层、日志、WAL 和备份；这是数据量，不是整块磁盘用量或磁盘配额。存储最多每分钟异步统计一次，不阻塞页面。",
-		"appGPUHelp": "未向此容器分配计算 GPU。远程 AI 服务商使用的 GPU 不属于本机 vikunja-x 的占用。",
+		"appGPUHelp": "未向此容器分配计算 GPU。远程 AI 服务商使用的 GPU 不属于本机 Astering 的占用。",
 		"storageSampled": "存储采样时间",
 		"unlimited": "未设置容器限制",
 		"title": "服务器负载",
-		"healthy": "vikunja-x 正常",
+		"healthy": "Astering 正常",
 		"offline": "连接中断",
 		"degraded": "依赖服务异常",
 		"loading": "正在连接…",
@@ -267,19 +269,19 @@
 		"cores": "主机 {n} 个逻辑核心",
 		"unavailable": "采样中／暂无数据",
 		"duration": "{days}天 {hours}小时 {minutes}分",
-		"uptime": "vikunja-x：{duration}",
+		"uptime": "Astering：{duration}",
 		"measurement": "这些数值如何计算",
 		"cpuHelp": "CPU 按整机所有逻辑核心的非空闲时间计算，扣除 I/O 等待，不重复计入 guest 时间；使用两次采样的总时间差，不受容器 CPU 配额影响。",
-		"diskHelp": "显示服务器上 vikunja-x 数据所在文件系统的已用空间，包含该分区上的所有文件。本次部署中它就是服务器根分区；其他独立挂载磁盘不合并计算。",
-		"refreshHelp": "服务端统一缓存 5 秒，侧栏和标签页可见时每 5 秒刷新 CPU 等指标；存储最多每分钟统计一次。服务器开机时长在重启机器后归零；vikunja-x 运行时长在重启应用后归零。",
+		"diskHelp": "显示服务器上 Astering 数据所在文件系统的已用空间，包含该分区上的所有文件。本次部署中它就是服务器根分区；其他独立挂载磁盘不合并计算。",
+		"refreshHelp": "服务端统一缓存 5 秒，侧栏和标签页可见时每 5 秒刷新 CPU 等指标；存储最多每分钟统计一次。服务器开机时长在重启机器后归零；Astering 运行时长在重启应用后归零。",
 		"sampled": "采样时间",
 		"unconfigured": "主机指标未接入",
 		"hostUptime": "服务器开机：{duration}",
 		"load": "系统平均负载",
 		"loadPeriods": "最近 1 / 5 / 15 分钟",
 		"loadHelp": "负载表示整机正在运行、等待 CPU 或处于不可中断等待的任务数量，不是百分比。持续负载可与逻辑核心数比较；即使 CPU 占用不高，I/O 等待也可能导致高负载。",
-		"hostSource": "CPU、内存、负载和开机时长来自明确只读挂载的主机内核指标，包含所有应用。主机指标缺失时显示不可用。绿色状态只表示 vikunja-x 依赖服务正常，不代表整机没有资源压力。",
-		"memoryHelp": "已用内存 = 主机总内存 − 主机可用内存。可用内存按内核估算，包含可回收缓存。这里统计所有应用，不仅是 vikunja-x。",
+		"hostSource": "CPU、内存、负载和开机时长来自明确只读挂载的主机内核指标，包含所有应用。主机指标缺失时显示不可用。绿色状态只表示 Astering 依赖服务正常，不代表整机没有资源压力。",
+		"memoryHelp": "已用内存 = 主机总内存 − 主机可用内存。可用内存按内核估算，包含可回收缓存。这里统计所有应用，不仅是 Astering。",
 		"ioWait": "I/O 等待",
 		"steal": "CPU 被宿主机占用"
 	},
@@ -324,8 +326,8 @@
 		"addToHomeScreen": "将此应用程序添加到您的主屏幕以便更快地访问和改善体验。",
 		"goToOverview": "前往工作台",
 		"project": {
-			"importText": "将您的项目和任务从其他服务导入 vikunja-x：",
-			"import": "将您的数据导入到 vikunja-x"
+			"importText": "将您的项目和任务从其他服务导入 Astering：",
+			"import": "将您的数据导入到 Astering"
 		},
 		"welcomeNightOwl": "夜猫子 {username}，你好",
 		"welcomeNightBurning": "{username}，还在挑灯夜战吗？",
@@ -361,7 +363,7 @@
 		"accountWillBeDeleted": "您的账户将被删除，包括您可能创建的所有项目、任务和附件。"
 	},
 	"ready": {
-		"loading": "vikunja-x 正在加载…",
+		"loading": "Astering 正在加载…",
 		"errorOccured": "发生错误：",
 		"checkApiUrl": "请检查 api 网址是否正确。",
 		"noApiUrlConfigured": "未配置 API URL。请在下框中设置：",
@@ -426,7 +428,7 @@
 			"oauthRedirectedToApp": "已跳转到应用，现在可以关闭此标签页。",
 			"desktopTryDemo": "试用演示版",
 			"desktopCustomServer": "自定义服务器地址",
-			"desktopCustomServerDescription": "输入你的 vikunja-x 服务器地址即可开始使用。",
+			"desktopCustomServerDescription": "输入你的 Astering 服务器地址即可开始使用。",
 			"desktopWaitingForAuth": "正在等待身份验证…",
 			"desktopOAuthError": "身份验证失败：{error}",
 			"registrationFailed": "注册时发生错误，请检查填写内容后重试。",
@@ -532,7 +534,7 @@
 				"title": "CalDAV",
 				"more": "更多关于 Vikunja 的 CalDAV 信息",
 				"tokens": "CalDAV 令牌",
-				"howTo": "你可以将 vikunja-x 连接到 CalDAV 客户端，在不同应用中查看和管理任务。请在客户端填写以下地址：",
+				"howTo": "你可以将 Astering 连接到 CalDAV 客户端，在不同应用中查看和管理任务。请在客户端填写以下地址：",
 				"urlLabel": "CalDAV 地址",
 				"tokensHowTo": "进行 CalDAV 身份验证时，可以使用账户密码或专用 CalDAV 令牌。",
 				"createToken": "创建 CalDAV 令牌",
@@ -570,7 +572,7 @@
 				"title": "快速添加 Magic 模式",
 				"disabled": "禁用",
 				"todoist": "Todoist",
-				"vikunja": "vikunja-x"
+				"vikunja": "Astering"
 			},
 			"appearance": {
 				"title": "配色方案",
@@ -582,7 +584,7 @@
 			},
 			"apiTokens": {
 				"title": "API 令牌",
-				"general": "API 令牌允许您在无需用户凭据的情况下使用 vikunja-x 的 API。",
+				"general": "API 令牌允许您在无需用户凭据的情况下使用 Astering 的 API。",
 				"apiDocs": "查看 api 文档",
 				"createAToken": "创建令牌",
 				"createToken": "创建令牌",
@@ -649,7 +651,7 @@
 			},
 			"feeds": {
 				"title": "Atom 订阅",
-				"howTo": "你可以使用支持 Atom 的阅读器订阅 vikunja-x 通知，订阅地址如下：",
+				"howTo": "你可以使用支持 Atom 的阅读器订阅 Astering 通知，订阅地址如下：",
 				"usernameIs": "你的订阅用户名是：{0}",
 				"apiTokenHint": "请使用具有 {scope} 权限的 API 令牌进行身份验证，在 {link} 中创建。",
 				"tokenTitle": "Atom 订阅",
@@ -700,22 +702,22 @@
 						"environment": "在终端环境中设置令牌：{value}",
 						"command": "添加 MCP 服务器：{value}",
 						"config": "也可以在设置环境变量后，将以下内容加入 ~/.codex/config.toml：{value}",
-						"note": "请在设置了 VIKUNJA_MCP_TOKEN 的终端中启动 Codex。每次新开终端都需要重新设置，或将其妥善保存在终端环境配置中。"
+						"note": "请在设置了 ASTERING_MCP_TOKEN 的终端中启动 Codex。每次新开终端都需要重新设置，或将其妥善保存在终端环境配置中。"
 					},
 					"claudeDesktop": {
 						"open": "打开 Customize → Connectors → Add custom connector。Team 或 Enterprise 用户需要由所有者在 Organization settings → Connectors 中添加。",
-						"url": "将连接器命名为 vikunja-x，并填写此地址：{value}",
+						"url": "将连接器命名为 Astering，并填写此地址：{value}",
 						"auth": "将 Authentication 设置为 No sign-in（无需登录）。",
 						"header": "在 Request headers 中选择 authorization，粘贴完整值（包含 Bearer 及其后的空格），然后添加连接器：{value}",
-						"beta": "请求头功能目前仅向部分组织开放测试。如果没有此选项，你的账户暂时无法通过此方式连接 vikunja-x。"
+						"beta": "请求头功能目前仅向部分组织开放测试。如果没有此选项，你的账户暂时无法通过此方式连接 Astering。"
 					},
 					"mistral": {
 						"open": "在左侧栏依次打开 Context → Connectors → Add Connector → Add Custom Connector。",
-						"url": "将连接器命名为 vikunja-x，填写此地址，然后选择 Connect：{value}",
+						"url": "将连接器命名为 Astering，填写此地址，然后选择 Connect：{value}",
 						"token": "选择 HTTP Bearer 身份验证，并粘贴此令牌：{value}"
 					},
 					"chatgpt": {
-						"unavailable": "ChatGPT 连接 vikunja-x 需要 OAuth。目前尚未支持 MCP OAuth，因此不能在 ChatGPT 中使用此令牌。"
+						"unavailable": "ChatGPT 连接 Astering 需要 OAuth。目前尚未支持 MCP OAuth，因此不能在 ChatGPT 中使用此令牌。"
 					},
 					"other": {
 						"title": "其他客户端",
@@ -757,7 +759,7 @@
 			}
 		},
 		"deletion": {
-			"title": "删除您的 vikunja-x 帐户",
+			"title": "删除您的 Astering 帐户",
 			"text1": "账户实际删除后将无法恢复。请先阅读下方说明，保存需要保留的内容。",
 			"scope": "这会删除你的项目及其中的任务，但与其他人或团队共享的项目会保留给他们。同时会删除你的私人星图空间、你拥有的机器人账户、API 令牌、已保存的筛选器以及你创建的 Webhook。团队星图空间会继续留在团队中。",
 			"keepFirst": "请先保存想要保留的内容。数据导出只包含项目和任务；星图空间请在星图中导出，网盘文件请在网盘中下载。",
@@ -767,7 +769,7 @@
 			"requestSuccess": "请求成功。您将收到一封包含更多说明的电子邮件。",
 			"passwordRequired": "请输入密码",
 			"confirmSuccess": "已成功确认您帐户的删除请求。您的帐户将在三天内注销删除。",
-			"scheduled": "您的 vikunja-x 帐户将于 {date}（{dateSince}）完成注销删除。",
+			"scheduled": "您的 Astering 帐户将于 {date}（{dateSince}）完成注销删除。",
 			"scheduledCancel": "要取消您的帐户删除操作，请单击此处。",
 			"scheduledCancelText": "若要取消您的帐户删除操作，请在下面输入您的密码：",
 			"scheduledCancelButton": "若要取消您的账户删除，请按下面的按钮：",
@@ -777,13 +779,13 @@
 			"sharedFiles": "网盘中仍被保留项目、其他会话或星图引用的文件会保留；没有引用的文件会回收。本机浏览器草稿和服务器备份需要分别管理。"
 		},
 		"export": {
-			"title": "导出 vikunja-x 数据",
-			"description": "你可以申请一份项目和任务的副本，其中包括任务附件、已保存的筛选器和项目背景。你可以通过迁移功能把它导入任意 Vikunja 实例。",
+			"title": "导出 Astering 数据",
+			"description": "你可以申请一份项目和任务的副本，其中包括任务附件、已保存的筛选器和项目背景。可通过迁移功能导入 Astering，或导入支持此导出格式的 Vikunja 实例。",
 			"notIncluded": "不包含：星图中的内容（请在星图中把每个空间导出为 Markdown 或 ZIP）、没有附加到任务上的网盘文件（请在网盘中下载）以及与 Arona 的对话。",
 			"descriptionPasswordRequired": "请输入您的密码以继续。",
-			"request": "请求我的 vikunja-x 数据副本",
-			"success": "已成功请求您的 vikunja-x 数据！一旦准备好下载，我们将向您发送一封电子邮件。",
-			"downloadTitle": "下载您导出的 vikunja-x 数据",
+			"request": "请求我的 Astering 数据副本",
+			"success": "已成功请求您的 Astering 数据！一旦准备好下载，我们将向您发送一封电子邮件。",
+			"downloadTitle": "下载您导出的 Astering 数据",
 			"ready": "您的导出已准备好下载。您可以在 {0} 之前下载。",
 			"requestNew": "请求另一个导出"
 		}
@@ -930,7 +932,7 @@
 			},
 			"links": {
 				"title": "共享链接",
-				"explanation": "通过共享链接，没有 vikunja-x 账户的人也能打开此项目。",
+				"explanation": "通过共享链接，没有 Astering 账户的人也能打开此项目。",
 				"onlyThisProject": "链接只能打开此项目，不能打开其中的项目。",
 				"loading": "正在加载共享链接…",
 				"loadError": "共享链接暂时没加载出来。",
@@ -1291,18 +1293,18 @@
 	},
 	"migrate": {
 		"title": "从其他服务导入",
-		"titleService": "从 {name} 导入您的数据到 vikunja-x",
+		"titleService": "从 {name} 导入您的数据到 Astering",
 		"description": "点击下面的第三方服务的徽标开始操作。",
-		"descriptionDo": "vikunja-x 将导入所有您有访问权限的列表、任务、笔记、提醒和文件。",
-		"authorize": "要授权 vikunja-x 访问您的 {name} 帐户，请点击下面的按钮。",
+		"descriptionDo": "Astering 将导入所有您有访问权限的列表、任务、笔记、提醒和文件。",
+		"authorize": "要授权 Astering 访问您的 {name} 帐户，请点击下面的按钮。",
 		"getStarted": "开始",
 		"inProgress": "导入进行中...",
 		"alreadyMigrated1": "{date} 已经从 {name} 导入过数据",
 		"alreadyMigrated2": "可以再次导入，但这可能会造成数据重复。您确定吗？",
 		"confirm": "我确定, 请立即开始迁移!",
-		"importUpload": "请点击下面的按钮选择一个文件，将 {name} 的数据导入到 vikunja-x",
+		"importUpload": "请点击下面的按钮选择一个文件，将 {name} 的数据导入到 Astering",
 		"upload": "点击上传文件",
-		"migrationStartedWillReciveEmail": "vikunja-x 现在将从 {service} 导入您的列表/项目、任务、注释、提醒和文件。 由于这需要一段时间，完成后我们会向您发送一封电子邮件。 您现在可以关闭此窗口。",
+		"migrationStartedWillReciveEmail": "Astering 现在将从 {service} 导入您的列表/项目、任务、注释、提醒和文件。 由于这需要一段时间，完成后我们会向您发送一封电子邮件。 您现在可以关闭此窗口。",
 		"migrationInProgress": "迁移正在进行中。请等待完成。",
 		"migrationFinished": "已完成从 {service} 导入，导入的内容现在都可以在你的项目中查看。",
 		"migrationFailed": "从 {service} 导入失败：{reason}",
@@ -1314,7 +1316,7 @@
 			"upload": "无法保存上传的文件，请重新上传。"
 		},
 		"credentials": {
-			"description": "填写 {name} 实例的地址和登录方式。Vikunja 会导入你有权访问的项目和看板；登录信息只用于本次导入，不会保存。",
+			"description": "填写 {name} 实例的地址和登录方式。Astering 会导入你有权访问的项目和看板；登录信息只用于本次导入，不会保存。",
 			"url": "{name} 地址",
 			"authMethod": "登录方式",
 			"apiKey": "API 密钥",
@@ -1500,7 +1502,7 @@
 		"imprint": "版权信息",
 		"privacy": "隐私政策",
 		"closeSidebar": "关闭侧栏",
-		"home": "vikunja-x 首页",
+		"home": "Astering 首页",
 		"toggleChildProjects": "展开或折叠子项目",
 		"main": "主导航",
 		"savedFilters": "已保存的筛选条件",
@@ -1524,7 +1526,7 @@
 		"searchPlaceholder": "请输入查找条件…",
 		"previous": "上一个",
 		"next": "下一个",
-		"poweredBy": "由 Vikunja 提供支持",
+		"poweredBy": "由 Astering 提供支持",
 		"create": "创建",
 		"doit": "继续！",
 		"saving": "保存中...",
@@ -1710,7 +1712,7 @@
 			"canuse": "你可以使用 Date Math 来筛选相对日期。",
 			"learnhow": "查看它如何工作",
 			"title": "日期表达式",
-			"intro": "指定应用过滤器时 vikunja-x 即时解析的相对日期。",
+			"intro": "指定应用过滤器时 Astering 即时解析的相对日期。",
 			"expression": "每个 Date Math 表达式以锚点日期开头，可以是 {0}，也可以是以 {1} 结尾的日期文本。 这个锚点日期后可以跟一个或多个数学表达式。",
 			"similar": "这些表达式类似于 {0} 和 {1} 提供的表达式。",
 			"add1Day": "加一天",
@@ -2054,7 +2056,7 @@
 			"intro": "创建任务时，可以使用特殊关键字直接为新创建的任务添加属性。 这能够更快地将常用属性添加到任务中。",
 			"multiple": "你可以多次使用此功能。",
 			"label1": "要添加标签，只需在标签名称前加上 {prefix}。",
-			"label2": "vikunja-x 首先检查标签是否存在，如果不存在则创建。",
+			"label2": "Astering 首先检查标签是否存在，如果不存在则创建。",
 			"label3": "要使用空格，只需在标签名称周围添加一个 \" 或 '。",
 			"label4": "例如：{prefix} “带空格的标签”。",
 			"priority1": "要设置任务的优先级，请添加数字 1-5，并以 {prefix} 为前缀。",
@@ -2071,7 +2073,7 @@
 			"dateTime": "将日期格式与 “{time}”（或 {timePM}）组合以设置时间。",
 			"repeats": "重复的任务",
 			"repeatsDescription": "将任务设置为间隔重复，只需在任务文本中添加 “{suffix}” 即可。 内容必须是数字，并且可以省略使用类型（参见示例）。",
-			"quickEntryHint": "可使用快捷前缀设置日期、标签等。在 vikunja-x 主应用的任务输入框中查看提示，了解详细用法。",
+			"quickEntryHint": "可使用快捷前缀设置日期、标签等。在 Astering 主应用的任务输入框中查看提示，了解详细用法。",
 			"dateWeekday": "任意星期几，将使用下一个对应日期"
 		},
 		"bulkCreateUnexpectedResponse": "服务器返回的已创建任务数量不符合预期。",
@@ -2325,12 +2327,12 @@
 		"views": "视图"
 	},
 	"apiConfig": {
-		"url": "vikunja-x 地址",
+		"url": "Astering 地址",
 		"urlPlaceholder": "例如： http://localhost:3456",
 		"change": "换一换",
-		"use": "在 {0} 使用 vikunja-x 安装程序",
-		"error": "无法在“{domain}”找到或使用 vikunja-x 安装。 请检查url格式是否正确，直接访问是否可以访问，然后重试。",
-		"success": "在 “{domain}” 上使用 vikunja-x 安装程序。",
+		"use": "在 {0} 使用 Astering 安装程序",
+		"error": "无法在“{domain}”找到或使用 Astering 安装。 请检查url格式是否正确，直接访问是否可以访问，然后重试。",
+		"success": "在 “{domain}” 上使用 Astering 安装程序。",
 		"urlRequired": "Url 是必需的。"
 	},
 	"loadingError": {
@@ -2387,7 +2389,7 @@
 			"newTeam": "新建团队"
 		},
 		"title": "搜索与快捷操作",
-		"notLoggedIn": "请先在 vikunja-x 主窗口登录。",
+		"notLoggedIn": "请先在 Astering 主窗口登录。",
 		"results": "没有结果 | {count} 条结果 | {count} 条结果",
 		"resultTypes": {
 			"command": "命令",
@@ -2508,18 +2510,18 @@
 		"10007": "一个项目视图最多可以有 100 个分组。",
 		"14002": "权限组 {group} 中的权限 {permission} 无效。",
 		"14005": "已经有一个来自此服务的导入正在进行，请等待完成。",
-		"14009": "此 ZIP 文件不包含 vikunja-x 数据，请上传从 vikunja-x 导出的文件。",
+		"14009": "此 ZIP 文件不包含 Astering 数据，请上传从 Astering 导出的文件。",
 		"14010": "无法解析此文件，请确认它是有效的导出文件。",
 		"14011": "此文件不是有效的 ZIP 文件。",
 		"14012": "此文件不包含任何数据。",
-		"14013": "此导出文件来自过旧的 vikunja-x 版本，请使用较新版本重新导出。",
+		"14013": "此导出文件来自过旧的 Astering 版本，请使用较新版本重新导出。",
 		"14016": "无法解析导入配置，请确认它是有效的 JSON 对象。",
 		"14018": "导入条目数量超过服务器设置的上限。",
 		"14019": "迁移状态无效或已过期，请重新开始迁移。",
 		"14201": "Planka 拒绝了登录信息，请检查地址、API 密钥或用户名和密码。",
 		"14202": "此 Planka 账户需要额外的登录步骤，例如双重验证或接受条款。请先在浏览器登录一次 Planka，或改用 API 密钥。",
 		"14203": "请填写 Planka 地址，并提供 API 密钥或用户名和密码。",
-		"14204": "无法访问此地址的 Planka API，请检查地址，以及 vikunja-x 服务器是否能够连接该实例。",
+		"14204": "无法访问此地址的 Planka API，请检查地址，以及 Astering 服务器是否能够连接该实例。",
 		"20001": "公告已被他人修改。你的草稿已保留，请载入最新版本后再保存。",
 		"20002": "日常设置已变化或已进入新的一天，状态已重新读取，请再操作一次。",
 		"20003": "该日常任务当前无法打卡（已暂停、已停用、任务已完成，或仍设置了普通重复）。",
@@ -2555,8 +2557,8 @@
 			"api_base_url": "API 基础地址",
 			"anthropic_messages_does_not_accept_raw_audio_use": "Anthropic Messages 不接收原始音频；可用于识别结果整理和任务助手。",
 			"asia_shanghai_china_standard_time": "Asia/Shanghai · 北京时间",
-			"vikunja_x_tcymc_custom_edition": "vikunja-x · x版本",
-			"tcymc_custom_edition": "x版本",
+			"vikunja_x_tcymc_custom_edition": "Astering",
+			"tcymc_custom_edition": "Astering",
 			"3_48_lowercase_letters_numbers_or_hyphens": "· 3–48 位小写字母、数字或连字符",
 			"showing_until": "· 展示至",
 			"mon": "一",
@@ -2745,9 +2747,9 @@
 		"stopRecording": "停止录音 · {seconds} 秒",
 		"placeholderHelp": "可用占位符：{schedule}、{availability}、{projects}。HTML 在隔离框架内展示，脚本和表单不会运行。",
 		"publicEyebrow": "公开日程",
-		"assistantEyebrow": "VIKUNJA X · 自选模型，管理任务",
+		"assistantEyebrow": "ASTERING · 自选模型，管理任务",
 		"audioConversionFailed": "无法将此录音转换为 WAV。请上传 WAV/MP3 文件，或改用音频转写协议。",
-		"updateAvailable": "本站 vikunja-x 页面资源已更新（{version}），请在方便时刷新。",
+		"updateAvailable": "本站 Astering 页面资源已更新（{version}），请在方便时刷新。",
 		"updateUnknown": "新构建",
 		"updateRefresh": "加载本站更新",
 		"currentVersion": "当前页面版本：{version}",
@@ -2851,7 +2853,7 @@
 			"licenseFeatures": "功能",
 			"licenseInstance": "实例 ID",
 			"licenseManage": "管理",
-			"description": "查看这个 Vikunja 实例的使用情况和许可证状态。"
+			"description": "查看这个 Astering 实例的使用情况和许可证状态。"
 		},
 		"searchUsersPlaceholder": "搜索用户名或邮箱…",
 		"users": {
@@ -2924,7 +2926,7 @@
 		}
 	},
 	"tour": {
-		"eyebrow": "VIKUNJA X · 使用指南",
+		"eyebrow": "ASTERING · 使用指南",
 		"welcomeTitle": "花几分钟，熟悉你的工作台",
 		"welcomeText": "看看任务管理、AI 语音和公开主页分别怎么用。",
 		"open": "帮助与引导教程",
@@ -3967,7 +3969,7 @@
 			"created": "你的星图已经建好。",
 			"saved": "空间设置已保存。",
 			"personal": "私人",
-			"personalHint": "在 vikunja-x 中只有你能打开这个空间，其他账户（包括管理员）都不能。",
+			"personalHint": "在 Astering 中只有你能打开这个空间，其他账户（包括管理员）都不能。",
 			"storageNote": "星图存储在这台服务器上，没有端到端加密，因此运营服务器的人有可能读取。星图内容不会自动发送给阿罗娜。",
 			"team": "与 {team} 共享",
 			"teamFallback": "团队",
@@ -4173,7 +4175,7 @@
 			"eyebrow": "一间私人的阅览室",
 			"lead": "星图是一个私人的地方，用来写下为你指引方向的东西：原则、理想、行动纲领，以及塑造了你的记忆。迷失方向的时候，回到这里读一读。",
 			"kindsTitle": "五种书写",
-			"privacy": "私人空间在 vikunja-x 中只有你能打开，其他账户（包括管理员）都不能。它存储在这台服务器上，没有端到端加密，因此运营服务器的人有可能读取。星图内容不会自动发送给阿罗娜。",
+			"privacy": "私人空间在 Astering 中只有你能打开，其他账户（包括管理员）都不能。它存储在这台服务器上，没有端到端加密，因此运营服务器的人有可能读取。星图内容不会自动发送给阿罗娜。",
 			"create": "创建我的私人星图",
 			"customize": "自定义，或与团队共享…",
 			"createHint": "将创建一个名为“{title}”、使用极光主题的私人空间。名称和样式之后随时可以修改。",
@@ -4513,7 +4515,7 @@
 		"sharing": {
 			"legend": "谁能看到",
 			"private": "私人（推荐）",
-			"privateHint": "私人的意思是，其他账户无法在 vikunja-x 中打开它。它存储在这台服务器上，没有端到端加密，因此运营服务器的人有可能读取。星图内容不会自动发送给阿罗娜。",
+			"privateHint": "私人的意思是，其他账户无法在 Astering 中打开它。它存储在这台服务器上，没有端到端加密，因此运营服务器的人有可能读取。星图内容不会自动发送给阿罗娜。",
 			"team": "与团队共享",
 			"teamHint": "团队的当前成员可以阅读和写条目。团队管理员管理空间，并且可以永久删除条目。",
 			"permanent": "空间创建后，共享方式不能再更改。",
@@ -4856,7 +4858,7 @@
       "tab": "外部工具",
       "settingsTitle": "阿罗娜外部工具（MCP）",
       "intro": "连接外部 MCP 服务，让阿罗娜按需发现和调用工具。开启连接总开关不会自动在会话中启用；密钥仅保存在服务器。",
-      "inboundLink": "让其他客户端访问 vikunja-x",
+      "inboundLink": "让其他客户端访问 Astering",
       "newConnection": "新 MCP 连接",
       "enabled": "连接已启用",
       "disabled": "连接已停用",
@@ -4875,7 +4877,7 @@
       "permissions": "连接操作权限",
       "allowWrite": "允许修改外部数据",
       "allowDelete": "允许外部删除及影响未知的操作",
-      "permissionsHelp": "外部修改仍需本轮写入模式和逐次审核。外部删除由此连接的删除开关控制，与“本次允许删除任务”单独设置。限制只写入特定 vikunja-x 项目时，也会阻止外部修改，因为无法核实外部资源归属哪个项目。",
+      "permissionsHelp": "外部修改仍需本轮写入模式和逐次审核。外部删除由此连接的删除开关控制，与“本次允许删除任务”单独设置。限制只写入特定 Astering 项目时，也会阻止外部修改，因为无法核实外部资源归属哪个项目。",
       "toolPermissions": "工具目录与只读信任",
       "readTrustHelp": "勾选表示你信任此工具只读取数据。远端服务提供的只读或删除标记仅供参考，不会自动授予权限；已知 Wallos 工具另按内置规则识别。",
       "trustTool": "信任 {name} 为只读工具",
@@ -4915,7 +4917,7 @@
       "manageConnections": "管理外部 MCP 连接",
       "externalSource": "外部服务：{name}",
       "externalOperation": "调用外部 MCP 工具",
-      "externalReview": "请审核此项外部服务调用。实际影响由该服务决定，vikunja-x 无法撤销外部操作。",
+      "externalReview": "请审核此项外部服务调用。实际影响由该服务决定，Astering 无法撤销外部操作。",
       "externalTool": "工具",
       "externalConnection": "连接"
     },

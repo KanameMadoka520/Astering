@@ -19,11 +19,11 @@ package cmd
 import (
 	"strings"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/initialize"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/mail"
-	"code.vikunja.io/api/pkg/notifications"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/initialize"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/mail"
+	"github.com/KanameMadoka520/Astering/pkg/notifications"
 	"github.com/spf13/cobra"
 )
 
@@ -44,11 +44,11 @@ var testmailCmd = &cobra.Command{
 	Run: func(_ *cobra.Command, args []string) {
 		log.Info("Sending testmail...")
 		message := notifications.NewMail().
-			From("Vikunja <"+config.MailerFromEmail.GetString()+">").
+			From("Astering <"+config.MailerFromEmail.GetString()+">").
 			To(args[0]).
-			Subject("Test from Vikunja").
+			Subject("Test from Astering").
 			Line("This is a test mail!").
-			Line("If you received this, Vikunja is correctly set up to send emails.").
+			Line("If you received this, Astering is correctly set up to send emails.").
 			Action("Go to your instance", config.ServicePublicURL.GetString())
 
 		opts, err := notifications.RenderMail(message, "en")

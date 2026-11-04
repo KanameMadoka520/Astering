@@ -20,9 +20,9 @@ import (
 	"bytes"
 	"context"
 
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/modules/migration"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/modules/migration"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 )
 
 // Migrator imports projects, boards, cards and everything attached to them from a Planka v2 instance.

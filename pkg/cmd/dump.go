@@ -21,10 +21,10 @@ import (
 	"strings"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/initialize"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/modules/dump"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/initialize"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/modules/dump"
 
 	"github.com/spf13/cobra"
 )
@@ -40,12 +40,12 @@ var (
 
 var dumpCmd = &cobra.Command{
 	Use:   "dump",
-	Short: "Dump all vikunja data into a zip file. Includes config, files and db.",
+	Short: "Dump all Astering data into a zip file. Includes config, files and db.",
 	PreRun: func(_ *cobra.Command, _ []string) {
 		initialize.FullInitWithoutAsync()
 	},
 	Run: func(_ *cobra.Command, _ []string) {
-		filename := "vikunja-dump_" + time.Now().Format("2006-01-02_15-03-05") + ".zip"
+		filename := "astering-dump_" + time.Now().Format("2006-01-02_15-03-05") + ".zip"
 		if dumpFilenameFlag != "" {
 			filename = dumpFilenameFlag
 			if !strings.HasSuffix(filename, ".zip") {
@@ -65,6 +65,6 @@ var dumpCmd = &cobra.Command{
 }
 
 func init() {
-	dumpCmd.Flags().StringVarP(&dumpPathFlag, "path", "p", "", "The folder path where the dump file should be saved. Vikunja will use the configured root path or the binary location if the flag is not provided.")
-	dumpCmd.Flags().StringVarP(&dumpFilenameFlag, "filename", "f", "", "The filename of the dump file. If it does not end in '.zip', it will be added as a file extension. Defaults to 'vikunja-dump_YYYY-MM-DD_HH-II-SS.zip'.")
+	dumpCmd.Flags().StringVarP(&dumpPathFlag, "path", "p", "", "The folder path where the dump file should be saved. Astering will use the configured root path or the binary location if the flag is not provided.")
+	dumpCmd.Flags().StringVarP(&dumpFilenameFlag, "filename", "f", "", "The filename of the dump file. If it does not end in '.zip', it will be added as a file extension. Defaults to 'astering-dump_YYYY-MM-DD_HH-II-SS.zip'.")
 }

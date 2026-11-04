@@ -24,7 +24,7 @@ import (
 	"strconv"
 	"strings"
 
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 )
 
 // Provider represents the provider implementation of the initials provider

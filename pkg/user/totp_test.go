@@ -20,9 +20,9 @@ import (
 	"testing"
 	"time"
 
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/modules/keyvalue"
-	"code.vikunja.io/api/pkg/utils"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/modules/keyvalue"
+	"github.com/KanameMadoka520/Astering/pkg/utils"
 
 	"github.com/pquerna/otp/totp"
 	"github.com/stretchr/testify/assert"
@@ -150,6 +150,7 @@ func TestEnrollTOTPRequiresPassword(t *testing.T) {
 	enrolled, err := EnrollTOTP(s, u, "12345678")
 	require.NoError(t, err)
 	assert.False(t, enrolled.Enabled)
+	assert.Contains(t, enrolled.URL, "issuer=Astering", "new authenticator enrollments use the current product name")
 }
 
 func TestEnableTOTPRequiresPassword(t *testing.T) {

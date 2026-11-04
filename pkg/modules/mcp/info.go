@@ -21,9 +21,9 @@ import (
 	"sort"
 	"strings"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/models"
-	apiv2 "code.vikunja.io/api/pkg/routes/api/v2"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	apiv2 "github.com/KanameMadoka520/Astering/pkg/routes/api/v2"
 )
 
 // ConnectionInfo reports which token permissions the tools of this module can actually use.

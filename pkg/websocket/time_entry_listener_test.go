@@ -19,9 +19,9 @@ package websocket
 import (
 	"testing"
 
-	"code.vikunja.io/api/pkg/events"
-	"code.vikunja.io/api/pkg/license"
-	"code.vikunja.io/api/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/events"
+	"github.com/KanameMadoka520/Astering/pkg/license"
+	"github.com/KanameMadoka520/Astering/pkg/models"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

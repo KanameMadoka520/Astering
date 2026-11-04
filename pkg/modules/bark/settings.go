@@ -31,7 +31,7 @@ import (
 	"sync"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/config"
 )
 
 //nolint:revive // Distinct public names prevent collisions in the shared Huma schema registry.

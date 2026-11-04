@@ -49,7 +49,7 @@ func (c *Client) CreateBucket(ctx context.Context, projectID, viewID int64, b *B
 }
 
 // MoveTaskToBucket positions an existing task in `bucketID` on the
-// project's view. Vikunja stores task↔bucket relations in a separate
+// project's view. Astering stores task↔bucket relations in a separate
 // table (`task_buckets`); a task update with bucket_id does not reliably
 // move tasks — this dedicated endpoint is the one the Kanban UI's
 // drag-and-drop uses. On v2 it's a PUT, and project/view/bucket all come

@@ -28,10 +28,10 @@ import (
 	"strings"
 	templatetext "text/template"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/i18n"
-	"code.vikunja.io/api/pkg/mail"
-	"code.vikunja.io/api/pkg/utils"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/i18n"
+	"github.com/KanameMadoka520/Astering/pkg/mail"
+	"github.com/KanameMadoka520/Astering/pkg/utils"
 
 	"github.com/microcosm-cc/bluemonday"
 	"github.com/yuin/goldmark/v2/ast"
@@ -94,7 +94,7 @@ const mailTemplateHTML = `
 <div style="width: 100%; font-family: 'Open Sans', sans-serif; Text-rendering: optimizeLegibility">
     <div style="width: 600px; margin: 0 auto; Text-align: justify;">
         <h1 style="font-size: 30px; Text-align: center;">
-            <img src="cid:logo.png" style="height: 75px;" alt="Vikunja"/>
+            <img src="cid:logo.png" style="height: 75px;" alt="Astering"/>
         </h1>
         <div class="email-card" style="border: 1px solid #dbdbdb; -webkit-box-shadow: 0.3em 0.3em 0.8em #e6e6e6; box-shadow: 0.3em 0.3em 0.8em #e6e6e6; color: #4a4a4a; padding: 5px 25px; border-radius: 3px; background: #fff;">
 <p>

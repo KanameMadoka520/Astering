@@ -21,7 +21,7 @@ import (
 	"strconv"
 	"testing"
 
-	"code.vikunja.io/veans/internal/client"
+	"github.com/KanameMadoka520/Astering/veans/internal/client"
 )
 
 func proj(id, parent int64, pos float64, title string) *client.Project {

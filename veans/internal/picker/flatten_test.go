@@ -20,7 +20,7 @@ import (
 	"reflect"
 	"testing"
 
-	"code.vikunja.io/veans/internal/client"
+	"github.com/KanameMadoka520/Astering/veans/internal/client"
 )
 
 func sampleForest() []*node {

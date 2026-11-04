@@ -19,10 +19,10 @@ package models
 import (
 	"time"
 
-	"code.vikunja.io/api/pkg/user"
-	"code.vikunja.io/api/pkg/utils"
+	"github.com/KanameMadoka520/Astering/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/utils"
 
-	"code.vikunja.io/api/pkg/web"
+	"github.com/KanameMadoka520/Astering/pkg/web"
 	"xorm.io/xorm"
 )
 

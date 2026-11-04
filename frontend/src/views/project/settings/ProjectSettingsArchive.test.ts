@@ -143,7 +143,7 @@ describe('ProjectSettingsArchive', () => {
 		await mountModal()
 
 		expect(dialogText()).toContain('Un-Archive this project')
-		expect(document.title).toBe('Archive "Test" | vikunja-x · x edition')
+		expect(document.title).toBe('Archive "Test" | Astering')
 
 		await router.push('/tasks/by/upcoming')
 		await flushPromises()

@@ -24,14 +24,14 @@ import (
 	"net/url"
 	"strings"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/files"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/migration"
-	"code.vikunja.io/api/pkg/richtext"
-	"code.vikunja.io/api/pkg/user"
-	"code.vikunja.io/api/pkg/utils"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/files"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/migration"
+	"github.com/KanameMadoka520/Astering/pkg/richtext"
+	"github.com/KanameMadoka520/Astering/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/utils"
 
 	"github.com/adlio/trello"
 )
@@ -100,7 +100,7 @@ func (m *Migration) Name() string {
 
 // AuthURL returns the url users need to authenticate against
 // @Summary Get the auth url from trello
-// @Description Returns the auth url where the user needs to get its auth code. This code can then be used to migrate everything from trello to Vikunja.
+// @Description Returns the auth url where the user needs to get its auth code. This code can then be used to migrate everything from trello to Astering.
 // @tags migration
 // @Produce json
 // @Security JWTKeyAuth
@@ -119,7 +119,7 @@ func (m *Migration) AuthURL(state string) string {
 		"&scope=read" +
 		"&callback_method=fragment" +
 		"&response_type=token" +
-		"&name=Vikunja%20Migration" +
+		"&name=Astering%20Migration" +
 		"&key=" + config.MigrationTrelloKey.GetString() +
 		"&return_url=" + url.QueryEscape(returnURL+sep+"state="+url.QueryEscape(state))
 }
@@ -402,7 +402,7 @@ func convertTrelloDataToVikunja(organizationName string, trelloData []*trello.Bo
 						continue
 					}
 
-					// Other links are not attachments in Vikunja, but we can add them to the description
+					// Other links are not attachments in Astering, but we can add them to the description
 					task.Description += `<p><a href="` + html.EscapeString(attachment.URL) + `">` + html.EscapeString(attachment.Name) + "</a></p>\n"
 				}
 

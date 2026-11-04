@@ -17,10 +17,10 @@
 package cmd
 
 import (
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/files"
-	"code.vikunja.io/api/pkg/initialize"
-	"code.vikunja.io/api/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/files"
+	"github.com/KanameMadoka520/Astering/pkg/initialize"
+	"github.com/KanameMadoka520/Astering/pkg/log"
 
 	"github.com/spf13/cobra"
 )

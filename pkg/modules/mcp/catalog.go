@@ -94,7 +94,7 @@ func (m *Module) installCatalogTools(srv *mcp.Server, catalog []*tool) {
 	}
 	srv.AddTool(&mcp.Tool{
 		Name:        toolFindAction,
-		Description: "Discover additional Vikunja actions for: " + strings.Join(slices.Sorted(maps.Keys(areas)), ", ") + ". Returns only actions your token authorizes; pass action or resource for full input schemas. Invoke them with do_action.",
+		Description: "Discover additional Astering actions for: " + strings.Join(slices.Sorted(maps.Keys(areas)), ", ") + ". Returns only actions your token authorizes; pass action or resource for full input schemas. Invoke them with do_action.",
 		InputSchema: findActionSpec.schema,
 	}, findActionHandler(catalog))
 	srv.AddTool(&mcp.Tool{

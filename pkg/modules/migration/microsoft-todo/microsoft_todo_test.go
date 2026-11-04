@@ -23,9 +23,9 @@ import (
 	"testing"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/migration"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/migration"
 
 	"github.com/d4l3k/messagediff"
 	"github.com/stretchr/testify/assert"

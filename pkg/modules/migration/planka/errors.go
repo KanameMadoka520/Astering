@@ -19,7 +19,7 @@ package planka
 import (
 	"net/http"
 
-	"code.vikunja.io/api/pkg/web"
+	"github.com/KanameMadoka520/Astering/pkg/web"
 )
 
 // ErrImportBudgetExceeded aborts a Planka import whose job budget is exhausted (GHSA-wq92-8x3r-fm38).
@@ -116,6 +116,6 @@ func (err *ErrNoPlankaAtURL) HTTPError() web.HTTPError {
 	return web.HTTPError{
 		HTTPCode: http.StatusBadRequest,
 		Code:     ErrCodeNoPlankaAtURL,
-		Message:  "Could not reach a Planka API at the given url. Check the url and that Vikunja can reach the instance.",
+		Message:  "Could not reach a Planka API at the given url. Check the url and that Astering can reach the instance.",
 	}
 }

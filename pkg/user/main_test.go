@@ -20,7 +20,7 @@ import (
 	"os"
 	"testing"
 
-	"code.vikunja.io/api/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/log"
 )
 
 // TestMain is the main test function used to bootstrap the test env

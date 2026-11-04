@@ -21,7 +21,7 @@ package gorules
 import "github.com/quasilyte/go-ruleguard/dsl"
 
 func rawHeadersInLog(m dsl.Matcher) {
-	m.Import("code.vikunja.io/api/pkg/log")
+	m.Import("github.com/KanameMadoka520/Astering/pkg/log")
 	// $*_ on both sides of $h doesn't backtrack when Where fails, so spell out positions.
 	m.Match(`log.$f($h, $*_)`, `log.$f($_, $h, $*_)`, `log.$f($_, $_, $h, $*_)`, `log.$f($_, $_, $_, $h, $*_)`).
 		Where(m["h"].Type.Is("http.Header") && !m["f"].Text.Matches(`^SafeHeaders$`)).
@@ -29,7 +29,7 @@ func rawHeadersInLog(m dsl.Matcher) {
 }
 
 func envInLog(m dsl.Matcher) {
-	m.Import("code.vikunja.io/api/pkg/log")
+	m.Import("github.com/KanameMadoka520/Astering/pkg/log")
 	m.Match(`log.$f($*_, os.Environ(), $*_)`, `log.$f($*_, os.Getenv($_), $*_)`).
 		Report("environment variables may hold secrets, don't log them")
 }

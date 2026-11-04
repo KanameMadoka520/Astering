@@ -16,7 +16,7 @@
 
 // Package auth handles the human's transient authentication during init and
 // login. The default interactive flow is OAuth 2.0 Authorization Code + PKCE
-// against Vikunja's built-in authorization server. The OAuth dance opens a
+// against Astering's built-in authorization server. The OAuth dance opens a
 // browser at the authorize URL; the user signs in and lands on a localhost
 // callback this CLI ran. --token / --use-password / --username + --password
 // are escape hatches for non-interactive contexts.
@@ -33,8 +33,8 @@ import (
 
 	"golang.org/x/term"
 
-	"code.vikunja.io/veans/internal/client"
-	"code.vikunja.io/veans/internal/output"
+	"github.com/KanameMadoka520/Astering/veans/internal/client"
+	"github.com/KanameMadoka520/Astering/veans/internal/output"
 )
 
 // Prompter abstracts stdin / TTY reads so tests can inject scripted answers.
@@ -133,14 +133,14 @@ func AcquireHumanToken(ctx context.Context, c *client.Client, opts LoginOptions,
 // invocations in CI.
 func loginWithPassword(ctx context.Context, c *client.Client, opts LoginOptions, p Prompter) (string, error) {
 	if opts.Username == "" {
-		u, err := p.ReadLine("Vikunja username: ")
+		u, err := p.ReadLine("Astering username: ")
 		if err != nil {
 			return "", output.Wrap(output.CodeAuth, err, "read username: %v", err)
 		}
 		opts.Username = strings.TrimSpace(u)
 	}
 	if opts.Password == "" {
-		pw, err := p.ReadPassword("Vikunja password: ")
+		pw, err := p.ReadPassword("Astering password: ")
 		if err != nil {
 			return "", output.Wrap(output.CodeAuth, err, "read password: %v", err)
 		}

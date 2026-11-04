@@ -20,7 +20,7 @@ import (
 	"context"
 	"net/http"
 
-	"code.vikunja.io/api/pkg/routes/api/shared"
+	"github.com/KanameMadoka520/Astering/pkg/routes/api/shared"
 
 	"github.com/danielgtaylor/huma/v2"
 )
@@ -34,7 +34,7 @@ func RegisterInfoRoutes(api huma.API) {
 	Register(api, huma.Operation{
 		OperationID: "info",
 		Summary:     "Instance info",
-		Description: "Returns version, frontend URL, motd and the enabled features of this Vikunja instance. Public — no authentication required.",
+		Description: "Returns version, frontend URL, motd and the enabled features of this Astering instance. Public — no authentication required.",
 		Method:      http.MethodGet,
 		Path:        "/info",
 		Tags:        []string{"service"},

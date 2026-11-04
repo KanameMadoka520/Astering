@@ -105,7 +105,7 @@ func (transport *mcpRoundTripper) RoundTrip(request *http.Request) (*http.Respon
 	}
 	cloned := request.Clone(ctx)
 	cloned.Header.Set("Authorization", "Bearer "+transport.key)
-	cloned.Header.Set("User-Agent", "vikunja-x-mcp/1.0")
+	cloned.Header.Set("User-Agent", "Astering-MCP/1.0")
 	base := transport.base
 	if base == nil {
 		base = http.DefaultTransport
@@ -188,7 +188,7 @@ func connectMCP(ctx context.Context, _ int64, connection MCPConnection, current 
 			MaxEventSize: 1024 * 1024,
 		}
 	}
-	clientMCP := mcp.NewClient(&mcp.Implementation{Name: "vikunja-x", Version: "1"}, &mcp.ClientOptions{
+	clientMCP := mcp.NewClient(&mcp.Implementation{Name: "Astering", Version: "1"}, &mcp.ClientOptions{
 		Capabilities:   &mcp.ClientCapabilities{},
 		MultiRoundTrip: &mcp.MultiRoundTripOptions{Disabled: true},
 	})

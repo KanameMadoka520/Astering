@@ -16,7 +16,7 @@
 
 package main
 
-import "code.vikunja.io/api/pkg/cmd"
+import "github.com/KanameMadoka520/Astering/pkg/cmd"
 
 func main() {
 	cmd.Execute()

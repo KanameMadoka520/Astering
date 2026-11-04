@@ -24,9 +24,9 @@ import (
 	"testing"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/files"
-	"code.vikunja.io/api/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/files"
+	"github.com/KanameMadoka520/Astering/pkg/models"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

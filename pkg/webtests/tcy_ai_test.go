@@ -30,8 +30,8 @@ import (
 	"strings"
 	"testing"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/i18n"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/i18n"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

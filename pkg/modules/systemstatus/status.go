@@ -20,13 +20,13 @@ import (
 	"sync"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/health"
-	"code.vikunja.io/api/pkg/version"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/health"
+	"github.com/KanameMadoka520/Astering/pkg/version"
 )
 
 type Snapshot struct {
-	Application          ApplicationSnapshot `json:"application" doc:"Vikunja application container and persistent data metrics, separate from host totals."`
+	Application          ApplicationSnapshot `json:"application" doc:"Astering application container and persistent data metrics, separate from host totals."`
 	Scope                string              `json:"scope" enum:"host" doc:"CPU and memory describe the entire host, never the application cgroup."`
 	HostMetricsAvailable bool                `json:"host_metrics_available" doc:"True when explicit read-only host proc files are readable and valid. No silent fallback to container counters."`
 	Version              string              `json:"version" doc:"Running API build version."`

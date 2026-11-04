@@ -19,8 +19,8 @@ package ldap
 import (
 	"context"
 
-	"code.vikunja.io/api/pkg/modules/avatar/upload"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/modules/avatar/upload"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 )
 
 type Provider struct{}

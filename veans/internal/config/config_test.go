@@ -56,8 +56,8 @@ func TestTaskURL(t *testing.T) {
 		cfg  Config
 		want string
 	}{
-		{"frontend url wins", Config{Server: "https://api.example.com", FrontendURL: "https://vikunja.example.com/"}, "https://vikunja.example.com/tasks/42"},
-		{"falls back to server", Config{Server: "https://vikunja.example.com"}, "https://vikunja.example.com/tasks/42"},
+		{"frontend url wins", Config{Server: "https://api.example.com", FrontendURL: "https://astering.example.com/"}, "https://astering.example.com/tasks/42"},
+		{"falls back to server", Config{Server: "https://astering.example.com"}, "https://astering.example.com/tasks/42"},
 		{"keeps subpath", Config{FrontendURL: "https://example.com/vikunja/"}, "https://example.com/vikunja/tasks/42"},
 	}
 	for _, tc := range cases {

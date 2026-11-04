@@ -1,5 +1,7 @@
 {
   "brand": {
+    "name": "Astering",
+    "source": "Astering on GitHub",
     "subtitle": "Aster’s AI-integrated industrial system"
   },
   "bark": {
@@ -242,7 +244,7 @@
   "systemStatus": {
     "appCPUScale": "100% = 1 core",
     "host": "Server",
-    "application": "vikunja-x application",
+    "application": "Astering application",
     "appCPU": "Application CPU",
     "gpu": "GPU",
     "gpuNone": "No GPU assigned",
@@ -253,11 +255,11 @@
     "appDisk": "Application data",
     "appCPUHelp": "100% means one fully occupied CPU core; uses the application container cgroup, excluding the separate database container.",
     "appStorageHelp": "Application file sizes plus PostgreSQL database size (including indexes). Excludes image layers, logs, WAL and backups. This is data size, not the whole filesystem or a disk quota. Storage is sampled at most once a minute without blocking requests.",
-    "appGPUHelp": "No compute GPU is assigned to this container. GPUs used by remote AI providers are not local vikunja-x usage.",
+    "appGPUHelp": "No compute GPU is assigned to this container. GPUs used by remote AI providers are not local Astering usage.",
     "storageSampled": "Storage sample",
     "unlimited": "No container limit",
     "title": "Server load",
-    "healthy": "vikunja-x healthy",
+    "healthy": "Astering healthy",
     "offline": "Disconnected",
     "degraded": "Dependency unavailable",
     "loading": "Connecting…",
@@ -267,19 +269,19 @@
     "cores": "{n} host logical CPUs",
     "unavailable": "Sampling / unavailable",
     "duration": "{days}d {hours}h {minutes}m",
-    "uptime": "vikunja-x: {duration}",
+    "uptime": "Astering: {duration}",
     "measurement": "How these numbers are measured",
     "cpuHelp": "CPU is the host non-idle time across all logical cores, excluding I/O wait. Guest time is not double counted. Samples use total-time deltas and are independent of container CPU quotas.",
-    "diskHelp": "Used space on the server filesystem containing vikunja-x data, including all other files on that volume. This deployment uses the server root filesystem; separately mounted disks are not summed.",
-    "refreshHelp": "5-second shared server cache; CPU and other counters refresh every 5 seconds while the sidebar and tab are visible. Storage is sampled at most once a minute. Server uptime resets on reboot; vikunja-x uptime resets on application restart.",
+    "diskHelp": "Used space on the server filesystem containing Astering data, including all other files on that volume. This deployment uses the server root filesystem; separately mounted disks are not summed.",
+    "refreshHelp": "5-second shared server cache; CPU and other counters refresh every 5 seconds while the sidebar and tab are visible. Storage is sampled at most once a minute. Server uptime resets on reboot; Astering uptime resets on application restart.",
     "sampled": "Sampled at",
     "unconfigured": "Host metrics unavailable",
     "hostUptime": "Server uptime: {duration}",
     "load": "Load average",
     "loadPeriods": "1 / 5 / 15 minutes",
     "loadHelp": "Load counts runnable and uninterruptible tasks across the host. It is not a percentage; compare sustained load with the logical CPU count. I/O waits can raise load even when CPU usage is low.",
-    "hostSource": "CPU, memory, load and boot uptime come from explicitly mounted read-only host kernel counters and include all applications. Missing host files stay unavailable. The green badge checks vikunja-x dependencies, not host resource pressure.",
-    "memoryHelp": "RAM used = host total − host available memory. Available includes reclaimable caches, following the kernel estimate. This covers all applications, not only vikunja-x.",
+    "hostSource": "CPU, memory, load and boot uptime come from explicitly mounted read-only host kernel counters and include all applications. Missing host files stay unavailable. The green badge checks Astering dependencies, not host resource pressure.",
+    "memoryHelp": "RAM used = host total − host available memory. Available includes reclaimable caches, following the kernel estimate. This covers all applications, not only Astering.",
     "ioWait": "I/O wait",
     "steal": "CPU steal"
   },
@@ -347,8 +349,8 @@
     "addToHomeScreen": "Add this app to your home screen for faster access and improved experience.",
     "goToOverview": "Go to the workspace",
     "project": {
-      "importText": "Import your projects and tasks from other services into vikunja-x:",
-      "import": "Import your data into vikunja-x"
+      "importText": "Import your projects and tasks from other services into Astering:",
+      "import": "Import your data into Astering"
     }
   },
   "demo": {
@@ -361,7 +363,7 @@
     "text": "The page you requested does not exist."
   },
   "ready": {
-    "loading": "vikunja-x is loading…",
+    "loading": "Astering is loading…",
     "errorOccured": "An error occurred:",
     "checkApiUrl": "Please check if the api url is correct.",
     "rateLimited": "The server received too many requests. Please wait a moment and reload the page.",
@@ -378,7 +380,7 @@
       "usernameEmail": "Username Or Email Address",
       "usernamePlaceholder": "e.g. frederick",
       "email": "Email address",
-      "emailPlaceholder": "e.g. frederic{'@'}vikunja.io",
+      "emailPlaceholder": "e.g. aster{'@'}example.com",
       "password": "Password",
       "passwordPlaceholder": "Your password",
       "forgotPassword": "Forgot your password?",
@@ -400,7 +402,7 @@
       "oauthRedirectedToApp": "You have been redirected to the app. You can close this tab now.",
       "desktopTryDemo": "Try the Demo",
       "desktopCustomServer": "Custom Server URL",
-      "desktopCustomServerDescription": "Enter the URL of your vikunja-x server to get started.",
+      "desktopCustomServerDescription": "Enter the URL of your Astering server to get started.",
       "desktopWaitingForAuth": "Waiting for authentication…",
       "desktopOAuthError": "Authentication failed: {error}",
       "logout": "Logout",
@@ -560,7 +562,7 @@
       },
       "caldav": {
         "title": "CalDAV",
-        "howTo": "You can connect vikunja-x to CalDAV clients to view and manage all your tasks from different clients. Enter this URL into your client:",
+        "howTo": "You can connect Astering to CalDAV clients to view and manage all your tasks from different clients. Enter this URL into your client:",
         "urlLabel": "CalDAV URL",
         "more": "More information about CalDAV in Vikunja",
         "tokens": "CalDAV Tokens",
@@ -583,7 +585,7 @@
       },
       "feeds": {
         "title": "Atom Feed",
-        "howTo": "You can subscribe to your vikunja-x notifications from any Atom-compatible feed reader. Use the following URL:",
+        "howTo": "You can subscribe to your Astering notifications from any Atom-compatible feed reader. Use the following URL:",
         "usernameIs": "Your username for the feed is: {0}",
         "apiTokenHint": "Authenticate with an API token that has the {scope} permission. Create one in {link}.",
         "tokenTitle": "Atom feed",
@@ -608,7 +610,7 @@
         "title": "Quick Add Magic Mode",
         "disabled": "Disabled",
         "todoist": "Todoist",
-        "vikunja": "vikunja-x"
+        "vikunja": "Astering"
       },
       "appearance": {
         "title": "Color Scheme",
@@ -627,7 +629,7 @@
       },
       "apiTokens": {
         "title": "API Tokens",
-        "general": "API tokens allow you to use vikunja-x's API without user credentials.",
+        "general": "API tokens allow you to use Astering's API without user credentials.",
         "apiDocs": "Check out the api docs",
         "createAToken": "Create a token",
         "createToken": "Create token",
@@ -700,22 +702,22 @@
             "environment": "Set the token in your shell environment: {value}",
             "command": "Add the MCP server: {value}",
             "config": "Alternatively, add this to ~/.codex/config.toml after setting the environment variable: {value}",
-            "note": "Start Codex from the shell where you set VIKUNJA_MCP_TOKEN. Set it again in each new shell, or store it securely in your shell environment."
+            "note": "Start Codex from the shell where you set ASTERING_MCP_TOKEN. Set it again in each new shell, or store it securely in your shell environment."
           },
           "claudeDesktop": {
             "open": "Open Customize → Connectors → Add custom connector. On Team or Enterprise, an owner adds it under Organization settings → Connectors.",
-            "url": "Name the connector vikunja-x and enter this URL: {value}",
+            "url": "Name the connector Astering and enter this URL: {value}",
             "auth": "Set Authentication to No sign-in.",
             "header": "Under Request headers, choose authorization and paste this full value, including Bearer and the space, then add the connector: {value}",
-            "beta": "Request headers are in beta for a limited set of organizations. If this section is missing, connecting vikunja-x is not available for your account yet."
+            "beta": "Request headers are in beta for a limited set of organizations. If this section is missing, connecting Astering is not available for your account yet."
           },
           "mistral": {
             "open": "In the sidebar on the left open Context → Connectors → Add Connector → Add Custom Connector.",
-            "url": "Name the connector vikunja-x, enter this URL, and select Connect: {value}",
+            "url": "Name the connector Astering, enter this URL, and select Connect: {value}",
             "token": "Choose HTTP Bearer authentication and paste this token: {value}"
           },
           "chatgpt": {
-            "unavailable": "ChatGPT requires OAuth to connect to vikunja-x. MCP OAuth is not supported yet, so this token cannot be used in ChatGPT."
+            "unavailable": "ChatGPT requires OAuth to connect to Astering. MCP OAuth is not supported yet, so this token cannot be used in ChatGPT."
           },
           "other": {
             "title": "Other",
@@ -757,7 +759,7 @@
       }
     },
     "deletion": {
-      "title": "Delete your vikunja-x Account",
+      "title": "Delete your Astering Account",
       "text1": "Once your account has actually been deleted, it cannot be restored. Read what happens below and save anything you want to keep first.",
       "scope": "This deletes your projects and their tasks, except projects shared with other people or teams: those stay with them. It also deletes your private Compass spaces, the bot users you own, your API tokens, saved filters and the webhooks you created. Team Compass spaces stay with their team.",
       "keepFirst": "Save anything you want to keep first. The data export only covers projects and tasks; export Compass spaces from Compass and download Drive files from Drive.",
@@ -767,7 +769,7 @@
       "requestSuccess": "The request was successful. You'll receive an email with further instructions.",
       "passwordRequired": "Please enter your password.",
       "confirmSuccess": "You've successfully confirmed the deletion of your account. We will delete your account in three days.",
-      "scheduled": "We will delete your vikunja-x account on {date} ({dateSince}).",
+      "scheduled": "We will delete your Astering account on {date} ({dateSince}).",
       "scheduledCancel": "To cancel the deletion of your account, click here.",
       "scheduledCancelText": "To cancel the deletion of your account, please enter your password below:",
       "scheduledCancelButton": "To cancel the deletion of your account, please press the button below:",
@@ -777,13 +779,13 @@
       "sharedFiles": "Drive files still referenced by retained projects, other conversations or Compass are kept. Files with no remaining references are reclaimed. Local browser drafts and server backups are managed separately."
     },
     "export": {
-      "title": "Export your vikunja-x data",
-      "description": "You can request a copy of your projects and tasks, including task attachments, saved filters and project backgrounds. You can import it into any Vikunja instance through the migration function.",
+      "title": "Export your Astering data",
+      "description": "You can request a copy of your projects and tasks, including task attachments, saved filters and project backgrounds. Use the migration function to import the export file into Astering, or a Vikunja instance that supports this export format.",
       "notIncluded": "Not included: Compass writing (export each space from Compass as Markdown or ZIP), Drive files that aren't attached to a task (download them from Drive) and Arona conversations.",
       "descriptionPasswordRequired": "Please enter your password to proceed:",
-      "request": "Request a copy of my vikunja-x Data",
-      "success": "You've successfully requested your vikunja-x Data! We will send you an email once it's ready to download.",
-      "downloadTitle": "Download your exported vikunja-x data",
+      "request": "Request a copy of my Astering Data",
+      "success": "You've successfully requested your Astering Data! We will send you an email once it's ready to download.",
+      "downloadTitle": "Download your exported Astering data",
       "ready": "Your export is ready to download. You can download it until {0}.",
       "requestNew": "Request another export"
     }
@@ -932,7 +934,7 @@
       },
       "links": {
         "title": "Share Links",
-        "explanation": "Share Links allow you to easily share a project with other users who don't have an account on vikunja-x.",
+        "explanation": "Share Links allow you to easily share a project with other users who don't have an account on Astering.",
         "onlyThisProject": "A link opens this project only, not the projects inside it.",
         "loading": "Loading share links…",
         "loadError": "Couldn't load the share links.",
@@ -1314,18 +1316,18 @@
   },
   "migrate": {
     "title": "Import from other services",
-    "titleService": "Import your data from {name} into vikunja-x",
+    "titleService": "Import your data from {name} into Astering",
     "description": "Click on the logo of one of the third-party services below to get started.",
-    "descriptionDo": "vikunja-x will import all lists, tasks, notes, reminders and files you have access to.",
-    "authorize": "To authorize vikunja-x to access your {name} Account, click the button below.",
+    "descriptionDo": "Astering will import all lists, tasks, notes, reminders and files you have access to.",
+    "authorize": "To authorize Astering to access your {name} Account, click the button below.",
     "getStarted": "Get Started",
     "inProgress": "Importing in progress…",
     "alreadyMigrated1": "It looks like you've already imported your stuff from {name} at {date}.",
     "alreadyMigrated2": "Importing again is possible, but might create duplicates. Are you sure?",
     "confirm": "I am sure, please start migrating now!",
-    "importUpload": "To import data from {name} into vikunja-x, click the button below to select a file.",
+    "importUpload": "To import data from {name} into Astering, click the button below to select a file.",
     "upload": "Upload file",
-    "migrationStartedWillReciveEmail": "vikunja-x will now import your lists/projects, tasks, notes, reminders and files from {service}. As this will take a while, we will send you an email once done. You can close this window now.",
+    "migrationStartedWillReciveEmail": "Astering will now import your lists/projects, tasks, notes, reminders and files from {service}. As this will take a while, we will send you an email once done. You can close this window now.",
     "migrationFinished": "The import from {service} has finished. Everything it imported is now available in your projects.",
     "migrationFailed": "The import from {service} failed: {reason}",
     "failure": {
@@ -1337,7 +1339,7 @@
     },
     "migrationInProgress": "A migration is currently in progress. Please wait until it is done.",
     "credentials": {
-      "description": "Enter the address of your {name} instance and how Vikunja should log in. Vikunja imports all projects and boards you have access to; the credentials are only used for this import and are not stored.",
+      "description": "Enter the address of your {name} instance and how Astering should log in. Astering imports all projects and boards you have access to; the credentials are only used for this import and are not stored.",
       "url": "{name} URL",
       "authMethod": "Log in with",
       "apiKey": "API key",
@@ -1353,7 +1355,7 @@
       "description": "Import tasks from a CSV file with custom column mapping.",
       "uploadDescription": "Select a CSV file to import. The file should contain task data with headers in the first row.",
       "selectFile": "Select CSV file",
-      "columnMappingDescription": "Map each column in your CSV file to a task attribute. vikunja-x has auto-detected the most likely mappings. The preview below will update automatically when you change settings.",
+      "columnMappingDescription": "Map each column in your CSV file to a task attribute. Astering has auto-detected the most likely mappings. The preview below will update automatically when you change settings.",
       "parsingOptions": "Parsing Options",
       "delimiter": "Delimiter",
       "dateFormat": "Date Format",
@@ -1523,7 +1525,7 @@
     "imprint": "Imprint",
     "privacy": "Privacy Policy",
     "closeSidebar": "Close sidebar",
-    "home": "vikunja-x home",
+    "home": "Astering home",
     "toggleChildProjects": "Toggle sub-projects",
     "main": "Main navigation",
     "savedFilters": "Saved filters",
@@ -1547,7 +1549,7 @@
     "searchPlaceholder": "Type to search…",
     "previous": "Previous",
     "next": "Next",
-    "poweredBy": "Powered by Vikunja",
+    "poweredBy": "Powered by Astering",
     "create": "Create",
     "doit": "Do it!",
     "saving": "Saving…",
@@ -1734,7 +1736,7 @@
       "canuse": "You can use date math to filter for relative dates.",
       "learnhow": "Check out how it works",
       "title": "Date Math",
-      "intro": "Specify relative dates which are resolved on the fly by vikunja-x when applying the filter.",
+      "intro": "Specify relative dates which are resolved on the fly by Astering when applying the filter.",
       "expression": "Each Date Math expression starts with an anchor date, which can either be {0}, or a date string ending with {1}. This anchor date can optionally be followed by one or more maths expressions.",
       "similar": "These expressions are similar to the ones provided by {0} and {1}.",
       "add1Day": "Add one day",
@@ -2077,12 +2079,12 @@
     },
     "quickAddMagic": {
       "hint": "Use magic prefixes to define due dates, assignees and other task properties.",
-      "quickEntryHint": "Use magic prefixes for dates, labels & more. Open the main vikunja-x app and check the tooltip on the task input for more details.",
+      "quickEntryHint": "Use magic prefixes for dates, labels & more. Open the main Astering app and check the tooltip on the task input for more details.",
       "title": "Quick Add Magic",
       "intro": "When creating a task, you can use special keywords to directly add attributes to the newly created task. This allows to add commonly used attributes to tasks much faster.",
       "multiple": "You can use this multiple times.",
       "label1": "To add a label, simply prefix the name of the label with {prefix}.",
-      "label2": "vikunja-x will first check if the label already exist and create it if not.",
+      "label2": "Astering will first check if the label already exist and create it if not.",
       "label3": "To use spaces, simply add a \" or ' around the label name.",
       "label4": "For example: {prefix}\"Label with spaces\".",
       "priority1": "To set a task's priority, add a number 1-5, prefixed with a {prefix}.",
@@ -2348,12 +2350,12 @@
     "views": "Views"
   },
   "apiConfig": {
-    "url": "vikunja-x URL",
+    "url": "Astering URL",
     "urlPlaceholder": "eg. https://localhost:3456",
     "change": "change",
-    "use": "Using vikunja-x installation at {0}",
-    "error": "Could not find or use vikunja-x installation at \"{domain}\". Please check if the url has the correct format and you can reach it when accessing it directly and try again.",
-    "success": "Using vikunja-x installation at \"{domain}\".",
+    "use": "Using Astering installation at {0}",
+    "error": "Could not find or use Astering installation at \"{domain}\". Please check if the url has the correct format and you can reach it when accessing it directly and try again.",
+    "success": "Using Astering installation at \"{domain}\".",
     "urlRequired": "A url is required."
   },
   "loadingError": {
@@ -2392,7 +2394,7 @@
   },
   "quickActions": {
     "title": "Search and quick actions",
-    "notLoggedIn": "Please log in to the main vikunja-x window first.",
+    "notLoggedIn": "Please log in to the main Astering window first.",
     "commands": "Commands",
     "placeholder": "Type a command or search…",
     "hint": "You can use {project} to limit the search to a project. Combine {project} or {label} (labels) with a search query to search for a task with these labels or on that project. Use {assignee} to only search for teams.",
@@ -2531,18 +2533,18 @@
     "14001": "The provided api token is invalid.",
     "14002": "The permission {permission} of group {group} is invalid.",
     "14005": "A migration from this service is already running. Please wait until it is done.",
-    "14009": "The provided zip file does not contain a vikunja-x data file. Make sure you upload a vikunja-x export.",
+    "14009": "The provided zip file does not contain an Astering data file. Make sure you upload an Astering export.",
     "14010": "The provided file could not be parsed. Please make sure it is a valid export file.",
     "14011": "The provided file is not a valid zip file.",
     "14012": "The provided file does not contain any data.",
-    "14013": "The export was created with a vikunja-x version that is too old to import. Please create a new export with a more recent version.",
+    "14013": "The export was created with an Astering version that is too old to import. Please create a new export with a more recent version.",
     "14016": "The import configuration could not be parsed. Please make sure it is a valid JSON object.",
     "14018": "The import contains more items than the configured maximum.",
     "14019": "The migration state is invalid or expired. Please start the migration again.",
     "14201": "Planka rejected the provided credentials. Check the URL and the API key or username and password.",
     "14202": "The Planka account requires an extra login step (two-factor code or accepting the terms). Log in to Planka in the browser once, or use an API key instead of username and password.",
     "14203": "A Planka URL and either an API key or username and password are required.",
-    "14204": "Could not reach a Planka API at the given URL. Check the URL and that vikunja-x can reach the instance.",
+    "14204": "Could not reach a Planka API at the given URL. Check the URL and that Astering can reach the instance.",
     "20001": "The announcement was changed by someone else. Your draft is kept; load the latest version and save again.",
     "20002": "The routine changed or a new day started. Its state was read again; please try once more.",
     "20003": "This routine cannot be checked in right now (paused, disabled, completed, or still set to repeat).",
@@ -2617,7 +2619,7 @@
       "licenseFeatures": "Features",
       "licenseInstance": "Instance ID",
       "licenseManage": "Manage",
-      "description": "Usage and license status for this Vikunja instance."
+      "description": "Usage and license status for this Astering instance."
     },
     "searchUsersPlaceholder": "Search by username or email…",
     "users": {
@@ -2698,8 +2700,8 @@
       "api_base_url": "API base URL",
       "anthropic_messages_does_not_accept_raw_audio_use": "Anthropic Messages does not accept raw audio. Use it to clean up transcripts or manage tasks.",
       "asia_shanghai_china_standard_time": "Asia/Shanghai · China Standard Time",
-      "vikunja_x_tcymc_custom_edition": "vikunja-x · x edition",
-      "tcymc_custom_edition": "x edition",
+      "vikunja_x_tcymc_custom_edition": "Astering",
+      "tcymc_custom_edition": "Astering",
       "3_48_lowercase_letters_numbers_or_hyphens": "· 3–48 lowercase letters, numbers or hyphens",
       "showing_until": "· Showing until",
       "mon": "Mon",
@@ -2888,9 +2890,9 @@
     "stopRecording": "Stop recording · {seconds}s",
     "placeholderHelp": "Placeholders: {schedule}, {availability}, {projects}. HTML is isolated; scripts and forms do not run.",
     "publicEyebrow": "PUBLIC SCHEDULE",
-    "assistantEyebrow": "VIKUNJA X · YOUR WORK, YOUR MODELS",
+    "assistantEyebrow": "ASTERING · YOUR WORK, YOUR MODELS",
     "audioConversionFailed": "Could not convert this recording to WAV. Upload a WAV/MP3 file or choose Audio Transcriptions.",
-    "updateAvailable": "This site has updated vikunja-x page resources ({version}). Refresh when you are ready.",
+    "updateAvailable": "This site has updated Astering page resources ({version}). Refresh when you are ready.",
     "updateUnknown": "new build",
     "updateRefresh": "Load this site’s update",
     "currentVersion": "Current page version: {version}",
@@ -2924,7 +2926,7 @@
     "command17th": "17th"
   },
   "tour": {
-    "eyebrow": "VIKUNJA X · GETTING STARTED",
+    "eyebrow": "ASTERING · GETTING STARTED",
     "welcomeTitle": "Make yourself at home",
     "welcomeText": "Explore tasks, AI, voice and your public page.",
     "open": "Help & guided tours",
@@ -3967,7 +3969,7 @@
       "created": "Your Compass is ready.",
       "saved": "Space settings saved.",
       "personal": "Private",
-      "personalHint": "Only you can open this space in vikunja-x; other accounts, admins included, can't.",
+      "personalHint": "Only you can open this space in Astering; other accounts, admins included, can't.",
       "storageNote": "Compass is stored on this server without end-to-end encryption, so whoever operates the server could access it. Compass content is not sent to Arona automatically.",
       "team": "Shared with {team}",
       "teamFallback": "a team",
@@ -4173,7 +4175,7 @@
       "eyebrow": "A private reading room",
       "lead": "Compass is a private place to write down what you steer by: your principles, your visions, your plans of action, and the memories that shaped you. Come back to it when you lose your way.",
       "kindsTitle": "Five kinds of writing",
-      "privacy": "A personal space is private: other accounts can't open it in vikunja-x, admins included. It's stored on this server without end-to-end encryption, so whoever operates the server could access it. Compass content is not sent to Arona automatically.",
+      "privacy": "A personal space is private: other accounts can't open it in Astering, admins included. It's stored on this server without end-to-end encryption, so whoever operates the server could access it. Compass content is not sent to Arona automatically.",
       "create": "Create my private Compass",
       "customize": "Customize or share with a team…",
       "createHint": "This creates a private space named “{title}” in the Aurora theme. You can rename it and change its look at any time.",
@@ -4513,7 +4515,7 @@
     "sharing": {
       "legend": "Who can see it",
       "private": "Private (recommended)",
-      "privateHint": "Private means other accounts can't open it in vikunja-x. It's stored on this server without end-to-end encryption, so whoever operates the server could access it. Compass content is not sent to Arona automatically.",
+      "privateHint": "Private means other accounts can't open it in Astering. It's stored on this server without end-to-end encryption, so whoever operates the server could access it. Compass content is not sent to Arona automatically.",
       "team": "Share with a team",
       "teamHint": "Current members of the team can read and write entries. Team admins manage the space and can delete permanently.",
       "permanent": "The sharing choice can't be changed after the space is created.",
@@ -4856,7 +4858,7 @@
       "tab": "External tools",
       "settingsTitle": "Arona external tools (MCP)",
       "intro": "Connect MCP services so Arona can discover and call their tools when needed. Enabling a connection does not select it for a conversation. Keys are stored only on the server.",
-      "inboundLink": "Let other clients access vikunja-x instead",
+      "inboundLink": "Let other clients access Astering instead",
       "newConnection": "New MCP connection",
       "enabled": "Connection enabled",
       "disabled": "Connection disabled",
@@ -4875,7 +4877,7 @@
       "permissions": "Connection permissions",
       "allowWrite": "Allow external changes",
       "allowDelete": "Allow external deletions and unknown effects",
-      "permissionsHelp": "External changes require write mode and an individual review. External deletions use this connection’s deletion permission, separately from the task-deletion checkbox. Restricting writes to specific vikunja-x projects blocks external changes because their project ownership cannot be verified.",
+      "permissionsHelp": "External changes require write mode and an individual review. External deletions use this connection’s deletion permission, separately from the task-deletion checkbox. Restricting writes to specific Astering projects blocks external changes because their project ownership cannot be verified.",
       "toolPermissions": "Tool directory and read-only trust",
       "readTrustHelp": "Selecting a tool means you trust it to only read data. A remote service’s read-only or destructive hint is only a hint and does not grant permissions. Known Wallos tools use built-in classification.",
       "trustTool": "Trust {name} as read-only",
@@ -4915,7 +4917,7 @@
       "manageConnections": "Manage external MCP connections",
       "externalSource": "External service: {name}",
       "externalOperation": "Call an external MCP tool",
-      "externalReview": "Review this external service call. Its effect is determined by that service; vikunja-x cannot undo it.",
+      "externalReview": "Review this external service call. Its effect is determined by that service; Astering cannot undo it.",
       "externalTool": "Tool",
       "externalConnection": "Connection"
     },
@@ -4957,7 +4959,7 @@
     "confirmWrite": "Enable write mode",
     "title": "Tool capabilities",
     "shortTitle": "Tools",
-    "help": "Choose which parts of Vikunja Arona can access for this conversation.",
+    "help": "Choose which parts of Astering Arona can access for this conversation.",
     "project_tasks": "Projects and tasks",
     "project_tasksHelp": "Projects, tasks, calendar, boards, routines, comments and attachments.",
     "compass": "Compass",

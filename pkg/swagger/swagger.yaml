@@ -40,27 +40,6 @@ definitions:
       url:
         type: string
     type: object
-  code_vikunja_io_api_pkg_modules_auth_openid.Provider:
-    properties:
-      auth_url:
-        type: string
-      client_id:
-        type: string
-      email_fallback:
-        type: boolean
-      force_user_info:
-        type: boolean
-      key:
-        type: string
-      logout_url:
-        type: string
-      name:
-        type: string
-      scope:
-        type: string
-      username_fallback:
-        type: boolean
-    type: object
   csv.ColumnMapping:
     properties:
       attribute:
@@ -163,6 +142,27 @@ definitions:
         type: string
       size:
         type: integer
+    type: object
+  github_com_KanameMadoka520_Astering_pkg_modules_auth_openid.Provider:
+    properties:
+      auth_url:
+        type: string
+      client_id:
+        type: string
+      email_fallback:
+        type: boolean
+      force_user_info:
+        type: boolean
+      key:
+        type: string
+      logout_url:
+        type: string
+      name:
+        type: string
+      scope:
+        type: string
+      username_fallback:
+        type: boolean
     type: object
   handler.AuthURL:
     properties:
@@ -345,7 +345,7 @@ definitions:
         type: boolean
       language:
         description: The language of the new user. Must be a valid IETF BCP 47 language
-          code and exist in Vikunja.
+          code and exist in Astering.
         type: string
       name:
         description: The full name of the new user. Optional.
@@ -354,7 +354,7 @@ definitions:
         description: The user's password in clear text. Only used when registering
           the user. The maximum limi is 72 bytes, which may be less than 72 characters.
           This is due to the limit in the bcrypt hashing algorithm used to store passwords
-          in Vikunja.
+          in Astering.
         maxLength: 72
         minLength: 8
         type: string
@@ -526,6 +526,8 @@ definitions:
         description: Holds extra information about the background set since some background
           providers require attribution or similar. If not null, the background can
           be accessed at /projects/{projectID}/background
+      completed_at:
+        type: string
       created:
         description: A timestamp when this project was created. You cannot change
           this value.
@@ -547,6 +549,10 @@ definitions:
         type: string
       is_archived:
         description: Whether a project is archived.
+        type: boolean
+      is_completed:
+        description: Completion is explicit, independent of archive state and task
+          completion.
         type: boolean
       is_favorite:
         description: True if a project is a favorite. Favorite projects show up in
@@ -752,11 +758,13 @@ definitions:
     - due_date
     - start_date
     - end_date
+    - routine_period_end
     type: string
     x-enum-varnames:
     - ReminderRelationDueDate
     - ReminderRelationStartDate
     - ReminderRelationEndDate
+    - ReminderRelationRoutinePeriodEnd
   models.RouteDetail:
     properties:
       method:
@@ -834,6 +842,16 @@ definitions:
     type: object
   models.Task:
     properties:
+      all_day:
+        description: Explicit civil-date interval, independent of timezone and timed
+          scheduling.
+        type: boolean
+      all_day_end:
+        maxLength: 10
+        type: string
+      all_day_start:
+        maxLength: 10
+        type: string
       assignees:
         description: An array of users who are assigned to this task
         items:
@@ -975,6 +993,11 @@ definitions:
           is marked as done: 0 = repeats after the amount specified in repeat_after,
           1 = repeats all dates each months (ignoring repeat_after), 3 = repeats from
           the current date rather than the last set date.'
+      routine:
+        allOf:
+        - $ref: '#/definitions/models.TaskRoutine'
+        description: Daily check-in state is computed, not an alternate writable done
+          field.
       start_date:
         description: When this task starts.
         type: string
@@ -1028,6 +1051,10 @@ definitions:
           The view this bucket belongs to. Combined with TaskID this forms a
           unique index.
         type: integer
+      repeat_return_bucket_id:
+        type: integer
+      repeat_return_mode:
+        type: string
       task:
         $ref: '#/definitions/models.Task'
       task_id:
@@ -1135,8 +1162,8 @@ definitions:
       relative_to:
         allOf:
         - $ref: '#/definitions/models.ReminderRelation'
-        description: The name of the date field to which the relative period refers
-          to.
+        description: A task date or routine_period_end; the latter is recomputed from
+          each calendar period.
       reminder:
         description: The absolute time when the user wants to be reminded of the task.
         type: string
@@ -1151,6 +1178,68 @@ definitions:
     - TaskRepeatModeDefault
     - TaskRepeatModeMonth
     - TaskRepeatModeFromCurrentDate
+  models.TaskRoutine:
+    properties:
+      completed_at:
+        type: string
+      completed_by_id:
+        type: integer
+      completed_period:
+        type: boolean
+      completed_today:
+        type: boolean
+      created:
+        type: string
+      current_amount:
+        type: integer
+      date:
+        type: string
+      enabled:
+        type: boolean
+      month_day:
+        maximum: 31
+        minimum: 0
+        type: integer
+      next_reset_at:
+        type: string
+      paused:
+        type: boolean
+      period:
+        type: string
+      period_start_at:
+        type: string
+      reset_hour:
+        maximum: 23
+        minimum: 0
+        type: integer
+      reset_minute:
+        maximum: 59
+        minimum: 0
+        type: integer
+      revision:
+        minimum: 0
+        type: integer
+      schedule_key:
+        type: string
+      target:
+        maximum: 9007199254740991
+        minimum: 0
+        type: integer
+      task_id:
+        type: integer
+      timezone:
+        maxLength: 100
+        type: string
+      unit:
+        maxLength: 40
+        type: string
+      updated:
+        type: string
+      week_start:
+        maximum: 6
+        minimum: 0
+        type: integer
+    type: object
   models.TaskUnreadStatus:
     properties:
       taskID:
@@ -1593,7 +1682,7 @@ definitions:
         type: boolean
       providers:
         items:
-          $ref: '#/definitions/code_vikunja_io_api_pkg_modules_auth_openid.Provider'
+          $ref: '#/definitions/github_com_KanameMadoka520_Astering_pkg_modules_auth_openid.Provider'
         type: array
     type: object
   shared.VikunjaInfos:
@@ -1835,7 +1924,7 @@ definitions:
         description: The user's password in clear text. Only used when registering
           the user. The maximum limi is 72 bytes, which may be less than 72 characters.
           This is due to the limit in the bcrypt hashing algorithm used to store passwords
-          in Vikunja.
+          in Astering.
         maxLength: 72
         minLength: 8
         type: string
@@ -1913,9 +2002,8 @@ definitions:
     type: object
 info:
   contact:
-    email: hello@vikunja.io
-    name: General Vikunja contact
-    url: https://vikunja.io/contact/
+    name: Astering maintainers
+    url: https://github.com/KanameMadoka520/Astering/issues
   description: |-
     # Pagination
     Every endpoint capable of pagination will return two headers:
@@ -1936,8 +2024,8 @@ info:
     <!-- ReDoc-Inject: <security-definitions> -->
   license:
     name: AGPL-3.0-or-later
-    url: https://code.vikunja.io/api/src/branch/main/LICENSE
-  title: Vikunja API
+    url: https://github.com/KanameMadoka520/Astering/blob/main/LICENSE
+  title: Astering API
 paths:
   /{kind}/{id}/reactions:
     get:
@@ -3167,7 +3255,7 @@ paths:
   /migration/trello/auth:
     get:
       description: Returns the auth url where the user needs to get its auth code.
-        This code can then be used to migrate everything from trello to Vikunja.
+        This code can then be used to migrate everything from trello to Astering.
       produces:
       - application/json
       responses:

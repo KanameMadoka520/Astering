@@ -21,11 +21,11 @@ import (
 	"fmt"
 	"net/http"
 
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/events"
-	"code.vikunja.io/api/pkg/models"
-	auth2 "code.vikunja.io/api/pkg/modules/auth"
-	webfiles "code.vikunja.io/api/pkg/web/files"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/events"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	auth2 "github.com/KanameMadoka520/Astering/pkg/modules/auth"
+	webfiles "github.com/KanameMadoka520/Astering/pkg/web/files"
 
 	"github.com/labstack/echo/v5"
 )

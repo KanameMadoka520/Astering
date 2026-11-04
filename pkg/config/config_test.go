@@ -269,3 +269,36 @@ func TestServiceAPIURL(t *testing.T) {
 		assert.Equal(t, "https://env-api.test/backend/api/v2/", ServiceAPIURL.GetString())
 	})
 }
+
+// These cases protect existing service.secret and database destinations during
+// the brand migration; process environment ordering must not choose a new DB.
+func TestAsteringEnvironmentCompatibility(t *testing.T) {
+	t.Run("new prefix overrides legacy and config", func(t *testing.T) {
+		t.Setenv("VIKUNJA_SERVICE_PUBLICURL", "https://legacy.example/")
+		t.Setenv("ASTERING_SERVICE_PUBLICURL", "https://new.example/")
+		t.Setenv("VIKUNJA_DATABASE_DATABASE", "legacy-data")
+		t.Setenv("ASTERING_DATABASE_DATABASE", "same-data")
+		t.Setenv("VIKUNJA_SERVICE_SECRET", "preserved-secret")
+		initConfigFromYAML(t, "service:\n  publicurl: https://config.example/\n")
+		assert.Equal(t, "https://new.example/", ServicePublicURL.GetString())
+		assert.Equal(t, "same-data", DatabaseDatabase.GetString())
+		assert.Equal(t, "preserved-secret", ServiceSecret.GetString())
+	})
+	t.Run("new secret supports legacy key alias", func(t *testing.T) {
+		t.Setenv("ASTERING_SERVICE_JWTSECRET", "existing-signing-key")
+		initConfigFromYAML(t, "")
+		assert.Equal(t, "existing-signing-key", ServiceSecret.GetString())
+	})
+	t.Run("legacy environment still wins over config", func(t *testing.T) {
+		t.Setenv("VIKUNJA_DATABASE_DATABASE", "preserved-database")
+		initConfigFromYAML(t, "database:\n  database: config-database\n")
+		assert.Equal(t, "preserved-database", DatabaseDatabase.GetString())
+	})
+	t.Run("new prefix supports secret file", func(t *testing.T) {
+		secretPath := filepath.Join(t.TempDir(), "secret")
+		require.NoError(t, os.WriteFile(secretPath, []byte("file-signing-key"), 0600))
+		t.Setenv("ASTERING_SERVICE_SECRET_FILE", secretPath)
+		initConfigFromYAML(t, "")
+		assert.Equal(t, "file-signing-key", ServiceSecret.GetString())
+	})
+}

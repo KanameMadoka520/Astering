@@ -21,10 +21,10 @@ import (
 
 	"xorm.io/xorm"
 
-	"code.vikunja.io/api/pkg/files"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/background"
-	"code.vikunja.io/api/pkg/web"
+	"github.com/KanameMadoka520/Astering/pkg/files"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/background"
+	"github.com/KanameMadoka520/Astering/pkg/web"
 )
 
 // Provider represents an upload provider

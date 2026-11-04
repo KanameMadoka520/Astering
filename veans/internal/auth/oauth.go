@@ -32,12 +32,12 @@ import (
 
 	"github.com/pkg/browser"
 
-	"code.vikunja.io/veans/internal/client"
-	"code.vikunja.io/veans/internal/output"
+	"github.com/KanameMadoka520/Astering/veans/internal/client"
+	"github.com/KanameMadoka520/Astering/veans/internal/output"
 )
 
-// oauthClientID is what veans presents to Vikunja's authorization server.
-// Vikunja's OAuth provider doesn't require client registration — the value
+// oauthClientID is what veans presents to Astering's authorization server.
+// Astering's OAuth provider doesn't require client registration — the value
 // just needs to be consistent across the authorize and token-exchange steps.
 const oauthClientID = "veans-cli"
 
@@ -54,7 +54,7 @@ type PKCEPair struct {
 
 // generatePKCE produces a fresh (verifier, challenge) pair per RFC 7636.
 // The verifier is 64 random bytes, base64url-encoded without padding (~86
-// characters — comfortably inside the 43–128 range Vikunja accepts). The
+// characters — comfortably inside the 43–128 range Astering accepts). The
 // challenge is the SHA-256 of the verifier, also base64url-no-pad.
 func generatePKCE() (PKCEPair, error) {
 	buf := make([]byte, 64)
@@ -97,7 +97,7 @@ type callbackResult struct {
 }
 
 // runOAuthFlow drives an OAuth Authorization Code + PKCE handshake against
-// Vikunja's server using a localhost loopback listener (RFC 8252):
+// Astering's server using a localhost loopback listener (RFC 8252):
 // bind 127.0.0.1:0, open the authorize URL in the browser, capture the
 // callback, exchange the code for a token.
 //

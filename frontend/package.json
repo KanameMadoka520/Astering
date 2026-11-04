@@ -1,17 +1,17 @@
 {
-  "name": "vikunja-x-frontend",
-  "description": "vikunja-x · x版本，个人 AI、语音与公开日程",
+  "name": "astering-frontend",
+  "description": "Astering — Aster的AI集成工业系统",
   "private": true,
-  "version": "2.7.1",
+  "version": "2.7.1-aster.50",
   "license": "AGPL-3.0-or-later",
   "repository": {
     "type": "git",
-    "url": "https://github.com/KanameMadoka520/vikunja-x"
+    "url": "https://github.com/KanameMadoka520/Astering"
   },
   "bugs": {
-    "url": "https://github.com/KanameMadoka520/vikunja-x/issues"
+    "url": "https://github.com/KanameMadoka520/Astering/issues"
   },
-  "homepage": "https://github.com/KanameMadoka520/vikunja-x",
+  "homepage": "https://github.com/KanameMadoka520/Astering",
   "funding": "https://opencollective.com/vikunja",
   "packageManager": "pnpm@11.27.0",
   "engines": {
@@ -31,7 +31,8 @@
     "serve": "pnpm run dev",
     "preview": "vite preview --port 4173",
     "preview:dev": "vite preview --outDir dist-dev --mode development --port 4173",
-    "preview:vikunja": "../vikunja",
+    "preview:astering": "../astering",
+    "preview:vikunja": "pnpm run preview:astering",
     "build": "vite build && workbox copyLibraries dist/",
     "build:dev": "vite build --mode development --outDir dist-dev/",
     "lint": "eslint 'src/**/*.{js,ts,vue}'",

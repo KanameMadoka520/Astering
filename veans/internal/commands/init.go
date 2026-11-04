@@ -25,9 +25,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"code.vikunja.io/veans/internal/auth"
-	"code.vikunja.io/veans/internal/bootstrap"
-	"code.vikunja.io/veans/internal/config"
+	"github.com/KanameMadoka520/Astering/veans/internal/auth"
+	"github.com/KanameMadoka520/Astering/veans/internal/bootstrap"
+	"github.com/KanameMadoka520/Astering/veans/internal/config"
 )
 
 type initFlags struct {
@@ -52,11 +52,11 @@ func newInitCmd() *cobra.Command {
 	f := &initFlags{}
 	cmd := &cobra.Command{
 		Use:   "init",
-		Short: "Provision a Vikunja bot user and write .veans.yml",
+		Short: "Provision an Astering bot user and write .veans.yml",
 		Long: `Onboards veans into the current repository:
 
   1. Authenticate as you (--token, or username/password)
-  2. Pick a Vikunja project and Kanban view
+  2. Pick an Astering project and Kanban view
   3. Bootstrap canonical buckets (Todo / In Progress / In Review / Done / Scrapped)
   4. Create a 'bot-<repo>' user, share the project with it, mint its API token
   5. Store the bot's token in your keychain (or ~/.config/veans/credentials.yml)
@@ -104,11 +104,11 @@ revoke it at any time without affecting your own session.`,
 		},
 	}
 
-	cmd.Flags().StringVar(&f.server, "server", "", "Vikunja server URL")
+	cmd.Flags().StringVar(&f.server, "server", "", "Astering server URL")
 	cmd.Flags().StringVar(&f.token, "token", "", "JWT or personal API token (skips OAuth/password; useful for SSO/OIDC instances)")
 	cmd.Flags().BoolVar(&f.usePassword, "use-password", false, "use POST /login (username+password) instead of the default OAuth flow")
-	cmd.Flags().StringVar(&f.username, "username", "", "Vikunja username (implies --use-password)")
-	cmd.Flags().StringVar(&f.password, "password", "", "Vikunja password (implies --use-password; prompted if empty)")
+	cmd.Flags().StringVar(&f.username, "username", "", "Astering username (implies --use-password)")
+	cmd.Flags().StringVar(&f.password, "password", "", "Astering password (implies --use-password; prompted if empty)")
 	cmd.Flags().StringVar(&f.totp, "totp", "", "TOTP code if your account requires 2FA")
 	cmd.Flags().StringVar(&f.botUsername, "bot-username", "", "override the bot-<repo> default")
 	cmd.Flags().Int64Var(&f.projectID, "project", 0, "skip the interactive project picker")

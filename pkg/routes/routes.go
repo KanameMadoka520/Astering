@@ -14,8 +14,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// @title Vikunja API
-// @description This is the documentation for the [Vikunja](https://vikunja.io) API. Vikunja is a cross-platform To-do-application with a lot of features, such as sharing projects with users or teams. <!-- ReDoc-Inject: <security-definitions> -->
+// @title Astering API
+// @description This is the documentation for the [Astering](https://github.com/KanameMadoka520/Astering) API. Astering is a self-hosted workspace for projects, tasks, calendars, personal records and AI assistance, based on Vikunja. <!-- ReDoc-Inject: <security-definitions> -->
 
 // @description # Pagination
 // @description Every endpoint capable of pagination will return two headers:
@@ -36,12 +36,11 @@
 // @description <!-- ReDoc-Inject: <security-definitions> -->
 // @BasePath /api/v1
 
-// @license.url https://code.vikunja.io/api/src/branch/main/LICENSE
+// @license.url https://github.com/KanameMadoka520/Astering/blob/main/LICENSE
 // @license.name AGPL-3.0-or-later
 
-// @contact.url https://vikunja.io/contact/
-// @contact.name General Vikunja contact
-// @contact.email hello@vikunja.io
+// @contact.url https://github.com/KanameMadoka520/Astering/issues
+// @contact.name Astering maintainers
 
 // @securityDefinitions.basic BasicAuth
 
@@ -59,37 +58,37 @@ import (
 	"strings"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/license"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/auth"
-	"code.vikunja.io/api/pkg/modules/auth/oauth2server"
-	"code.vikunja.io/api/pkg/modules/auth/openid"
-	"code.vikunja.io/api/pkg/modules/background"
-	backgroundHandler "code.vikunja.io/api/pkg/modules/background/handler"
-	"code.vikunja.io/api/pkg/modules/background/unsplash"
-	"code.vikunja.io/api/pkg/modules/background/upload"
-	mcpmodule "code.vikunja.io/api/pkg/modules/mcp"
-	"code.vikunja.io/api/pkg/modules/migration"
-	csvmigrator "code.vikunja.io/api/pkg/modules/migration/csv"
-	migrationHandler "code.vikunja.io/api/pkg/modules/migration/handler"
-	microsofttodo "code.vikunja.io/api/pkg/modules/migration/microsoft-todo"
-	"code.vikunja.io/api/pkg/modules/migration/ticktick"
-	"code.vikunja.io/api/pkg/modules/migration/todoist"
-	"code.vikunja.io/api/pkg/modules/migration/trello"
-	vikunja_file "code.vikunja.io/api/pkg/modules/migration/vikunja-file"
-	"code.vikunja.io/api/pkg/modules/migration/wekan"
-	"code.vikunja.io/api/pkg/plugins"
-	apiv1 "code.vikunja.io/api/pkg/routes/api/v1"
-	adminapi "code.vikunja.io/api/pkg/routes/api/v1/admin"
-	apiv2 "code.vikunja.io/api/pkg/routes/api/v2"
-	"code.vikunja.io/api/pkg/routes/caldav"
-	"code.vikunja.io/api/pkg/routes/feeds"
-	vmiddleware "code.vikunja.io/api/pkg/routes/middleware"
-	"code.vikunja.io/api/pkg/version"
-	"code.vikunja.io/api/pkg/web/handler"
-	ws "code.vikunja.io/api/pkg/websocket"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/license"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/auth"
+	"github.com/KanameMadoka520/Astering/pkg/modules/auth/oauth2server"
+	"github.com/KanameMadoka520/Astering/pkg/modules/auth/openid"
+	"github.com/KanameMadoka520/Astering/pkg/modules/background"
+	backgroundHandler "github.com/KanameMadoka520/Astering/pkg/modules/background/handler"
+	"github.com/KanameMadoka520/Astering/pkg/modules/background/unsplash"
+	"github.com/KanameMadoka520/Astering/pkg/modules/background/upload"
+	mcpmodule "github.com/KanameMadoka520/Astering/pkg/modules/mcp"
+	"github.com/KanameMadoka520/Astering/pkg/modules/migration"
+	csvmigrator "github.com/KanameMadoka520/Astering/pkg/modules/migration/csv"
+	migrationHandler "github.com/KanameMadoka520/Astering/pkg/modules/migration/handler"
+	microsofttodo "github.com/KanameMadoka520/Astering/pkg/modules/migration/microsoft-todo"
+	"github.com/KanameMadoka520/Astering/pkg/modules/migration/ticktick"
+	"github.com/KanameMadoka520/Astering/pkg/modules/migration/todoist"
+	"github.com/KanameMadoka520/Astering/pkg/modules/migration/trello"
+	vikunja_file "github.com/KanameMadoka520/Astering/pkg/modules/migration/vikunja-file"
+	"github.com/KanameMadoka520/Astering/pkg/modules/migration/wekan"
+	"github.com/KanameMadoka520/Astering/pkg/plugins"
+	apiv1 "github.com/KanameMadoka520/Astering/pkg/routes/api/v1"
+	adminapi "github.com/KanameMadoka520/Astering/pkg/routes/api/v1/admin"
+	apiv2 "github.com/KanameMadoka520/Astering/pkg/routes/api/v2"
+	"github.com/KanameMadoka520/Astering/pkg/routes/caldav"
+	"github.com/KanameMadoka520/Astering/pkg/routes/feeds"
+	vmiddleware "github.com/KanameMadoka520/Astering/pkg/routes/middleware"
+	"github.com/KanameMadoka520/Astering/pkg/version"
+	"github.com/KanameMadoka520/Astering/pkg/web/handler"
+	ws "github.com/KanameMadoka520/Astering/pkg/websocket"
 
 	"github.com/getsentry/sentry-go"
 	"github.com/labstack/echo/v5"

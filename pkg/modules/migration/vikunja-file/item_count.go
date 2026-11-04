@@ -25,8 +25,8 @@ import (
 	"strings"
 	"sync"
 
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/migration"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/migration"
 )
 
 // encoding/json rejects deeper documents anyway; the cap keeps the recursion off the stack limit.

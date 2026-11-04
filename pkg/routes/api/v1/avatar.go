@@ -22,13 +22,13 @@ import (
 	"strconv"
 	"time"
 
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/events"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/avatar"
-	"code.vikunja.io/api/pkg/user"
-	webfiles "code.vikunja.io/api/pkg/web/files"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/events"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/avatar"
+	"github.com/KanameMadoka520/Astering/pkg/user"
+	webfiles "github.com/KanameMadoka520/Astering/pkg/web/files"
 
 	"github.com/labstack/echo/v5"
 )

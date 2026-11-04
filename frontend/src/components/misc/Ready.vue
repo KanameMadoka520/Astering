@@ -163,7 +163,7 @@ const baseStore = useBaseStore()
 }
 
 .offline {
-	background: url('@/assets/llama-nightscape.jpg') no-repeat center;
+	background: linear-gradient(to top, rgb(5 8 34 / 88%), transparent 70%), url('@/assets/astering-nightscape.webp') no-repeat center;
 	background-size: cover;
 	block-size: 100dvh;
 }

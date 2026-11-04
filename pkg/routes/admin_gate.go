@@ -17,12 +17,12 @@
 package routes
 
 import (
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/events"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/models"
-	auth2 "code.vikunja.io/api/pkg/modules/auth"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/events"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	auth2 "github.com/KanameMadoka520/Astering/pkg/modules/auth"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 
 	"github.com/labstack/echo/v5"
 )

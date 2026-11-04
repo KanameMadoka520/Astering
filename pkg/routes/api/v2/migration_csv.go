@@ -21,10 +21,10 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"code.vikunja.io/api/pkg/modules/migration"
-	"code.vikunja.io/api/pkg/modules/migration/csv"
-	migrationHandler "code.vikunja.io/api/pkg/modules/migration/handler"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/modules/migration"
+	"github.com/KanameMadoka520/Astering/pkg/modules/migration/csv"
+	migrationHandler "github.com/KanameMadoka520/Astering/pkg/modules/migration/handler"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 
 	"github.com/danielgtaylor/huma/v2"
 )
@@ -93,7 +93,7 @@ func RegisterMigrationCSVRoutes(api huma.API) {
 	Register(api, withUploadLimits(huma.Operation{
 		OperationID: "migration-csv-migrate",
 		Summary:     "Import a CSV file",
-		Description: "Imports the tasks from the uploaded CSV file into Vikunja using the given config. The import runs in the background: the response only confirms it started. Poll the status endpoint for completion; the user is notified by mail when it finishes or fails.",
+		Description: "Imports the tasks from the uploaded CSV file into Astering using the given config. The import runs in the background: the response only confirms it started. Poll the status endpoint for completion; the user is notified by mail when it finishes or fails.",
 		Method:      http.MethodPost,
 		Path:        "/migration/csv/migrate",
 		// POST runs an import rather than creating a REST resource, so it

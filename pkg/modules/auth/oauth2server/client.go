@@ -22,8 +22,8 @@ import (
 	"strings"
 )
 
-// ValidateRedirectURI checks that the redirect_uri is either a Vikunja native
-// app scheme (e.g. vikunja-flutter://callback) or a loopback http URL as
+// ValidateRedirectURI checks that the redirect_uri is either an Astering or legacy Vikunja native
+// app scheme (e.g. astering-desktop://callback) or a loopback http URL as
 // recommended by RFC 8252 for native apps that cannot register a custom
 // scheme. Any address in 127.0.0.0/8, the IPv6 loopback (::1, in any
 // notation), and the literal hostname "localhost" are accepted; dangerous
@@ -35,7 +35,7 @@ func ValidateRedirectURI(redirectURI string) bool {
 		return false
 	}
 
-	if strings.HasPrefix(u.Scheme, "vikunja-") {
+	if strings.HasPrefix(u.Scheme, "astering-") || strings.HasPrefix(u.Scheme, "vikunja-") {
 		return true
 	}
 

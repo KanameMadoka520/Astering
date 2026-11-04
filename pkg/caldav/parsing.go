@@ -22,10 +22,10 @@ import (
 	"strings"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/utils"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/utils"
 
 	ics "github.com/arran4/golang-ical"
 )
@@ -256,7 +256,7 @@ func GetCaldavTodosForTasks(project *models.ProjectWithTasksAndBuckets, projectT
 
 	caldavConfig := &Config{
 		Name:   project.Title,
-		ProdID: "Vikunja Todo App",
+		ProdID: "Astering",
 	}
 
 	return ParseTodos(caldavConfig, caldavtodos)

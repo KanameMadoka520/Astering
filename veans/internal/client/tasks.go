@@ -81,7 +81,7 @@ func (c *Client) ListProjectTasks(ctx context.Context, projectID int64, opts *Ta
 }
 
 // GetTask fetches a single task by numeric ID. expand=buckets is requested
-// because Vikunja's bare GET returns bucket_id=0 — the per-view bucket
+// because Astering's bare GET returns bucket_id=0 — the per-view bucket
 // memberships only surface under the Buckets slice.
 func (c *Client) GetTask(ctx context.Context, id int64) (*Task, error) {
 	var out Task

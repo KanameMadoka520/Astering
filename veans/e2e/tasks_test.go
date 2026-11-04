@@ -22,11 +22,11 @@ import (
 	"strings"
 	"testing"
 
-	"code.vikunja.io/veans/internal/client"
+	"github.com/KanameMadoka520/Astering/veans/internal/client"
 )
 
 // TestCreateShowList_RoundTrip verifies the read+write path against a real
-// Vikunja: provision a workspace via init, create a task, show it, list it
+// Astering: provision a workspace via init, create a task, show it, list it
 // (with --filter), and confirm the JSON shapes are unwrapped raw object/array.
 func TestCreateShowList_RoundTrip(t *testing.T) {
 	ws, h := provisionWorkspace(t)

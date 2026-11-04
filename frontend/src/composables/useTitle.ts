@@ -15,8 +15,8 @@ export function useTitle(
 
 	const completeTitle = computed(() =>
 		(typeof pageTitle.value === 'undefined' || pageTitle.value === '')
-			? t('tcymc.text.vikunja_x_tcymc_custom_edition')
-			: `${pageTitle.value} | ${t('tcymc.text.vikunja_x_tcymc_custom_edition')}`,
+			? t('brand.name')
+			: `${pageTitle.value} | ${t('brand.name')}`,
 	)
 
 	return useTitleVueUse(completeTitle, options)

@@ -23,11 +23,11 @@ import (
 	"reflect"
 	"strings"
 
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/auth"
-	"code.vikunja.io/api/pkg/web"
-	"code.vikunja.io/api/pkg/web/handler"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/auth"
+	"github.com/KanameMadoka520/Astering/pkg/web"
+	"github.com/KanameMadoka520/Astering/pkg/web/handler"
 
 	"github.com/danielgtaylor/huma/v2"
 )
@@ -47,7 +47,7 @@ func authFromCtx(ctx context.Context) (web.Auth, error) {
 	return a, nil
 }
 
-// translateDomainError maps a Vikunja domain error (web.HTTPErrorProcessor)
+// translateDomainError maps a Astering domain error (web.HTTPErrorProcessor)
 // onto Huma's status-error type so the response carries the right code
 // and an RFC 9457 body. Errors without HTTP semantics fall through, which
 // Huma treats as 500.
@@ -63,7 +63,7 @@ func translateDomainError(err error) error {
 			msg = err.Error()
 		}
 		se := huma.NewError(details.HTTPCode, msg)
-		// Preserve Vikunja's numeric domain error code (the value the
+		// Preserve Astering's numeric domain error code (the value the
 		// error docs key off) on the problem+json body. v1 exposes it as
 		// `code`; without this v2 clients always read 0. I18nParams rides
 		// along the same way so v2 clients can localise the message like
@@ -109,12 +109,12 @@ func invalidFieldDetails(fields []string) []error {
 	return details
 }
 
-// vikunjaErrorModel extends Huma's RFC 9457 body with Vikunja's numeric
+// vikunjaErrorModel extends Huma's RFC 9457 body with Astering's numeric
 // domain error code, preserving the v1 error-code contract on v2. Wired in
 // as the global error type via the huma.NewError override in init().
 type vikunjaErrorModel struct {
 	huma.ErrorModel
-	Code       int               `json:"code,omitempty" readOnly:"true" doc:"Vikunja numeric error code; see https://vikunja.io/docs/errors/"`
+	Code       int               `json:"code,omitempty" readOnly:"true" doc:"Astering numeric error code; see https://vikunja.io/docs/errors/"`
 	I18nParams map[string]string `json:"i18n_params,omitempty" readOnly:"true" doc:"Dynamic values referenced by the error message, keyed by translation placeholder name, for client-side localisation."`
 }
 
@@ -138,7 +138,7 @@ func init() {
 	// `code` field stays consistent between spec and wire.
 	huma.NewError = func(status int, msg string, errs ...error) huma.StatusError {
 		// Strip internal detail from server errors. The humaecho adapter writes
-		// responses itself, bypassing Vikunja's CreateHTTPErrorHandler which for
+		// responses itself, bypassing Astering's CreateHTTPErrorHandler which for
 		// v1 returns a generic 500 — so without this a raw DB/driver error (hosts,
 		// ports, credentials, schema names) leaks into problem+json `errors[]`,
 		// including on public endpoints like /health. This must live in NewError

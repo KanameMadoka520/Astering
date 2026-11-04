@@ -17,7 +17,7 @@
 package handler
 
 import (
-	"code.vikunja.io/api/pkg/web"
+	"github.com/KanameMadoka520/Astering/pkg/web"
 )
 
 // WebHandler defines the webhandler object

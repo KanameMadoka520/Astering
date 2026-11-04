@@ -22,9 +22,9 @@ import (
 	"fmt"
 	"testing"
 
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 
 	"github.com/samedi/caldav-go/data"
 	"github.com/samedi/caldav-go/errs"

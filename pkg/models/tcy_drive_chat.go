@@ -22,10 +22,10 @@ import (
 	"slices"
 	"time"
 
-	"code.vikunja.io/api/pkg/files"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/user"
-	"code.vikunja.io/api/pkg/web"
+	"github.com/KanameMadoka520/Astering/pkg/files"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/web"
 	"xorm.io/xorm"
 )
 

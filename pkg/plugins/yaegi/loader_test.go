@@ -17,6 +17,7 @@
 package yaegi
 
 import (
+	"fmt"
 	"go/build"
 	"os"
 	"path/filepath"
@@ -24,6 +25,58 @@ import (
 )
 
 const examplePluginDir = "../../../examples/plugins/example"
+
+func TestLoadPluginBrandImportCompatibility(t *testing.T) {
+	for _, modulePath := range []string{
+		"github.com/KanameMadoka520/Astering",
+		"code.vikunja.io/api",
+	} {
+		t.Run(modulePath, func(t *testing.T) {
+			dir := t.TempDir()
+			source := fmt.Sprintf(`package main
+
+import (
+	%q
+	%q
+	%q
+)
+
+type CompatiblePlugin struct{}
+
+func (*CompatiblePlugin) Name() string {
+	u := &user.User{
+		Name: "Compatible plugin",
+		Username: "fallback-name",
+	}
+	return u.GetName()
+}
+func (*CompatiblePlugin) Version() string { return config.ResolvePath("/astering-plugin-fixture") }
+func (*CompatiblePlugin) Init() error { return nil }
+func (*CompatiblePlugin) Shutdown() error { return nil }
+func NewPlugin() plugins.Plugin { return &CompatiblePlugin{} }
+`, modulePath+"/pkg/config", modulePath+"/pkg/plugins", modulePath+"/pkg/user")
+			if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(source), 0600); err != nil {
+				t.Fatal(err)
+			}
+			plugin, err := LoadPlugin(dir)
+			if err != nil {
+				t.Fatalf("LoadPlugin failed: %v", err)
+			}
+			if plugin.Name() != "Compatible plugin" {
+				t.Errorf("interpreted User.GetName returned %q", plugin.Name())
+			}
+			if plugin.Version() != "/astering-plugin-fixture" {
+				t.Errorf("interpreted config.ResolvePath returned %q", plugin.Version())
+			}
+			if err := plugin.Init(); err != nil {
+				t.Fatalf("interpreted Init failed: %v", err)
+			}
+			if err := plugin.Shutdown(); err != nil {
+				t.Fatalf("interpreted Shutdown failed: %v", err)
+			}
+		})
+	}
+}
 
 func TestLoadPlugin(t *testing.T) {
 	pluginDir := examplePluginDir

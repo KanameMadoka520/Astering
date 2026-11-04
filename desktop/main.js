@@ -62,6 +62,15 @@ let zoomLevel = 0
 const DEFAULT_QUICK_ENTRY_SHORTCUT = 'CmdOrCtrl+Shift+A'
 const launchedWithQuickEntry = process.argv.includes('--quick-entry')
 
+// Keep the installed profile across the display-name change. Development still
+// uses the unchanged package name; an explicit Chromium profile override wins.
+if (app.isPackaged && !app.commandLine.hasSwitch('user-data-dir')) {
+	const legacyProfile = path.join(app.getPath('appData'), 'Vikunja Desktop')
+	fs.mkdirSync(legacyProfile, {recursive: true})
+	app.setPath('userData', legacyProfile)
+	app.setPath('sessionData', legacyProfile)
+}
+
 // Ensure single instance so deep links reach the running app on Windows/Linux
 const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
@@ -91,7 +100,7 @@ function registerAppImageProtocolHandler() {
 		const quotedExecPath = '"' + appImagePath.replace(/["`$\\]/g, '\\$&').replace(/%/g, '%%') + '"'
 		const desktopEntry = [
 			'[Desktop Entry]',
-			'Name=Vikunja Desktop',
+			'Name=Astering',
 			'Type=Application',
 			`Exec=${quotedExecPath} %u`,
 			'Terminal=false',
@@ -483,7 +492,7 @@ function setupTray() {
 		const iconPath = path.join(__dirname, 'icon.png')
 		const icon = nativeImage.createFromPath(iconPath).resize({width: 16, height: 16})
 		tray = new Tray(icon)
-		tray.setToolTip('Vikunja')
+		tray.setToolTip('Astering')
 		tray.on('click', () => {
 			if (mainWindow) {
 				mainWindow.show()
@@ -496,7 +505,7 @@ function setupTray() {
 
 	const contextMenu = Menu.buildFromTemplate([
 		{
-			label: 'Show Vikunja',
+			label: 'Show Astering',
 			click: () => {
 				if (mainWindow) {
 					mainWindow.show()

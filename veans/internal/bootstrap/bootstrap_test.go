@@ -30,9 +30,9 @@ import (
 	"sync"
 	"testing"
 
-	"code.vikunja.io/veans/internal/client"
-	"code.vikunja.io/veans/internal/output"
-	"code.vikunja.io/veans/internal/status"
+	"github.com/KanameMadoka520/Astering/veans/internal/client"
+	"github.com/KanameMadoka520/Astering/veans/internal/output"
+	"github.com/KanameMadoka520/Astering/veans/internal/status"
 )
 
 func TestValidateBotUsername(t *testing.T) {

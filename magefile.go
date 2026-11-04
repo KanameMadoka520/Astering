@@ -41,19 +41,19 @@ import (
 	"syscall"
 	"time"
 
-	apiv2 "code.vikunja.io/api/pkg/routes/api/v2"
+	apiv2 "github.com/KanameMadoka520/Astering/pkg/routes/api/v2"
 
 	"github.com/iancoleman/strcase"
 	"github.com/magefile/mage/mg"
 )
 
 const (
-	PACKAGE = `code.vikunja.io/api`
+	PACKAGE = `github.com/KanameMadoka520/Astering`
 	DIST    = `dist`
 )
 
 var (
-	Executable    = "vikunja"
+	Executable    = "astering"
 	Ldflags       = ""
 	Tags          = ""
 	VersionNumber = "dev"
@@ -84,6 +84,15 @@ var (
 		"check:yaegi-symbols":      Check.YaegiSymbols,
 	}
 )
+
+// applicationEnv accepts the new prefix without breaking existing local scripts.
+func applicationEnv(key string) string {
+	canonical := strings.Replace(key, "VIKUNJA_", "ASTERING_", 1)
+	if value, exists := os.LookupEnv(canonical); exists {
+		return value
+	}
+	return os.Getenv(key)
+}
 
 func goDetectVerboseFlag() string {
 	return fmt.Sprintf("-v=%t", mg.Verbose())
@@ -288,7 +297,7 @@ func printSuccess(text string, args ...any) {
 
 // getE2EPort returns the port from the given env var, or a random available port.
 func getE2EPort(ctx context.Context, envVar string) (int, error) {
-	if v := os.Getenv(envVar); v != "" {
+	if v := applicationEnv(envVar); v != "" {
 		return strconv.Atoi(v)
 	}
 	return getRandomPort(ctx)
@@ -508,7 +517,7 @@ func (Test) E2E(ctx context.Context, args string) error {
 	}
 
 	// Generate a random testing token
-	testingToken := os.Getenv("VIKUNJA_E2E_TESTING_TOKEN")
+	testingToken := applicationEnv("VIKUNJA_E2E_TESTING_TOKEN")
 	if testingToken == "" {
 		testingToken = fmt.Sprintf("e2e-test-token-%d", time.Now().UnixNano())
 	}
@@ -519,7 +528,7 @@ func (Test) E2E(ctx context.Context, args string) error {
 	fmt.Printf("  Testing token: %s\n", testingToken)
 
 	// Build the API binary (unless skipped)
-	if os.Getenv("VIKUNJA_E2E_SKIP_BUILD") != "true" {
+	if applicationEnv("VIKUNJA_E2E_SKIP_BUILD") != "true" {
 		fmt.Println("\n--- Building API binary ---")
 		if err := (Build{}).Build(ctx); err != nil {
 			return fmt.Errorf("failed to build API: %w", err)
@@ -527,7 +536,7 @@ func (Test) E2E(ctx context.Context, args string) error {
 	}
 
 	// Create temp directory for file uploads and rootpath
-	tmpDir, err := os.MkdirTemp("", "vikunja-e2e-*")
+	tmpDir, err := os.MkdirTemp("", "astering-e2e-*")
 	if err != nil {
 		return fmt.Errorf("failed to create temp dir: %w", err)
 	}
@@ -543,23 +552,23 @@ func (Test) E2E(ctx context.Context, args string) error {
 	// Start the API server — all config via env vars, no config file
 	// Uses in-memory SQLite (no DB file on disk)
 	fmt.Println("\n--- Starting API server ---")
-	apiCmd := exec.CommandContext(ctx, "./vikunja", "web")
+	apiCmd := exec.CommandContext(ctx, "./"+Executable, "web")
 	apiCmd.Env = append(os.Environ(),
-		fmt.Sprintf("VIKUNJA_SERVICE_INTERFACE=:%d", apiPort),
+		fmt.Sprintf("ASTERING_SERVICE_INTERFACE=:%d", apiPort),
 		// Public page links must use the browser-facing frontend. The API embeds
 		// a placeholder during E2E and cannot serve the separate preview build.
-		fmt.Sprintf("VIKUNJA_SERVICE_PUBLICURL=http://127.0.0.1:%d/", frontendPort),
-		fmt.Sprintf("VIKUNJA_SERVICE_APIURL=http://127.0.0.1:%d/", apiPort),
-		fmt.Sprintf("VIKUNJA_SERVICE_TESTINGTOKEN=%s", testingToken),
-		fmt.Sprintf("VIKUNJA_SERVICE_ROOTPATH=%s", tmpDir),
-		"VIKUNJA_SERVICE_JWTSECRET=e2e-test-jwt-secret-do-not-use-in-production",
-		"VIKUNJA_DATABASE_TYPE=sqlite",
-		"VIKUNJA_DATABASE_PATH=memory",
-		fmt.Sprintf("VIKUNJA_FILES_BASEPATH=%s", filepath.Join(tmpDir, "files")),
-		"VIKUNJA_LOG_LEVEL=WARNING",
-		"VIKUNJA_MAILER_ENABLED=false",
-		"VIKUNJA_REDIS_ENABLED=false",
-		"VIKUNJA_RATELIMIT_NOAUTHLIMIT=1000",
+		fmt.Sprintf("ASTERING_SERVICE_PUBLICURL=http://127.0.0.1:%d/", frontendPort),
+		fmt.Sprintf("ASTERING_SERVICE_APIURL=http://127.0.0.1:%d/", apiPort),
+		fmt.Sprintf("ASTERING_SERVICE_TESTINGTOKEN=%s", testingToken),
+		fmt.Sprintf("ASTERING_SERVICE_ROOTPATH=%s", tmpDir),
+		"ASTERING_SERVICE_JWTSECRET=e2e-test-jwt-secret-do-not-use-in-production",
+		"ASTERING_DATABASE_TYPE=sqlite",
+		"ASTERING_DATABASE_PATH=memory",
+		fmt.Sprintf("ASTERING_FILES_BASEPATH=%s", filepath.Join(tmpDir, "files")),
+		"ASTERING_LOG_LEVEL=WARNING",
+		"ASTERING_MAILER_ENABLED=false",
+		"ASTERING_REDIS_ENABLED=false",
+		"ASTERING_RATELIMIT_NOAUTHLIMIT=1000",
 	)
 	apiCmd.Stdout = os.Stdout
 	apiCmd.Stderr = os.Stderr
@@ -1259,7 +1268,7 @@ func (Build) Clean(ctx context.Context) error {
 	return nil
 }
 
-// Build builds a vikunja binary, ready to run
+// Build builds an Astering binary, ready to run
 func (Build) Build(ctx context.Context) error {
 	mg.Deps(initVars, ensureFrontendDistExists)
 	return runAndStreamOutput(ctx, "go", "build", goDetectVerboseFlag(), "-tags", Tags, "-ldflags", "-s -w "+Ldflags, "-o", Executable)
@@ -1528,7 +1537,7 @@ func (Generate) FrontendClient(ctx context.Context) error {
 		return err
 	}
 
-	spec, err := os.CreateTemp("", "vikunja-openapi-*.json")
+	spec, err := os.CreateTemp("", "astering-openapi-*.json")
 	if err != nil {
 		return fmt.Errorf("create temporary OpenAPI document: %w", err)
 	}
@@ -1545,7 +1554,7 @@ func (Generate) FrontendClient(ctx context.Context) error {
 
 	cmd := exec.CommandContext(ctx, "pnpm", "run", "generate:api-client")
 	cmd.Dir = "frontend"
-	cmd.Env = append(os.Environ(), "VIKUNJA_OPENAPI_INPUT="+specPath)
+	cmd.Env = append(os.Environ(), "ASTERING_OPENAPI_INPUT="+specPath)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -1572,13 +1581,13 @@ var yaegiSymbolPackages = []struct {
 	importPath string
 	outFile    string
 }{
-	{"code.vikunja.io/api/pkg/config", "vikunja_config.go"},
-	{"code.vikunja.io/api/pkg/db", "vikunja_db.go"},
-	{"code.vikunja.io/api/pkg/events", "vikunja_events.go"},
-	{"code.vikunja.io/api/pkg/log", "vikunja_log.go"},
-	{"code.vikunja.io/api/pkg/models", "vikunja_models.go"},
-	{"code.vikunja.io/api/pkg/plugins", "vikunja_plugins.go"},
-	{"code.vikunja.io/api/pkg/user", "vikunja_user.go"},
+	{"github.com/KanameMadoka520/Astering/pkg/config", "astering_config.go"},
+	{"github.com/KanameMadoka520/Astering/pkg/db", "astering_db.go"},
+	{"github.com/KanameMadoka520/Astering/pkg/events", "astering_events.go"},
+	{"github.com/KanameMadoka520/Astering/pkg/log", "astering_log.go"},
+	{"github.com/KanameMadoka520/Astering/pkg/models", "astering_models.go"},
+	{"github.com/KanameMadoka520/Astering/pkg/plugins", "astering_plugins.go"},
+	{"github.com/KanameMadoka520/Astering/pkg/user", "astering_user.go"},
 	{"github.com/labstack/echo/v5", "echo.go"},
 	{"github.com/ThreeDotsLabs/watermill/message", "watermill.go"},
 	{"github.com/spf13/viper", "viper.go"},

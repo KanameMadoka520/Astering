@@ -26,22 +26,22 @@ import (
 	"os"
 	"time"
 
-	"code.vikunja.io/api/pkg/cron"
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/files"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/notifications"
-	"code.vikunja.io/api/pkg/user"
-	"code.vikunja.io/api/pkg/utils"
-	"code.vikunja.io/api/pkg/version"
-	"code.vikunja.io/api/pkg/web"
+	"github.com/KanameMadoka520/Astering/pkg/cron"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/files"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/notifications"
+	"github.com/KanameMadoka520/Astering/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/utils"
+	"github.com/KanameMadoka520/Astering/pkg/version"
+	"github.com/KanameMadoka520/Astering/pkg/web"
 
 	"xorm.io/xorm"
 )
 
 // The caller deletes the replaced export only after committing.
 func ExportUserData(s *xorm.Session, u *user.User) (previousExportFileID int64, err error) {
-	dumpFile, err := os.CreateTemp("", "vikunja-export-*.zip")
+	dumpFile, err := os.CreateTemp("", "astering-export-*.zip")
 	if err != nil {
 		return 0, fmt.Errorf("error creating temp file: %w", err)
 	}

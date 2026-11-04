@@ -1,0 +1,4 @@
+Use case: background-extraction
+Input image: edit target, final approved Astering star mascot logo.
+Primary request: clean only the transparent background and the alpha channel. Remove every detached speck, stray pixel, faint spot or low-alpha mark outside the main contiguous star silhouette. The whole area outside the star must be perfectly empty, genuine alpha transparency. Crisp antialiased edges around the star, no halo.
+Constraints: preserve the exact star's silhouette, contours, dark outline, gold body, facial features, highlights, expression, proportions, original position and padding. Do not redraw, restyle, crop, add a backdrop, add objects, introduce colors or change any intentional part of the mascot. No shadow, glow, texture, text, watermark or new sparkle outside the star.

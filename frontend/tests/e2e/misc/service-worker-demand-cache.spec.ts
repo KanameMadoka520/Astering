@@ -85,6 +85,13 @@ test('real built worker installs without prefetch and caches only requested publ
 	})
 	await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
 	const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+	const currentCache = `astering-static:${encodeURIComponent(`${origin}/`)}:${encodeURIComponent(buildVersion)}`
+	const legacyCache = `vikunja-x-static:${encodeURIComponent(`${origin}/`)}:v2.7.1-tcymc.49`
+	const preservedCaches = [
+		'other-app-sentinel',
+		`vikunja-x-static:${encodeURIComponent(`${origin}/other/`)}:v2.7.1-tcymc.49`,
+		`astering-static:${encodeURIComponent(`${origin}/other/`)}:previous`,
+	]
 	async function cachedUrls() {
 		return page.evaluate(async () => {
 			const snapshots = await Promise.all((await caches.keys()).map(async name => ({
@@ -96,13 +103,18 @@ test('real built worker installs without prefetch and caches only requested publ
 	}
 	try {
 		await page.goto(origin)
+		await page.evaluate(async names => {
+			for (const name of names) {
+				await (await caches.open(name)).put('/cache-sentinel', new Response('isolated fixture'))
+			}
+		}, [legacyCache, ...preservedCaches])
 		await page.evaluate(async () => {
 			await navigator.serviceWorker.register('/sw.js')
 			await navigator.serviceWorker.ready
 		})
 		await expect.poll(() => page.evaluate(() => navigator.serviceWorker.controller?.state)).toBe('activated')
 		expect(requests.filter(path => path.startsWith('/assets/'))).toEqual([])
-		expect(await cachedUrls()).toEqual([])
+		expect((await cachedUrls()).map(cache => cache.name).sort()).toEqual([...preservedCaches].sort())
 
 		const version = await page.evaluate(() => new Promise<string>((resolve, reject) => {
 			const channel = new MessageChannel()
@@ -123,7 +135,8 @@ test('real built worker installs without prefetch and caches only requested publ
 			if (!response.ok) throw new Error('Build asset failed')
 			await response.arrayBuffer()
 		}, assetPath)
-		await expect.poll(async () => (await cachedUrls()).flatMap(cache => cache.urls)).toEqual([`${origin}${assetPath}`])
+		await expect.poll(async () => (await cachedUrls()).filter(cache => cache.name === currentCache)
+			.flatMap(cache => cache.urls)).toEqual([`${origin}${assetPath}`])
 		const secondResponse = page.waitForResponse(response => response.url() === `${origin}${assetPath}`)
 		await page.evaluate(async path => { await (await fetch(path)).arrayBuffer() }, assetPath)
 		expect((await secondResponse).fromServiceWorker()).toBe(true)
@@ -150,8 +163,8 @@ test('real built worker installs without prefetch and caches only requested publ
 		expect(reads[1].policy).toContain('private')
 		expect(reads[2].policy).toBe('no-cache')
 		const snapshots = await cachedUrls()
-		expect(snapshots).toHaveLength(1)
-		expect(snapshots[0].urls).toEqual([`${origin}${assetPath}`])
+		expect(snapshots.map(cache => cache.name).sort()).toEqual([currentCache, ...preservedCaches].sort())
+		expect(snapshots.find(cache => cache.name === currentCache)?.urls).toEqual([`${origin}${assetPath}`])
 		expect(failures).toEqual([])
 		await testInfo.attach('worker-cache-evidence', {
 			body: JSON.stringify({version, requests, snapshots, reads}, null, 2),

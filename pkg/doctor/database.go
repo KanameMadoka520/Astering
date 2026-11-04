@@ -21,8 +21,8 @@ import (
 	"os"
 	"strings"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/db"
 )
 
 // CheckDatabase returns database connectivity checks.
@@ -172,8 +172,8 @@ var paradeDBIndexes = []string{
 }
 
 // checkParadeDB reports whether the pg_search extension is installed and, if so,
-// whether the bm25 indexes Vikunja relies on exist. A missing extension is not a
-// failure — Vikunja falls back to substring search.
+// whether the bm25 indexes Astering relies on exist. A missing extension is not a
+// failure — Astering falls back to substring search.
 func checkParadeDB() []CheckResult {
 	s := db.NewSession()
 	defer s.Close()
@@ -232,7 +232,7 @@ func checkParadeDB() []CheckResult {
 		return append(results, CheckResult{
 			Name:   "ParadeDB indexes",
 			Passed: false,
-			Error:  fmt.Sprintf("missing: %s (restart Vikunja to create them)", strings.Join(missing, ", ")),
+			Error:  fmt.Sprintf("missing: %s (restart Astering to create them)", strings.Join(missing, ", ")),
 		})
 	}
 

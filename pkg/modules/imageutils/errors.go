@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"code.vikunja.io/api/pkg/web"
+	"github.com/KanameMadoka520/Astering/pkg/web"
 )
 
 // ErrImageTooLarge rejects hostile dimensions before decoding (GHSA-4vh2-39rq-rq8j).

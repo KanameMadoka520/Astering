@@ -24,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	"code.vikunja.io/api/pkg/red"
+	"github.com/KanameMadoka520/Astering/pkg/red"
 	"github.com/redis/go-redis/v9"
 )
 

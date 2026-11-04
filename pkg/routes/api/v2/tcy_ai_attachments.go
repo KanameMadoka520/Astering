@@ -23,10 +23,10 @@ import (
 	"net/http"
 	"time"
 
-	"code.vikunja.io/api/pkg/modules/humabridge"
-	"code.vikunja.io/api/pkg/modules/tcyai"
-	"code.vikunja.io/api/pkg/modules/tcylocale"
-	webfiles "code.vikunja.io/api/pkg/web/files"
+	"github.com/KanameMadoka520/Astering/pkg/modules/humabridge"
+	"github.com/KanameMadoka520/Astering/pkg/modules/tcyai"
+	"github.com/KanameMadoka520/Astering/pkg/modules/tcylocale"
+	webfiles "github.com/KanameMadoka520/Astering/pkg/web/files"
 
 	"github.com/danielgtaylor/huma/v2"
 )

@@ -20,7 +20,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"code.vikunja.io/api/pkg/routes/middleware"
+	"github.com/KanameMadoka520/Astering/pkg/routes/middleware"
 
 	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"

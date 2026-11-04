@@ -53,7 +53,7 @@ func (c *Client) GetProject(ctx context.Context, id int64) (*Project, error) {
 	return &out, nil
 }
 
-// CreateProject creates a new project owned by the calling user. Vikunja
+// CreateProject creates a new project owned by the calling user. Astering
 // auto-creates the default views (List, Gantt, Table, Kanban) on insert.
 func (c *Client) CreateProject(ctx context.Context, p *Project) (*Project, error) {
 	var out Project

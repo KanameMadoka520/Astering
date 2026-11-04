@@ -21,12 +21,12 @@ import (
 	"strings"
 	"testing"
 
-	"code.vikunja.io/veans/internal/config"
+	"github.com/KanameMadoka520/Astering/veans/internal/config"
 )
 
 func TestPrimeTemplate_RendersAnchors(t *testing.T) {
 	data := primeContext{
-		Server:            "https://vikunja.example.com",
+		Server:            "https://astering.example.com",
 		ProjectID:         42,
 		ProjectTitle:      "Test Project",
 		ProjectIdentifier: "PROJ",
@@ -34,7 +34,7 @@ func TestPrimeTemplate_RendersAnchors(t *testing.T) {
 		Buckets:           config.Buckets{Todo: 11, InProgress: 12, InReview: 13, Done: 14, Scrapped: 15},
 		BotUsername:       "bot-myrepo",
 		TaskIDExample:     "PROJ-1",
-		TaskURLExample:    "https://vikunja.example.com/tasks/123",
+		TaskURLExample:    "https://astering.example.com/tasks/123",
 	}
 	tpl, err := parsePromptTemplate()
 	if err != nil {
@@ -68,7 +68,7 @@ func TestPrimeTemplate_RendersAnchors(t *testing.T) {
 		`data-checked="false"`,
 		"<h2>",
 		"<pre><code",
-		`<a href="https://vikunja.example.com/tasks/123">https://vikunja.example.com/tasks/123</a>`,
+		`<a href="https://astering.example.com/tasks/123">https://astering.example.com/tasks/123</a>`,
 	}
 	for _, s := range mustContain {
 		if !strings.Contains(out, s) {
@@ -90,7 +90,7 @@ func TestPrimeTemplate_NoIdentifierFallback(t *testing.T) {
 		ProjectIdentifier: "",
 		BotUsername:       "bot-x",
 		TaskIDExample:     "#1",
-		Server:            "https://vikunja.example.com",
+		Server:            "https://astering.example.com",
 		ProjectID:         1,
 		ViewID:            1,
 	}
@@ -114,10 +114,10 @@ func TestPrimeTemplate_UntrustedHint(t *testing.T) {
 		t.Fatal(err)
 	}
 	var buf bytes.Buffer
-	if err := tpl.Execute(&buf, primeContext{UntrustedServer: "https://vikunja.example.com:443"}); err != nil {
+	if err := tpl.Execute(&buf, primeContext{UntrustedServer: "https://astering.example.com:443"}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(buf.String(), "not been told to trust https://vikunja.example.com:443") {
+	if !strings.Contains(buf.String(), "not been told to trust https://astering.example.com:443") {
 		t.Errorf("missing untrusted hint:\n%s", buf.String())
 	}
 }

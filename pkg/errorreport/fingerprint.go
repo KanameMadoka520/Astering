@@ -29,7 +29,7 @@ import (
 	"strconv"
 	"strings"
 
-	"code.vikunja.io/api/pkg/web"
+	"github.com/KanameMadoka520/Astering/pkg/web"
 
 	"github.com/getsentry/sentry-go"
 	"github.com/go-sql-driver/mysql"

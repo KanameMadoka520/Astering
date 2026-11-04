@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"code.vikunja.io/api/pkg/i18n"
+	"github.com/KanameMadoka520/Astering/pkg/i18n"
 
 	"github.com/stretchr/testify/assert"
 )

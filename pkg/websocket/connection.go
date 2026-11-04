@@ -23,8 +23,8 @@ import (
 	"sync"
 	"time"
 
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/modules/auth"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/modules/auth"
 
 	"github.com/coder/websocket"
 )

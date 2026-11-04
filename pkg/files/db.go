@@ -17,8 +17,8 @@
 package files
 
 import (
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/log"
 	"xorm.io/xorm"
 )
 

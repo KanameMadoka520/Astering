@@ -19,7 +19,7 @@ package migration
 import (
 	"fmt"
 
-	"code.vikunja.io/api/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/db"
 
 	"src.techknowlogick.com/xormigrate"
 	"xorm.io/builder"

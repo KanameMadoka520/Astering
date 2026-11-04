@@ -28,7 +28,7 @@ import (
 	"strings"
 	"time"
 
-	"code.vikunja.io/api/pkg/modules/tcylocale"
+	"github.com/KanameMadoka520/Astering/pkg/modules/tcylocale"
 )
 
 func transcribeSpeechHTTP(ctx context.Context, c Connection, filename string, audio []byte) (string, error) {

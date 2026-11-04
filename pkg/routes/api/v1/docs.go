@@ -23,9 +23,9 @@ import (
 	"net/http"
 	"strings"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/log"
-	_ "code.vikunja.io/api/pkg/swagger" // To make sure the swag files are properly registered
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	_ "github.com/KanameMadoka520/Astering/pkg/swagger" // To make sure the swag files are properly registered
 
 	"github.com/labstack/echo/v5"
 	"github.com/swaggo/swag"

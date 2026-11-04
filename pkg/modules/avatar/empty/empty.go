@@ -21,7 +21,7 @@ import (
 	"encoding/base64"
 	"fmt"
 
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 )
 
 // Provider represents the empty avatar provider

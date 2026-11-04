@@ -20,7 +20,7 @@ import (
 	"context"
 	"testing"
 
-	"code.vikunja.io/veans/internal/client"
+	"github.com/KanameMadoka520/Astering/veans/internal/client"
 )
 
 func TestAcquireHumanToken_TokenShortCircuit(t *testing.T) {

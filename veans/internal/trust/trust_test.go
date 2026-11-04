@@ -27,8 +27,8 @@ func TestOrigin(t *testing.T) {
 	cases := []struct {
 		in, want string
 	}{
-		{"https://vikunja.example.com", "https://vikunja.example.com:443"},
-		{"HTTPS://Vikunja.Example.com/sub/path/", "https://vikunja.example.com:443"},
+		{"https://astering.example.com", "https://astering.example.com:443"},
+		{"HTTPS://Astering.Example.com/sub/path/", "https://astering.example.com:443"},
 		{"http://127.0.0.1:3456", "http://127.0.0.1:3456"},
 		{"http://localhost", "http://localhost:80"},
 		{"https://[::1]:8443/x", "https://[::1]:8443"},
@@ -49,8 +49,8 @@ func TestOrigin_Rejects(t *testing.T) {
 	for _, in := range []string{
 		"https://trusted.example@evil.example/",
 		"https://user:pass@evil.example",
-		"ftp://vikunja.example.com",
-		"vikunja.example.com",
+		"ftp://astering.example.com",
+		"astering.example.com",
 		"https://",
 		"https://vіkunja.example.com",
 		"",
@@ -79,7 +79,7 @@ func newGate(t *testing.T, p Prompter) *Gate {
 
 func TestGate_NonInteractiveFailsClosed(t *testing.T) {
 	g := newGate(t, nil)
-	if err := g.Check("https://vikunja.example.com"); !errors.Is(err, ErrUntrusted) {
+	if err := g.Check("https://astering.example.com"); !errors.Is(err, ErrUntrusted) {
 		t.Fatalf("got %v, want ErrUntrusted", err)
 	}
 }
@@ -87,7 +87,7 @@ func TestGate_NonInteractiveFailsClosed(t *testing.T) {
 func TestGate_PromptYesRecords(t *testing.T) {
 	p := &scriptedPrompter{answer: "y"}
 	g := newGate(t, p)
-	if err := g.Check("https://vikunja.example.com/"); err != nil {
+	if err := g.Check("https://astering.example.com/"); err != nil {
 		t.Fatalf("Check: %v", err)
 	}
 	if len(p.prompts) != 1 {
@@ -95,10 +95,10 @@ func TestGate_PromptYesRecords(t *testing.T) {
 	}
 
 	g.Prompter = nil
-	if err := g.Check("https://VIKUNJA.example.com:443/other"); err != nil {
+	if err := g.Check("https://ASTERING.example.com:443/other"); err != nil {
 		t.Fatalf("recorded origin not trusted: %v", err)
 	}
-	if err := g.Check("http://vikunja.example.com"); !errors.Is(err, ErrUntrusted) {
+	if err := g.Check("http://astering.example.com"); !errors.Is(err, ErrUntrusted) {
 		t.Fatalf("http origin: got %v, want ErrUntrusted", err)
 	}
 }
@@ -117,11 +117,11 @@ func TestGate_PromptShowsParsedOrigin(t *testing.T) {
 func TestGate_PromptNoRefuses(t *testing.T) {
 	for _, ans := range []string{"", "n", "nope"} {
 		g := newGate(t, &scriptedPrompter{answer: ans})
-		if err := g.Check("https://vikunja.example.com"); !errors.Is(err, ErrUntrusted) {
+		if err := g.Check("https://astering.example.com"); !errors.Is(err, ErrUntrusted) {
 			t.Fatalf("answer %q: got %v, want ErrUntrusted", ans, err)
 		}
 		g.Prompter = nil
-		if err := g.Check("https://vikunja.example.com"); !errors.Is(err, ErrUntrusted) {
+		if err := g.Check("https://astering.example.com"); !errors.Is(err, ErrUntrusted) {
 			t.Fatalf("answer %q was recorded: %v", ans, err)
 		}
 	}
@@ -140,25 +140,25 @@ func TestGate_UserinfoRejectedWithoutPrompt(t *testing.T) {
 
 func TestGate_EnvServer(t *testing.T) {
 	g := newGate(t, nil)
-	t.Setenv("VEANS_SERVER", "HTTPS://vikunja.example.com/")
-	if err := g.Check("https://vikunja.example.com:443"); err != nil {
+	t.Setenv("VEANS_SERVER", "HTTPS://astering.example.com/")
+	if err := g.Check("https://astering.example.com:443"); err != nil {
 		t.Fatalf("matching VEANS_SERVER: %v", err)
 	}
 	if err := g.Check("https://evil.example"); !errors.Is(err, ErrUntrusted) {
 		t.Fatalf("mismatching VEANS_SERVER: got %v, want ErrUntrusted", err)
 	}
-	t.Setenv("VEANS_SERVER", "https://vikunja.example.com.evil.example")
-	if err := g.Check("https://vikunja.example.com"); !errors.Is(err, ErrUntrusted) {
+	t.Setenv("VEANS_SERVER", "https://astering.example.com.evil.example")
+	if err := g.Check("https://astering.example.com"); !errors.Is(err, ErrUntrusted) {
 		t.Fatalf("prefix VEANS_SERVER: got %v, want ErrUntrusted", err)
 	}
 }
 
 func TestGate_Record(t *testing.T) {
 	g := newGate(t, nil)
-	if err := g.Record("https://vikunja.example.com"); err != nil {
+	if err := g.Record("https://astering.example.com"); err != nil {
 		t.Fatal(err)
 	}
-	if err := g.Check("https://vikunja.example.com"); err != nil {
+	if err := g.Check("https://astering.example.com"); err != nil {
 		t.Fatalf("recorded origin not trusted: %v", err)
 	}
 }

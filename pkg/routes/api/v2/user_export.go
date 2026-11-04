@@ -20,11 +20,11 @@ import (
 	"context"
 	"net/http"
 
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/events"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/user"
-	webfiles "code.vikunja.io/api/pkg/web/files"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/events"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/user"
+	webfiles "github.com/KanameMadoka520/Astering/pkg/web/files"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humaecho"

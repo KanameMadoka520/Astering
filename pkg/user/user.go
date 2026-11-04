@@ -26,13 +26,13 @@ import (
 	"strconv"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/events"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/modules/keyvalue"
-	"code.vikunja.io/api/pkg/notifications"
-	"code.vikunja.io/api/pkg/web"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/events"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/modules/keyvalue"
+	"github.com/KanameMadoka520/Astering/pkg/notifications"
+	"github.com/KanameMadoka520/Astering/pkg/web"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v5"
@@ -216,7 +216,7 @@ func (u *User) GetName() string {
 func (u *User) GetNameAndFromEmail() string {
 	// Use RFC 5322 compliant address formatting to properly handle special characters like @ in names
 	addr := mail.Address{
-		Name:    u.GetName() + " via Vikunja",
+		Name:    u.GetName() + " via Astering",
 		Address: config.MailerFromEmail.GetString(),
 	}
 	return addr.String()
@@ -248,7 +248,7 @@ func GetFromAuth(a web.Auth) (*User, error) {
 type APIUserPassword struct {
 	// The user's username. Cannot contain anything that looks like an url or whitespaces.
 	Username string `json:"username" valid:"length(3|250),username" minLength:"3" maxLength:"250"`
-	// The user's password in clear text. Only used when registering the user. The maximum limi is 72 bytes, which may be less than 72 characters. This is due to the limit in the bcrypt hashing algorithm used to store passwords in Vikunja.
+	// The user's password in clear text. Only used when registering the user. The maximum limi is 72 bytes, which may be less than 72 characters. This is due to the limit in the bcrypt hashing algorithm used to store passwords in Astering.
 	Password string `json:"password" valid:"bcrypt_password" minLength:"8" maxLength:"72"`
 	// The user's email address
 	Email string `json:"email" valid:"email,length(0|250)" maxLength:"250"`

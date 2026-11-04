@@ -17,8 +17,8 @@
 package apiv2
 
 import (
-	"code.vikunja.io/api/pkg/modules/migration"
-	"code.vikunja.io/api/pkg/modules/migration/planka"
+	"github.com/KanameMadoka520/Astering/pkg/modules/migration"
+	"github.com/KanameMadoka520/Astering/pkg/modules/migration/planka"
 
 	"github.com/danielgtaylor/huma/v2"
 )
@@ -48,6 +48,6 @@ func registerCredentialsMigrator(api huma.API, factory func() migration.Migrator
 
 	registerMigrationStatus(api, name, tags, factory)
 	registerMigrationMigrate[migrationCredentialsBody](api, name, tags,
-		"Starts a migration of the authenticated user's data from the given instance into Vikunja. The credentials are verified synchronously and rejected with 400 if the instance refuses them; the migration itself runs asynchronously. Refuses with 412 if a migration for this service is already running.",
+		"Starts a migration of the authenticated user's data from the given instance into Astering. The credentials are verified synchronously and rejected with 400 if the instance refuses them; the migration itself runs asynchronously. Refuses with 412 if a migration for this service is already running.",
 		factory)
 }

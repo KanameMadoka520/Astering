@@ -1,4 +1,4 @@
-# Vikunja filter syntax
+# Astering filter syntax
 
 Filters select tasks: the `filter` argument of task list tools, project view filters and saved filters. Time entry filters use the same grammar with their own fields.
 

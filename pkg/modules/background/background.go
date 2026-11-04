@@ -17,8 +17,8 @@
 package background
 
 import (
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/web"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/web"
 	"xorm.io/xorm"
 )
 

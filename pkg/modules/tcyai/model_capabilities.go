@@ -20,7 +20,7 @@ import (
 	"net/url"
 	"slices"
 
-	"code.vikunja.io/api/pkg/modules/tcylocale"
+	"github.com/KanameMadoka520/Astering/pkg/modules/tcylocale"
 )
 
 // Capabilities describe one exact provider/model connection, never global agent budgets.

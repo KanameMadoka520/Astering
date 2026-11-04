@@ -30,7 +30,7 @@ function download() {
 	const url = URL.createObjectURL(new Blob([report.value], {type: 'application/json'}))
 	const link = document.createElement('a')
 	link.href = url
-	link.download = `vikunja-x-diagnostic-${selected.value?.id ?? 'environment'}.json`
+	link.download = `astering-diagnostic-${selected.value?.id ?? 'environment'}.json`
 	link.click()
 	setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

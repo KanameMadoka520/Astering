@@ -20,7 +20,7 @@ import (
 	"strconv"
 	"strings"
 
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 
 	"golang.org/x/net/html"
 	"xorm.io/xorm"

@@ -30,8 +30,8 @@ import (
 	"strings"
 	"unicode"
 
-	"code.vikunja.io/veans/internal/fsutil"
-	"code.vikunja.io/veans/internal/output"
+	"github.com/KanameMadoka520/Astering/veans/internal/fsutil"
+	"github.com/KanameMadoka520/Astering/veans/internal/output"
 )
 
 var ErrUntrusted = errors.New("server not trusted")

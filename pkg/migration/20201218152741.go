@@ -19,8 +19,8 @@ package migration
 import (
 	"strings"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/log"
 	"src.techknowlogick.com/xormigrate"
 	"xorm.io/xorm"
 )

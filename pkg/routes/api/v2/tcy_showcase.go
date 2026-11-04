@@ -21,9 +21,9 @@ import (
 	"context"
 	"net/http"
 
-	"code.vikunja.io/api/pkg/modules/tcylocale"
+	"github.com/KanameMadoka520/Astering/pkg/modules/tcylocale"
 
-	"code.vikunja.io/api/pkg/modules/tcyshowcase"
+	"github.com/KanameMadoka520/Astering/pkg/modules/tcyshowcase"
 	"github.com/danielgtaylor/huma/v2"
 )
 

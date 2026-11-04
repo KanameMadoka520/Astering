@@ -16,7 +16,7 @@
 
 package version
 
-import "code.vikunja.io/api/pkg/swagger"
+import "github.com/KanameMadoka520/Astering/pkg/swagger"
 
 // This package holds the version info
 // It is an own package to avoid import cycles

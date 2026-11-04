@@ -21,8 +21,8 @@ import (
 	"net/http"
 	"testing"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/modules/bark"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/modules/bark"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

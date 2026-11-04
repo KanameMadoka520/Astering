@@ -457,7 +457,7 @@ func mcpCheckPolicy(definition MCPToolDefinition, connection MCPConnection, inpu
 		return nil
 	}
 	if input.Mode != "write" || !connection.AllowWrite || len(input.WriteProjectIDs) != 0 {
-		return ToolFailure("MCP_WRITE_DENIED", "External writes require write mode, an enabled connection write switch, and no Vikunja-only project restriction.")
+		return ToolFailure("MCP_WRITE_DENIED", "External writes require write mode, an enabled connection write switch, and no Astering-only project restriction.")
 	}
 	if definition.Destructive && !connection.AllowDelete {
 		return ToolFailure("MCP_DELETE_DENIED", "Destructive or unknown external tools require this connection's deletion permission and a separate human review.")

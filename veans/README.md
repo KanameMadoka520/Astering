@@ -1,10 +1,10 @@
 # veans
 
-A beans-shaped CLI for Vikunja. Drop it into a repo, run `veans init`, paste a
+An agent-friendly companion CLI for Astering, based on the upstream Vikunja API contract. Drop it into a repo, run `veans init`, paste a
 hook snippet into your coding agent's settings, and the agent immediately
-knows to track its work in Vikunja instead of in `TodoWrite` or `.beans/`.
+knows to track its work in Astering instead of in `TodoWrite` or `.beans/`.
 
-veans is a thin Go binary that wraps Vikunja's REST API with an opinionated
+veans is a thin Go binary that wraps Astering's REST API with an opinionated
 agent-friendly surface and emits a system prompt teaching agents the workflow
 (claim → work → in-review → human closes). The agent prompt is re-emitted on
 every `SessionStart` and `PreCompact`, so context never goes stale.
@@ -15,8 +15,8 @@ every `SessionStart` and `PreCompact`, so context never goes stale.
 # 1. Build (or download) the binary
 cd veans && mage build && sudo install ./veans /usr/local/bin/
 
-# 2. In a repo with a Vikunja instance reachable
-veans init --server https://vikunja.example.com
+# 2. In a repo with an Astering instance reachable
+veans init --server https://astering.example.com
 
 # 3. Wire it into Claude Code (.claude/settings.json):
 {
@@ -40,12 +40,11 @@ without breaking sessions in unrelated repos.
 ## What `veans init` does
 
 1. Authenticates as you. Default is OAuth 2.0 Authorization Code + PKCE
-   against Vikunja's built-in authorization server (Vikunja 2.3+ — no
-   client registration needed). veans prints an authorize URL; you open
-   it in your browser, sign in, and paste the resulting
-   `vikunja-veans-cli://callback?code=...` URL back into the CLI. The
-   browser will fail to open the custom scheme — that's expected; the
-   address bar still has what we need.
+   against Astering's built-in authorization server (the compatible OAuth API inherited from Vikunja 2.3+ — no
+   client registration needed). veans opens a browser and receives the callback
+   through a temporary `127.0.0.1` loopback listener. Complete sign-in in a
+   browser on the same machine; no callback URL needs to be pasted into the CLI.
+   Existing OAuth client and credential-store identifiers remain compatible.
 
    Alternative auth modes:
    - `--token <jwt-or-personal-api-token>` — paste-in, useful for SSO/OIDC
@@ -54,10 +53,10 @@ without breaking sessions in unrelated repos.
 2. Asks you to pick a project and a Kanban view.
 3. Bootstraps the canonical buckets if missing: `Todo`, `In Progress`,
    `In Review`, `Done`, `Scrapped`.
-4. Creates a `bot-<repo-name>` user (Vikunja bot user — no password, no
+4. Creates a `bot-<repo-name>` user (Astering bot user — no password, no
    email, can't log in interactively).
 5. Shares the project with the bot at read+write.
-6. Mints a long-lived API token for the bot via `PUT /tokens` with
+6. Mints a long-lived API token for the bot via `POST /tokens` with
    `owner_id`, scoped to the discovered route groups (tasks, comments,
    labels, relations, assignees, etc.) the server actually exposes.
 7. Stores the token in your OS keychain (or
@@ -94,8 +93,8 @@ Committed to the repo root. The numeric IDs are the source of truth; cached
 identifiers and bot username are for human-readable output.
 
 ```yaml
-server: https://vikunja.example.com
-frontend_url: https://vikunja.example.com/  # from /info; backfilled if missing
+server: https://astering.example.com
+frontend_url: https://astering.example.com/  # from /info; backfilled if missing
 project_id: 42
 project_identifier: PROJ        # may be "" — task IDs render as #NN then
 view_id: 7
@@ -145,7 +144,7 @@ mage clean              # remove built binary
 
 ## End-to-end tests
 
-The suite in `e2e/` assumes a running Vikunja API. Locally, point it at any
+The suite in `e2e/` assumes a running Astering API. Locally, point it at any
 dev instance:
 
 ```sh
@@ -155,11 +154,7 @@ export VEANS_E2E_ADMIN_PASS=12345678   # canonical fixture password
 mage test:e2e
 ```
 
-CI spins Vikunja up the same way the frontend Playwright suite does — see
-`.github/workflows/veans-e2e.yml`. The workflow builds the parent API
-binary, starts it with `VIKUNJA_DATABASE_TYPE=sqlite`,
-`VIKUNJA_DATABASE_PATH=memory`, fixtures from `pkg/db/fixtures/`, and runs
-`mage test:e2e` from this directory.
+Tests run locally; this repository does not use GitHub Actions. Start an isolated parent API with SQLite memory storage, fixture data and `ASTERING_SERVICE_TESTINGTOKEN`, then run `mage test:e2e` here with the matching `VEANS_E2E_TESTING_TOKEN`. Do not point this mutating suite at a production instance.
 
 E2E tests never touch the developer's keychain — they override `HOME` and
 `XDG_CONFIG_HOME` per test, which forces the credential store to fall
@@ -184,7 +179,7 @@ PR lands.
 - OAuth 2.0 device flow (RFC 8628) — would let SSH'd / headless setups
   authenticate without a browser-on-the-same-machine; not implemented
   upstream yet.
-- Project-scoped API tokens — Vikunja doesn't ship them yet. The
+- Project-scoped API tokens — Astering doesn't ship them yet. The
   credential schema's `scope` field is forward-compatible for when it does.
 - Auto-installing hook snippets. We print them; you paste them.
 - Merge-hook GitHub Action that auto-closes tasks on PR merge — separate

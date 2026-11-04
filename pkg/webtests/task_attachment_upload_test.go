@@ -25,10 +25,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/modules/auth"
-	"code.vikunja.io/api/pkg/routes"
-	webfiles "code.vikunja.io/api/pkg/web/files"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/modules/auth"
+	"github.com/KanameMadoka520/Astering/pkg/routes"
+	webfiles "github.com/KanameMadoka520/Astering/pkg/web/files"
 
 	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"

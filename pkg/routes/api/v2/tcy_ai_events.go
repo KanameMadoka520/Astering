@@ -22,7 +22,7 @@ import (
 	"net/http"
 	"time"
 
-	"code.vikunja.io/api/pkg/modules/tcyai"
+	"github.com/KanameMadoka520/Astering/pkg/modules/tcyai"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humaecho"
 )

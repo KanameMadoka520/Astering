@@ -28,10 +28,10 @@ import (
 	"strings"
 	"time"
 
-	"code.vikunja.io/veans/internal/output"
+	"github.com/KanameMadoka520/Astering/veans/internal/output"
 )
 
-// Client is a thin JSON wrapper around the Vikunja REST API. It holds the
+// Client is a thin JSON wrapper around the Astering REST API. It holds the
 // server base URL and a bearer token (either a JWT from POST /login or an
 // API token minted via POST /tokens). Every method in this package is a thin
 // shim over Do.
@@ -57,7 +57,7 @@ const (
 // UserAgent is the value sent in the User-Agent header on every request.
 // main sets this at startup with the linker-injected version + the
 // runtime os/arch (e.g. "veans/0.3.1 (linux/amd64)"). Tests get the
-// default "veans/dev". Vikunja admins see this in their access logs.
+// default "veans/dev". Astering admins see this in their access logs.
 var UserAgent = "veans/dev"
 
 // defaultHTTPTimeout is the timeout applied to the HTTP client returned by
@@ -75,7 +75,7 @@ func New(baseURL, token string) *Client {
 }
 
 // vikunjaError matches the RFC 9457 problem+json body /api/v2 returns
-// (huma.ErrorModel augmented with Vikunja's numeric domain `code`). The
+// (huma.ErrorModel augmented with Astering's numeric domain `code`). The
 // human-readable message lives in `detail`; `title` is the status text
 // fallback. `message` is v1's legacy field, kept only as a fallback so a
 // stray legacy/proxy error body still yields a readable message instead of
@@ -242,7 +242,7 @@ func (c *Client) DoRaw(ctx context.Context, method, path string, query url.Value
 }
 
 // maxBodyBytes caps the size of any response body we'll read into memory.
-// Vikunja JSON payloads are far smaller; the cap exists so a misbehaving
+// Astering JSON payloads are far smaller; the cap exists so a misbehaving
 // proxy can't OOM the CLI by streaming an unbounded body.
 const maxBodyBytes = 32 * 1024 * 1024 // 32 MiB
 

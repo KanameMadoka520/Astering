@@ -24,9 +24,9 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/tkuchiki/go-timezone"
 
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/models"
-	user2 "code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	user2 "github.com/KanameMadoka520/Astering/pkg/user"
 )
 
 // UserAvatarProvider holds the user avatar provider type

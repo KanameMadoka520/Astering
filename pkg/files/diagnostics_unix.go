@@ -24,7 +24,7 @@ import (
 	"strings"
 	"syscall"
 
-	"code.vikunja.io/api/pkg/utils"
+	"github.com/KanameMadoka520/Astering/pkg/utils"
 )
 
 // storageDiagnosticInfo gathers process/directory identity and user namespace

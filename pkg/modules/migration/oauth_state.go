@@ -20,8 +20,8 @@ import (
 	"strconv"
 	"time"
 
-	"code.vikunja.io/api/pkg/modules/keyvalue"
-	"code.vikunja.io/api/pkg/utils"
+	"github.com/KanameMadoka520/Astering/pkg/modules/keyvalue"
+	"github.com/KanameMadoka520/Astering/pkg/utils"
 )
 
 const oauthStateTTL = 10 * time.Minute

@@ -20,12 +20,12 @@ import (
 	"context"
 	"time"
 
-	"code.vikunja.io/api/pkg/cron"
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/events"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/notifications"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/cron"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/events"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/notifications"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 
 	"xorm.io/builder"
 	"xorm.io/xorm"

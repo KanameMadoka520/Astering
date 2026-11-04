@@ -28,7 +28,7 @@ import (
 	"testing"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/config"
 
 	"github.com/stretchr/testify/require"
 )

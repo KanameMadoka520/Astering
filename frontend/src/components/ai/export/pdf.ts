@@ -87,7 +87,7 @@ export async function conversationPDF(c: Conversation, labels: {you: string, ass
 	for (const compact of c.compactions ?? []) content.push({text: labels.summary, bold: true, margin: [0, 14, 0, 6]}, ...markdownPDF(compact.summary || ''))
 	signal.throwIfAborted(); progress(done, distinct.length, 'pdf')
 	await new Promise(resolve => setTimeout(resolve, 50))
-	const definition: TDocumentDefinitions = {info: {title: c.title || labels.assistant, author: 'vikunja-x'}, pageSize: 'A4', pageBreakBefore: (node, container) => node.headlineLevel === 1 && container.getFollowingNodesOnPage().length === 0, pageMargins: [40, 45, 40, 45], defaultStyle: {font: 'NotoSansSC', fontSize: 10, lineHeight: 1.3}, content, footer: (page, pages) => ({text: `${page} / ${pages}`, alignment: 'center', fontSize: 8, color: '#64748b', margin: [0, 12, 0, 0]})}
+	const definition: TDocumentDefinitions = {info: {title: c.title || labels.assistant, author: 'Astering'}, pageSize: 'A4', pageBreakBefore: (node, container) => node.headlineLevel === 1 && container.getFollowingNodesOnPage().length === 0, pageMargins: [40, 45, 40, 45], defaultStyle: {font: 'NotoSansSC', fontSize: 10, lineHeight: 1.3}, content, footer: (page, pages) => ({text: `${page} / ${pages}`, alignment: 'center', fontSize: 8, color: '#64748b', margin: [0, 12, 0, 0]})}
 	const blob = await pdfMake.createPdf(definition).getBlob()
 	signal.throwIfAborted()
 	return blob

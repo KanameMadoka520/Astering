@@ -1,4 +1,4 @@
-module code.vikunja.io/build
+module github.com/KanameMadoka520/Astering/build
 
 go 1.27.0
 

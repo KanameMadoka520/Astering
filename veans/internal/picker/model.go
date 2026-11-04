@@ -22,7 +22,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"code.vikunja.io/veans/internal/client"
+	"github.com/KanameMadoka520/Astering/veans/internal/client"
 )
 
 const maxVisibleRows = 12
@@ -201,7 +201,7 @@ func (m *model) renderRow(i int) string {
 }
 
 // projectSuffix is the dimmed metadata appended to a project row. Titles aren't
-// unique in Vikunja, so the id (and identifier when set) keeps duplicate-titled
+// unique in Astering, so the id (and identifier when set) keeps duplicate-titled
 // projects distinguishable during init.
 func projectSuffix(p *client.Project) string {
 	s := fmt.Sprintf("  #%d", p.ID)

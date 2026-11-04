@@ -19,8 +19,8 @@ package red
 import (
 	"context"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/log"
 	"github.com/redis/go-redis/v9"
 )
 

@@ -19,8 +19,8 @@ package apiv2
 import (
 	"fmt"
 
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/tcyai"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/tcyai"
 	"xorm.io/xorm"
 )
 

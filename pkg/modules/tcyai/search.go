@@ -25,7 +25,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"code.vikunja.io/api/pkg/modules/tcylocale"
+	"github.com/KanameMadoka520/Astering/pkg/modules/tcylocale"
 )
 
 type WebSource struct {

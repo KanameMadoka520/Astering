@@ -21,7 +21,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"code.vikunja.io/veans/internal/config"
+	"github.com/KanameMadoka520/Astering/veans/internal/config"
 )
 
 func openRoot(t *testing.T, dir string) *os.Root {

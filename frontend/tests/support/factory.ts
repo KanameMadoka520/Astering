@@ -87,7 +87,7 @@ export class Factory {
 				data,
 				headers: {
 					'Content-Type': 'application/json',
-					'Authorization': process.env.VIKUNJA_SERVICE_TESTINGTOKEN || 'averyLongSecretToSe33dtheDB',
+					'Authorization': process.env.ASTERING_SERVICE_TESTINGTOKEN || process.env.VIKUNJA_SERVICE_TESTINGTOKEN || 'averyLongSecretToSe33dtheDB',
 				},
 			},
 		)
@@ -107,7 +107,7 @@ export class Factory {
 	static async truncateAll() {
 		const response = await this.request.delete('test/all', {
 			headers: {
-				'Authorization': process.env.VIKUNJA_SERVICE_TESTINGTOKEN || 'averyLongSecretToSe33dtheDB',
+				'Authorization': process.env.ASTERING_SERVICE_TESTINGTOKEN || process.env.VIKUNJA_SERVICE_TESTINGTOKEN || 'averyLongSecretToSe33dtheDB',
 			},
 		})
 

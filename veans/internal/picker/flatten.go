@@ -19,7 +19,7 @@ package picker
 import (
 	"unicode/utf8"
 
-	"code.vikunja.io/veans/internal/client"
+	"github.com/KanameMadoka520/Astering/veans/internal/client"
 	"github.com/sahilm/fuzzy"
 )
 

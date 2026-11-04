@@ -1,4 +1,4 @@
-# 全站体验与性能审查（v2.7.1-tcymc.35）
+# 全站体验与性能审查（v2.7.1-aster.35）
 
 本文记录 .35 这一轮「个人记录 + 以后邀请协作者」的体验、文案与性能审查：查了什么、发现了什么、改了什么、为什么没改其余的。基线为 `cac6020cf`（.34）。设计约束沿用 [whole-site-design.md](whole-site-design.md)，查询与缓存规则见 [.agents/docs/api.md](../.agents/docs/api.md)。
 

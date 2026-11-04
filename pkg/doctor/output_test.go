@@ -36,7 +36,7 @@ func TestPrintGroup(t *testing.T) {
 		},
 	})
 
-	assert.Equal(t, `Vikunja Doctor
+	assert.Equal(t, `Astering Doctor
 ==============
 
 Files (s3)

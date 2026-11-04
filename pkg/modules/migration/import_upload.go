@@ -24,12 +24,12 @@ import (
 	"os"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/cron"
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/files"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/cron"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/files"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 
 	"xorm.io/xorm"
 )
@@ -81,7 +81,7 @@ func OpenImportUpload(status *Status) (file io.ReaderAt, size int64, closeFile f
 	}
 	defer stored.File.Close()
 
-	local, err := os.CreateTemp("", "vikunja-import-*")
+	local, err := os.CreateTemp("", "astering-import-*")
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("could not create a local copy of the import upload: %w", err)
 	}

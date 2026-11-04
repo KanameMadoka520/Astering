@@ -20,8 +20,8 @@ import (
 	"context"
 	"net/http"
 
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/auth"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/auth"
 
 	"github.com/danielgtaylor/huma/v2"
 )

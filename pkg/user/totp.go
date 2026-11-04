@@ -25,12 +25,12 @@ import (
 	"strconv"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/events"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/modules/keyvalue"
-	"code.vikunja.io/api/pkg/notifications"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/events"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/modules/keyvalue"
+	"github.com/KanameMadoka520/Astering/pkg/notifications"
 
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
@@ -106,7 +106,7 @@ func EnrollTOTP(s *xorm.Session, user *User, password string) (t *TOTP, err erro
 	}
 
 	key, err := totp.Generate(totp.GenerateOpts{
-		Issuer:      "Vikunja",
+		Issuer:      "Astering",
 		AccountName: user.Username,
 	})
 	if err != nil {

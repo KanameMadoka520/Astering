@@ -6,7 +6,7 @@
                 {
                     "key": "secret",
                     "default_value": "\u003ca-secret\u003e",
-                    "comment": "This secret is used to sign JWT tokens and for other cryptographic operations.\nDefault is a random secret which will be generated at each startup of Vikunja.\n(This means all already issued tokens will be invalid once you restart Vikunja)"
+                    "comment": "This secret is used to sign JWT tokens and for other cryptographic operations.\nDefault is a random secret which will be generated at each startup of Astering.\n(This means all already issued tokens will be invalid once you restart Astering)"
                 },
                 {
                     "key": "JWTSecret",
@@ -46,17 +46,17 @@
                 {
                     "key": "publicurl",
                     "default_value": "",
-                    "comment": "The public facing URL where your users can reach Vikunja. Used in emails and for the communication between api and frontend. The url must be a valid http or https url. This setting is required when cors.enable is true."
+                    "comment": "The public facing URL where your users can reach Astering. Used in emails and for the communication between api and frontend. The url must be a valid http or https url. This setting is required when cors.enable is true."
                 },
                 {
                     "key": "apiurl",
                     "default_value": "",
-                    "comment": "Optional trusted public API URL when the API and frontend use different origins or deployment paths. Leave empty for a same-origin deployment. Used to recognize local task attachment images when deleting attachments or saving descriptions and comments; it does not change frontend links, routing, or CORS. Must be an absolute http(s) URL without credentials, query or fragment. May include a deployment prefix and an optional /api/v1 or /api/v2 suffix, for example https://api.example.com/backend/api/v2/. Set VIKUNJA_SERVICE_APIURL to override."
+                    "comment": "Optional trusted public API URL when the API and frontend use different origins or deployment paths. Leave empty for a same-origin deployment. Used to recognize local task attachment images when deleting attachments or saving descriptions and comments; it does not change frontend links, routing, or CORS. Must be an absolute http(s) URL without credentials, query or fragment. May include a deployment prefix and an optional /api/v1 or /api/v2 suffix, for example https://api.example.com/backend/api/v2/. Set ASTERING_SERVICE_APIURL to override; VIKUNJA_SERVICE_APIURL remains supported for existing deployments."
                 },
                 {
                     "key": "rootpath",
                     "default_value": "\u003crootpath\u003e",
-                    "comment": "The base path on the file system where Vikunja stores its data (database, files, logs, plugins).\nDefaults to the current working directory. When running as a systemd service, this respects the WorkingDirectory= setting.\nVikunja will also look in this path for a config file, so you could provide only this variable to point to a folder\nwith a config file which will then be used.\nWhen a config file is pinned with the `--config` flag, this search is skipped and rootpath defaults to the directory containing that config file.\nA relative rootpath set in a pinned config file is resolved against that same directory."
+                    "comment": "The base path on the file system where Astering stores its data (database, files, logs, plugins).\nDefaults to the current working directory. When running as a systemd service, this respects the WorkingDirectory= setting.\nAstering will also look in this path for a config file, so you could provide only this variable to point to a folder\nwith a config file which will then be used.\nWhen a config file is pinned with the `--config` flag, this search is skipped and rootpath defaults to the directory containing that config file.\nA relative rootpath set in a pinned config file is resolved against that same directory."
                 },
                 {
                     "key": "maxitemsperpage",
@@ -111,7 +111,7 @@
                 {
                     "key": "enableemailreminders",
                     "default_value": "true",
-                    "comment": "If enabled, Vikunja will send an email to everyone who is either assigned to a task or created it when a task reminder\nis due."
+                    "comment": "If enabled, Astering will send an email to everyone who is either assigned to a task or created it when a task reminder\nis due."
                 },
                 {
                     "key": "enableuserdeletion",
@@ -161,7 +161,7 @@
                 {
                     "key": "ipextractionmethod",
                     "default_value": "direct",
-                    "comment": "Method for extracting client IP addresses. 'direct' (default) uses the TCP remote address and ignores forwarding headers — use this when Vikunja faces the internet directly. 'xff' extracts from the X-Forwarded-For header — use this behind proxies like nginx, Traefik, or cloud load balancers. 'realip' extracts from the X-Real-IP header, but only honours it when the header value itself falls into a trusted range (loopback, private networks or 'service.trustedproxies') — it does not check who sent the header, so it cannot report public client IPs. Prefer 'xff' behind a reverse proxy. When using 'xff' or 'realip', configure 'service.trustedproxies' with your proxy CIDR ranges."
+                    "comment": "Method for extracting client IP addresses. 'direct' (default) uses the TCP remote address and ignores forwarding headers — use this when Astering faces the internet directly. 'xff' extracts from the X-Forwarded-For header — use this behind proxies like nginx, Traefik, or cloud load balancers. 'realip' extracts from the X-Real-IP header, but only honours it when the header value itself falls into a trusted range (loopback, private networks or 'service.trustedproxies') — it does not check who sent the header, so it cannot report public client IPs. Prefer 'xff' behind a reverse proxy. When using 'xff' or 'realip', configure 'service.trustedproxies' with your proxy CIDR ranges."
                 },
                 {
                     "key": "trustedproxies",
@@ -201,7 +201,7 @@
                 {
                     "key": "type",
                     "default_value": "sqlite",
-                    "comment": "Database type to use. Supported values are mysql, postgres and sqlite. Vikunja is able to run with MySQL 8.0+, Mariadb 10.2+, PostgreSQL 12+, and sqlite."
+                    "comment": "Database type to use. Supported values are mysql, postgres and sqlite. Astering is able to run with MySQL 8.0+, Mariadb 10.2+, PostgreSQL 12+, and sqlite."
                 },
                 {
                     "key": "user",
@@ -226,7 +226,7 @@
                 {
                     "key": "path",
                     "default_value": "./vikunja.db",
-                    "comment": "When using sqlite, this is the path where to store the database file. Can be an absolute path or relative path. \u003cbr/\u003e\nRelative paths are resolved as follows: \u003cbr/\u003e\n- If the config file was pinned with the `--config` flag and this value is not set explicitly, the default is resolved against the anchored rootpath, which is the directory of that config file. \u003cbr/\u003e\n- If `service.rootpath` is explicitly configured (differs from the binary location), the database path is resolved relative to that directory. \u003cbr/\u003e\n- Otherwise, relative paths are resolved to a platform-specific user data directory to prevent database files from being created in system directories (like `C:\\Windows\\System32` on Windows when running as a service): \u003cbr/\u003e\n  - **Windows**: `%LOCALAPPDATA%\\Vikunja` (e.g., `C:\\Users\\username\\AppData\\Local\\Vikunja`) \u003cbr/\u003e\n  - **macOS**: `~/Library/Application Support/Vikunja` \u003cbr/\u003e\n  - **Linux**: `$XDG_DATA_HOME/vikunja` or `~/.local/share/vikunja` \u003cbr/\u003e\n**Recommendation**: Use an absolute path for production deployments, especially when running Vikunja as a Windows service, to have full control over the database location."
+                    "comment": "When using sqlite, this is the path where to store the database file. Can be an absolute path or relative path. \u003cbr/\u003e\nRelative paths are resolved as follows: \u003cbr/\u003e\n- If the config file was pinned with the `--config` flag and this value is not set explicitly, the default is resolved against the anchored rootpath, which is the directory of that config file. \u003cbr/\u003e\n- If `service.rootpath` is explicitly configured (differs from the binary location), the database path is resolved relative to that directory. \u003cbr/\u003e\n- Otherwise, relative paths are resolved to a platform-specific user data directory to prevent database files from being created in system directories (like `C:\\Windows\\System32` on Windows when running as a service): \u003cbr/\u003e\n  - **Windows**: `%LOCALAPPDATA%\\Vikunja` (e.g., `C:\\Users\\username\\AppData\\Local\\Vikunja`) \u003cbr/\u003e\n  - **macOS**: `~/Library/Application Support/Vikunja` \u003cbr/\u003e\n  - **Linux**: `$XDG_DATA_HOME/vikunja` or `~/.local/share/vikunja` \u003cbr/\u003e\n**Recommendation**: Use an absolute path for production deployments, especially when running Astering as a Windows service, to have full control over the database location."
                 },
                 {
                     "key": "maxopenconnections",
@@ -271,7 +271,7 @@
                 {
                     "key": "schema",
                     "default_value": "public",
-                    "comment": "The PostgreSQL schema to use. Only used with postgres. If you have an existing Vikunja installation where the tables were created in a non-public schema (e.g. via the database user's search_path), you must set this to match that schema name. Vikunja pins the connection's search_path to this schema so that all statements resolve to it."
+                    "comment": "The PostgreSQL schema to use. Only used with postgres. If you have an existing Astering installation where the tables were created in a non-public schema (e.g. via the database user's search_path), you must set this to match that schema name. Astering pins the connection's search_path to this schema so that all statements resolve to it."
                 }
             ]
         },
@@ -367,7 +367,7 @@
                 },
                 {
                     "key": "fromemail",
-                    "default_value": "mail@vikunja",
+                    "default_value": "mail@astering",
                     "comment": "The default from address when sending emails"
                 },
                 {
@@ -383,7 +383,7 @@
                 {
                     "key": "forcessl",
                     "default_value": "false",
-                    "comment": "By default, Vikunja will try to connect with starttls, use this option to force it to use ssl."
+                    "comment": "By default, Astering will try to connect with starttls, use this option to force it to use ssl."
                 }
             ]
         },
@@ -583,17 +583,17 @@
                         {
                             "key": "maxsize",
                             "default_value": "256MB",
-                            "comment": "The maximum total size of decompressed content a Vikunja export file may contain. Exports whose declared uncompressed size exceeds this are rejected before anything is read."
+                            "comment": "The maximum total size of decompressed content a compatible Vikunja or Astering export file may contain. Exports whose declared uncompressed size exceeds this are rejected before anything is read."
                         },
                         {
                             "key": "maxfiles",
                             "default_value": "10000",
-                            "comment": "The maximum number of files a single Vikunja export may contain."
+                            "comment": "The maximum number of files a single Astering export may contain."
                         },
                         {
                             "key": "maxuserstorage",
                             "default_value": "1GB",
-                            "comment": "How much file storage a single user may use through Vikunja export imports. Existing storage plus the planned import size must stay below this."
+                            "comment": "How much file storage a single user may use through compatible Vikunja or Astering export imports. Existing storage plus the planned import size must stay below this."
                         }
                     ]
                 },
@@ -613,17 +613,17 @@
                         {
                             "key": "clientid",
                             "default_value": "",
-                            "comment": "The client id, required for making requests to the Todoist api\nYou need to register your Vikunja instance at https://developer.todoist.com/appconsole.html to get this."
+                            "comment": "The client id, required for making requests to the Todoist api\nYou need to register your Astering instance at https://developer.todoist.com/appconsole.html to get this."
                         },
                         {
                             "key": "clientsecret",
                             "default_value": "",
-                            "comment": "The client secret, also required for making requests to the Todoist api. Obtain it at https://developer.todoist.com/appconsole.html after registering your Vikunja instance."
+                            "comment": "The client secret, also required for making requests to the Todoist api. Obtain it at https://developer.todoist.com/appconsole.html after registering your Astering instance."
                         },
                         {
                             "key": "redirecturl",
                             "default_value": "\u003cservice.publicurl\u003e/migrate/todoist",
-                            "comment": "The url where clients are redirected after they authorized Vikunja to access their Todoist items.\nIn Todoist, this is called `OAuth redirect URL` and it needs to match the url you entered when registering\nyour Vikunja instance at the Todoist developer console.\nWhen using the official Vikunja frontend, set this to `\u003cservice.publicurl\u003e/migrate/todoist` (the default value).\nOtherwise, set this to an url which then makes a request to /api/v1/migration/todoist/migrate\nwith the code obtained from the Todoist api."
+                            "comment": "The url where clients are redirected after they authorized Astering to access their Todoist items.\nIn Todoist, this is called `OAuth redirect URL` and it needs to match the url you entered when registering\nyour Astering instance at the Todoist developer console.\nWhen using the official Astering frontend, set this to `\u003cservice.publicurl\u003e/migrate/todoist` (the default value).\nOtherwise, set this to an url which then makes a request to /api/v1/migration/todoist/migrate\nwith the code obtained from the Todoist api."
                         }
                     ]
                 },
@@ -638,12 +638,12 @@
                         {
                             "key": "key",
                             "default_value": "",
-                            "comment": "The client id, required for making requests to the trello api.\nYou need to register your Vikunja instance at https://trello.com/app-key (log in before you visit that link) to get one. Copy the `Personal Key` and set it as the client id. Add your Vikunja domain to the Allowed Origins list."
+                            "comment": "The client id, required for making requests to the trello api.\nYou need to register your Astering instance at https://trello.com/app-key (log in before you visit that link) to get one. Copy the `Personal Key` and set it as the client id. Add your Astering domain to the Allowed Origins list."
                         },
                         {
                             "key": "redirecturl",
                             "default_value": "\u003cfrontend url\u003e/migrate/trello",
-                            "comment": "The url where clients are redirected after they authorized Vikunja to access their trello cards.\nThis needs to match the url you entered when registering your Vikunja instance at trello.\nWhen using the official Vikunja frontend, set this to `\u003cservice.publicurl\u003e/migrate/trello` (the default value).\nOtherwise, set this to an url which then makes a request to /api/v1/migration/trello/migrate\nwith the code obtained from the Trello api."
+                            "comment": "The url where clients are redirected after they authorized Astering to access their trello cards.\nThis needs to match the url you entered when registering your Astering instance at trello.\nWhen using the official Astering frontend, set this to `\u003cservice.publicurl\u003e/migrate/trello` (the default value).\nOtherwise, set this to an url which then makes a request to /api/v1/migration/trello/migrate\nwith the code obtained from the Trello api."
                         }
                     ]
                 },
@@ -658,7 +658,7 @@
                         {
                             "key": "clientid",
                             "default_value": "",
-                            "comment": "The client id, required for making requests to the Microsoft graph api.\nSee https://docs.microsoft.com/en-us/azure/active-directory/develop/quickstart-register-app#register-an-application\nfor information about how to register your Vikunja instance."
+                            "comment": "The client id, required for making requests to the Microsoft graph api.\nSee https://docs.microsoft.com/en-us/azure/active-directory/develop/quickstart-register-app#register-an-application\nfor information about how to register your Astering instance."
                         },
                         {
                             "key": "clientsecret",
@@ -668,7 +668,7 @@
                         {
                             "key": "redirecturl",
                             "default_value": "\u003cfrontend url\u003e/migrate/microsoft-todo",
-                            "comment": "The url where clients are redirected after they authorized Vikunja to access their Microsoft todo tasks.\nThis needs to match the url you entered when registering your Vikunja instance at Microsoft.\nWhen using the official Vikunja frontend, set this to `\u003cservice.publicurl\u003e/migrate/microsoft-todo` (the default value).\nOtherwise, set this to an url which then makes a request to /api/v1/migration/microsoft-todo/migrate\nwith the code obtained from the Microsoft Todo api."
+                            "comment": "The url where clients are redirected after they authorized Astering to access their Microsoft todo tasks.\nThis needs to match the url you entered when registering your Astering instance at Microsoft.\nWhen using the official Astering frontend, set this to `\u003cservice.publicurl\u003e/migrate/microsoft-todo` (the default value).\nOtherwise, set this to an url which then makes a request to /api/v1/migration/microsoft-todo/migrate\nwith the code obtained from the Microsoft Todo api."
                         }
                     ]
                 }
@@ -775,7 +775,7 @@
                 },
                 {
                     "key": "openid",
-                    "comment": "OpenID configuration will allow users to authenticate through a third-party OpenID Connect compatible provider.\u003cbr/\u003e\nThe provider needs to support the `openid`, `profile` and `email` scopes.\u003cbr/\u003e\n**Note:** Some openid providers (like Gitlab) only make the email of the user available through OpenID if they have set it to be publicly visible.\nIf the email is not public in those cases, authenticating will fail.\u003cbr/\u003e\n**Note 2:** The frontend expects the third party to redirect the user \u003cfrontend-url\u003e/auth/openid/\u003cauth key\u003e after authentication. Please make sure to configure the redirect url in your third party auth service accordingly if you're using the default Vikunja frontend.\nThe frontend will automatically provide the API with the redirect url, composed from the current url where it's hosted.\nIf you want to use the desktop client with OpenID, make sure to allow redirects to `127.0.0.1`.",
+                    "comment": "OpenID configuration will allow users to authenticate through a third-party OpenID Connect compatible provider.\u003cbr/\u003e\nThe provider needs to support the `openid`, `profile` and `email` scopes.\u003cbr/\u003e\n**Note:** Some openid providers (like Gitlab) only make the email of the user available through OpenID if they have set it to be publicly visible.\nIf the email is not public in those cases, authenticating will fail.\u003cbr/\u003e\n**Note 2:** The frontend expects the third party to redirect the user \u003cfrontend-url\u003e/auth/openid/\u003cauth key\u003e after authentication. Please make sure to configure the redirect url in your third party auth service accordingly if you're using the default Astering frontend.\nThe frontend will automatically provide the API with the redirect url, composed from the current url where it's hosted.\nIf you want to use the desktop client with OpenID, make sure to allow redirects to `127.0.0.1`.",
                     "children": [
                         {
                             "key": "enabled",
@@ -784,7 +784,7 @@
                         },
                         {
                             "key": "providers",
-                            "comment": "A list of enabled providers. You can freely choose the `<provider key>`. Note that you must add at least one key to a config file if you want to read values from an environment variable as the provider won't be known to Vikunja otherwise.",
+                            "comment": "A list of enabled providers. You can freely choose the `\u003cprovider key\u003e`. Note that you must add at least one key to a config file if you want to read values from an environment variable as the provider won't be known to Astering otherwise.",
                             "children": [
                                 {
                                     "key": "<provider key>",
@@ -807,27 +807,27 @@
                                         {
                                             "key": "clientid",
                                             "default_value": "",
-                                            "comment": "The client ID used to authenticate Vikunja at the OpenID Connect provider."
+                                            "comment": "The client ID used to authenticate Astering at the OpenID Connect provider."
                                         },
                                         {
                                             "key": "clientsecret",
                                             "default_value": "",
-                                            "comment": "The client secret used to authenticate Vikunja at the OpenID Connect provider."
+                                            "comment": "The client secret used to authenticate Astering at the OpenID Connect provider."
                                         },
                                         {
                                             "key": "scope",
                                             "default_value": "openid email profile",
-                                            "comment": "The scope necessary to use oidc.\nIf you want to use the Feature to create and assign to Vikunja teams via oidc, you have to add the custom \"vikunja_scope\" and check [openid.md](https://vikunja.io/docs/openid/).\ne.g. scope: openid email profile vikunja_scope"
+                                            "comment": "The scope necessary to use oidc.\nIf you want to use the Feature to create and assign to Astering teams via oidc, you have to add the custom \"vikunja_scope\" and check [openid.md](https://vikunja.io/docs/openid/).\ne.g. scope: openid email profile vikunja_scope"
                                         },
                                         {
                                             "key": "usernamefallback",
                                             "default_value": "false",
-                                            "comment": "This option allows to look for a local account where the OIDC Issuer match the Vikunja local username. Allowed value is either `true` or `false`. If `emailfallback` is also enabled, a local account matching both username and email is preferred, then one matching the email alone.\nUse with caution, this can allow the 3rd party provider to connect to *any* local account and therefore potential account hijaking."
+                                            "comment": "This option allows to look for a local account where the OIDC Issuer match the Astering local username. Allowed value is either `true` or `false`. If `emailfallback` is also enabled, a local account matching both username and email is preferred, then one matching the email alone.\nUse with caution, this can allow the 3rd party provider to connect to *any* local account and therefore potential account hijaking."
                                         },
                                         {
                                             "key": "emailfallback",
                                             "default_value": "false",
-                                            "comment": "This option allows to look for a local account where the OIDC user's email match the Vikunja local email. Allowed value is either `true` or `false`. Requires the provider to send `email_verified: true`. Also applies when `usernamefallback` is enabled.\nUse with caution, this can allow the 3rd party provider to connect to *any* local account and therefore potential account hijaking."
+                                            "comment": "This option allows to look for a local account where the OIDC user's email match the Astering local email. Allowed value is either `true` or `false`. Requires the provider to send `email_verified: true`. Also applies when `usernamefallback` is enabled.\nUse with caution, this can allow the 3rd party provider to connect to *any* local account and therefore potential account hijaking."
                                         },
                                         {
                                             "key": "forceuserinfo",
@@ -837,7 +837,7 @@
                                         {
                                             "key": "requireavailability",
                                             "default_value": "false",
-                                            "comment": "This option requires the OpenID Connect provider to be available during Vikunja startup. When set to `true`, Vikunja will crash if it cannot connect to the provider during initialization, allowing container orchestrators like Kubernetes to handle the failure by restarting the application. This is useful in environments where you want to ensure all authentication providers are available before the application starts serving requests. Allowed value is either `true` or `false`."
+                                            "comment": "This option requires the OpenID Connect provider to be available during Astering startup. When set to `true`, Astering will crash if it cannot connect to the provider during initialization, allowing container orchestrators like Kubernetes to handle the failure by restarting the application. This is useful in environments where you want to ensure all authentication providers are available before the application starts serving requests. Allowed value is either `true` or `false`."
                                         }
                                     ]
                                 }
@@ -897,52 +897,52 @@
                         {
                             "key": "groupsyncenabled",
                             "default_value": "false",
-                            "comment": "If enabled, Vikunja will automagically add users to teams in Vikunja matching `groupsyncfilter`. The teams will be automatically created and kept in sync by Vikunja."
+                            "comment": "If enabled, Astering will automagically add users to teams in Astering matching `groupsyncfilter`. The teams will be automatically created and kept in sync by Astering."
                         },
                         {
                             "key": "groupsyncfilter",
                             "default_value": "(&(objectclass=*)(|(objectclass=group)(objectclass=groupOfNames)))",
-                            "comment": "The filter to search for group objects in the ldap directory. Only used when `groupsyncenabled` is set to `true`.\nMay contain `{userdn}` (the user's DN) and `{username}` (the user's `attribute.username` value), both escaped. With a placeholder, every matching group is a membership and `attribute.memberid` is ignored; login fails if the value is empty.\nExample (OpenLDAP, direct membership): `(&(objectclass=groupOfNames)(member={userdn}))`\nExample (Active Directory, including nested groups): `(&(objectClass=group)(member:1.2.840.113556.1.4.1941:={userdn}))`\nWithout a placeholder, Vikunja fetches all matching groups and checks their `attribute.memberid` values, which is slow on large directories and misses members of Active Directory groups with more than 1500 members."
+                            "comment": "The filter to search for group objects in the ldap directory. Only used when `groupsyncenabled` is set to `true`.\nMay contain `{userdn}` (the user's DN) and `{username}` (the user's `attribute.username` value), both escaped. With a placeholder, every matching group is a membership and `attribute.memberid` is ignored; login fails if the value is empty.\nExample (OpenLDAP, direct membership): `(&(objectclass=groupOfNames)(member={userdn}))`\nExample (Active Directory, including nested groups): `(&(objectClass=group)(member:1.2.840.113556.1.4.1941:={userdn}))`\nWithout a placeholder, Astering fetches all matching groups and checks their `attribute.memberid` values, which is slow on large directories and misses members of Active Directory groups with more than 1500 members."
                         },
                         {
                             "key": "groupsyncuseserviceaccount",
                             "default_value": "false",
-                            "comment": "If true, Vikunja re-binds as the service account (binddn/bindpassword) before searching for groups during group sync. Enable this when the authenticating user does not have sufficient rights to enumerate group membership in the directory."
+                            "comment": "If true, Astering re-binds as the service account (binddn/bindpassword) before searching for groups during group sync. Enable this when the authenticating user does not have sufficient rights to enumerate group membership in the directory."
                         },
                         {
                             "key": "avatarsyncattribute",
                             "default_value": "",
-                            "comment": "The LDAP attribute where an image, decoded as raw bytes, can be found. If provided, Vikunja will use the value as avatar."
+                            "comment": "The LDAP attribute where an image, decoded as raw bytes, can be found. If provided, Astering will use the value as avatar."
                         },
                         {
                             "key": "attribute",
                             "default_value": "",
-                            "comment": "The directory attributes that are used to create accounts in Vikunja.",
+                            "comment": "The directory attributes that are used to create accounts in Astering.",
                             "children": [
                                 {
                                     "key": "username",
                                     "default_value": "uid",
-                                    "comment": "The LDAP attribute used to set the username in Vikunja."
+                                    "comment": "The LDAP attribute used to set the username in Astering."
                                 },
                                 {
                                     "key": "email",
                                     "default_value": "mail",
-                                    "comment": "The LDAP attribute used to set the email in Vikunja."
+                                    "comment": "The LDAP attribute used to set the email in Astering."
                                 },
                                 {
                                     "key": "displayname",
                                     "default_value": "displayName",
-                                    "comment": "The LDAP attribute used to set the displayed name in Vikunja."
+                                    "comment": "The LDAP attribute used to set the displayed name in Astering."
                                 },
                                 {
                                     "key": "memberid",
                                     "default_value": "member",
-                                    "comment": "The LDAP attribute used to check group membership of a team in Vikunja. Only used when groups are synced to Vikunja and `groupsyncfilter` contains neither `{userdn}` nor `{username}`."
+                                    "comment": "The LDAP attribute used to check group membership of a team in Astering. Only used when groups are synced to Astering and `groupsyncfilter` contains neither `{userdn}` nor `{username}`."
                                 },
                                 {
                                     "key": "id",
                                     "default_value": "",
-                                    "comment": "An immutable LDAP attribute used to match LDAP users to Vikunja accounts and LDAP groups to Vikunja teams, so renaming a user's login name or moving or renaming a group in the directory keeps the account or team and its shares. Use `objectGUID` for Active Directory or `entryUUID` for OpenLDAP. If empty, users are matched by `attribute.username` and groups by their DN.\nWhen set on an existing installation, existing accounts and teams are migrated gradually, each on the next login of that user or of a member of that group. The switch is one-way: unsetting or changing this attribute later creates new accounts and teams, and the old ones keep their data and shares but no longer match. While this is set, users must not be able to edit their own `attribute.username` value: a user who sets it to another user's id value could take over that user's migrated account."
+                                    "comment": "An immutable LDAP attribute used to match LDAP users to Astering accounts and LDAP groups to Astering teams, so renaming a user's login name or moving or renaming a group in the directory keeps the account or team and its shares. Use `objectGUID` for Active Directory or `entryUUID` for OpenLDAP. If empty, users are matched by `attribute.username` and groups by their DN.\nWhen set on an existing installation, existing accounts and teams are migrated gradually, each on the next login of that user or of a member of that group. The switch is one-way: unsetting or changing this attribute later creates new accounts and teams, and the old ones keep their data and shares but no longer match. While this is set, users must not be able to edit their own `attribute.username` value: a user who sets it to another user's id value could take over that user's migrated account."
                                 }
                             ]
                         }
@@ -957,7 +957,7 @@
                 {
                     "key": "enabled",
                     "default_value": "false",
-                    "comment": "If set to true, enables a /metrics endpoint for prometheus to collect metrics about Vikunja. You can query it from `/api/v1/metrics`."
+                    "comment": "If set to true, enables a /metrics endpoint for prometheus to collect metrics about Astering. You can query it from `/api/v1/metrics`."
                 },
                 {
                     "key": "username",
@@ -1028,7 +1028,7 @@
                 {
                     "key": "language",
                     "default_value": "\u003cunset\u003e",
-                    "comment": "The language of the user interface. Must be an ISO 639-1 language code followed by an ISO 3166-1 alpha-2 country code. Check https://code.vikunja.io/vikunja/tree/main/frontend/src/i18n/lang for a list of possible languages. Will default to the browser language the user uses when signing up."
+                    "comment": "The language of the user interface. Must be an ISO 639-1 language code followed by an ISO 3166-1 alpha-2 country code. Check https://github.com/KanameMadoka520/Astering/tree/main/frontend/src/i18n/lang for a list of possible languages. Will default to the browser language the user uses when signing up."
                 },
                 {
                     "key": "timezone",
@@ -1053,7 +1053,7 @@
                 {
                     "key": "proxyurl",
                     "default_value": "",
-                    "comment": "Deprecated: use outgoingrequests.proxyurl instead. The URL of [a mole instance](https://github.com/frain-dev/mole) to use to proxy outgoing webhook requests. You should use this and configure appropriately if you're not the only one using your Vikunja instance. More info about why: https://webhooks.fyi/best-practices/webhook-providers#implement-security-on-egress-communication. Must be used in combination with `webhooks.password` (see below)."
+                    "comment": "Deprecated: use outgoingrequests.proxyurl instead. The URL of [a mole instance](https://github.com/frain-dev/mole) to use to proxy outgoing webhook requests. You should use this and configure appropriately if you're not the only one using your Astering instance. More info about why: https://webhooks.fyi/best-practices/webhook-providers#implement-security-on-egress-communication. Must be used in combination with `webhooks.password` (see below)."
                 },
                 {
                     "key": "proxypassword",
@@ -1063,7 +1063,7 @@
                 {
                     "key": "allownonroutableips",
                     "default_value": "false",
-                    "comment": "Deprecated: use outgoingrequests.allownonroutableips instead. If set to true, webhook target URLs may resolve to non-globally-routable IP addresses (private networks, loopback, link-local, etc). When false (the default), Vikunja blocks outgoing webhook requests to these addresses to prevent SSRF attacks. Set this to true if you need webhooks to reach services on your internal network."
+                    "comment": "Deprecated: use outgoingrequests.allownonroutableips instead. If set to true, webhook target URLs may resolve to non-globally-routable IP addresses (private networks, loopback, link-local, etc). When false (the default), Astering blocks outgoing webhook requests to these addresses to prevent SSRF attacks. Set this to true if you need webhooks to reach services on your internal network."
                 }
             ]
         },
@@ -1104,12 +1104,12 @@
                 {
                     "key": "allownonroutableips",
                     "default_value": "false",
-                    "comment": "If set to true, outgoing HTTP requests (webhooks, avatar downloads, migration imports, and the license check) may resolve to non-globally-routable IP addresses. When false (the default), Vikunja blocks these to prevent SSRF attacks. Requests sent through a proxy are not checked, since the proxy resolves the target: filtering them is the proxy's job, and a generic forward proxy does not filter. Set to true only if you need these to reach services on your internal network."
+                    "comment": "If set to true, outgoing HTTP requests (webhooks, avatar downloads, migration imports, and the license check) may resolve to non-globally-routable IP addresses. When false (the default), Astering blocks these to prevent SSRF attacks. Requests sent through a proxy are not checked, since the proxy resolves the target: filtering them is the proxy's job, and a generic forward proxy does not filter. Set to true only if you need these to reach services on your internal network."
                 },
                 {
                     "key": "proxyurl",
                     "default_value": "",
-                    "comment": "The URL of an HTTP proxy, for example [a mole instance](https://github.com/frain-dev/mole), to use for outgoing HTTP requests: webhooks, avatar downloads, migration imports, OpenID Connect, and the license check. You should use this and configure appropriately if you're not the only one using your Vikunja instance. More info about why: https://webhooks.fyi/best-practices/webhook-providers#implement-security-on-egress-communication. Credentials can be part of the URL (`http://user:password@proxy:3128`) or set with `outgoingrequests.proxypassword`. If not set, the standard `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` environment variables are used. Connections to the proxy itself are exempt from the `allownonroutableips` check, since the proxy resolves proxied targets."
+                    "comment": "The URL of an HTTP proxy, for example [a mole instance](https://github.com/frain-dev/mole), to use for outgoing HTTP requests: webhooks, avatar downloads, migration imports, OpenID Connect, and the license check. You should use this and configure appropriately if you're not the only one using your Astering instance. More info about why: https://webhooks.fyi/best-practices/webhook-providers#implement-security-on-egress-communication. Credentials can be part of the URL (`http://user:password@proxy:3128`) or set with `outgoingrequests.proxypassword`. If not set, the standard `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` environment variables are used. Connections to the proxy itself are exempt from the `allownonroutableips` check, since the proxy resolves proxied targets."
                 },
                 {
                     "key": "proxypassword",
@@ -1124,7 +1124,7 @@
                 {
                     "key": "enabled",
                     "default_value": "false",
-                    "comment": "If set to true, Vikunja will automatically request a TLS certificate from Let's Encrypt and use it to serve Vikunja over TLS. By enabling this option, you agree to Let's Encrypt's TOS.\nYou must configure a `service.publicurl` with a valid TLD where Vikunja is reachable to make this work. Furthermore, it is recommended to set `service.interface` to `:443` if you're using this."
+                    "comment": "If set to true, Astering will automatically request a TLS certificate from Let's Encrypt and use it to serve Astering over TLS. By enabling this option, you agree to Let's Encrypt's TOS.\nYou must configure a `service.publicurl` with a valid TLD where Astering is reachable to make this work. Furthermore, it is recommended to set `service.interface` to `:443` if you're using this."
                 },
                 {
                     "key": "email",
@@ -1164,7 +1164,7 @@
                 {
                     "key": "key",
                     "default_value": "",
-                    "comment": "The license key for Vikunja. If empty or absent, Vikunja runs in community mode with all non-licensed features available."
+                    "comment": "The upstream Vikunja license key for optional licensed features. If empty or absent, Astering runs in community mode with all non-licensed features available."
                 }
             ]
         }

@@ -26,13 +26,13 @@ function shellQuote(value: string) {
 
 const instructions = computed<Record<string, {key: string, value?: string}[]>>(() => ({
 	claudeCode: [
-		{key: 'command', value: `claude mcp add --transport http vikunja ${shellQuote(props.endpoint)} --header ${shellQuote(`Authorization: Bearer ${props.token}`)}`},
+		{key: 'command', value: `claude mcp add --transport http astering ${shellQuote(props.endpoint)} --header ${shellQuote(`Authorization: Bearer ${props.token}`)}`},
 		{key: 'verify'},
 	],
 	codex: [
-		{key: 'environment', value: `export VIKUNJA_MCP_TOKEN=${shellQuote(props.token)}`},
-		{key: 'command', value: `codex mcp add vikunja --url ${shellQuote(props.endpoint)} --bearer-token-env-var VIKUNJA_MCP_TOKEN`},
-		{key: 'config', value: `[mcp_servers.vikunja]\nurl = ${JSON.stringify(props.endpoint)}\nbearer_token_env_var = "VIKUNJA_MCP_TOKEN"`},
+		{key: 'environment', value: `export ASTERING_MCP_TOKEN=${shellQuote(props.token)}`},
+		{key: 'command', value: `codex mcp add astering --url ${shellQuote(props.endpoint)} --bearer-token-env-var ASTERING_MCP_TOKEN`},
+		{key: 'config', value: `[mcp_servers.astering]\nurl = ${JSON.stringify(props.endpoint)}\nbearer_token_env_var = "ASTERING_MCP_TOKEN"`},
 		{key: 'note'},
 	],
 	claudeDesktop: [

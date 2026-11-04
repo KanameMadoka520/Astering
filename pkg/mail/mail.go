@@ -19,11 +19,10 @@ package mail
 import (
 	"context"
 	"crypto/tls"
-	"os"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/log"
 
 	"github.com/wneessen/go-mail"
 )
@@ -88,7 +87,7 @@ func getClient(settings config.MailerRuntime) (*mail.Client, error) {
 
 // StartMailDaemon starts the mail daemon
 func StartMailDaemon() {
-	if !config.MailerEnabled.GetBool() && os.Getenv("TCYMC_SETTINGS_ADMIN_IDS") == "" {
+	if !config.MailerEnabled.GetBool() && config.SettingsAdminIDsEnv() == "" {
 		Queue = nil
 		return
 	}

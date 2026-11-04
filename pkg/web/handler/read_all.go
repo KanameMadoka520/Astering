@@ -24,10 +24,10 @@ import (
 	"reflect"
 	"strconv"
 
-	vconfig "code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/auth"
+	vconfig "github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/auth"
 
 	"github.com/labstack/echo/v5"
 )

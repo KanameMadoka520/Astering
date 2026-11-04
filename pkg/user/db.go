@@ -16,7 +16,7 @@
 
 package user
 
-import "code.vikunja.io/api/pkg/db"
+import "github.com/KanameMadoka520/Astering/pkg/db"
 
 func init() {
 	db.RegisterTables(GetTables())

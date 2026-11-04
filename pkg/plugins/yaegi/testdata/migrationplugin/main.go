@@ -17,7 +17,7 @@
 package main
 
 import (
-	"code.vikunja.io/api/pkg/plugins"
+	"github.com/KanameMadoka520/Astering/pkg/plugins"
 
 	"src.techknowlogick.com/xormigrate"
 	"xorm.io/xorm"

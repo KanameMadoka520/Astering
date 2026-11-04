@@ -31,7 +31,7 @@ var (
 
 // PrintHeader writes the report header to the given writer.
 func PrintHeader(w io.Writer) {
-	fmt.Fprintln(w, bold("Vikunja Doctor"))
+	fmt.Fprintln(w, bold("Astering Doctor"))
 	fmt.Fprintln(w, "==============")
 	fmt.Fprintln(w)
 }

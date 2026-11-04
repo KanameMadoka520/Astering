@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// Package status maps the five canonical veans statuses to Vikunja bucket
+// Package status maps the five canonical veans statuses to Astering bucket
 // IDs and the `done` flag. The mapping is canonical and reflected verbatim
 // in the agent prompt (see internal/commands/prompt.tmpl).
 package status
@@ -23,8 +23,8 @@ import (
 	"fmt"
 	"strings"
 
-	"code.vikunja.io/veans/internal/config"
-	"code.vikunja.io/veans/internal/output"
+	"github.com/KanameMadoka520/Astering/veans/internal/config"
+	"github.com/KanameMadoka520/Astering/veans/internal/output"
 )
 
 // Status is the agent-facing state name.
@@ -44,7 +44,7 @@ func All() []Status {
 }
 
 // BucketTitleAliases lists titles that count as the canonical bucket for
-// each status. Vikunja's default Kanban view ships with "To-Do", "Doing"
+// each status. Astering's default Kanban view ships with "To-Do", "Doing"
 // and "Done" buckets — we accept those so a vanilla project doesn't grow
 // parallel buckets when veans init runs against it. The first entry is
 // the canonical title returned by BucketTitle().

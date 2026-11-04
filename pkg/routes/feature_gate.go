@@ -17,7 +17,7 @@
 package routes
 
 import (
-	"code.vikunja.io/api/pkg/license"
+	"github.com/KanameMadoka520/Astering/pkg/license"
 	"github.com/labstack/echo/v5"
 )
 

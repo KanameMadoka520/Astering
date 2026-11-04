@@ -23,8 +23,8 @@ import (
 	"testing"
 	"time"
 
-	"code.vikunja.io/veans/internal/config"
-	"code.vikunja.io/veans/internal/credentials"
+	"github.com/KanameMadoka520/Astering/veans/internal/config"
+	"github.com/KanameMadoka520/Astering/veans/internal/credentials"
 )
 
 // TestInit_HappyPath exercises the full bootstrap: pick project + view,
@@ -80,7 +80,7 @@ func TestInit_HappyPath(t *testing.T) {
 		t.Fatalf("token not persisted: %v", err)
 	}
 	if !strings.HasPrefix(tok, "tk_") {
-		t.Fatalf("bot token doesn't look like a Vikunja API token: %q", tok)
+		t.Fatalf("bot token doesn't look like an Astering API token: %q", tok)
 	}
 
 	// Bot exists on the server with the right username.
@@ -159,13 +159,13 @@ func TestInit_NoIdentifierFallsBackToHashNN(t *testing.T) {
 
 // uniqueSuffix returns a short slug derived from the current nanosecond
 // timestamp, base-36-encoded so every character is alphanumeric. Tests
-// also use this slug as a project identifier, which Vikunja caps at 10
+// also use this slug as a project identifier, which Astering caps at 10
 // chars, so the encoding has to be compact and free of separators.
 func uniqueSuffix() string {
 	return strconv.FormatInt(time.Now().UnixNano(), 36)
 }
 
-// identifier returns a stable 10-char-or-fewer slug for use as a Vikunja
+// identifier returns a stable 10-char-or-fewer slug for use as an Astering
 // project identifier. The base-36 timestamp's most-significant chars
 // barely change across consecutive runs, so we use the trailing chars
 // (which carry the nanosecond entropy) and uppercase them.

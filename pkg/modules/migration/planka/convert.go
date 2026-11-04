@@ -26,11 +26,11 @@ import (
 	"strings"
 	"time"
 
-	"code.vikunja.io/api/pkg/files"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/notifications"
-	"code.vikunja.io/api/pkg/richtext"
+	"github.com/KanameMadoka520/Astering/pkg/files"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/notifications"
+	"github.com/KanameMadoka520/Astering/pkg/richtext"
 )
 
 // labelColors maps Planka label color names (server/api/models/Label.js COLORS) to the hex values

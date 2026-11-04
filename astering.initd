@@ -1,10 +1,10 @@
 #!/sbin/openrc-run
 
-command="/usr/local/bin/vikunja"
+command="/usr/local/bin/astering"
 command_background=true
-pidfile="/run/vikunja.pid"
-directory="/opt/vikunja"
-description="Vikunja service"
+pidfile="/run/astering.pid"
+directory="/opt/astering"
+description="Astering service"
 
 depend() {
     need net

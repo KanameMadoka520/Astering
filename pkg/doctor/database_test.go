@@ -22,8 +22,8 @@ import (
 	"strings"
 	"testing"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/db"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -130,7 +130,7 @@ func TestCheckParadeDB_SystemCatalogs(t *testing.T) {
 				assert.Empty(t, results[1].Error)
 			} else {
 				assert.True(t, strings.HasPrefix(results[1].Error, "missing: idx_"), results[1].Error)
-				assert.Contains(t, results[1].Error, "(restart Vikunja to create them)")
+				assert.Contains(t, results[1].Error, "(restart Astering to create them)")
 			}
 		})
 	}

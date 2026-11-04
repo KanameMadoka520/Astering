@@ -19,8 +19,8 @@ package migration
 import (
 	"strconv"
 
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/utils"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/utils"
 
 	"src.techknowlogick.com/xormigrate"
 	"xorm.io/xorm"

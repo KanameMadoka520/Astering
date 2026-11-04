@@ -1,6 +1,6 @@
 # 阿罗娜：模块边界与移植指南
 
-阿罗娜是 vikunja-x 的原生任务助手。账号的 `persona` 设置为 `arona`（默认）或 `none`，后者保留名称但使用中性语气。下一条新消息读取最新设置，不重写历史消息或正在运行的请求。人设不参与权限计算。
+阿罗娜是 Astering 的原生任务助手。账号的 `persona` 设置为 `arona`（默认）或 `none`，后者保留名称但使用中性语气。下一条新消息读取最新设置，不重写历史消息或正在运行的请求。人设不参与权限计算。
 
 ## 功能目录与宿主适配
 
@@ -10,7 +10,7 @@
 | 多模态附件 | `pkg/modules/tcyai/attachments.go` | 用户隔离、加密、去重、引用回收、四协议图片输入 |
 | 可移植导出 | `pkg/modules/tcyai/exports.go` | Markdown、相对附件 ZIP、结构化 JSON |
 | 人设 | `pkg/modules/tcyai/persona.go` | 只影响表达，不授予权限 |
-| HTTP 适配 | `pkg/routes/api/v2/tcy_ai*.go` | 人类账号认证、配置与 Vikunja 执行器 |
+| HTTP 适配 | `pkg/routes/api/v2/tcy_ai*.go` | 人类账号认证、配置与 Astering 执行器 |
 | UI 功能目录 | `frontend/src/components/ai/` | 消息、审核（含看板分组影响预览）、偏好、调试、`timeline/`（执行时间线）、`RunStatus.vue`（用量口径）、`attachments/` 与 `export/` |
 | 悬浮宿主 | `frontend/src/components/ai/FloatingArona.vue` | 延迟加载同一聊天组件、账户隔离、页面上下文和任务弹窗层级；收起不停止任务 |
 | 页面装配 | `frontend/src/views/TcyAssistant.vue` | 路由上下文、输入、会话选择和站点布局 |

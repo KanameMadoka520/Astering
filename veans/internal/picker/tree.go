@@ -22,7 +22,7 @@ package picker
 import (
 	"sort"
 
-	"code.vikunja.io/veans/internal/client"
+	"github.com/KanameMadoka520/Astering/veans/internal/client"
 )
 
 type node struct {

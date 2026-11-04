@@ -15,16 +15,16 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // Package e2e is the integration suite for veans. It assumes a running
-// Vikunja API at VEANS_E2E_API_URL with VIKUNJA_SERVICE_TESTINGTOKEN set
+// Astering API at VEANS_E2E_API_URL with VIKUNJA_SERVICE_TESTINGTOKEN set
 // (passed in via VEANS_E2E_TESTING_TOKEN) so the suite can seed its own
 // admin via PATCH /api/v1/test/users — the same `/test/{table}` endpoint
 // the frontend playwright suite uses.
 //
 // The alternative path — VEANS_E2E_ADMIN_TOKEN — is a JWT against a
-// long-lived Vikunja the user wants to drive without touching its data;
+// long-lived Astering the user wants to drive without touching its data;
 // in that mode the suite skips the seed.
 //
-// The suite never provisions Vikunja itself.
+// The suite never provisions Astering itself.
 package e2e
 
 import (
@@ -43,7 +43,7 @@ import (
 	"testing"
 	"time"
 
-	"code.vikunja.io/veans/internal/client"
+	"github.com/KanameMadoka520/Astering/veans/internal/client"
 )
 
 // Hard-coded seed credentials. The hash is the bcrypt of "1234" and
@@ -70,10 +70,10 @@ type Harness struct {
 // that admin, and returns a Harness ready to drive tests.
 //
 // If VEANS_E2E_ADMIN_TOKEN is set, the seed is skipped and that token
-// is used directly — useful for running against a long-lived Vikunja
+// is used directly — useful for running against a long-lived Astering
 // the caller doesn't want this suite to mutate user rows on.
 //
-// Tests rely on the `-short` skip in TestMain to opt out when a Vikunja
+// Tests rely on the `-short` skip in TestMain to opt out when an Astering
 // instance isn't available; if `-short` is *not* set and env is missing,
 // we fail loudly with a "configure or pass -short" hint.
 func New(t *testing.T) *Harness {
@@ -81,7 +81,7 @@ func New(t *testing.T) *Harness {
 
 	apiURL := strings.TrimRight(os.Getenv("VEANS_E2E_API_URL"), "/")
 	if apiURL == "" {
-		t.Fatal("VEANS_E2E_API_URL is not set — point it at a Vikunja instance, or pass -short to skip the e2e suite")
+		t.Fatal("VEANS_E2E_API_URL is not set — point it at an Astering instance, or pass -short to skip the e2e suite")
 	}
 	binary, err := buildOrLocate()
 	if err != nil {
@@ -248,7 +248,7 @@ func (h *Harness) CreateProject(t *testing.T, title, identifier string) *client.
 	return out
 }
 
-// FindKanbanView returns the first Kanban view of the project (Vikunja
+// FindKanbanView returns the first Kanban view of the project (Astering
 // auto-creates one).
 func (h *Harness) FindKanbanView(t *testing.T, projectID int64) *client.ProjectView {
 	t.Helper()

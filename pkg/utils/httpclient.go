@@ -26,8 +26,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/version"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/version"
 
 	"code.dny.dev/ssrf"
 	"golang.org/x/net/http/httpproxy"
@@ -59,7 +59,7 @@ func NewSSRFSafeHTTPClient() *http.Client {
 func newHTTPClient(proxy func(*http.Request) (*url.URL, error)) *http.Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = proxy
-	transport.ProxyConnectHeader = http.Header{"User-Agent": []string{"Vikunja/" + version.Version}}
+	transport.ProxyConnectHeader = http.Header{"User-Agent": []string{"Astering/" + version.Version}}
 
 	return &http.Client{
 		Timeout:   time.Duration(config.OutgoingRequestsTimeoutSeconds.GetInt()) * time.Second,

@@ -21,9 +21,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/routes/api/shared"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/routes/api/shared"
 
 	"github.com/labstack/echo/v5"
 )

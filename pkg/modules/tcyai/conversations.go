@@ -30,8 +30,8 @@ import (
 	"sync"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/modules/tcylocale"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/modules/tcylocale"
 	"github.com/google/uuid"
 )
 

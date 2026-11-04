@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// Package client is a hand-rolled JSON client for the Vikunja REST API. It
+// Package client is a hand-rolled JSON client for the Astering REST API. It
 // mirrors the wire types as plain Go structs so we don't pull XORM into the
 // CLI binary.
 package client
@@ -57,7 +57,7 @@ type Project struct {
 
 // ProjectView is a saved view (Kanban/List/Gantt/Table) on a project.
 // view_kind is serialized as a string on the wire ("list" / "gantt" /
-// "table" / "kanban"), not an int — Vikunja's ProjectViewKind has a
+// "table" / "kanban"), not an int — Astering's ProjectViewKind has a
 // custom MarshalJSON.
 type ProjectView struct {
 	ID        int64  `json:"id"`
@@ -100,7 +100,7 @@ type Task struct {
 	Position    float64    `json:"position,omitempty"`
 	Created     time.Time  `json:"created,omitempty"`
 	Updated     time.Time  `json:"updated,omitempty"`
-	// BucketID is only set by Vikunja when sending a task to a server-
+	// BucketID is only set by Astering when sending a task to a server-
 	// side endpoint (e.g. the bucket-move POST); reads return it as 0.
 	// The current bucket(s) — one per Kanban view — are exposed via
 	// ?expand=buckets in the Buckets slice.
@@ -109,7 +109,7 @@ type Task struct {
 	Assignees []*User   `json:"assignees,omitempty"`
 	Labels    []*Label  `json:"labels,omitempty"`
 	// RelatedTasks groups other tasks by relation kind ("blocking",
-	// "blocked", "parenttask", "subtask", "related", ...). Vikunja
+	// "blocked", "parenttask", "subtask", "related", ...). Astering
 	// populates this on every task read; the nested tasks have their
 	// own RelatedTasks nil'd out server-side to avoid cycles.
 	RelatedTasks map[string][]*Task `json:"related_tasks,omitempty"`
@@ -188,7 +188,7 @@ const (
 )
 
 // APIToken is the request and response shape for `POST /tokens`. The plaintext
-// `Token` field is only populated on creation. Vikunja requires ExpiresAt;
+// `Token` field is only populated on creation. Astering requires ExpiresAt;
 // callers that want a long-lived token use FarFuture (year 9999).
 type APIToken struct {
 	ID          int64               `json:"id,omitempty"`
@@ -200,7 +200,7 @@ type APIToken struct {
 	Created     time.Time           `json:"created,omitempty"`
 }
 
-// FarFuture is what veans uses for "no expiry" since Vikunja's API token
+// FarFuture is what veans uses for "no expiry" since Astering's API token
 // model marks expires_at as required. Year 9999 is well past any reasonable
 // rotation horizon and is what the frontend uses for its "never" option.
 var FarFuture = time.Date(9999, time.December, 31, 0, 0, 0, 0, time.UTC)

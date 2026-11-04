@@ -20,7 +20,7 @@ import (
 	"strings"
 	"testing"
 
-	"code.vikunja.io/api/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -563,7 +563,7 @@ func TestConversationalMail(t *testing.T) {
 
 		// Should NOT have logo (completely removed)
 		assert.NotContains(t, mailopts.HTMLMessage, "logo.png")
-		assert.NotContains(t, mailopts.HTMLMessage, "Vikunja")
+		assert.NotContains(t, mailopts.HTMLMessage, "Astering")
 		assert.NotContains(t, mailopts.EmbedFS, "logo.png")
 
 		// Should have inline action link with arrow
@@ -602,7 +602,7 @@ func TestConversationalMail(t *testing.T) {
 
 		// Should HAVE logo in formal emails
 		assert.Contains(t, mailopts.HTMLMessage, "logo.png")
-		assert.Contains(t, mailopts.HTMLMessage, "Vikunja")
+		assert.Contains(t, mailopts.HTMLMessage, "Astering")
 		assert.Contains(t, mailopts.EmbedFS, "logo.png")
 
 		// Should have formal button styling

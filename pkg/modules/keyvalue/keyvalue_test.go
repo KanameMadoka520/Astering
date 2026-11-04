@@ -22,8 +22,8 @@ import (
 	"testing"
 	"time"
 
-	e "code.vikunja.io/api/pkg/modules/keyvalue/error"
-	"code.vikunja.io/api/pkg/modules/keyvalue/memory"
+	e "github.com/KanameMadoka520/Astering/pkg/modules/keyvalue/error"
+	"github.com/KanameMadoka520/Astering/pkg/modules/keyvalue/memory"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

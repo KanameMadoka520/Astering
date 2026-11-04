@@ -20,12 +20,13 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/log"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -167,6 +168,8 @@ func TestTCYMailRuntimeReload(t *testing.T) {
 	port1, received1 := startSMTPSink(t)
 	port2, received2 := startSMTPSink(t)
 	setupMailerConfig(t, "127.0.0.1", port1)
+	t.Setenv("ASTERING_SETTINGS_ADMIN_IDS", "")
+	require.NoError(t, os.Unsetenv("ASTERING_SETTINGS_ADMIN_IDS"))
 	t.Setenv("TCYMC_SETTINGS_ADMIN_IDS", "1")
 	config.SetMailerRuntime(nil)
 	t.Cleanup(func() { StopMailDaemon(); config.SetMailerRuntime(nil) })
@@ -199,4 +202,37 @@ func TestTCYMailRuntimeReload(t *testing.T) {
 	}
 	StopMailDaemon()
 	assert.Empty(t, received1)
+}
+
+func TestAsteringMailDaemonAdminCompatibility(t *testing.T) {
+	config.InitDefaultConfig()
+	config.SetMailerRuntime(nil)
+	config.MailerEnabled.Set(false)
+	t.Cleanup(func() {
+		StopMailDaemon()
+		config.SetMailerRuntime(nil)
+	})
+
+	t.Run("new allowlist enables dynamic mail configuration", func(t *testing.T) {
+		t.Setenv("ASTERING_SETTINGS_ADMIN_IDS", "7")
+		t.Setenv("TCYMC_SETTINGS_ADMIN_IDS", "")
+		StartMailDaemon()
+		assert.NotNil(t, Queue)
+		StopMailDaemon()
+	})
+	t.Run("explicitly empty new allowlist disables legacy access", func(t *testing.T) {
+		t.Setenv("ASTERING_SETTINGS_ADMIN_IDS", "")
+		t.Setenv("TCYMC_SETTINGS_ADMIN_IDS", "2")
+		StartMailDaemon()
+		assert.Nil(t, Queue)
+		StopMailDaemon()
+	})
+	t.Run("absent new allowlist preserves legacy configuration", func(t *testing.T) {
+		t.Setenv("ASTERING_SETTINGS_ADMIN_IDS", "")
+		require.NoError(t, os.Unsetenv("ASTERING_SETTINGS_ADMIN_IDS"))
+		t.Setenv("TCYMC_SETTINGS_ADMIN_IDS", "2")
+		StartMailDaemon()
+		assert.NotNil(t, Queue)
+		StopMailDaemon()
+	})
 }

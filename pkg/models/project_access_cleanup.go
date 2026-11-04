@@ -19,7 +19,7 @@ package models
 import (
 	"slices"
 
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 
 	"xorm.io/builder"
 	"xorm.io/xorm"

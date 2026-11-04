@@ -51,6 +51,7 @@ self.addEventListener('activate', event => {
 	event.waitUntil((async () => {
 		const names = await caches.keys()
 		await Promise.all(names.filter(name => name === cacheNames.precache || name === cacheNames.runtime
+			|| name.startsWith(staticCaches.legacyPrefix)
 			|| (name.startsWith(staticCaches.prefix) && name !== staticCaches.current))
 			.map(name => caches.delete(name)))
 	})())

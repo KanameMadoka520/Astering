@@ -32,7 +32,7 @@ import (
 	"testing"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/config"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -89,7 +89,7 @@ func newMCPFixture(t *testing.T, transport string) *mcpFixturePeer {
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		peer.Requests.Add(1)
-		if r.Header.Get("Authorization") != "Bearer fixture-private-key" || r.Header.Get("User-Agent") != "vikunja-x-mcp/1.0" {
+		if r.Header.Get("Authorization") != "Bearer fixture-private-key" || r.Header.Get("User-Agent") != "Astering-MCP/1.0" {
 			peer.BadAuth.Store(true)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return

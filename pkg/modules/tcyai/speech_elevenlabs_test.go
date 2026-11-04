@@ -25,7 +25,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"code.vikunja.io/api/pkg/i18n"
+	"github.com/KanameMadoka520/Astering/pkg/i18n"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"

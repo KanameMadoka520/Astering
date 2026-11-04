@@ -25,5 +25,5 @@ export async function createCoverPreset(preset: CoverPreset): Promise<File> {
 		}
 	}
 	const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Cover encoding failed')), 'image/png'))
-	return new File([blob], `tcymc-cover-${preset.id}.png`, {type: 'image/png'})
+	return new File([blob], `astering-cover-${preset.id}.png`, {type: 'image/png'})
 }

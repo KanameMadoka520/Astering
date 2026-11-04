@@ -23,10 +23,10 @@ import (
 	"io"
 	"net/http"
 
-	"code.vikunja.io/api/pkg/events"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/migration"
-	user2 "code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/events"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/migration"
+	user2 "github.com/KanameMadoka520/Astering/pkg/user"
 	"github.com/labstack/echo/v5"
 )
 

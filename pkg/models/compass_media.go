@@ -30,10 +30,10 @@ import (
 	"strings"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/files"
-	"code.vikunja.io/api/pkg/modules/imageutils"
-	"code.vikunja.io/api/pkg/web"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/files"
+	"github.com/KanameMadoka520/Astering/pkg/modules/imageutils"
+	"github.com/KanameMadoka520/Astering/pkg/web"
 	"github.com/c2h5oh/datasize"
 	"github.com/microcosm-cc/bluemonday"
 	_ "golang.org/x/image/webp" // Register WebP decoding.

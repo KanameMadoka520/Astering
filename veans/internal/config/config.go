@@ -32,7 +32,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"code.vikunja.io/veans/internal/output"
+	"github.com/KanameMadoka520/Astering/veans/internal/output"
 )
 
 // Filename is the canonical config name. Walked upward from cwd by Find.
@@ -69,7 +69,7 @@ type Buckets struct {
 	Scrapped   int64 `yaml:"scrapped"`
 }
 
-// Bot identifies the Vikunja bot user veans operates as.
+// Bot identifies the Astering bot user veans operates as.
 type Bot struct {
 	Username string `yaml:"username"`
 	UserID   int64  `yaml:"user_id"`
@@ -201,7 +201,7 @@ func RepoRoot(ctx context.Context, start string) (string, error) {
 }
 
 // SuggestedBotUsername proposes `bot-<reponame>` from a repo root path.
-// Vikunja's username validator allows lowercase, digits, hyphens — we fold
+// Astering's username validator allows lowercase, digits, hyphens — we fold
 // the basename to a safe shape.
 func SuggestedBotUsername(root string) string {
 	base := filepath.Base(root)

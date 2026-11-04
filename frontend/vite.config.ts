@@ -104,7 +104,7 @@ export default defineConfig(({command, mode}) => {
 
 function getBuildConfig(env: Record<string, string>) {
 	return {
-		base: env.VIKUNJA_FRONTEND_BASE,
+		base: (env.ASTERING_FRONTEND_BASE ?? env.VIKUNJA_FRONTEND_BASE),
 		// https://vitest.dev/config/
 		test: {
 			environment: 'happy-dom',
@@ -164,22 +164,22 @@ function getBuildConfig(env: Record<string, string>) {
 				injectRegister: false,
 				useCredentials: true,
 				manifest: {
-					name: 'vikunja-x',
-					short_name: 'vikunja-x',
+					name: 'Astering',
+					short_name: 'Astering',
 					theme_color: '#f3f4f6',
 					icons: [
 						{
-							src: './images/icons/android-chrome-192x192.png?v=x40',
+							src: './images/icons/android-chrome-192x192.png?v=aster50',
 							sizes: '192x192',
 							type: 'image/png',
 						},
 						{
-							src: './images/icons/android-chrome-512x512.png?v=x40',
+							src: './images/icons/android-chrome-512x512.png?v=aster50',
 							sizes: '512x512',
 							type: 'image/png',
 						},
 						{
-							src: './images/icons/icon-maskable.png?v=x40',
+							src: './images/icons/icon-maskable.png?v=aster50',
 							sizes: '1024x1024',
 							type: 'image/png',
 							purpose: 'maskable',
@@ -230,7 +230,7 @@ function getBuildConfig(env: Record<string, string>) {
 		},
 		server: {
 			host: '127.0.0.1', // see: https://github.com/vitejs/vite/pull/8543
-			port: parseInt(env.VIKUNJA_FRONTEND_PORT || '4173', 10),
+			port: parseInt(env.ASTERING_FRONTEND_PORT || env.VIKUNJA_FRONTEND_PORT || '4173', 10),
 			strictPort: true,
 		},
 		output: {
@@ -260,10 +260,10 @@ function getServeConfig(env: Record<string, string>) {
 	// get some default settings from prod mod
 	const buildConfig = getBuildConfig(env)
 
-	// Build the proxy pattern from VIKUNJA_FRONTEND_BASE so that custom base
-	// paths like /vikunja proxy /vikunja/api/* correctly.
+	// Build the proxy pattern from the configured frontend base so that custom base
+	// paths like /astering proxy /astering/api/* correctly.
 	// Falls back to /api.
-	const base = (env.VIKUNJA_FRONTEND_BASE || '/').replace(/\/+$/, '')
+	const base = ((env.ASTERING_FRONTEND_BASE ?? env.VIKUNJA_FRONTEND_BASE) || '/').replace(/\/+$/, '')
 	const proxyPath = `${base}/api`
 
 	// override prod settings with dev settings

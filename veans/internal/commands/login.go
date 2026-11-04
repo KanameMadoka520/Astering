@@ -24,12 +24,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"code.vikunja.io/veans/internal/auth"
-	"code.vikunja.io/veans/internal/client"
-	"code.vikunja.io/veans/internal/config"
-	"code.vikunja.io/veans/internal/credentials"
-	"code.vikunja.io/veans/internal/output"
-	"code.vikunja.io/veans/internal/trust"
+	"github.com/KanameMadoka520/Astering/veans/internal/auth"
+	"github.com/KanameMadoka520/Astering/veans/internal/client"
+	"github.com/KanameMadoka520/Astering/veans/internal/config"
+	"github.com/KanameMadoka520/Astering/veans/internal/credentials"
+	"github.com/KanameMadoka520/Astering/veans/internal/output"
+	"github.com/KanameMadoka520/Astering/veans/internal/trust"
 )
 
 func newLoginCmd() *cobra.Command {
@@ -52,7 +52,7 @@ URL veans prints, sign in, and paste the callback URL back. Use
 --token to paste in a personal API token, or --use-password / --username
 to force POST /login instead.
 
-Use this after revoking the bot's token in Vikunja's UI, or any time
+Use this after revoking the bot's token in Astering's UI, or any time
 you want to rotate.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path, err := config.Find("")
@@ -81,8 +81,8 @@ you want to rotate.`,
 	}
 	cmd.Flags().StringVar(&token, "token", "", "JWT or personal API token (skips OAuth/password)")
 	cmd.Flags().BoolVar(&usePassword, "use-password", false, "use POST /login instead of the default OAuth flow")
-	cmd.Flags().StringVar(&username, "username", "", "your Vikunja username (implies --use-password)")
-	cmd.Flags().StringVar(&password, "password", "", "your Vikunja password (implies --use-password; prompted if empty)")
+	cmd.Flags().StringVar(&username, "username", "", "your Astering username (implies --use-password)")
+	cmd.Flags().StringVar(&password, "password", "", "your Astering password (implies --use-password; prompted if empty)")
 	cmd.Flags().StringVar(&totp, "totp", "", "TOTP code if your account requires 2FA")
 	return cmd
 }

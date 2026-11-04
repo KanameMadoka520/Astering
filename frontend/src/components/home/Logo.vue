@@ -46,13 +46,13 @@ const CustomLogo = computed(() => {
 	>
 		<Logo
 			v-if="!CustomLogo"
-			aria-label="vikunja-x"
+			aria-label="Astering"
 			class="logo"
 		/>
 		<img
 			v-else
 			:src="CustomLogo"
-			alt="vikunja-x"
+			alt="Astering"
 			class="logo"
 		>
 		<span class="brand-subtitle">{{ t('brand.subtitle') }}</span>

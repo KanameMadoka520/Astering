@@ -6,7 +6,8 @@ export function needsFrontendRefresh(currentVersion: string, waitingVersion: str
 	const waiting = normalize(waitingVersion)
 	if (!waiting || waiting === current) return false
 
-	const release = /^(\d+)\.(\d+)\.(\d+)-tcymc\.(\d+)$/
+	// The rebrand continues the release sequence; an older worker can still reply with its legacy version.
+	const release = /^(\d+)\.(\d+)\.(\d+)-(?:tcymc|aster)\.(\d+)$/
 	const from = current.match(release)?.slice(1).map(Number)
 	const to = waiting.match(release)?.slice(1).map(Number)
 	if (from && to) {

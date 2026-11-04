@@ -23,7 +23,7 @@ import (
 	"net/url"
 	"strings"
 
-	"code.vikunja.io/veans/internal/output"
+	"github.com/KanameMadoka520/Astering/veans/internal/output"
 )
 
 // defaultAPIPort is what `VIKUNJA_SERVICE_INTERFACE` ships with — handy
@@ -36,10 +36,10 @@ const defaultAPIPort = "3456"
 // /api/v2 suffix — that's what client.New expects) and the parsed Info.
 //
 // Probing /api/v2/info doubles as the "is this server new enough" check: a
-// Vikunja without /api/v2 fails discovery cleanly rather than limping along
+// Astering without /api/v2 fails discovery cleanly rather than limping along
 // against endpoints veans needs.
 //
-// Mirrors the discovery the Vikunja web frontend does in
+// Mirrors the discovery the Astering web frontend does in
 // helpers/checkAndSetApiUrl.ts: try the URL as-given, with the API path
 // appended, and with the default :3456 port. The first response that
 // parses as Info wins.
@@ -67,7 +67,7 @@ func DiscoverServer(ctx context.Context, input string) (string, *Info, error) {
 	}
 
 	return "", nil, output.New(output.CodeValidation,
-		"couldn't find a Vikunja instance reachable from %q — tried:\n  - %s\nlast error: %v",
+		"couldn't find an Astering instance reachable from %q — tried:\n  - %s\nlast error: %v",
 		input, strings.Join(attempts, "\n  - "), lastErr)
 }
 

@@ -22,9 +22,9 @@ import (
 	"errors"
 	"time"
 
-	"code.vikunja.io/api/pkg/modules/humabridge"
-	"code.vikunja.io/api/pkg/modules/tcyai"
-	"code.vikunja.io/api/pkg/modules/tcylocale"
+	"github.com/KanameMadoka520/Astering/pkg/modules/humabridge"
+	"github.com/KanameMadoka520/Astering/pkg/modules/tcyai"
+	"github.com/KanameMadoka520/Astering/pkg/modules/tcylocale"
 	"github.com/danielgtaylor/huma/v2"
 )
 

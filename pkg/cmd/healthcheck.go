@@ -20,8 +20,8 @@ import (
 	"fmt"
 	"os"
 
-	"code.vikunja.io/api/pkg/health"
-	"code.vikunja.io/api/pkg/initialize"
+	"github.com/KanameMadoka520/Astering/pkg/health"
+	"github.com/KanameMadoka520/Astering/pkg/initialize"
 
 	"github.com/spf13/cobra"
 )
@@ -32,7 +32,7 @@ func init() {
 
 var healthcheckCmd = &cobra.Command{
 	Use:   "healthcheck",
-	Short: "Preform a healthcheck on the Vikunja api server",
+	Short: "Preform a healthcheck on the Astering api server",
 	PreRun: func(_ *cobra.Command, _ []string) {
 		initialize.FullInitWithoutAsync()
 	},

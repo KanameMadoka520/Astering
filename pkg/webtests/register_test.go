@@ -21,11 +21,11 @@ import (
 	"net/http"
 	"testing"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/notifications"
-	apiv1 "code.vikunja.io/api/pkg/routes/api/v1"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/notifications"
+	apiv1 "github.com/KanameMadoka520/Astering/pkg/routes/api/v1"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

@@ -21,8 +21,8 @@ import (
 	"strings"
 	"time"
 
-	"code.vikunja.io/api/pkg/user"
-	"code.vikunja.io/api/pkg/web"
+	"github.com/KanameMadoka520/Astering/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/web"
 
 	"github.com/danielgtaylor/huma/v2"
 	"xorm.io/xorm"

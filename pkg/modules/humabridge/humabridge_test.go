@@ -23,7 +23,7 @@ import (
 	"strings"
 	"testing"
 
-	"code.vikunja.io/api/pkg/modules/humabridge"
+	"github.com/KanameMadoka520/Astering/pkg/modules/humabridge"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/autopatch"
 	"github.com/labstack/echo/v5"

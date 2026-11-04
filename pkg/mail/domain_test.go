@@ -20,7 +20,7 @@ import (
 	"os"
 	"testing"
 
-	"code.vikunja.io/api/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/config"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -29,7 +29,7 @@ func TestGetMailDomain(t *testing.T) {
 		config.ServicePublicURL.Set("")
 		expectedHostname, err := os.Hostname()
 		if err != nil || expectedHostname == "" {
-			assert.Equal(t, "vikunja", GetMailDomain())
+			assert.Equal(t, "astering", GetMailDomain())
 		} else {
 			assert.Equal(t, expectedHostname, GetMailDomain())
 		}
@@ -49,7 +49,7 @@ func TestGetMailDomain(t *testing.T) {
 		config.ServicePublicURL.Set("://bad")
 		expectedHostname, err := os.Hostname()
 		if err != nil || expectedHostname == "" {
-			assert.Equal(t, "vikunja", GetMailDomain())
+			assert.Equal(t, "astering", GetMailDomain())
 		} else {
 			assert.Equal(t, expectedHostname, GetMailDomain())
 		}

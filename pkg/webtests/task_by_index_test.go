@@ -21,7 +21,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"code.vikunja.io/api/pkg/modules/auth"
+	"github.com/KanameMadoka520/Astering/pkg/modules/auth"
 
 	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"

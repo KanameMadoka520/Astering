@@ -22,9 +22,9 @@ import (
 	"testing"
 	"time"
 
-	"code.vikunja.io/api/pkg/events"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/auth"
+	"github.com/KanameMadoka520/Astering/pkg/events"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/auth"
 
 	"github.com/pquerna/otp/totp"
 	"github.com/stretchr/testify/assert"

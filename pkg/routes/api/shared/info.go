@@ -17,24 +17,24 @@
 package shared
 
 import (
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/license"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/modules/auth/openid"
-	csvmigrator "code.vikunja.io/api/pkg/modules/migration/csv"
-	microsofttodo "code.vikunja.io/api/pkg/modules/migration/microsoft-todo"
-	"code.vikunja.io/api/pkg/modules/migration/planka"
-	"code.vikunja.io/api/pkg/modules/migration/ticktick"
-	"code.vikunja.io/api/pkg/modules/migration/todoist"
-	"code.vikunja.io/api/pkg/modules/migration/trello"
-	vikunja_file "code.vikunja.io/api/pkg/modules/migration/vikunja-file"
-	"code.vikunja.io/api/pkg/modules/migration/wekan"
-	"code.vikunja.io/api/pkg/version"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/license"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/modules/auth/openid"
+	csvmigrator "github.com/KanameMadoka520/Astering/pkg/modules/migration/csv"
+	microsofttodo "github.com/KanameMadoka520/Astering/pkg/modules/migration/microsoft-todo"
+	"github.com/KanameMadoka520/Astering/pkg/modules/migration/planka"
+	"github.com/KanameMadoka520/Astering/pkg/modules/migration/ticktick"
+	"github.com/KanameMadoka520/Astering/pkg/modules/migration/todoist"
+	"github.com/KanameMadoka520/Astering/pkg/modules/migration/trello"
+	vikunja_file "github.com/KanameMadoka520/Astering/pkg/modules/migration/vikunja-file"
+	"github.com/KanameMadoka520/Astering/pkg/modules/migration/wekan"
+	"github.com/KanameMadoka520/Astering/pkg/version"
 )
 
-// VikunjaInfos holds public information about this Vikunja instance.
+// VikunjaInfos holds public information about this Astering instance.
 type VikunjaInfos struct {
-	Version                    string    `json:"version" doc:"The Vikunja version this instance runs."`
+	Version                    string    `json:"version" doc:"The Astering version this instance runs."`
 	FrontendURL                string    `json:"frontend_url" doc:"The publicly configured frontend URL of this instance."`
 	Motd                       string    `json:"motd" doc:"The message of the day, shown to all users."`
 	LinkSharingEnabled         bool      `json:"link_sharing_enabled" doc:"Whether sharing projects via public links is enabled."`

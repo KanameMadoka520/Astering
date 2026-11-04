@@ -26,10 +26,10 @@ import (
 	"strings"
 	"testing"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/auth"
-	"code.vikunja.io/api/pkg/modules/auth/oauth2server"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/auth"
+	"github.com/KanameMadoka520/Astering/pkg/modules/auth/oauth2server"
 
 	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"

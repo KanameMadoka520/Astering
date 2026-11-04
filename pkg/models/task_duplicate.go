@@ -20,8 +20,8 @@ import (
 	"bytes"
 	"io"
 
-	"code.vikunja.io/api/pkg/files"
-	"code.vikunja.io/api/pkg/web"
+	"github.com/KanameMadoka520/Astering/pkg/files"
+	"github.com/KanameMadoka520/Astering/pkg/web"
 
 	"xorm.io/xorm"
 )

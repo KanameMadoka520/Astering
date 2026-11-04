@@ -20,13 +20,13 @@ import (
 	"context"
 	"net/http"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/events"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/modules/auth"
-	"code.vikunja.io/api/pkg/modules/humabridge"
-	"code.vikunja.io/api/pkg/routes/api/shared"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/events"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/modules/auth"
+	"github.com/KanameMadoka520/Astering/pkg/modules/humabridge"
+	"github.com/KanameMadoka520/Astering/pkg/routes/api/shared"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 
 	"github.com/danielgtaylor/huma/v2"
 )

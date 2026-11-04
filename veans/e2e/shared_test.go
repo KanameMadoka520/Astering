@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"code.vikunja.io/veans/internal/config"
+	"github.com/KanameMadoka520/Astering/veans/internal/config"
 )
 
 // provisionWorkspace runs `veans init` against a fresh project and returns

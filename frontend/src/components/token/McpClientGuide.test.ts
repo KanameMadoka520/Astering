@@ -39,6 +39,12 @@ describe('McpClientGuide', () => {
 		const copied = copy.mock.calls.map(([value]) => value).join('\n')
 		expect(copied).toContain(endpoint)
 		expect(copied).toContain(token)
+		if (client === 'claudeCode') expect(copied).toContain('claude mcp add --transport http astering ')
+		if (client === 'codex') {
+			expect(copied).toContain('codex mcp add astering ')
+			expect(copied).toContain('[mcp_servers.astering]')
+			expect(copied).toContain('ASTERING_MCP_TOKEN')
+		}
 		if (client === 'claudeDesktop') expect(copy).toHaveBeenCalledWith(`Bearer ${token}`)
 		expect(JSON.stringify(localStorage)).not.toContain(token)
 		wrapper.unmount()

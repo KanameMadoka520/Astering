@@ -1,28 +1,29 @@
-# vikunja-x 品牌素材
+# Astering 品牌素材
 
-应用名为 **vikunja-x**，中文版本标识为 **x版本**，英文为 **x edition**。源码在 [KanameMadoka520/vikunja-x](https://github.com/KanameMadoka520/vikunja-x)。内部配置键与 `v2.7.1-tcymc.N` 版本序列保持兼容。
+应用名为 **Astering**，自有版本标识为 **aster**。源码位于 [KanameMadoka520/Astering](https://github.com/KanameMadoka520/Astering)。产品基于 Vikunja，保留真实上游版权、来源和许可证；部署与历史产物规则见[品牌迁移](brand-migration.md)。
 
-## 角色形象（tcymc.33）
+我们赋予 Astering“像星星闪烁、使之星光熠熠”的意象：一条记录、一次行动，逐渐连接成自己的星群。这是本项目的命名与设计寓意，不是已有词典释义的声明。
 
-依据维护者指定的两张角色参考重新绘制：浅绿色头发、深色角与金色细节、中央深色发束、蓝眼睛、眨眼、红晕及爱心。主参考决定 Q 版神态，另一张用于核对角色配色和外形。参考图来自维护者私人网盘；原文件没有复制进公开仓库。
+## 星灵与头像
 
-同一套形象分为两层：
+本轮以全新生成的原创星灵替换旧角色品牌形象：暖金色五角星、深夜蓝粗轮廓，眼睛与微笑保持简单，让小尺寸图标也能呈现亲近感。头像使用同一星灵，配以深夜蓝背景和稀疏星光；标识与头像互相呼应，不用两个不同角色代表同一产品。
 
-- **详细头像**：捧心的双手和发饰保留，用于登录页及 README 品牌展示。母版 [avatar-source.png](../frontend/originalMedia/brand/avatar-source.png)，发布 [PNG](../frontend/public/images/brand/avatar.png) / [WebP](../frontend/public/images/brand/avatar.webp)。
-- **简化标识**：减少发丝、手部与装饰，突出绿发、角、眨眼和爱心，用于导航字标、favicon 和桌面图标。母版 [logo-character-source.png](../frontend/originalMedia/brand/logo-character-source.png)，发布 [PNG](../frontend/public/images/brand/logo.png) / [SVG 容器](../frontend/public/images/brand/logo.svg)。
-- **单色轮廓**：[手写 SVG](../frontend/originalMedia/brand/vikunja-x-character-mono.svg)，用于 Safari 固定标签与 Android 通知徽标。眼睛、眨眼与爱心镂空，颜色由使用场景决定。
+- **透明标识母版**：[astering-star.png](../frontend/originalMedia/brand/astering-star.png)。用于派生导航、浏览器、桌面及通知图标。
+- **头像母版**：[astering-avatar.png](../frontend/originalMedia/brand/astering-avatar.png)。用于品牌展示、登录页及适合方形构图的入口。
+- **生成记录**：[astering-prompts.json](../frontend/originalMedia/brand/astering-prompts.json)，保留本轮两张母版的完整提示词；透明标识的后续编辑提示词见 [astering-cleanup-prompt.txt](../frontend/originalMedia/brand/astering-cleanup-prompt.txt)。
+- **单色轮廓**：[astering-star-mono.svg](../frontend/originalMedia/brand/astering-star-mono.svg)。这是前端为小尺寸与单色场景维护的简化 SVG，不应表述为 imagegen 直接生成的矢量图。
 
-品牌头像不会写入账户头像设置；阿罗娜的独立头像与角色设置保持原有用途。
+阿罗娜仍是独立的助手角色，账户个人头像也不随产品品牌更换。旧品牌角色与原参考素材不再进入当前品牌生成输入；其历史来源说明应随 Git 历史保留，不能据新形象的原创性反向宣称旧第三方角色也属于本项目原创。
 
-## 小尺寸、背景与性能
+## 发布资源与尺寸
 
-两张生成母版均有真实 alpha 通道，不用纯色冒充透明。发布 PNG/WebP 保留 alpha；桌面与 maskable 图标使用浅鼠尾草底板 `#F1F4E8`。maskable 图形缩到 680 / 1024，保留安全区域。登录页采用完整容纳的头像，不以 cover 裁掉角或双手。
+前端消费者沿用稳定的公开资源路径：`frontend/public/images/brand/logo.png`、`logo.svg`、`avatar.png`、`avatar.webp`、`wordmark.svg` 和 `wordmark-dark.svg`。SVG 字标中的嵌入光栅图不等于可无限放大的矢量母版；制作更大尺寸时应从原始 PNG 派生。
 
-字标文字采用 `currentColor` 跟随主题；独立字标分别提供 [浅色](../frontend/public/images/brand/wordmark.svg) 和 [深色](../frontend/public/images/brand/wordmark-dark.svg) 版本。字标中的图形是嵌入的 160px 调色板 PNG，**并非矢量图**；这个尺寸足以支撑当前导航布局，同时避免将 1254px 原图放进前端 JavaScript。SVG 不依赖外部图片请求。导出更大尺寸时应使用 PNG 母版，不应放大 SVG 容器中的小图。
+品牌资源查询标识使用 `aster50`，覆盖固定地址的 favicon、Apple 图标、Safari mask、PWA 图标、登录头像及计时图标。内容哈希的构建资源仍沿用构建系统生成的 URL，不能为了品牌缓存把私人图片或任意固定地址标为永久缓存。
 
-所有光栅尺寸均从母版生成；标签页 ICO 包含 16、32、48px 三档。计时状态仍有独立红点图标。图标与登录头像 URL 使用 `x33` 缓存标识；桌面操作系统可能按自己的周期刷新图标。
+修改素材时应检查浅色与深色主题、16/32px 标签图标、通知单色轮廓、手机 maskable 安全区域及登录页显示；不要裁去星角、让眼睛在缩小时消失，或只检查大图而忽略实际使用尺寸。桌面系统自身也可能缓存图标，资源版本更新不意味着所有系统会立即刷新已安装应用图标。
 
-## 离线生成
+## 本地生成
 
 ```sh
 cd frontend
@@ -30,12 +31,10 @@ pnpm install --frozen-lockfile
 pnpm brand:assets
 ```
 
-脚本 [brand-assets.mjs](../frontend/scripts/brand-assets.mjs) 使用锁定的 Sharp 版本生成 Logo、字标、头像、ICO、PWA、Apple、Safari 和通知图标，无网络请求。修改母版后运行脚本，不手改派生文件。需要替换角色时同时检查两种主题、16/32px、移动端和登录页，并递增 `index.html`、`vite.config.ts` 及登录头像的缓存标识。
+[brand-assets.mjs](../frontend/scripts/brand-assets.mjs) 使用锁定的 Sharp 依赖，从母版派生品牌 Logo、字标、头像及各平台图标。派生步骤不调用上游生成模型；修改母版后重新生成并检查实际消费者，不手改派生文件来掩盖生成规则问题。
 
-旧 X 图形和芽耳形象仅在 Git 历史中保留，不进入本版构建输入。
+透明标识在导出时由 [brand-alpha.mjs](../frontend/scripts/brand-alpha.mjs) 保留最大的八连通非透明区域，清理星灵轮廓以外孤立的残留像素。主体的颜色、透明度、抗锯齿与内部孔洞保持原值，母版也保持不变；这一步仅规范导出，不重新绘制形象。
 
-## 来源与提示词
+两张新母版于 2026-11-04 使用内置 **imagegen** 生成，不使用 CLI/API 回退，也不需要将任何生成服务密钥写入仓库。完整提示词以生成记录文件为准；光栅母版、派生资源、手写单色轮廓分别维护来源，不混称为同一种生成方式。
 
-2026-11-01 使用内置 **imagegen** 生成详细头像，再以该头像为参考生成简化标识；没有使用 CLI/API 回退。完整的两次提示词见 [generation-prompts.json](../frontend/originalMedia/brand/generation-prompts.json)，便于复现和继续调整。单色标识在仓库内以 SVG 编写。
-
-这是依据维护者提供的《明日方舟：终末地》角色图片绘制的衍生形象，不能声称角色本身为本项目原创或由本项目授权。相关角色与原参考作品权益属于各自权利人；本仓库代码许可证不授予第三方角色权利。项目与该作品无官方隶属关系。既有阿罗娜素材另见其 [来源说明](../frontend/src/assets/arona/README.md)。
+上游程序版权及 AGPL 义务继续保留。阿罗娜现有素材的来源和第三方角色权利见其[独立说明](../frontend/src/assets/arona/README.md)，本次 Astering 品牌更换不扩大那些素材的许可范围。

@@ -17,8 +17,8 @@
 package cmd
 
 import (
-	"code.vikunja.io/api/pkg/initialize"
-	"code.vikunja.io/api/pkg/migration"
+	"github.com/KanameMadoka520/Astering/pkg/initialize"
+	"github.com/KanameMadoka520/Astering/pkg/migration"
 	"github.com/spf13/cobra"
 )
 

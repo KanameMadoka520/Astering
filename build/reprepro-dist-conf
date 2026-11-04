@@ -1,13 +1,13 @@
-Origin: dl.vikunja.io
-Label: Vikunja
+Origin: Astering
+Label: Astering
 Codename: stable
 Architectures: amd64 arm64 armhf
 Components: main
-Description: The Vikunja package repository.
+Description: The Astering package repository.
 
-Origin: dl.vikunja.io
-Label: Vikunja
+Origin: Astering
+Label: Astering
 Codename: unstable
 Architectures: amd64 arm64 armhf
 Components: main
-Description: The Vikunja unstable package repository.
+Description: The Astering unstable package repository.

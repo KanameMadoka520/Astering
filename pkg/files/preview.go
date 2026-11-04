@@ -25,7 +25,7 @@ import (
 	"path"
 	"slices"
 
-	"code.vikunja.io/api/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/log"
 )
 
 type PreviewSize string

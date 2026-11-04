@@ -23,7 +23,7 @@ import (
 	"src.techknowlogick.com/xormigrate"
 	"xorm.io/xorm"
 
-	"code.vikunja.io/api/pkg/richtext"
+	"github.com/KanameMadoka520/Astering/pkg/richtext"
 )
 
 func convertMarkdownToHTML(input string) (output string, err error) {

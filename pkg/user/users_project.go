@@ -19,9 +19,9 @@ package user
 import (
 	"strings"
 
-	"code.vikunja.io/api/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/config"
 
-	"code.vikunja.io/api/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/db"
 
 	"xorm.io/builder"
 	"xorm.io/xorm"

@@ -30,17 +30,17 @@ import (
 	"strconv"
 	"strings"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/events"
-	"code.vikunja.io/api/pkg/files"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/migration"
-	"code.vikunja.io/api/pkg/user"
-	"code.vikunja.io/api/pkg/utils"
-	vversion "code.vikunja.io/api/pkg/version"
-	"code.vikunja.io/api/pkg/web"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/events"
+	"github.com/KanameMadoka520/Astering/pkg/files"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/migration"
+	"github.com/KanameMadoka520/Astering/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/utils"
+	vversion "github.com/KanameMadoka520/Astering/pkg/version"
+	"github.com/KanameMadoka520/Astering/pkg/web"
 
 	"github.com/c2h5oh/datasize"
 	"github.com/hashicorp/go-version"
@@ -111,7 +111,7 @@ type ErrVikunjaFileImportTooLarge struct {
 }
 
 func (err *ErrVikunjaFileImportTooLarge) Error() string {
-	return "The Vikunja export is too large: " + err.Reason
+	return "The compatible Vikunja / Astering export is too large: " + err.Reason
 }
 
 // ErrCodeVikunjaFileImportTooLarge holds the unique world-error code of this error
@@ -122,7 +122,7 @@ func (err *ErrVikunjaFileImportTooLarge) HTTPError() web.HTTPError {
 	return web.HTTPError{
 		HTTPCode: http.StatusBadRequest,
 		Code:     ErrCodeVikunjaFileImportTooLarge,
-		Message:  "The Vikunja export is too large: " + err.Reason,
+		Message:  "The compatible Vikunja / Astering export is too large: " + err.Reason,
 	}
 }
 
@@ -194,7 +194,7 @@ func (p *lazyFileProvider) openZipFile(f *zip.File, countStorage bool) (io.ReadS
 	}
 	defer func() { _ = rc.Close() }()
 
-	tmp, err := os.CreateTemp("", "vikunja-import-*")
+	tmp, err := os.CreateTemp("", "astering-import-*")
 	if err != nil {
 		return nil, 0, err
 	}

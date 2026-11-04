@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"strings"
 
-	"code.vikunja.io/api/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/config"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/labstack/echo/v5"

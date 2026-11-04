@@ -40,7 +40,7 @@ func (c *Client) CurrentUser(ctx context.Context) (*User, error) {
 
 // ExchangeOAuthCode swaps an authorization code (with the matching PKCE
 // verifier) for an access + refresh token pair via POST /oauth/token.
-// Vikunja requires JSON, not form-encoded — the standard OAuth library
+// Astering requires JSON, not form-encoded — the standard OAuth library
 // helpers don't apply.
 func (c *Client) ExchangeOAuthCode(ctx context.Context, req *OAuthTokenRequest) (*OAuthTokenResponse, error) {
 	var out OAuthTokenResponse

@@ -54,3 +54,12 @@ func TestCreateDumpFile(t *testing.T) {
 		assert.Equal(t, "existing", string(content))
 	})
 }
+
+func TestAsteringDumpEnvironmentCompatibility(t *testing.T) {
+	assert.Equal(t, "ASTERING_SERVICE_ROOTPATH=/data\nVIKUNJA_SERVICE_ROOTPATH=/legacy\n", configEnvironment([]string{
+		"ASTERING_SERVICE_ROOTPATH=/data",
+		"VIKUNJA_SERVICE_ROOTPATH=/legacy",
+		"OTHER_APP_VALUE=VIKUNJA_SERVICE_ROOTPATH=/not-our-config",
+		"OTHER_APP_ASTERING_KEY=not-our-config",
+	}))
+}

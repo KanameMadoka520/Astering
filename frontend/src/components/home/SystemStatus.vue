@@ -104,7 +104,7 @@ function sampledAt(value?: string | null) {
 			<div class="runtime">
 				<span>{{ t('systemStatus.uptime', {duration: duration(data.uptime_seconds)}) }}</span>
 				<a
-					:href="`https://github.com/KanameMadoka520/vikunja-x/releases/tag/${data.version}`"
+					:href="`https://github.com/KanameMadoka520/Astering/releases/tag/${data.version}`"
 					target="_blank"
 					rel="noopener noreferrer"
 				>{{ data.version }}</a>

@@ -24,7 +24,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"code.vikunja.io/api/pkg/modules/tcylocale"
+	"github.com/KanameMadoka520/Astering/pkg/modules/tcylocale"
 	"github.com/coder/websocket/wsjson"
 )
 

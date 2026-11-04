@@ -21,11 +21,11 @@ import (
 	"strings"
 	"testing"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/events"
-	migrationHandler "code.vikunja.io/api/pkg/modules/migration/handler"
-	"code.vikunja.io/api/pkg/notifications"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/events"
+	migrationHandler "github.com/KanameMadoka520/Astering/pkg/modules/migration/handler"
+	"github.com/KanameMadoka520/Astering/pkg/notifications"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

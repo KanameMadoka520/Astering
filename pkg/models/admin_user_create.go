@@ -17,9 +17,9 @@
 package models
 
 import (
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/events"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/events"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 
 	"xorm.io/xorm"
 )
@@ -28,8 +28,8 @@ import (
 type CreateUserBody struct {
 	// The full name of the new user. Optional.
 	Name string `json:"name" doc:"The full name of the new user. Optional."`
-	// The language of the new user. Must be a valid IETF BCP 47 language code and exist in Vikunja.
-	Language string `json:"language" valid:"language" doc:"IETF BCP 47 language code; must exist in Vikunja."`
+	// The language of the new user. Must be a valid IETF BCP 47 language code and exist in Astering.
+	Language string `json:"language" valid:"language" doc:"IETF BCP 47 language code; must exist in Astering."`
 	user.APIUserPassword
 	// Mark the new user as an instance admin.
 	IsAdmin bool `json:"is_admin" doc:"Mark the new user as an instance admin."`

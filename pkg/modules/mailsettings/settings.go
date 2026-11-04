@@ -31,8 +31,8 @@ import (
 	"strings"
 	"sync"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/modules/tcylocale"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/modules/tcylocale"
 )
 
 type MailSettings struct {
@@ -59,7 +59,7 @@ func CanManage(uid int64) bool {
 	if uid <= 0 {
 		return false
 	}
-	for _, id := range strings.Split(os.Getenv("TCYMC_SETTINGS_ADMIN_IDS"), ",") {
+	for _, id := range strings.Split(config.SettingsAdminIDsEnv(), ",") {
 		parsed, err := strconv.ParseInt(strings.TrimSpace(id), 10, 64)
 		if err == nil && uid == parsed {
 			return true

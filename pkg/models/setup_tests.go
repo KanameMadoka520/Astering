@@ -17,11 +17,11 @@
 package models
 
 import (
-	_ "code.vikunja.io/api/pkg/config" // To trigger its init() which initializes the config
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/mail"
-	"code.vikunja.io/api/pkg/notifications"
+	_ "github.com/KanameMadoka520/Astering/pkg/config" // To trigger its init() which initializes the config
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/mail"
+	"github.com/KanameMadoka520/Astering/pkg/notifications"
 )
 
 // SetupTests takes care of seting up the db, fixtures etc.

@@ -20,9 +20,9 @@ import (
 	"net/http"
 	"testing"
 
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/models"
-	bgHandler "code.vikunja.io/api/pkg/modules/background/handler"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	bgHandler "github.com/KanameMadoka520/Astering/pkg/modules/background/handler"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

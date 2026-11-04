@@ -29,7 +29,7 @@ import (
 	"time"
 	_ "time/tzdata" // Imports time zone data instead of relying on the os
 
-	"code.vikunja.io/api/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/log"
 
 	"github.com/c2h5oh/datasize"
 	"github.com/spf13/viper"
@@ -379,7 +379,7 @@ func getRootpathLocation() string {
 	if runtime.GOOS == "windows" {
 		exeSuffix = ".exe"
 	}
-	if exeLocation, err := exec.LookPath("vikunja" + exeSuffix); err == nil {
+	if exeLocation, err := exec.LookPath("astering" + exeSuffix); err == nil {
 		return filepath.Dir(exeLocation)
 	}
 
@@ -478,7 +478,7 @@ func initDefaultConfig() {
 	MailerUsername.setDefault("")
 	MailerPassword.setDefault("")
 	MailerSkipTLSVerify.setDefault(false)
-	MailerFromEmail.setDefault("mail@vikunja")
+	MailerFromEmail.setDefault("mail@astering")
 	MailerQueuelength.setDefault(100)
 	MailerQueueTimeout.setDefault(30)
 	MailerForceSSL.setDefault(false)
@@ -653,44 +653,45 @@ func readConfigValuesFromFiles() {
 	}
 }
 
-func setConfigFromEnv() error {
-	envKeys := os.Environ()
-	configMap := make(map[string]any)
-	for _, envKeyValue := range envKeys {
-		keyValue := strings.SplitN(envKeyValue, "=", 2)
-		if len(keyValue) != 2 {
-			continue
-		}
-		key, value := keyValue[0], keyValue[1]
-
-		if strings.HasPrefix(key, "VIKUNJA_") {
-			formattedKey := strings.ToLower(strings.TrimPrefix(key, "VIKUNJA_"))
-			keys := strings.Split(formattedKey, "_")
-			currentMap := configMap
-
-			for i, part := range keys {
-				_, isString := currentMap[part].(string)
-				if i == len(keys)-1 || isString {
-					// Set the value at the final level
-					currentMap[part] = value
-				} else {
-					// Check if the key exists at the current level, create a new map if not
-					if _, exists := currentMap[part]; !exists {
-						currentMap[part] = make(map[string]any)
-					}
-
-					// Move into the nested map
-					typed, is := currentMap[part].(map[string]any)
-					if !is {
-						log.Errorf("Failed to set config value from environment variable %s: %s, failed on part %s, type is not map, is %T", key, value, part, currentMap[part])
-						continue
-					}
-
-					currentMap = typed
-				}
-			}
+// bindEnvironmentAliases keeps existing deployments readable while new settings use
+// ASTERING_. Explicit new values take precedence over their VIKUNJA_ aliases.
+func bindEnvironmentAliases() {
+	for _, key := range viper.AllKeys() {
+		envKey := strings.ToUpper(strings.ReplaceAll(key, ".", "_"))
+		if err := viper.BindEnv(key, "ASTERING_"+envKey, "VIKUNJA_"+envKey); err != nil {
+			log.Fatalf("Could not bind configuration key %s: %v", key, err)
 		}
 	}
+}
+
+func mergeEnvironmentConfig(configMap map[string]any, prefix string, environment []string) {
+	for _, entry := range environment {
+		key, value, ok := strings.Cut(entry, "=")
+		if !ok || !strings.HasPrefix(key, prefix) {
+			continue
+		}
+		parts := strings.Split(strings.ToLower(strings.TrimPrefix(key, prefix)), "_")
+		current := configMap
+		for index, part := range parts {
+			if index == len(parts)-1 {
+				current[part] = value
+				break
+			}
+			nested, ok := current[part].(map[string]any)
+			if !ok {
+				nested = make(map[string]any)
+				current[part] = nested
+			}
+			current = nested
+		}
+	}
+}
+
+func setConfigFromEnv() error {
+	environment := os.Environ()
+	configMap := make(map[string]any)
+	mergeEnvironmentConfig(configMap, "VIKUNJA_", environment)
+	mergeEnvironmentConfig(configMap, "ASTERING_", environment)
 	return viper.MergeConfigMap(configMap)
 }
 
@@ -741,9 +742,10 @@ func InitConfig() {
 	initDefaultConfig()
 
 	// Init checking for environment variables
-	viper.SetEnvPrefix("vikunja")
+	viper.SetEnvPrefix("astering")
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
+	bindEnvironmentAliases()
 
 	log.ConfigureStandardLogger(LogEnabled.GetBool(), LogStandard.GetString(), LogPath.GetString(), LogLevel.GetString(), LogFormat.GetString())
 
@@ -752,13 +754,15 @@ func InitConfig() {
 		viper.SetConfigFile(configFileOverride)
 	} else {
 		viper.AddConfigPath(ServiceRootpath.GetString())
-		viper.AddConfigPath("/etc/vikunja/")
+		viper.AddConfigPath("/etc/astering/")
+		viper.AddConfigPath("/etc/vikunja/") // Legacy installation compatibility.
 
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
-			log.Debugf("No home directory found, not using config from ~/.config/vikunja/. Error was: %s\n", err.Error())
+			log.Debugf("No home directory found, not using per-user config. Error was: %s\n", err.Error())
 		} else {
-			viper.AddConfigPath(path.Join(homeDir, ".config", "vikunja"))
+			viper.AddConfigPath(path.Join(homeDir, ".config", "astering"))
+			viper.AddConfigPath(path.Join(homeDir, ".config", "vikunja")) // Legacy installation compatibility.
 		}
 
 		viper.AddConfigPath(".")
@@ -778,6 +782,7 @@ func InitConfig() {
 	anchorRootpathToConfigFile()
 
 	envErr := setConfigFromEnv()
+	bindEnvironmentAliases()
 	readConfigValuesFromFiles()
 	anchorPathsToRootpath()
 

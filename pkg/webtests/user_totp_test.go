@@ -22,9 +22,9 @@ import (
 	"testing"
 	"time"
 
-	"code.vikunja.io/api/pkg/db"
-	apiv1 "code.vikunja.io/api/pkg/routes/api/v1"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	apiv1 "github.com/KanameMadoka520/Astering/pkg/routes/api/v1"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 
 	"github.com/pquerna/otp/totp"
 	"github.com/stretchr/testify/assert"

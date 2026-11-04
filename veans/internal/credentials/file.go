@@ -22,7 +22,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"code.vikunja.io/veans/internal/fsutil"
+	"github.com/KanameMadoka520/Astering/veans/internal/fsutil"
 	"gopkg.in/yaml.v3"
 )
 

@@ -1,13 +1,13 @@
-name: "vikunja"
+name: "astering"
 arch: "<arch>"
 platform: "linux"
 version: "<version>"
-description: "Vikunja is an open-source todo application, written in Go. It lets you create lists,tasks and share them via teams or directly between users."
-maintainer: "Vikunja Maintainers <maintainers@vikunja.io>"
-homepage: "https://vikunja.io"
+description: "Astering provides projects, schedules, records and native AI assistance, based on Vikunja."
+maintainer: "KanameMadoka520 <90090108+KanameMadoka520@users.noreply.github.com>"
+homepage: "https://github.com/KanameMadoka520/Astering"
 section: "default"
 priority: "extra"
-license: "AGPLv3"
+license: "AGPL-3.0-or-later"
 depends:
   - systemd
 rpm:
@@ -30,18 +30,20 @@ overrides:
       postinstall: ./build/after-install-openrc.sh
 contents:
   - src: <binlocation>
-    dst: /opt/vikunja/vikunja
+    dst: /opt/astering/astering
   - src: ./config.yml.sample
-    dst: /etc/vikunja/config.yml
+    dst: /etc/astering/config.yml
     # noreplace only affects rpm; the other packagers treat it as plain config.
     type: "config|noreplace"
-  - src: /opt/vikunja/vikunja
-    dst: /usr/local/bin/vikunja
+  - src: /opt/astering/astering
+    dst: /usr/local/bin/astering
     type: "symlink"
-  - src: vikunja.service
-    dst: /usr/lib/systemd/system/vikunja.service
-  - src: vikunja.initd
-    dst: /etc/init.d/vikunja
+  - src: astering.service
+    dst: /usr/lib/systemd/system/astering.service
+  - src: astering.initd
+    dst: /etc/init.d/astering
+    file_info:
+      mode: 0755
     type: "config"
     packager: apk
 scripts:

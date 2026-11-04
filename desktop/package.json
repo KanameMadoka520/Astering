@@ -1,17 +1,18 @@
 {
   "name": "vikunja-desktop",
-  "version": "v0.1.0",
-  "description": "Vikunja's frontend as a standalone desktop application.",
+  "version": "2.7.1-aster.50",
+  "description": "Astering frontend as a standalone desktop application, based on Vikunja.",
   "main": "main.js",
-  "repository": "https://code.vikunja.io/desktop",
+  "repository": "https://github.com/KanameMadoka520/Astering",
   "license": "GPL-3.0-or-later",
   "packageManager": "pnpm@11.27.0",
   "author": {
-    "email": "maintainers@vikunja.io",
-    "name": "Vikunja Team"
+    "email": "90090108+KanameMadoka520@users.noreply.github.com",
+    "name": "KanameMadoka520"
   },
-  "homepage": "https://vikunja.io",
+  "homepage": "https://github.com/KanameMadoka520/Astering",
   "scripts": {
+    "brand:assets": "node scripts/brand-assets.mjs",
     "build:frontend": "cd ../frontend && pnpm run build && cd ../desktop && rm -rf frontend && cp -r ../frontend/dist frontend",
     "start": "electron .",
     "pack": "electron-builder --dir",
@@ -23,12 +24,14 @@
       "**/*",
       "preload-quick-entry.js"
     ],
-    "productName": "Vikunja Desktop",
+    "productName": "Astering",
     "artifactName": "${productName}-${version}.${ext}",
     "icon": "build/icon.icns",
     "protocols": {
-      "name": "Vikunja Desktop",
-      "schemes": ["vikunja-desktop"]
+      "name": "Astering Desktop",
+      "schemes": [
+        "vikunja-desktop"
+      ]
     },
     "linux": {
       "target": [

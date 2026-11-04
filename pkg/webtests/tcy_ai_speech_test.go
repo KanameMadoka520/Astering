@@ -29,9 +29,9 @@ import (
 	"testing"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/i18n"
-	"code.vikunja.io/api/pkg/modules/tcyai"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/i18n"
+	"github.com/KanameMadoka520/Astering/pkg/modules/tcyai"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"github.com/stretchr/testify/assert"

@@ -19,8 +19,8 @@ package audit
 import (
 	"encoding/json"
 
-	"code.vikunja.io/api/pkg/events"
-	"code.vikunja.io/api/pkg/license"
+	"github.com/KanameMadoka520/Astering/pkg/events"
+	"github.com/KanameMadoka520/Astering/pkg/license"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 )

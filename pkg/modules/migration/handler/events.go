@@ -17,7 +17,7 @@
 package handler
 
 import (
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 )
 
 // MigrationRequestedEvent represents a MigrationRequestedEvent event

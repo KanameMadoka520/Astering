@@ -26,7 +26,7 @@ type RouteGroup map[string]struct {
 }
 
 // Routes returns the API token route map. Used during bootstrap to
-// negotiate exactly which permission groups+actions exist on this Vikunja
+// negotiate exactly which permission groups+actions exist on this Astering
 // instance, so the bot's API token only requests scopes the server knows
 // about — avoiding hard-coding a permission list that could drift.
 func (c *Client) Routes(ctx context.Context) (map[string]RouteGroup, error) {
@@ -40,7 +40,7 @@ func (c *Client) Routes(ctx context.Context) (map[string]RouteGroup, error) {
 // PermissionsForBot picks a curated subset of route groups the veans bot
 // needs and projects the available actions of each. Groups not present on
 // the server are silently dropped, so the resulting permission map is
-// always valid for POST /tokens regardless of Vikunja version.
+// always valid for POST /tokens regardless of Astering version.
 //
 // Bucket keys are requested under both current and pre-GHSA-j5v7 names.
 func PermissionsForBot(routes map[string]RouteGroup) map[string][]string {

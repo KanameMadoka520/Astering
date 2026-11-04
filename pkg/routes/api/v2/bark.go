@@ -20,8 +20,8 @@ import (
 	"context"
 	"errors"
 
-	"code.vikunja.io/api/pkg/modules/bark"
-	"code.vikunja.io/api/pkg/modules/tcylocale"
+	"github.com/KanameMadoka520/Astering/pkg/modules/bark"
+	"github.com/KanameMadoka520/Astering/pkg/modules/tcylocale"
 	"github.com/danielgtaylor/huma/v2"
 )
 

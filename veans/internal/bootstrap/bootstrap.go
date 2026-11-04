@@ -37,14 +37,14 @@ import (
 	"strconv"
 	"strings"
 
-	"code.vikunja.io/veans/internal/auth"
-	"code.vikunja.io/veans/internal/client"
-	"code.vikunja.io/veans/internal/config"
-	"code.vikunja.io/veans/internal/credentials"
-	"code.vikunja.io/veans/internal/output"
-	"code.vikunja.io/veans/internal/picker"
-	"code.vikunja.io/veans/internal/status"
-	"code.vikunja.io/veans/internal/trust"
+	"github.com/KanameMadoka520/Astering/veans/internal/auth"
+	"github.com/KanameMadoka520/Astering/veans/internal/client"
+	"github.com/KanameMadoka520/Astering/veans/internal/config"
+	"github.com/KanameMadoka520/Astering/veans/internal/credentials"
+	"github.com/KanameMadoka520/Astering/veans/internal/output"
+	"github.com/KanameMadoka520/Astering/veans/internal/picker"
+	"github.com/KanameMadoka520/Astering/veans/internal/status"
+	"github.com/KanameMadoka520/Astering/veans/internal/trust"
 )
 
 // Options configures Init. All fields are optional unless noted; missing
@@ -53,7 +53,7 @@ type Options struct {
 	// ConfigPath is where .veans.yml will be written. Required.
 	ConfigPath string
 
-	// Server is the Vikunja base URL (e.g. https://vikunja.example.com).
+	// Server is the Astering base URL (e.g. https://astering.example.com).
 	// If empty, the prompter asks.
 	Server string
 
@@ -67,7 +67,7 @@ type Options struct {
 	HumanTOTP     string
 
 	// BotUsername overrides the bot-<reponame> default. The "bot-" prefix is
-	// auto-prepended if missing — Vikunja will reject otherwise.
+	// auto-prepended if missing — Astering will reject otherwise.
 	BotUsername string
 
 	// ProjectID, when non-zero, skips the interactive project picker.
@@ -168,7 +168,7 @@ func Init(ctx context.Context, opts *Options) (*Result, error) {
 
 	// 2. Server URL.
 	if opts.Server == "" {
-		v, err := prompter.ReadLine("Vikunja server URL: ")
+		v, err := prompter.ReadLine("Astering server URL: ")
 		if err != nil {
 			return nil, err
 		}
@@ -176,7 +176,7 @@ func Init(ctx context.Context, opts *Options) (*Result, error) {
 	}
 
 	// 3. Discover the actual API URL: the user might have typed bare
-	// "vikunja.example.com", or pasted the URL with /api/v1 already in
+	// "astering.example.com", or pasted the URL with /api/v1 already in
 	// it, or be on a default-port localhost install. DiscoverServer
 	// probes the plausible variants and returns the canonical base.
 	canonical, info, err := client.DiscoverServer(ctx, opts.Server)
@@ -192,7 +192,7 @@ func Init(ctx context.Context, opts *Options) (*Result, error) {
 	}
 	opts.Server = canonical
 	human := client.New(canonical, "")
-	progress(opts.Out, "Connected to Vikunja %s at %s", info.Version, canonical)
+	progress(opts.Out, "Connected to Astering %s at %s", info.Version, canonical)
 
 	// 4. Acquire human JWT (transient — used until step 11). Default is the
 	// OAuth flow; --token / --use-password / --username+--password override.
@@ -260,7 +260,7 @@ func Init(ctx context.Context, opts *Options) (*Result, error) {
 	}
 	perms := client.PermissionsForBot(routes)
 	if len(perms) == 0 {
-		return nil, output.New(output.CodeUnknown, "no API token permissions available — Vikunja /routes returned no matching groups")
+		return nil, output.New(output.CodeUnknown, "no API token permissions available — Astering /routes returned no matching groups")
 	}
 	mintedToken, err := human.CreateToken(ctx, &client.APIToken{
 		Title:       "veans for " + project.Title,
@@ -443,7 +443,7 @@ func normalizeBotUsername(override, suggested string) string {
 // to catch the rejections that would otherwise blow up steps 4–7 mid-init.
 // The server allows lowercase letters, digits, hyphens, underscores, and
 // dots; we additionally require the `bot-` prefix and forbid the
-// `link-share-N` shape Vikunja reserves for share-links.
+// `link-share-N` shape Astering reserves for share-links.
 var botUsernamePattern = regexp.MustCompile(`^bot-[a-z0-9][a-z0-9._-]*$`)
 
 var linkShareSuffix = regexp.MustCompile(`^bot-link-share-\d+$`)
@@ -459,7 +459,7 @@ func validateBotUsername(name string) error {
 	}
 	if linkShareSuffix.MatchString(name) {
 		return output.New(output.CodeValidation,
-			"invalid bot username %q: `link-share-N` is reserved by Vikunja for share-link users",
+			"invalid bot username %q: `link-share-N` is reserved by Astering for share-link users",
 			name)
 	}
 	return nil
@@ -507,7 +507,7 @@ func pickProject(ctx context.Context, c *client.Client, id int64, p auth.Prompte
 }
 
 // createProject prompts for the new project's title and identifier and
-// PUTs it. Title is required; identifier is optional (Vikunja caps it at
+// PUTs it. Title is required; identifier is optional (Astering caps it at
 // 10 chars). The fresh project comes with the default views — including
 // the Kanban view pickKanbanView is about to grab.
 func createProject(ctx context.Context, c *client.Client, p auth.Prompter, out io.Writer) (*client.Project, error) {
@@ -545,7 +545,7 @@ func pickKanbanView(ctx context.Context, c *client.Client, projectID int64, view
 		}
 	}
 	if len(kanban) == 0 {
-		return nil, output.New(output.CodeNotFound, "no Kanban views on this project — create one in the Vikunja UI first")
+		return nil, output.New(output.CodeNotFound, "no Kanban views on this project — create one in the Astering UI first")
 	}
 	if viewID != 0 {
 		for _, v := range kanban {
@@ -585,7 +585,7 @@ func bootstrapBuckets(ctx context.Context, c *client.Client, projectID, viewID i
 	}
 
 	// Resolve canonical statuses to existing buckets via the alias table.
-	// Vikunja's default Kanban view ships with "To-Do" / "Doing" / "Done";
+	// Astering's default Kanban view ships with "To-Do" / "Doing" / "Done";
 	// matching them as Todo / InProgress / Done avoids creating a parallel
 	// set of buckets every time veans runs against a vanilla project.
 	matched := map[status.Status]*client.Bucket{}
@@ -629,7 +629,7 @@ func bootstrapBuckets(ctx context.Context, c *client.Client, projectID, viewID i
 				case "n", "no":
 					return config.Buckets{}, output.New(output.CodeValidation,
 						"canonical buckets missing — either re-run `veans init` and answer Y to let veans bootstrap them, "+
-							"or create the missing buckets (%s) manually in Vikunja's UI and re-run `veans init`",
+							"or create the missing buckets (%s) manually in Astering's UI and re-run `veans init`",
 						strings.Join(missing, ", "))
 				case "a", "abort":
 					return config.Buckets{}, output.New(output.CodeValidation, "user aborted bucket bootstrap")
@@ -677,7 +677,7 @@ func bootstrapBuckets(ctx context.Context, c *client.Client, projectID, viewID i
 	if out.Todo == 0 || out.InProgress == 0 || out.InReview == 0 || out.Done == 0 || out.Scrapped == 0 {
 		return config.Buckets{}, output.New(output.CodeValidation,
 			"canonical buckets missing — either re-run `veans init` and let veans bootstrap them, "+
-				"or create the missing canonical buckets (Todo / In Progress / In Review / Done / Scrapped) manually in Vikunja's UI and re-run `veans init`")
+				"or create the missing canonical buckets (Todo / In Progress / In Review / Done / Scrapped) manually in Astering's UI and re-run `veans init`")
 	}
 	return out, nil
 }

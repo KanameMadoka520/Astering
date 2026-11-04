@@ -23,8 +23,8 @@ import (
 	"strings"
 	"testing"
 
-	"code.vikunja.io/api/pkg/license"
-	"code.vikunja.io/api/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/license"
+	"github.com/KanameMadoka520/Astering/pkg/models"
 
 	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"

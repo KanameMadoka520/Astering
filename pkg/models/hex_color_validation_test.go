@@ -19,7 +19,7 @@ package models
 import (
 	"testing"
 
-	"code.vikunja.io/api/pkg/utils"
+	"github.com/KanameMadoka520/Astering/pkg/utils"
 
 	"github.com/asaskevich/govalidator"
 	"github.com/stretchr/testify/assert"

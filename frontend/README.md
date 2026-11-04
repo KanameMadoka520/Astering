@@ -1,15 +1,8 @@
-# Web frontend for Vikunja
+# Astering web frontend
 
-> The todo app to organize your life.
+Aster’s AI-integrated industrial system — projects, schedules, personal records and Arona in one workspace.
 
-[![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](LICENSE)
-[![Translation](https://badges.crowdin.net/vikunja/localized.svg)](https://crowdin.com/project/vikunja)
-
-This is the web frontend for Vikunja, written in Vue.js.
-
-Take a look at [our roadmap](https://my.vikunja.cloud/share/UrdhKPqumxDXUbYpEGJLSIyNTwAnbBzVlwdDpRbv/auth) (hosted on Vikunja!) for a list of things we're currently working on!
-
-For general information about the project, refer to the top-level readme of this repo.
+This Vue 3 frontend is part of [Astering](https://github.com/KanameMadoka520/Astering), maintained by KanameMadoka520. It builds on [Vikunja](https://vikunja.io/) and retains its AGPL-3.0-or-later license and contributor attribution. General project information and release instructions are in the [root README](../README.md).
 
 ## Project setup
 
@@ -17,39 +10,31 @@ For general information about the project, refer to the top-level readme of this
 pnpm install
 ```
 
-### Development
+## Local development
 
-#### Define backend server
-
-You can develop the web front end against any accessible backend, including the demo at https://try.vikunja.io
-
-In order to do so, you need to set the `DEV_PROXY` env variable. The recommended way to do so is to:
-
-- Copy `.env.local.example` as `.env.local`
-- Uncomment the `DEV_PROXY` line
-- Set the backend url you want to use
-
-In the end, it should look like `DEV_PROXY=https://try.vikunja.io` if you work against the online demo backend.
-
-
-#### Start dev server (compiles and hot-reloads)
+Copy `.env.local.example` to `.env.local` and set `DEV_PROXY` to an isolated development API, for example `http://127.0.0.1:3456`. Start the development frontend with:
 
 ```shell
 pnpm run dev
 ```
 
-### Compiles and minifies for production
+`ASTERING_FRONTEND_BASE` sets an optional subpath, and `ASTERING_FRONTEND_PORT` sets the local frontend port. The existing `VIKUNJA_FRONTEND_BASE` and `VIKUNJA_FRONTEND_PORT` names remain supported when their Astering equivalents are absent. Existing browser login, drafts and preferences continue using their established storage keys.
+
+To preview an existing local build, use `pnpm preview` and start the locally compiled API with `pnpm preview:astering`. `preview:vikunja` remains a compatibility alias.
+
+## Local checks and production build
 
 ```shell
-pnpm run build
+pnpm typecheck
+pnpm lint
+pnpm lint:styles
+pnpm build
 ```
 
-### Lints and fixes files
+Run browser tests through the repository's `run-e2e-tests` skill and Mage, with an isolated database. Builds and releases are performed locally; this repository does not use GitHub Actions.
 
-```shell
-pnpm run lint
-```
+The branded SVG wordmarks and icon sizes can be rebuilt offline with `pnpm brand:assets`. The approved starlight logo, companion avatar and generation prompts live in `originalMedia/brand/`; the earlier product mascots have been replaced.
 
 ## License
 
-This project is licensed under the AGPL-3.0-or-later license. See the [LICENSE](LICENSE) file for details.
+[AGPL-3.0-or-later](../LICENSE). Upstream Vikunja and dependency copyrights remain in their respective files.

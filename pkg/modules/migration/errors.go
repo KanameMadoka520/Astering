@@ -21,7 +21,7 @@ import (
 	"net/http"
 	"time"
 
-	"code.vikunja.io/api/pkg/web"
+	"github.com/KanameMadoka520/Astering/pkg/web"
 )
 
 // upstreamErrorBodyLimit caps the response body kept in an ErrUpstreamRequestFailed: it ends up in
@@ -194,7 +194,7 @@ func (err *ErrFileIsEmpty) HTTPError() web.HTTPError {
 type ErrNoDataFileInZip struct{}
 
 func (err *ErrNoDataFileInZip) Error() string {
-	return "The provided zip file does not contain a Vikunja data file"
+	return "The provided zip file does not contain a compatible Vikunja / Astering data file"
 }
 
 // ErrCodeNoDataFileInZip holds the unique world-error code of this error
@@ -205,7 +205,7 @@ func (err *ErrNoDataFileInZip) HTTPError() web.HTTPError {
 	return web.HTTPError{
 		HTTPCode: http.StatusBadRequest,
 		Code:     ErrCodeNoDataFileInZip,
-		Message:  "The provided zip file does not contain a Vikunja data file.",
+		Message:  "The provided zip file does not contain a compatible Vikunja / Astering data file.",
 	}
 }
 
@@ -318,6 +318,6 @@ func (err *ErrImportFromUnsupportedVersion) HTTPError() web.HTTPError {
 	return web.HTTPError{
 		HTTPCode: http.StatusBadRequest,
 		Code:     ErrCodeImportFromUnsupportedVersion,
-		Message:  "The export was created with a Vikunja version that is too old to import. Please create a new export with a more recent version.",
+		Message:  "The compatible Vikunja / Astering export version is too old to import. Please create a new export with a more recent version.",
 	}
 }

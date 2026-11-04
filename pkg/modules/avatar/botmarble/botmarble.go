@@ -19,8 +19,8 @@ package botmarble
 import (
 	"context"
 
-	"code.vikunja.io/api/pkg/modules/avatar/marble"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/modules/avatar/marble"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 )
 
 // botColors is a cool-toned palette distinct from the marble default so bot avatars are visually recognizable as bots at a glance.

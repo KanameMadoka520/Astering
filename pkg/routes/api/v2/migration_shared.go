@@ -21,9 +21,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"code.vikunja.io/api/pkg/modules/migration"
-	migrationHandler "code.vikunja.io/api/pkg/modules/migration/handler"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/modules/migration"
+	migrationHandler "github.com/KanameMadoka520/Astering/pkg/modules/migration/handler"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 
 	"github.com/danielgtaylor/huma/v2"
 )

@@ -25,7 +25,7 @@
 
 The overview describes project milestones, not an immutable title/audit snapshot and not a time-tracking report.
 
-## 阿罗娜协作 / Arona tools (tcymc.27)
+## 阿罗娜协作 / Arona tools (aster.27)
 
 可以直接询问“今年完成过哪些项目”“某项目的归档和重开记录”，或要求“将这个项目标记完成／重新打开”。阿罗娜按需发现 `list_project_history` 和 `set_project_completed`，不会增加每轮固定工具声明的数量。历史工具保留分页和当前访问权限；日期未知的旧记录单独查询，不虚构时间。模型只接收分页记录和统计，日历绘制数据保留在完整操作记录中。
 

@@ -26,11 +26,11 @@ import (
 	"strings"
 	"testing"
 
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/auth"
-	"code.vikunja.io/api/pkg/modules/mcp"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/auth"
+	"github.com/KanameMadoka520/Astering/pkg/modules/mcp"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -201,7 +201,7 @@ func TestMCP_Initialize(t *testing.T) {
 	rec := c.post(initializeBody)
 	require.Equal(t, http.StatusOK, rec.Code)
 	result := readMCPJSON(t, rec.Body.String())["result"].(map[string]any)
-	assert.Equal(t, "vikunja", result["serverInfo"].(map[string]any)["name"])
+	assert.Equal(t, "Astering", result["serverInfo"].(map[string]any)["name"])
 	assert.Contains(t, result["instructions"], `format: "markdown"`)
 }
 func TestMCP_ToolsListMatchesScopes(t *testing.T) {

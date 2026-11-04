@@ -168,7 +168,7 @@ test.describe('Home Page Task Overview', () => {
 
 		await page.goto('/')
 
-		await expect(page.locator('.home.app-content .content')).toContainText('Import your projects and tasks from other services into vikunja-x:')
+		await expect(page.locator('.home.app-content .content')).toContainText('Import your projects and tasks from other services into Astering:')
 	})
 
 	test('Should not show the cta buttons for new project when there are tasks', async ({authenticatedPage: page, apiContext}) => {
@@ -185,6 +185,6 @@ test.describe('Home Page Task Overview', () => {
 
 		await expect(page.locator('[data-cy="showTasks"] .card .task').first()).toBeVisible()
 		expect((await hintChecked).ok()).toBe(true)
-		await expect(page.locator('.home.app-content .content')).not.toContainText('Import your projects and tasks from other services into vikunja-x:')
+		await expect(page.locator('.home.app-content .content')).not.toContainText('Import your projects and tasks from other services into Astering:')
 	})
 })

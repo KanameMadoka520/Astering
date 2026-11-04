@@ -19,10 +19,10 @@ package user
 import (
 	"time"
 
-	"code.vikunja.io/api/pkg/cron"
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/utils"
+	"github.com/KanameMadoka520/Astering/pkg/cron"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/utils"
 	"xorm.io/builder"
 	"xorm.io/xorm"
 )

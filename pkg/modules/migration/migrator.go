@@ -19,7 +19,7 @@ package migration
 import (
 	"io"
 
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 )
 
 type MigratorName interface {

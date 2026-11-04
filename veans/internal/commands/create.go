@@ -23,9 +23,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"code.vikunja.io/veans/internal/client"
-	"code.vikunja.io/veans/internal/output"
-	"code.vikunja.io/veans/internal/status"
+	"github.com/KanameMadoka520/Astering/veans/internal/client"
+	"github.com/KanameMadoka520/Astering/veans/internal/output"
+	"github.com/KanameMadoka520/Astering/veans/internal/status"
 )
 
 type createFlags struct {
@@ -88,7 +88,7 @@ func runCreate(ctx context.Context, rt *runtime, title string, f *createFlags) (
 		return nil, err
 	}
 
-	// Vikunja places newly-created tasks in the view's default bucket
+	// Astering places newly-created tasks in the view's default bucket
 	// regardless of bucket_id in the create payload — move it explicitly
 	// when the requested status isn't Todo.
 	if st != status.Todo {

@@ -25,14 +25,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"code.vikunja.io/veans/internal/output"
+	"github.com/KanameMadoka520/Astering/veans/internal/output"
 )
 
 // Root builds the cobra command tree.
 func Root(version string) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "veans",
-		Short:         "veans — a beans-shaped CLI for Vikunja",
+		Short:         "veans — a beans-shaped CLI for Astering",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Version:       version,

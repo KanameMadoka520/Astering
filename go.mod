@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-module code.vikunja.io/api
+module github.com/KanameMadoka520/Astering
 
 go 1.27.0
 

@@ -24,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	"code.vikunja.io/api/pkg/files"
+	"github.com/KanameMadoka520/Astering/pkg/files"
 )
 
 // WriteFileDownload streams a loaded file (its .File reader must be open) to the

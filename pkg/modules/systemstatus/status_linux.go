@@ -28,7 +28,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const hostProcPath = "/run/tcymc-host-proc"
+const (
+	hostProcPath       = "/run/aster-host-proc"
+	legacyHostProcPath = "/run/tcymc-host-proc"
+)
 
 func read(path string) string {
 	b, err := os.ReadFile(path)
@@ -127,10 +130,21 @@ func measureHost(proc string) (Snapshot, cpuCounters) {
 	out.HostMetricsAvailable = cpu.valid && cores > 0 && out.MemoryTotal != nil && len(out.LoadAverage) == 3 && out.HostUptimeSeconds != nil
 	return out, cpu
 }
+func measureHostWithFallback(primary, legacy string) (Snapshot, cpuCounters) {
+	out, cpu := measureHost(primary)
+	if out.HostMetricsAvailable {
+		return out, cpu
+	}
+	if previous, previousCPU := measureHost(legacy); previous.HostMetricsAvailable {
+		return previous, previousCPU
+	}
+	return out, cpu
+}
+
 func measure(dataPath string) (Snapshot, cpuCounters) {
 	// Narrow explicit host file mounts prevent container metrics or a virtualized
 	// procfs from being silently labelled as host measurements.
-	out, cpu := measureHost(hostProcPath)
+	out, cpu := measureHostWithFallback(hostProcPath, legacyHostProcPath)
 	var disk unix.Statfs_t
 	if err := unix.Statfs(dataPath, &disk); err == nil && disk.Bsize > 0 {
 		used := (disk.Blocks - disk.Bfree) * uint64(disk.Bsize)

@@ -24,10 +24,10 @@ import (
 	"strings"
 	"time"
 
-	caldavpkg "code.vikunja.io/api/pkg/caldav"
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/models"
+	caldavpkg "github.com/KanameMadoka520/Astering/pkg/caldav"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/models"
 	"github.com/labstack/echo/v5"
 	"github.com/samedi/caldav-go/errs"
 )

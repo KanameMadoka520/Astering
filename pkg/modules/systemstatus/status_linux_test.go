@@ -69,3 +69,38 @@ func TestTCYSystemStatusCPUDelta(t *testing.T) {
 	assert.Nil(t, parseNumbers("NaN 1 2", 3))
 	assert.Nil(t, parseNumbers("1 2", 3))
 }
+
+func TestAsteringSystemStatusHostPathCompatibility(t *testing.T) {
+	fixture := func(path, uptime string) {
+		t.Helper()
+		for name, value := range map[string]string{
+			"stat":    "cpu 100 20 40 800 30 5 5 0\ncpu0 1\n",
+			"meminfo": "MemTotal: 20000 kB\nMemAvailable: 12000 kB\n",
+			"loadavg": "1.25 0.75 0.50 1/234 123",
+			"uptime":  uptime + " 80000.00",
+		} {
+			require.NoError(t, os.WriteFile(filepath.Join(path, name), []byte(value), 0600))
+		}
+	}
+	primary, legacy := t.TempDir(), t.TempDir()
+	fixture(legacy, "111")
+	old, _ := measureHostWithFallback(primary, legacy)
+	require.True(t, old.HostMetricsAvailable, "existing host mounts continue working")
+	require.NotNil(t, old.HostUptimeSeconds)
+	assert.EqualValues(t, 111, *old.HostUptimeSeconds)
+
+	fixture(primary, "222")
+	current, _ := measureHostWithFallback(primary, legacy)
+	require.True(t, current.HostMetricsAvailable)
+	require.NotNil(t, current.HostUptimeSeconds)
+	assert.EqualValues(t, 222, *current.HostUptimeSeconds, "the new mount has priority when both are present")
+
+	require.NoError(t, os.Remove(filepath.Join(primary, "meminfo")))
+	fallback, _ := measureHostWithFallback(primary, legacy)
+	require.True(t, fallback.HostMetricsAvailable, "an incomplete new mount does not hide a working old mount")
+	assert.EqualValues(t, 111, *fallback.HostUptimeSeconds)
+
+	missing, _ := measureHostWithFallback(t.TempDir(), t.TempDir())
+	assert.False(t, missing.HostMetricsAvailable, "container procfs is never substituted for host data")
+	assert.Nil(t, missing.HostUptimeSeconds)
+}

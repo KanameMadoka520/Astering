@@ -23,11 +23,11 @@ import (
 	"os"
 	"strings"
 
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/files"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/utils"
-	"code.vikunja.io/api/pkg/version"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/files"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/utils"
+	"github.com/KanameMadoka520/Astering/pkg/version"
 	"github.com/spf13/viper"
 )
 
@@ -59,13 +59,7 @@ func Dump(filename string) error {
 	}
 	log.Info("Dumped config file")
 
-	env := os.Environ()
-	dotEnv := ""
-	for _, e := range env {
-		if strings.Contains(e, "VIKUNJA_") {
-			dotEnv += e + "\n"
-		}
-	}
+	dotEnv := configEnvironment(os.Environ())
 	if dotEnv != "" {
 		err = utils.WriteBytesToZip(".env", []byte(dotEnv), dumpWriter)
 		if err != nil {
@@ -113,6 +107,17 @@ func Dump(filename string) error {
 	log.Info("Done creating dump")
 	log.Infof("Dump file saved at %s", filename)
 	return nil
+}
+
+func configEnvironment(entries []string) string {
+	var out strings.Builder
+	for _, entry := range entries {
+		if strings.HasPrefix(entry, "ASTERING_") || strings.HasPrefix(entry, "VIKUNJA_") {
+			out.WriteString(entry)
+			out.WriteByte('\n')
+		}
+	}
+	return out.String()
 }
 
 func writeFileToZip(filename string, writer *zip.Writer) error {

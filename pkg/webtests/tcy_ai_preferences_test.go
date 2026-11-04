@@ -20,8 +20,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/modules/tcyai"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/modules/tcyai"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

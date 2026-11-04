@@ -29,10 +29,10 @@ func TestServerCandidates(t *testing.T) {
 	}{
 		{
 			name:  "bare hostname → https only, with default-port fallback",
-			input: "vikunja.example.com",
+			input: "astering.example.com",
 			want: []string{
-				"https://vikunja.example.com",
-				"https://vikunja.example.com:3456",
+				"https://astering.example.com",
+				"https://astering.example.com:3456",
 			},
 		},
 		{
@@ -47,17 +47,17 @@ func TestServerCandidates(t *testing.T) {
 		},
 		{
 			name:  "user-supplied /api/v1 suffix is trimmed (so the probe doesn't double it up)",
-			input: "https://vikunja.example.com/api/v1",
+			input: "https://astering.example.com/api/v1",
 			want: []string{
-				"https://vikunja.example.com",
-				"https://vikunja.example.com:3456",
+				"https://astering.example.com",
+				"https://astering.example.com:3456",
 			},
 		},
 		{
 			name:  "explicit port is respected — no default-port fallback added",
-			input: "https://vikunja.example.com:8443",
+			input: "https://astering.example.com:8443",
 			want: []string{
-				"https://vikunja.example.com:8443",
+				"https://astering.example.com:8443",
 			},
 		},
 		{
@@ -85,12 +85,12 @@ func TestServerCandidates(t *testing.T) {
 		},
 		{
 			name:  "explicit http keeps http and may upgrade to https",
-			input: "http://vikunja.example.com",
+			input: "http://astering.example.com",
 			want: []string{
-				"http://vikunja.example.com",
-				"http://vikunja.example.com:3456",
-				"https://vikunja.example.com",
-				"https://vikunja.example.com:3456",
+				"http://astering.example.com",
+				"http://astering.example.com:3456",
+				"https://astering.example.com",
+				"https://astering.example.com:3456",
 			},
 		},
 		{
@@ -103,10 +103,10 @@ func TestServerCandidates(t *testing.T) {
 		},
 		{
 			name:  "trailing slash trimmed",
-			input: "https://vikunja.example.com/",
+			input: "https://astering.example.com/",
 			want: []string{
-				"https://vikunja.example.com",
-				"https://vikunja.example.com:3456",
+				"https://astering.example.com",
+				"https://astering.example.com:3456",
 			},
 		},
 	}

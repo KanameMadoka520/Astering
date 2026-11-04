@@ -21,11 +21,11 @@ import (
 	"net/http"
 	"net/http/pprof"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/metrics"
-	"code.vikunja.io/api/pkg/models"
-	auth2 "code.vikunja.io/api/pkg/modules/auth"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/metrics"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	auth2 "github.com/KanameMadoka520/Astering/pkg/modules/auth"
 
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"

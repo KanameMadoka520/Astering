@@ -19,8 +19,8 @@ package models
 import (
 	"strings"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/richtext"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/richtext"
 	"xorm.io/xorm"
 )
 

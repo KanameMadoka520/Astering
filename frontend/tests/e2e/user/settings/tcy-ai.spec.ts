@@ -69,7 +69,7 @@ test('saves model roles without disclosing keys and opens the branded assistant'
 	await expect(page.getByLabel('连接名称')).toHaveValue('我的任务助手')
 	await page.getByRole('link', {name: '打开阿罗娜'}).click()
 	await expect(page.getByRole('heading', {name: '阿罗娜'})).toBeVisible()
-	await expect(page.getByRole('link', {name: 'x版本'})).toHaveAttribute('href', 'https://github.com/KanameMadoka520/vikunja-x')
+	await expect(page.getByRole('link', {name: 'Astering 开源仓库'})).toHaveAttribute('href', 'https://github.com/KanameMadoka520/Astering')
 	await page.getByRole('button', {name: '场景与偏好', exact: true}).click()
 	await page.getByLabel('工作方式').selectOption('read')
 	await expect(page.getByLabel('本次允许删除任务')).toBeDisabled()

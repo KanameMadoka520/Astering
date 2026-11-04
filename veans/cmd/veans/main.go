@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// veans — a beans-shaped CLI for Vikunja.
+// veans — a beans-shaped CLI for Astering.
 package main
 
 import (
@@ -22,8 +22,8 @@ import (
 	"os"
 	"runtime"
 
-	"code.vikunja.io/veans/internal/client"
-	"code.vikunja.io/veans/internal/commands"
+	"github.com/KanameMadoka520/Astering/veans/internal/client"
+	"github.com/KanameMadoka520/Astering/veans/internal/commands"
 )
 
 // version is overwritten via -ldflags at release time.

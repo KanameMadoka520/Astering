@@ -19,8 +19,8 @@ package models
 import (
 	"fmt"
 
-	"code.vikunja.io/api/pkg/user"
-	"code.vikunja.io/api/pkg/web"
+	"github.com/KanameMadoka520/Astering/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/web"
 	"xorm.io/builder"
 	"xorm.io/xorm"
 )

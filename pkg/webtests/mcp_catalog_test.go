@@ -20,11 +20,11 @@ import (
 	"testing"
 	"time"
 
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/license"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/mcp"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/license"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/mcp"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -56,7 +56,7 @@ func TestMCP_Catalog_FindActionFollowsScopes(t *testing.T) {
 }
 func TestMCP_Catalog_FindActionDescriptionListsAuthorizedAreas(t *testing.T) {
 	desc := newMCPClient(t, mcpFullToken).toolDescription("find_action")
-	assert.Equal(t, "Discover additional Vikunja actions for: labels, project_views, sharing, tasks. Returns only actions your token authorizes; pass action or resource for full input schemas. Invoke them with do_action.", desc)
+	assert.Equal(t, "Discover additional Astering actions for: labels, project_views, sharing, tasks. Returns only actions your token authorizes; pass action or resource for full input schemas. Invoke them with do_action.", desc)
 }
 func TestMCP_Catalog_FindActionReturnsSchemas(t *testing.T) {
 	c := newMCPClient(t, mcpFullToken)

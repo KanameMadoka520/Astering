@@ -25,8 +25,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/files"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/files"
 )
 
 // s3ProbeTimeout bounds every S3 round trip the check makes. An unreachable but

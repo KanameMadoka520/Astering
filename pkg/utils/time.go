@@ -19,7 +19,7 @@ package utils
 import (
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/config"
 )
 
 // GetTimeWithoutNanoSeconds returns a time.Time without the nanoseconds.

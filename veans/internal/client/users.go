@@ -20,15 +20,15 @@ import (
 	"context"
 	"errors"
 
-	"code.vikunja.io/veans/internal/output"
+	"github.com/KanameMadoka520/Astering/veans/internal/output"
 )
 
 // CreateBotUser provisions a bot user via POST /user/bots. The username must
-// be prefixed `bot-` (Vikunja enforces this). The caller becomes the bot's
+// be prefixed `bot-` (Astering enforces this). The caller becomes the bot's
 // owner, which is what allows them to mint API tokens for the bot via
 // POST /tokens with owner_id.
 //
-// On Vikunja versions that predate the /user/bots endpoint, the server
+// On Astering versions that predate the /user/bots endpoint, the server
 // returns 404, which we surface as BOT_USERS_UNAVAILABLE so init can fail
 // fast with a clear message.
 func (c *Client) CreateBotUser(ctx context.Context, username, name string) (*BotUser, error) {
@@ -38,7 +38,7 @@ func (c *Client) CreateBotUser(ctx context.Context, username, name string) (*Bot
 		var oe *output.Error
 		if errors.As(err, &oe) && oe.Code == output.CodeNotFound {
 			return nil, output.Wrap(output.CodeBotUsersUnavailable, err,
-				"this Vikunja instance does not expose /user/bots — upgrade to a newer version")
+				"this Astering instance does not expose /user/bots — upgrade to a newer version")
 		}
 		return nil, err
 	}

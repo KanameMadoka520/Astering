@@ -19,7 +19,7 @@ package migration
 import (
 	"testing"
 
-	"code.vikunja.io/api/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/db"
 	"github.com/stretchr/testify/require"
 )
 

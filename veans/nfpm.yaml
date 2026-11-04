@@ -2,12 +2,12 @@ name: "veans"
 arch: "<arch>"
 platform: "linux"
 version: "<version>"
-description: "veans is an agent-friendly CLI wrapper for the Vikunja REST API."
-maintainer: "Vikunja Maintainers <maintainers@vikunja.io>"
-homepage: "https://vikunja.io"
+description: "veans is an agent-friendly CLI wrapper for the Astering REST API."
+maintainer: "KanameMadoka520 <90090108+KanameMadoka520@users.noreply.github.com>"
+homepage: "https://github.com/KanameMadoka520/Astering"
 section: "default"
 priority: "extra"
-license: "AGPLv3"
+license: "AGPL-3.0-or-later"
 rpm:
   signature:
     key_file: ${NFPM_GPG_KEY_FILE}

@@ -21,8 +21,8 @@ import (
 	"errors"
 	"strings"
 
-	"code.vikunja.io/api/pkg/i18n"
-	"code.vikunja.io/api/pkg/modules/humabridge"
+	"github.com/KanameMadoka520/Astering/pkg/i18n"
+	"github.com/KanameMadoka520/Astering/pkg/modules/humabridge"
 )
 
 type LocalizedError struct {

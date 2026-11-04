@@ -22,9 +22,9 @@ import (
 	"path/filepath"
 	goplugin "plugin"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/migration"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/migration"
 
 	"github.com/labstack/echo/v5"
 )

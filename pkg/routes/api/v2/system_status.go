@@ -36,7 +36,7 @@ import (
 	"context"
 	"net/http"
 
-	"code.vikunja.io/api/pkg/modules/systemstatus"
+	"github.com/KanameMadoka520/Astering/pkg/modules/systemstatus"
 	"github.com/danielgtaylor/huma/v2"
 )
 

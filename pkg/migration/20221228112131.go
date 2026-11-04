@@ -19,7 +19,7 @@ package migration
 import (
 	"time"
 
-	"code.vikunja.io/api/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/log"
 
 	"src.techknowlogick.com/xormigrate"
 	"xorm.io/xorm"

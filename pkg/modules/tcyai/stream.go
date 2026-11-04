@@ -23,7 +23,7 @@ import (
 	"sort"
 	"strings"
 
-	"code.vikunja.io/api/pkg/modules/tcylocale"
+	"github.com/KanameMadoka520/Astering/pkg/modules/tcylocale"
 )
 
 // Reassemble native responses so signed reasoning and tool calls still round-trip unchanged.

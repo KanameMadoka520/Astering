@@ -19,7 +19,7 @@ package status
 import (
 	"testing"
 
-	"code.vikunja.io/veans/internal/config"
+	"github.com/KanameMadoka520/Astering/veans/internal/config"
 )
 
 func TestParse(t *testing.T) {
@@ -68,7 +68,7 @@ func TestMatchBucketTitle(t *testing.T) {
 		title string
 		want  Status
 	}{
-		// Vikunja defaults
+		// Astering defaults
 		{"To-Do", Todo},
 		{"Doing", InProgress},
 		{"Done", Completed},

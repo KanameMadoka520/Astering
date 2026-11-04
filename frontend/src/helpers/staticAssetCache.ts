@@ -53,9 +53,10 @@ export function cacheableStaticResponse(request: Request, response: Response): b
 }
 
 export function staticAssetCacheNames(scope: string, version: string) {
-	const prefix = `vikunja-x-static:${encodeURIComponent(scope)}:`
+	const prefix = `astering-static:${encodeURIComponent(scope)}:`
 	return {
 		prefix,
 		current: `${prefix}${encodeURIComponent(version)}`,
+		legacyPrefix: `vikunja-x-static:${encodeURIComponent(scope)}:`,
 	}
 }

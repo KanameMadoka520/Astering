@@ -19,7 +19,7 @@ package yaegi
 import (
 	"testing"
 
-	"code.vikunja.io/api/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/log"
 )
 
 func TestPluginEventListener(t *testing.T) {

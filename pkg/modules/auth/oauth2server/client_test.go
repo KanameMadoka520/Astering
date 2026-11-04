@@ -23,6 +23,18 @@ import (
 )
 
 func TestValidateRedirectURI(t *testing.T) {
+	t.Run("accepts astering-desktop scheme", func(t *testing.T) {
+		assert.True(t, ValidateRedirectURI("astering-desktop://callback"))
+	})
+	t.Run("accepts astering-mobile scheme", func(t *testing.T) {
+		assert.True(t, ValidateRedirectURI("astering-mobile://auth"))
+	})
+	t.Run("rejects unregistered bare astering scheme", func(t *testing.T) {
+		assert.False(t, ValidateRedirectURI("astering://callback"))
+	})
+	t.Run("rejects astering prefix lookalike", func(t *testing.T) {
+		assert.False(t, ValidateRedirectURI("asteringdesktop://callback"))
+	})
 	t.Run("accepts vikunja-flutter scheme", func(t *testing.T) {
 		assert.True(t, ValidateRedirectURI("vikunja-flutter://callback"))
 	})

@@ -17,9 +17,9 @@
 package cmd
 
 import (
-	"code.vikunja.io/api/pkg/initialize"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/modules/dump"
+	"github.com/KanameMadoka520/Astering/pkg/initialize"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/modules/dump"
 	"github.com/spf13/cobra"
 )
 
@@ -32,7 +32,7 @@ func init() {
 
 var restoreCmd = &cobra.Command{
 	Use:   "restore [filename]",
-	Short: "Restores all vikunja data from a vikunja dump.",
+	Short: "Restores all Astering data from an Astering or compatible Vikunja dump.",
 	Args:  cobra.ExactArgs(1),
 	PreRun: func(_ *cobra.Command, _ []string) {
 		initialize.FullInitWithoutAsync()

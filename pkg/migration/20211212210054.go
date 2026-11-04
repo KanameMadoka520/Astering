@@ -20,8 +20,8 @@ import (
 	"errors"
 	"image"
 
-	"code.vikunja.io/api/pkg/files"
-	"code.vikunja.io/api/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/files"
+	"github.com/KanameMadoka520/Astering/pkg/log"
 	"github.com/bbrks/go-blurhash"
 	"golang.org/x/image/draw"
 	"src.techknowlogick.com/xormigrate"

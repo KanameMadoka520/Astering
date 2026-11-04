@@ -20,9 +20,9 @@ import (
 	"sort"
 	"strconv"
 
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/user"
-	"code.vikunja.io/api/pkg/web"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/web"
 
 	"xorm.io/builder"
 	"xorm.io/xorm"

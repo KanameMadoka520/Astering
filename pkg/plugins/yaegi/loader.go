@@ -22,8 +22,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"code.vikunja.io/api/pkg/plugins"
-	"code.vikunja.io/api/pkg/yaegi_symbols"
+	"github.com/KanameMadoka520/Astering/pkg/plugins"
+	"github.com/KanameMadoka520/Astering/pkg/yaegi_symbols"
 
 	"github.com/traefik/yaegi/interp"
 	"github.com/traefik/yaegi/stdlib"
@@ -57,8 +57,8 @@ func LoadPluginFull(dir string) (*plugins.LoadedYaegiPlugin, error) {
 	if err := i.Use(stdlib.Symbols); err != nil {
 		return nil, fmt.Errorf("loading stdlib symbols: %w", err)
 	}
-	if err := i.Use(yaegi_symbols.Symbols); err != nil {
-		return nil, fmt.Errorf("loading vikunja symbols: %w", err)
+	if err := i.Use(compatibleApplicationSymbols()); err != nil {
+		return nil, fmt.Errorf("loading Astering symbols: %w", err)
 	}
 
 	// Read and evaluate all .go files in the plugin directory.
@@ -115,4 +115,19 @@ func LoadPluginFull(dir string) (*plugins.LoadedYaegiPlugin, error) {
 	}
 
 	return loaded, nil
+}
+
+func compatibleApplicationSymbols() interp.Exports {
+	const currentPrefix = "github.com/KanameMadoka520/Astering/"
+	const legacyPrefix = "code.vikunja.io/api/"
+
+	symbols := make(interp.Exports, len(yaegi_symbols.Symbols)*2)
+	for path, exports := range yaegi_symbols.Symbols {
+		symbols[path] = exports
+		if strings.HasPrefix(path, currentPrefix) {
+			// Alias only known compiled exports; existing plugins keep their source imports.
+			symbols[legacyPrefix+strings.TrimPrefix(path, currentPrefix)] = exports
+		}
+	}
+	return symbols
 }

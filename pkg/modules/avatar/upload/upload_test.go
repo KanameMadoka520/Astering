@@ -22,20 +22,22 @@ import (
 	"hash/crc32"
 	"image"
 	"image/color"
+	"image/jpeg"
 	"image/png"
+	"io"
 	"math/rand"
 	"os"
 	"strconv"
 	"testing"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/events"
-	"code.vikunja.io/api/pkg/files"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/modules/imageutils"
-	"code.vikunja.io/api/pkg/modules/keyvalue"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/events"
+	"github.com/KanameMadoka520/Astering/pkg/files"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/modules/imageutils"
+	"github.com/KanameMadoka520/Astering/pkg/modules/keyvalue"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"xorm.io/xorm"
@@ -425,4 +427,63 @@ func TestCenteredSquare(t *testing.T) {
 	gray, ok := sq.(*image.Gray)
 	require.True(t, ok)
 	assert.Same(t, &thin.Pix[thin.PixOffset(0, 18)], &gray.Pix[0], "must be a view, not a copy")
+}
+
+func TestAvatarStoredFilenameMatchesEncoding(t *testing.T) {
+	jpegSource := &bytes.Buffer{}
+	require.NoError(t, jpeg.Encode(jpegSource, gradient(8, 4), nil))
+	cases := []struct {
+		name     string
+		raw      []byte
+		preserve bool
+		filename string
+		mime     string
+	}{
+		{
+			name:     "provider PNG encoding",
+			raw:      jpegSource.Bytes(),
+			filename: "avatar.png",
+			mime:     "image/png",
+		},
+		{
+			name:     "preserved JPEG",
+			raw:      jpegSource.Bytes(),
+			preserve: true,
+			filename: "avatar.jpg",
+			mime:     "image/jpeg",
+		},
+		{
+			name:     "preserved PNG",
+			raw:      encodePNG(t, gradient(8, 4)),
+			preserve: true,
+			filename: "avatar.png",
+			mime:     "image/png",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s, u := newUserWithAvatarFile(t)
+			prepared, err := prepareAvatar(t.Context(), tc.raw, tc.preserve)
+			require.NoError(t, err)
+			require.NoError(t, SaveAvatar(s, u, "upload", prepared))
+			require.NoError(t, s.Commit())
+			f := &files.File{ID: u.AvatarFileID}
+			verification := db.NewSession()
+			defer verification.Close()
+			require.NoError(t, f.LoadFileMetaByID(verification))
+			require.NoError(t, f.LoadFileByID())
+			defer f.File.Close()
+			assert.Equal(t, tc.filename, f.Name)
+			assert.Equal(t, tc.mime, f.Mime)
+			data, err := io.ReadAll(f.File)
+			require.NoError(t, err)
+			if tc.preserve {
+				assert.Equal(t, tc.raw, data)
+			} else {
+				_, format, err := image.Decode(bytes.NewReader(data))
+				require.NoError(t, err)
+				assert.Equal(t, "png", format)
+			}
+		})
+	}
 }

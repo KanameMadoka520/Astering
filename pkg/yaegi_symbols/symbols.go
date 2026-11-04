@@ -3,7 +3,7 @@ package yaegi_symbols
 import (
 	"reflect"
 
-	"code.vikunja.io/api/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/log"
 )
 
 // Symbols contains all Vikunja and third-party symbols for use with yaegi's Use() method.

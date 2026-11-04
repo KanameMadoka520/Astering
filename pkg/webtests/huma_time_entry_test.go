@@ -22,7 +22,7 @@ import (
 	"net/url"
 	"testing"
 
-	"code.vikunja.io/api/pkg/license"
+	"github.com/KanameMadoka520/Astering/pkg/license"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

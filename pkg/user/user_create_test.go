@@ -20,11 +20,11 @@ import (
 	"context"
 	"testing"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/events"
-	"code.vikunja.io/api/pkg/i18n"
-	"code.vikunja.io/api/pkg/mail"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/events"
+	"github.com/KanameMadoka520/Astering/pkg/i18n"
+	"github.com/KanameMadoka520/Astering/pkg/mail"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,8 +37,8 @@ func TestCreateUserConfirmationDeferred(t *testing.T) {
 		skip, rollback bool
 	}{
 		{name: "skip", skip: true},
-		{name: "confirm", language: "en", welcome: "Welcome to Vikunja!"},
-		{name: "localized", language: "de-DE", welcome: "Willkommen bei Vikunja!"},
+		{name: "confirm", language: "en", welcome: "Welcome to Astering!"},
+		{name: "localized", language: "de-DE", welcome: "Willkommen bei Astering!"},
 		{name: "rollback", rollback: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

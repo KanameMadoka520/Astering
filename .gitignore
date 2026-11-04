@@ -14,6 +14,7 @@ docs/themes/
 Run
 dist/
 cover.*
+/astering
 /vikunja
 Test_*
 bin/
@@ -27,6 +28,7 @@ pkg/static/templates_vfsdata.go
 files/
 !pkg/files/
 !pkg/web/files/
+astering-dump*
 vikunja-dump*
 vendor/
 os-packages/

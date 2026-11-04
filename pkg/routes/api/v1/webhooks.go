@@ -19,7 +19,7 @@ package v1
 import (
 	"net/http"
 
-	"code.vikunja.io/api/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/models"
 	"github.com/labstack/echo/v5"
 )
 

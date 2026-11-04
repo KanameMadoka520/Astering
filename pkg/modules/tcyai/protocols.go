@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"strings"
 
-	"code.vikunja.io/api/pkg/modules/tcylocale"
+	"github.com/KanameMadoka520/Astering/pkg/modules/tcylocale"
 )
 
 func toolCall(id, name string, args json.RawMessage) ToolCall {

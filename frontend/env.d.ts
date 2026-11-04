@@ -3,6 +3,12 @@
 /// <reference types="@histoire/plugin-vue/components" />
 
 interface ImportMetaEnv {
+	readonly ASTERING_API_URL?: string
+	readonly ASTERING_HTTP_PORT?: number
+	readonly ASTERING_HTTPS_PORT?: number
+	readonly ASTERING_SENTRY_ENABLED?: boolean
+	readonly ASTERING_SENTRY_DSN?: string
+
 	readonly VIKUNJA_API_URL?: string
 	readonly VIKUNJA_HTTP_PORT?: number
 	readonly VIKUNJA_HTTPS_PORT?: number

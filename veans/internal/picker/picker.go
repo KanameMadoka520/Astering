@@ -22,7 +22,7 @@ import (
 	"os"
 
 	tea "charm.land/bubbletea/v2"
-	"code.vikunja.io/veans/internal/client"
+	"github.com/KanameMadoka520/Astering/veans/internal/client"
 	"golang.org/x/term"
 )
 

@@ -21,7 +21,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"code.vikunja.io/veans/internal/trust"
+	"github.com/KanameMadoka520/Astering/veans/internal/trust"
 )
 
 func newTestGate(t *testing.T, p trust.Prompter) *trust.Gate {
@@ -32,8 +32,8 @@ func newTestGate(t *testing.T, p trust.Prompter) *trust.Gate {
 
 func TestTrustServer_RecordsTypedServerWithoutAsking(t *testing.T) {
 	for _, tc := range []struct{ typed, canonical string }{
-		{"https://vikunja.example.com", "https://vikunja.example.com"},
-		{"vikunja.example.com", "https://vikunja.example.com:3456"},
+		{"https://astering.example.com", "https://astering.example.com"},
+		{"astering.example.com", "https://astering.example.com:3456"},
 		{"localhost", "http://localhost:3456"},
 	} {
 		p := &queuePrompter{answers: []string{"n"}}
@@ -54,7 +54,7 @@ func TestTrustServer_RecordsTypedServerWithoutAsking(t *testing.T) {
 func TestTrustServer_SchemeChangeAsks(t *testing.T) {
 	p := &queuePrompter{answers: []string{"n", "y"}}
 	gate := newTestGate(t, p)
-	err := trustServer(gate, "http://vikunja.example.com", "https://vikunja.example.com")
+	err := trustServer(gate, "http://astering.example.com", "https://astering.example.com")
 	if !errors.Is(err, trust.ErrUntrusted) {
 		t.Fatalf("got %v, want ErrUntrusted", err)
 	}
@@ -62,7 +62,7 @@ func TestTrustServer_SchemeChangeAsks(t *testing.T) {
 		t.Fatalf("asked %d times, want 1", p.calls)
 	}
 
-	if err := trustServer(gate, "http://vikunja.example.com", "https://vikunja.example.com"); err != nil {
+	if err := trustServer(gate, "http://astering.example.com", "https://astering.example.com"); err != nil {
 		t.Fatal(err)
 	}
 }

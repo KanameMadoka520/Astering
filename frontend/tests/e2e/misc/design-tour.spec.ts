@@ -12,9 +12,9 @@ import {UserFactory} from '../../factories/user'
 import {createDefaultViews} from '../project/prepareProjects'
 
 // Walks the main pages with fictional data at desktop and phone widths in both colour schemes.
-// Always asserts there is no horizontal page overflow; set VIKUNJA_DESIGN_TOUR_DIR to also save screenshots.
+// Always asserts there is no horizontal page overflow; set ASTERING_DESIGN_TOUR_DIR to also save screenshots.
 const TZ = 'Asia/Shanghai'
-const SHOTS = process.env.VIKUNJA_DESIGN_TOUR_DIR
+const SHOTS = process.env.ASTERING_DESIGN_TOUR_DIR || process.env.VIKUNJA_DESIGN_TOUR_DIR
 
 function day(offset: number, hour = 12): string {
 	const parts = new Intl.DateTimeFormat('en-US', {

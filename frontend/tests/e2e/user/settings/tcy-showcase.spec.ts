@@ -39,7 +39,7 @@ test('tcymc public page requires preview, keeps drafts private and can be withdr
 		await visitor.goto(href!)
 		await expect(visitor.getByRole('heading', {name: '我的公开日程'})).toBeVisible()
 		await expect(visitor.getByRole('heading', {name: '可联系时间'})).toBeVisible()
-		await expect(visitor.getByRole('link', {name: 'x版本'})).toBeVisible()
+		await expect(visitor.getByRole('link', {name: 'Astering 开源仓库'})).toBeVisible()
 		await page.getByLabel('页面标题').fill('仅草稿可见')
 		await page.getByRole('button', {name: '保存草稿'}).click()
 		await expect(page.getByLabel('页面标题')).toHaveValue('仅草稿可见')

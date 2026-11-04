@@ -19,7 +19,7 @@ package tcyai
 import (
 	"context"
 
-	"code.vikunja.io/api/pkg/modules/tcylocale"
+	"github.com/KanameMadoka520/Astering/pkg/modules/tcylocale"
 )
 
 // TestConnection checks the actual read-tool schemas and native tool-result continuation.

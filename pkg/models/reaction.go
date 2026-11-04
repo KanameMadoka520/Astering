@@ -19,11 +19,11 @@ package models
 import (
 	"time"
 
-	"code.vikunja.io/api/pkg/web"
+	"github.com/KanameMadoka520/Astering/pkg/web"
 	"xorm.io/builder"
 	"xorm.io/xorm"
 
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 )
 
 type ReactionKind int

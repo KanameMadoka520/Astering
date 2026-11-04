@@ -10,10 +10,10 @@ import {apiRootUrl} from '../../support/apiUrl'
 // Only the provider is a fixture: settings, conversations, steering, persistence and SSE use the real API.
 // The certificates and private key below are PUBLIC TEST DATA, valid only for the loopback fixture.
 // Run through Mage with SSL_CERT_FILE=.../arona-provider-ca.pem and
-// VIKUNJA_OUTGOINGREQUESTS_ALLOWNONROUTABLEIPS=true on its isolated API process. Never disable TLS checks.
+// ASTERING_OUTGOINGREQUESTS_ALLOWNONROUTABLEIPS=true on its isolated API process. Never disable TLS checks.
 const caPath = fileURLToPath(new URL('../../fixtures/arona-provider-ca.pem', import.meta.url))
 const fixtureEnabled = resolve(process.env.SSL_CERT_FILE || '.') === resolve(caPath)
-	&& process.env.VIKUNJA_OUTGOINGREQUESTS_ALLOWNONROUTABLEIPS === 'true'
+	&& (process.env.ASTERING_OUTGOINGREQUESTS_ALLOWNONROUTABLEIPS || process.env.VIKUNJA_OUTGOINGREQUESTS_ALLOWNONROUTABLEIPS) === 'true'
 const api = `${apiRootUrl(process.env.API_URL || 'http://127.0.0.1:3456')}/api/v2`
 const MODEL_ID = 'local-steering-fixture'
 const ORIGINAL = 'Prepare a read-only outline and wait for my clarification.'

@@ -20,8 +20,8 @@
 package shared
 
 import (
-	"code.vikunja.io/api/pkg/modules/auth/openid"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/modules/auth/openid"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 )
 
 // GetAuthProviderName resolves the human-readable name of the source a user

@@ -26,12 +26,12 @@ import (
 	"strconv"
 	"strings"
 
-	"code.vikunja.io/api/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/db"
 
-	caldav2 "code.vikunja.io/api/pkg/caldav"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/user"
+	caldav2 "github.com/KanameMadoka520/Astering/pkg/caldav"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 	"github.com/labstack/echo/v5"
 	"github.com/samedi/caldav-go"
 	"github.com/samedi/caldav-go/data"

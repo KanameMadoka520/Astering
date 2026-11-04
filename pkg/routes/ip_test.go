@@ -21,7 +21,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"code.vikunja.io/api/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/log"
 
 	"github.com/stretchr/testify/assert"
 )

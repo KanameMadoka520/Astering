@@ -23,11 +23,11 @@ import (
 	"strings"
 	"testing"
 
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/auth"
-	"code.vikunja.io/api/pkg/routes"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/auth"
+	"github.com/KanameMadoka520/Astering/pkg/routes"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 
 	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"

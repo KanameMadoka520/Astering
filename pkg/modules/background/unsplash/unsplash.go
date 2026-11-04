@@ -32,14 +32,14 @@ import (
 
 	"xorm.io/xorm"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/files"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/background"
-	"code.vikunja.io/api/pkg/modules/keyvalue"
-	"code.vikunja.io/api/pkg/utils"
-	"code.vikunja.io/api/pkg/web"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/files"
+	"github.com/KanameMadoka520/Astering/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/background"
+	"github.com/KanameMadoka520/Astering/pkg/modules/keyvalue"
+	"github.com/KanameMadoka520/Astering/pkg/utils"
+	"github.com/KanameMadoka520/Astering/pkg/web"
 )
 
 func init() {
@@ -298,7 +298,7 @@ func (p *Provider) Set(s *xorm.Session, image *background.Image, project *models
 
 	// Stream the response body into a temp file so we have a seekable reader
 	// for S3 uploads without buffering the entire image in memory.
-	tmpFile, err := os.CreateTemp("", "vikunja-unsplash-*")
+	tmpFile, err := os.CreateTemp("", "astering-unsplash-*")
 	if err != nil {
 		return fmt.Errorf("could not create temp file for unsplash download: %w", err)
 	}

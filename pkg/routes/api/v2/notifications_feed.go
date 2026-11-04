@@ -20,9 +20,9 @@ import (
 	"context"
 	"net/http"
 
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/modules/humabridge"
-	"code.vikunja.io/api/pkg/routes/feeds"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/modules/humabridge"
+	"github.com/KanameMadoka520/Astering/pkg/routes/feeds"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humaecho"
@@ -36,7 +36,7 @@ func RegisterNotificationsFeedRoutes(api huma.API) {
 	Register(api, huma.Operation{
 		OperationID: "notifications-atom-feed",
 		Summary:     "Notifications Atom feed",
-		Description: "Returns the authenticated user's latest notifications as an Atom feed. Authenticated with HTTP Basic auth: the username is the token owner and the password is a feeds-scoped Vikunja API token (tk_ prefix) — password and LDAP credentials are rejected because feed URLs are commonly shared or cached. Fetching the feed does not mark notifications as read.",
+		Description: "Returns the authenticated user's latest notifications as an Atom feed. Authenticated with HTTP Basic auth: the username is the token owner and the password is a feeds-scoped Astering API token (tk_ prefix) — password and LDAP credentials are rejected because feed URLs are commonly shared or cached. Fetching the feed does not mark notifications as read.",
 		Method:      http.MethodGet,
 		Path:        "/notifications.atom",
 		Tags:        []string{"service"},

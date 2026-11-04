@@ -20,10 +20,10 @@ import (
 	"context"
 	"encoding/json"
 
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/events"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/tcyai"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/events"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/tcyai"
 )
 
 func (e *aiExecution) prepareAnnouncement(ctx context.Context, raw json.RawMessage) (tcyai.Operation, error) {

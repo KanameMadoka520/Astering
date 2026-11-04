@@ -17,11 +17,11 @@
 package admin
 
 import (
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/auth/openid"
-	"code.vikunja.io/api/pkg/routes/api/shared"
-	"code.vikunja.io/api/pkg/user"
-	"code.vikunja.io/api/pkg/web"
+	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/auth/openid"
+	"github.com/KanameMadoka520/Astering/pkg/routes/api/shared"
+	"github.com/KanameMadoka520/Astering/pkg/user"
+	"github.com/KanameMadoka520/Astering/pkg/web"
 
 	"xorm.io/xorm"
 )

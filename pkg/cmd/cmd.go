@@ -20,23 +20,20 @@ import (
 	"fmt"
 	"os"
 
-	"code.vikunja.io/api/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/config"
 
 	"github.com/spf13/cobra"
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "vikunja",
-	Short: "Vikunja is the to-do app to organize your life.",
-	Long: `Vikunja (/vɪˈkuːnjə/)
-The to-do app to organize your life.
+	Use:   "astering",
+	Short: "Astering is your workspace for projects, personal records and AI assistance.",
+	Long: `Astering
+A self-hosted workspace for projects, tasks, calendars, personal records and AI assistance.
 
-Also one of the two wild South American camelids which live in the high
-alpine areas of the Andes and a relative of the llama.
+Astering builds on Vikunja and is licensed under the AGPL-3.0-or-later.
 
-Vikunja is a self-hosted To-Do list application with a web app and mobile apps for all platforms. It is licensed under the AGPL-3.0-or-later.
-
-Find out more at vikunja.io.`,
+Source and releases: https://github.com/KanameMadoka520/Astering.`,
 	PreRun: webCmd.PreRun,
 	Run:    webCmd.Run,
 }

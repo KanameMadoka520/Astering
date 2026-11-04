@@ -22,7 +22,7 @@ import (
 	"net/http"
 	"testing"
 
-	apiv2 "code.vikunja.io/api/pkg/routes/api/v2"
+	apiv2 "github.com/KanameMadoka520/Astering/pkg/routes/api/v2"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"

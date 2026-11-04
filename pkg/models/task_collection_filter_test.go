@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/config"
 
 	datemath "github.com/jszwedko/go-datemath"
 	"github.com/stretchr/testify/assert"

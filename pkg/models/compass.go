@@ -25,8 +25,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/web"
+	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/web"
 	"github.com/microcosm-cc/bluemonday"
 	"xorm.io/builder"
 	"xorm.io/xorm"

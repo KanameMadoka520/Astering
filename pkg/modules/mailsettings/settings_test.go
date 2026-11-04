@@ -21,7 +21,7 @@ import (
 	"os"
 	"testing"
 
-	"code.vikunja.io/api/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,6 +32,8 @@ func TestTCYMailSettings(t *testing.T) {
 	t.Cleanup(func() { config.SetMailerRuntime(nil) })
 	config.FilesBasePath.Set(t.TempDir())
 	config.ServiceSecret.Set("isolated-settings-test-key")
+	t.Setenv("ASTERING_SETTINGS_ADMIN_IDS", "")
+	require.NoError(t, os.Unsetenv("ASTERING_SETTINGS_ADMIN_IDS"))
 	t.Setenv("TCYMC_SETTINGS_ADMIN_IDS", "2, 4")
 	assert.True(t, CanManage(2))
 	assert.True(t, CanManage(4))
@@ -82,4 +84,23 @@ func TestTCYMailSettings(t *testing.T) {
 	assert.False(t, saved.HasPassword)
 	config.ServiceSecret.Set("wrong-key")
 	assert.Error(t, Initialize())
+}
+
+func TestAsteringMailSettingsAdminCompatibility(t *testing.T) {
+	t.Setenv("TCYMC_SETTINGS_ADMIN_IDS", "2, 4")
+	t.Setenv("ASTERING_SETTINGS_ADMIN_IDS", "7, invalid, 0, -1")
+	assert.True(t, CanManage(7))
+	assert.False(t, CanManage(2))
+	assert.False(t, CanManage(4))
+	assert.False(t, CanManage(0))
+	assert.False(t, CanManage(-1))
+
+	t.Setenv("ASTERING_SETTINGS_ADMIN_IDS", "")
+	assert.False(t, CanManage(2))
+	assert.False(t, CanManage(7))
+
+	require.NoError(t, os.Unsetenv("ASTERING_SETTINGS_ADMIN_IDS"))
+	assert.True(t, CanManage(2))
+	assert.True(t, CanManage(4))
+	assert.False(t, CanManage(7))
 }

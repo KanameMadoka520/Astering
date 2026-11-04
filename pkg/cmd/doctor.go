@@ -20,9 +20,9 @@ import (
 	"fmt"
 	"os"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/doctor"
-	"code.vikunja.io/api/pkg/log"
+	"github.com/KanameMadoka520/Astering/pkg/config"
+	"github.com/KanameMadoka520/Astering/pkg/doctor"
+	"github.com/KanameMadoka520/Astering/pkg/log"
 
 	"github.com/spf13/cobra"
 )
@@ -33,9 +33,9 @@ func init() {
 
 var doctorCmd = &cobra.Command{
 	Use:   "doctor",
-	Short: "Run diagnostic checks on your Vikunja installation",
+	Short: "Run diagnostic checks on your Astering installation",
 	Long: `The doctor command runs a series of diagnostic checks to help troubleshoot
-issues with your Vikunja installation. It checks:
+issues with your Astering installation. It checks:
 
 - System information (version, user, working directory)
 - Configuration (config file, public URL, JWT secret, CORS)
