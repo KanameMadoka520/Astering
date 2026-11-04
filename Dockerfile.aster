@@ -37,6 +37,8 @@ COPY --from=backend /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=backend /usr/share/zoneinfo /usr/share/zoneinfo
 COPY --from=backend --chown=1000:1000 --chmod=1777 /out/tmp /tmp
 USER 1000
-ENV ASTERING_SERVICE_ROOTPATH=/app/astering/ ASTERING_DATABASE_PATH=/db/astering.db
+# Keep image defaults on the compatibility aliases: explicit ASTERING_* wins,
+# while an existing deployment can still override these with VIKUNJA_*.
+ENV VIKUNJA_SERVICE_ROOTPATH=/app/astering/ VIKUNJA_DATABASE_PATH=/db/astering.db
 EXPOSE 3456
 ENTRYPOINT ["/app/astering/astering"]
