@@ -12,6 +12,8 @@ const output = path.join(root, 'public/images/brand')
 const icons = path.join(root, 'public/images/icons')
 const primary = '#191919'
 const signal = '#fffa00'
+const starlight = '#0284c7'
+const starlightOnDark = '#38bdf8'
 const plate = signal
 const symbolSource = await readFile(path.join(brand, 'astering-symbol.svg'), 'utf8')
 const svg = symbolSource.match(/<svg\b([^>]*)>([\s\S]*?)<\/svg>\s*$/)
@@ -24,25 +26,30 @@ if (!bounds || bounds.length !== 4 || !bounds.every(Number.isFinite)
 const [minX, minY, extent] = bounds
 const body = svg[2].replace(/<!--[\s\S]*?-->/g, '').trim()
 const paths = body.match(/<path\b[^>]*\/>/g) ?? []
-if (paths.length === 0 || body.replace(/<path\b[^>]*\/>/g, '').trim()
-	|| paths.some(tag => !/\sfill\s*=\s*(["'])currentColor\1/.test(tag)
+const accentPaths = paths.filter(tag => /\sdata-brand-accent="starlight"/.test(tag))
+if (paths.length !== 3 || accentPaths.length !== 1 || body.replace(/<path\b[^>]*\/>/g, '').trim()
+	|| paths.some(tag => !(accentPaths.includes(tag)
+		? tag.includes(`fill="${starlight}"`)
+		: /\sfill="currentColor"/.test(tag))
 		|| /\s(?:color|style|stroke|filter|mask)\s*=/.test(tag))) {
-	throw new Error('astering-symbol.svg must contain only static paths filled with currentColor.')
+	throw new Error('astering-symbol.svg must contain two currentColor planes and one static starlight accent.')
 }
 const geometry = paths.join('\n')
+const darkGeometry = geometry.replace(`fill="${starlight}"`, `fill="${starlightOnDark}"`)
+const monochromeGeometry = geometry.replace(`fill="${starlight}"`, 'fill="currentColor"')
 const avatarInset = extent * 0.06
 const avatar = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg"
 	width="1254" height="1254" viewBox="${viewBox}">
 	<rect x="${minX}" y="${minY}" width="${extent}" height="${extent}" fill="${primary}"/>
 	<g color="${signal}" transform="translate(${minX + avatarInset} ${minY + avatarInset})
-	scale(.88) translate(${-minX} ${-minY})">${geometry}</g></svg>\n`)
+	scale(.88) translate(${-minX} ${-minY})">${darkGeometry}</g></svg>\n`)
 await writeFile(path.join(brand, 'astering-avatar.svg'), avatar)
 await sharp(avatar).png().toFile(path.join(brand, 'astering-avatar.png'))
-const standalone = (color = primary, tile = false) => `<svg xmlns="http://www.w3.org/2000/svg" role="img"
+const standalone = (color = primary, tile = false, monochrome = false) => `<svg xmlns="http://www.w3.org/2000/svg" role="img"
 	viewBox="${viewBox}" width="64" height="64" ${color ? `color="${color}"` : ''} fill="currentColor">
-	<title>Astering</title>${tile ? `<rect x="${minX}" y="${minY}" width="${extent}" height="${extent}" rx="${extent * .06}" fill="${signal}"/>` : ''}${geometry}</svg>\n`
+	<title>Astering</title>${tile ? `<rect x="${minX}" y="${minY}" width="${extent}" height="${extent}" rx="${extent * .06}" fill="${signal}"/>` : ''}${monochrome ? monochromeGeometry : color === signal ? darkGeometry : geometry}</svg>\n`
 const mark = standalone()
-const mono = standalone('#000')
+const mono = standalone('#000', false, true)
 const appIcon = standalone(primary, true)
 // Rasterize the vector at its target size instead of enlarging a 64px intermediate.
 const render = (input, size) => sharp(Buffer.from(input), {density: 72 * size / 64})
@@ -117,20 +124,21 @@ for (const [name, size] of Object.entries(iconSizes)) {
 		? render(appIcon, size)
 		: sharp({create: {width: size, height: size, channels: 4, background: plate}})
 			.composite([{input: await render(mark, Math.round(size * 0.84)).png().toBuffer(), gravity: 'center'}])
-	await result.png({palette: true, colours: 256, dither: 0}).toFile(path.join(icons, name))
+	// Preserve both accent colors and antialiased edges without palette quantization.
+	await result.png().toFile(path.join(icons, name))
 }
 // Keep the approved symbol's transparent margins; verify its actual ink against the safe circle.
 const maskableSymbolSize = 680
 await sharp({create: {width: 1024, height: 1024, channels: 4, background: plate}})
-	.composite([{input: await png(maskableSymbolSize), gravity: 'center'}])
-	.png({palette: true, colours: 256, dither: 0})
+	.composite([{input: await render(mark, maskableSymbolSize).png().toBuffer(), gravity: 'center'}])
+	.png()
 	.toFile(path.join(icons, 'icon-maskable.png'))
 await sharp(await appPng(32))
 	.composite([{input: Buffer.from('<svg width="32" height="32"><circle cx="7" cy="25" r="6" fill="#ef4444" stroke="white" stroke-width="2"/></svg>')}])
 	.png()
 	.toFile(path.join(icons, 'favicon-tracking-32x32.png'))
 await writeFile(path.join(icons, 'safari-pinned-tab.svg'), mono)
-await render(standalone('#fff'), 96).png().toFile(path.join(icons, 'badge-monochrome.png'))
+await render(standalone('#fff', false, true), 96).png().toFile(path.join(icons, 'badge-monochrome.png'))
 // ICO PNG entries cover tab, legacy browser and OS sizes without shipping a large master.
 const sizes = [16, 32, 48]
 const payloads = await Promise.all(sizes.map(appPng))

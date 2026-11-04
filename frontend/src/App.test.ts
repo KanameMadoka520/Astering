@@ -7,6 +7,9 @@ import App from '@/App.vue'
 import {QueryClient, VueQueryPlugin} from '@tanstack/vue-query'
 import {useAuthStore} from '@/stores/auth'
 import {AUTH_TYPES} from '@/constants/auth'
+import {accountKeys} from '@/client/queries/account'
+import {queryClient as accountQueryClient} from '@/client/queryClient'
+import type {ColorScheme} from '@/helpers/userSettings'
 import en from '@/i18n/lang/en.json'
 
 const sdk = vi.hoisted(() => ({
@@ -34,7 +37,7 @@ let queryClient: QueryClient | undefined
 // Store actions left running by an earlier test re-activate that test's pinia.
 let pinia: Pinia
 
-async function mountApp(path: string) {
+async function mountApp(path: string, deferNavigation = false) {
 	const router = createRouter({
 		history: createMemoryHistory(),
 		routes: [
@@ -42,8 +45,10 @@ async function mountApp(path: string) {
 			{path: '/login', name: 'user.login', component: LoginRoute},
 		],
 	})
-	await router.push(path)
-	await router.isReady()
+	if (!deferNavigation) {
+		await router.push(path)
+		await router.isReady()
+	}
 
 	queryClient = new QueryClient({defaultOptions: {queries: {retry: false}}})
 	wrapper = mount(App, {
@@ -66,6 +71,13 @@ async function mountApp(path: string) {
 	})
 	await flushPromises()
 	return {router}
+}
+
+function savedColorScheme(scheme: ColorScheme) {
+	accountQueryClient.setQueryData(accountKeys.user(1), {
+		id: 1,
+		settings: {frontend_settings: {color_schema: scheme}},
+	})
 }
 
 function login() {
@@ -99,6 +111,10 @@ describe('App layout', () => {
 		wrapper?.unmount()
 		wrapper = undefined
 		queryClient?.clear()
+		accountQueryClient.clear()
+		document.documentElement.classList.remove('dark', 'light', 'theme-starlight')
+		localStorage.removeItem('vikunja-color-scheme')
+		vi.restoreAllMocks()
 	})
 
 	// Logout clears the user before the navigation to /login lands. Rendering the
@@ -146,5 +162,52 @@ describe('App layout', () => {
 		expect(sdk.userDeletionConfirm).toHaveBeenCalledTimes(1)
 		expect(sdk.userDeletionConfirm).toHaveBeenCalledWith({body: {token: 'token-1'}})
 		expect(router.currentRoute.value.hash).toBe('')
+	})
+
+	it('keeps the startup hint until the initial account navigation finishes, then uses the saved preference', async () => {
+		sdk.userShow.mockReturnValue(new Promise(() => {}))
+		login()
+		document.documentElement.classList.add('dark', 'theme-starlight')
+		localStorage.setItem('vikunja-color-scheme', 'starlight')
+		const {router} = await mountApp('/labels', true)
+
+		expect(document.documentElement.classList.contains('theme-starlight')).toBe(true)
+		expect(localStorage.getItem('vikunja-color-scheme')).toBe('starlight')
+		savedColorScheme('light')
+		await router.push('/labels')
+		await flushPromises()
+
+		expect(document.documentElement.classList.contains('light')).toBe(true)
+		expect(document.documentElement.classList.contains('dark')).toBe(false)
+		expect(document.documentElement.classList.contains('theme-starlight')).toBe(false)
+		expect(localStorage.getItem('vikunja-color-scheme')).toBe('light')
+	})
+
+	it('applies account theme changes without navigation and restores the existing light and dark appearances', async () => {
+		sdk.userShow.mockReturnValue(new Promise(() => {}))
+		login()
+		savedColorScheme('starlight')
+		await mountApp('/labels')
+		expect(document.documentElement.classList.contains('dark')).toBe(true)
+		expect(document.documentElement.classList.contains('theme-starlight')).toBe(true)
+		expect(localStorage.getItem('vikunja-color-scheme')).toBe('starlight')
+
+		for (const scheme of ['light', 'dark'] as const) {
+			savedColorScheme(scheme)
+			await flushPromises()
+			expect(document.documentElement.classList.contains(scheme)).toBe(true)
+			expect(document.documentElement.classList.contains('theme-starlight')).toBe(false)
+			expect(localStorage.getItem('vikunja-color-scheme')).toBe(scheme)
+		}
+	})
+
+	it('uses the normal unauthenticated appearance after login navigation even when storage is unavailable', async () => {
+		document.documentElement.classList.add('dark', 'theme-starlight')
+		vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('storage unavailable') })
+		await mountApp('/login')
+
+		expect(document.documentElement.classList.contains('light')).toBe(true)
+		expect(document.documentElement.classList.contains('theme-starlight')).toBe(false)
+		expect(wrapper!.find('.login-route').exists()).toBe(true)
 	})
 })

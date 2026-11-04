@@ -1,49 +1,20 @@
-import {computed, watch, readonly} from 'vue'
-import {createSharedComposable, usePreferredColorScheme, tryOnMounted} from '@vueuse/core'
-import type {BasicColorSchema} from '@vueuse/core'
+import {computed, readonly} from 'vue'
+import {createSharedComposable, usePreferredColorScheme} from '@vueuse/core'
 import {useAuthStore} from '@/stores/auth'
 
-const DEFAULT_COLOR_SCHEME_SETTING: BasicColorSchema = 'light'
-
-const CLASS_DARK = 'dark'
-const CLASS_LIGHT = 'light'
-
-// This is built upon the vueuse useDark
-// Main differences:
-// - usePreferredColorScheme
-// - doesn't allow setting via the `isDark` ref.
-// - instead the store is exposed
-// - value is synced via `createSharedComposable`
-// https://github.com/vueuse/vueuse/blob/main/packages/core/useDark/index.ts 
+// Shared account preference; App applies the resolved scheme once initial navigation has loaded it.
 export const useColorScheme = createSharedComposable(() => {
 	const authStore = useAuthStore()
 	const store = computed(() => authStore.settings.frontend_settings.color_schema)
-
 	const preferredColorScheme = usePreferredColorScheme()
-
-	const isDark = computed<boolean>(() => {
-		if (store.value !== 'auto') {
-			return store.value === 'dark'
-		}
-
-		const autoColorScheme = preferredColorScheme.value === 'no-preference' 
-			? DEFAULT_COLOR_SCHEME_SETTING
-			: preferredColorScheme.value
-		return autoColorScheme === 'dark'
-	})
-
-	function onChanged(v: boolean) {
-		const el = window?.document.querySelector('html')
-		el?.classList.toggle(CLASS_DARK, v)
-		el?.classList.toggle(CLASS_LIGHT, !v)
-	}
-
-	watch(isDark, onChanged, { flush: 'post' })
-
-	tryOnMounted(() => onChanged(isDark.value))
+	const isStarlight = computed(() => store.value === 'starlight')
+	const isDark = computed(() => store.value === 'auto'
+		? preferredColorScheme.value === 'dark'
+		: store.value === 'dark' || isStarlight.value)
 
 	return {
 		store,
 		isDark: readonly(isDark),
+		isStarlight: readonly(isStarlight),
 	}
 })

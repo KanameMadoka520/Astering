@@ -7,9 +7,9 @@
 ## 当前身份
 
 - 产品名：**Astering**；副标题：**Aster的AI集成工业系统** / **Aster’s AI-integrated industrial system**。
-- 自有版本序列：`aster`，当前正式版本为 `v2.7.1-aster.52`。
+- 自有版本序列：`aster`，当前正式版本为 `v2.7.1-aster.53`。
 - 源码、问题反馈与手工 Release：[KanameMadoka520/Astering](https://github.com/KanameMadoka520/Astering)。
-- 构建文件：`Dockerfile.aster`；镜像示例：`astering:v2.7.1-aster.52`；应用二进制：`/app/astering/astering`。
+- 构建文件：`Dockerfile.aster`；镜像示例：`astering:v2.7.1-aster.53`；应用二进制：`/app/astering/astering`。
 - 新部署 Compose 应用服务为 `astering`，本机应用容器名为 `Astering`、数据库容器名为 `Astering-postgres`。主机指标的四个只读文件挂载至 `/run/aster-host-proc/`。
 
 实际访问地址仍为 `task.tcymc.space`；相关 Wallos 地址、邮件域名、账户身份和其他应用的外部 ID 按真实配置保留。品牌更名不等于域名迁移，不应把真实地址臆改成尚未配置的域名。

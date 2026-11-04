@@ -617,7 +617,9 @@
         "colorScheme": {
           "light": "Light",
           "system": "System",
-          "dark": "Dark"
+          "dark": "Dark",
+          "starlight": "Starlight",
+          "starlightDescription": "A dark sky with quiet, static stars. Your project and Compass backgrounds stay in front."
         }
       },
       "backgroundBrightness": {

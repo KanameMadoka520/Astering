@@ -95,6 +95,20 @@ describe('FormSelect', () => {
 		expect(wrapper.find('p.help.is-danger').text()).toBe('Pick one')
 	})
 
+	it('keeps the caller description linked when an error appears and clears', async () => {
+		const wrapper = mount(FormSelect, {
+			props: {id: 'appearance'},
+			attrs: {'aria-describedby': 'starlight-description'},
+		})
+		const select = wrapper.get('select')
+		expect(select.attributes('aria-describedby')).toBe('starlight-description')
+		await wrapper.setProps({error: 'Pick one'})
+		expect(select.attributes('aria-describedby')).toBe('starlight-description appearance-error')
+		await wrapper.setProps({error: null})
+		expect(select.attributes('aria-describedby')).toBe('starlight-description')
+		wrapper.unmount()
+	})
+
 	it('does not render error message when error is null or empty', () => {
 		const nullErr = mount(FormSelect, {props: {error: null}})
 		expect(nullErr.find('p.help.is-danger').exists()).toBe(false)

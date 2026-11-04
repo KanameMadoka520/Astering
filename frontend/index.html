@@ -11,13 +11,14 @@
 		// Apply the last resolved colour scheme before the bundle loads (written by App.vue).
 		try {
 			var scheme = localStorage.getItem('vikunja-color-scheme')
-			if (scheme === 'dark' || scheme === 'light') document.documentElement.classList.add(scheme)
+			if (scheme === 'starlight') document.documentElement.classList.add('dark', 'theme-starlight')
+			else if (scheme === 'dark' || scheme === 'light') document.documentElement.classList.add(scheme)
 		} catch (e) { /* storage unavailable */ }
 	</script>
 
-	<link rel="icon" href="/favicon.ico?v=aster52">
-	<link rel="apple-touch-icon" href="/images/icons/apple-touch-icon-180x180.png?v=aster52"/>
-	<link rel="mask-icon" href="/images/brand/logo-mono.svg?v=aster52" color="#191919">
+	<link rel="icon" href="/favicon.ico?v=aster53">
+	<link rel="apple-touch-icon" href="/images/icons/apple-touch-icon-180x180.png?v=aster53"/>
+	<link rel="mask-icon" href="/images/brand/logo-mono.svg?v=aster53" color="#191919">
 	<!--__vite-plugin-inject-preload__-->
 </head>
 <body>

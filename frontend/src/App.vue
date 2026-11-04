@@ -143,13 +143,22 @@ watch(accountDeletionToken, async token => {
 }, {immediate: true})
 
 setLanguage(authStore.settings.language ?? DEFAULT_LANGUAGE)
-const {isDark} = useColorScheme()
-// index.html reads this before the bundle loads, so dark users don't get a light boot screen.
-watch(isDark, dark => {
+const {isDark, isStarlight} = useColorScheme()
+// Until checkAuth resolves the first route, keep index.html's cached appearance. The cache only paints
+// startup; once navigation is ready the account's saved preference owns both classes and the next hint.
+watch([isDark, isStarlight, () => route.name], ([dark, starlight, name]) => {
+	if (!name) return
+	const root = document.documentElement
+	root.classList.toggle('dark', dark)
+	root.classList.toggle('light', !dark)
+	root.classList.toggle('theme-starlight', starlight)
 	try {
-		localStorage.setItem(COLOR_SCHEME_CACHE_KEY, dark ? 'dark' : 'light')
-	} catch { /* Storage is optional; the theme still applies after mount. */ }
-}, {immediate: true})
+		localStorage.setItem(COLOR_SCHEME_CACHE_KEY, starlight ? 'starlight' : dark ? 'dark' : 'light')
+	} catch { /* Storage is optional; the theme still applies. */ }
+}, {
+	immediate: true,
+	flush: 'post',
+})
 useTimeTrackingFavicon()
 </script>
 

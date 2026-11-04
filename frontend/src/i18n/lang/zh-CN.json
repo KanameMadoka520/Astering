@@ -579,7 +579,9 @@
 				"colorScheme": {
 					"light": "明亮",
 					"system": "跟随系统",
-					"dark": "暗色"
+					"dark": "暗色",
+					"starlight": "星辰",
+					"starlightDescription": "深色夜空与静谧的星点，没有动态效果。项目和星图自定义背景仍优先显示。"
 				}
 			},
 			"apiTokens": {

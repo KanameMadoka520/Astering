@@ -193,8 +193,20 @@
 						<FormSelect
 							v-model="settings.frontend_settings.color_schema"
 							:options="colorSchemeOptions"
+							:aria-describedby="settings.frontend_settings.color_schema === 'starlight' ? 'starlight-description' : undefined"
 						/>
 					</FormField>
+					<p
+						v-if="settings.frontend_settings.color_schema === 'starlight'"
+						id="starlight-description"
+						class="help starlight-description"
+					>
+						<span
+							class="starlight-preview"
+							aria-hidden="true"
+						/>
+						{{ t('user.settings.appearance.colorScheme.starlightDescription') }}
+					</p>
 					<FormField
 						:label="$t('user.settings.quickAddMagic.title')"
 						layout="two-col"
@@ -441,6 +453,10 @@ const colorSchemeOptions = computed(() => [
 	{value: 'light', label: t('user.settings.appearance.colorScheme.light')},
 	{value: 'auto', label: t('user.settings.appearance.colorScheme.system')},
 	{value: 'dark', label: t('user.settings.appearance.colorScheme.dark')},
+	{
+		value: 'starlight',
+		label: t('user.settings.appearance.colorScheme.starlight'),
+	},
 ])
 
 const quickAddMagicModeOptions = computed(() =>
@@ -681,4 +697,11 @@ async function updateSettings() {
 	gap: var(--space-2);
 	margin-inline-start: auto;
 }
+.starlight-description {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	margin-block: 0 var(--space-4);
+}
+
 </style>

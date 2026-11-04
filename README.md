@@ -13,12 +13,14 @@
 
 我们赋予 **Astering**「像星星闪烁、使之星光熠熠」的意象：一次行动、一段研究、一条值得记住的原则，逐渐连接成自己的星群。**Aster的AI集成工业系统**（Aster’s AI-integrated industrial system）是项目的副标题；工具与积累服务于更自由的创造。
 
-- 当前版本：`v2.7.1-aster.52`
+- 当前版本：`v2.7.1-aster.53`
 - 源码与问题反馈：[KanameMadoka520/Astering](https://github.com/KanameMadoka520/Astering)
 - 本机编译的发布产物：[GitHub Releases](https://github.com/KanameMadoka520/Astering/releases)
 - [品牌与升级兼容](docs/brand-migration.md) · [品牌素材](docs/brand-identity.md) · [详细功能与演进记录](docs/product-reference.md)
 
-新的标识以两块斜切面和一道光隙形成有方向感的 A，使用炭黑、信号黄和白灰表达行动与创造的力量；矢量标识、深色头像与各平台图标共用同一份几何轮廓。设计参考、生成来源和本地重建方法见[品牌素材](docs/brand-identity.md)。
+标识以两块斜切面和一道光隙形成有方向感的 A，右上用一颗星蓝／浅青小星呼应 Astering 的星辰意象。炭黑、信号黄和白灰仍是主体；矢量标识、深色头像与各平台图标共用同一份几何轮廓。设计参考、生成来源和本地重建方法见[品牌素材](docs/brand-identity.md)。
+
+喜欢深色界面时，可在 **设置 → 通用设置 → 外观与行为 → 配色方案** 选择 **星辰**：近黑底、稀疏星点与淡星座线，正文和任务卡片保持清楚的实色表面。选择随账户保存，原有配色和自定义背景继续可用，详见[星辰主题](docs/starlight-theme.md)。
 
 ## 从安排今天，到记住一路走来
 
@@ -61,15 +63,15 @@ Astering 把不同用途保留在各自合适的空间里，关联真实任务�
 git clone https://github.com/KanameMadoka520/Astering.git
 cd Astering
 docker build -f Dockerfile.aster \
-  --build-arg RELEASE_VERSION=v2.7.1-aster.52 \
+  --build-arg RELEASE_VERSION=v2.7.1-aster.53 \
   --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
-  -t astering:v2.7.1-aster.52 .
+  -t astering:v2.7.1-aster.53 .
 ```
 
 或下载对应 Release，先检查 `sha256sum -c SHA256SUMS`，再导入镜像包：
 
 ```sh
-docker load -i astering-v2.7.1-aster.52.docker.tar.gz
+docker load -i astering-v2.7.1-aster.53.docker.tar.gz
 ```
 
 以下是**新安装**的最小 SQLite 示例；生产也可配置 PostgreSQL。现有部署不要用新建的空目录替换原数据卷。
@@ -85,7 +87,7 @@ docker run -d --name Astering --restart unless-stopped \
   -e ASTERING_SERVICE_SECRET=替换为随机且持久保存的长密钥 \
   -e ASTERING_SERVICE_ENABLEREGISTRATION=false \
   -e ASTERING_SERVICE_TIMEZONE=Asia/Shanghai \
-  astering:v2.7.1-aster.52
+  astering:v2.7.1-aster.53
 ```
 
 在反向代理提供 HTTPS，将 `PUBLICURL` 改为自己的实际域名。创建首个账户前可查看 CLI 参数：
@@ -119,6 +121,7 @@ docker exec -it Astering /app/astering/astering user create --help
 | 语音与多模态 | [语音输入交互](docs/voice-input-v43.md)、[协议适配](docs/speech-and-routines-v41.md)、[阿罗娜集成](docs/arona-integration.md) |
 | 模型与工具执行 | [运行时](docs/arona-runtime-design.md)、[工具发现恢复](docs/agent-tool-loading.md)、[模块范围](docs/agent-tool-modules.md) |
 | 缓存与弱网 | [浏览器缓存](docs/browser-cache.md)、[弱网设计与验证](docs/weak-network-v49.md) |
+| 外观主题 | [星辰主题与显示边界](docs/starlight-theme.md) |
 | 品牌与历史 | [品牌素材](docs/brand-identity.md)、[更名兼容](docs/brand-migration.md)、[功能演进参考](docs/product-reference.md) |
 
 ## 本地开发

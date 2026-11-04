@@ -17,14 +17,34 @@
   "raster": "astering-rift-generated.png",
   "production": {
     "symbol": "astering-symbol.svg",
-    "method": "Native polygon reconstruction of the chosen generated concept; two currentColor paths with simple straight segments. The diagonal gap is adjusted for small-size legibility. The SVG was not generated directly by imagegen.",
+    "method": "Native polygon reconstruction of the chosen generated concept; the two approved currentColor A-plane paths remain byte-for-byte unchanged. A single native four-point starlight path is added in the upper-right negative space. The SVG was not generated directly by imagegen.",
     "avatar": "astering-avatar.svg",
-    "avatar_method": "Deterministic SVG composition from the exact shared paths, signal-yellow on charcoal.",
+    "avatar_method": "Deterministic SVG composition from the exact shared three path.d values, signal-yellow A on charcoal with a light-cyan star.",
     "palette": {
       "charcoal": "#191919",
       "signal_yellow": "#fffa00",
-      "neutral_light": "#f2f2f2"
+      "neutral_light": "#f2f2f2",
+      "starlight_blue": "#0284c7",
+      "starlight_on_dark": "#38bdf8"
     },
-    "exports": "frontend/scripts/brand-assets.mjs and desktop/scripts/brand-assets.mjs"
+    "exports": "frontend/scripts/brand-assets.mjs and desktop/scripts/brand-assets.mjs",
+    "starlight_revision": {
+      "version": "aster.53",
+      "method": "Native SVG geometry; no new imagegen generation or raster trace",
+      "brief": "Preserve the approved oblique A and yellow/charcoal tension, adding one small four-point star without flower-like or repeated decorative shapes.",
+      "placement": {
+        "center": [
+          216,
+          66
+        ],
+        "outer_radius": 22,
+        "inner_shoulder": 6,
+        "viewBox": "0 0 256 256"
+      },
+      "light_and_yellow_plate": "#0284c7",
+      "dark_surface": "#38bdf8",
+      "monochrome": "All three paths inherit one black or white currentColor; geometry is unchanged.",
+      "original_concept_preserved": "astering-rift-generated.png"
+    }
   }
 }

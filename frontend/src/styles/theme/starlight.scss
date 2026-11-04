@@ -1,0 +1,79 @@
+// Static artwork sits on the page background. Project photos and Compass skies keep their own layers.
+:root {
+  --starlight-stars: url("../../assets/starlight-stars.svg");
+}
+
+@media screen {
+  :root.dark.theme-starlight {
+    --starlight-star-size: 980px 720px;
+    --site-background: #05080f;
+    --surface: #0d1420;
+    --surface-raised: #141e2c;
+    --surface-sunken: #080e17;
+    --white: var(--surface);
+    --grey-50: var(--surface);
+    --grey-100-hsl: 218, 32%, 12%;
+    --grey-100: hsl(var(--grey-100-hsl));
+    --text-primary: #e7edf4;
+    --text-secondary: #b4c1d3;
+    --text-tertiary: #91a1b7;
+    --text-muted: var(--text-tertiary);
+    --text: var(--text-primary);
+    --text-strong: var(--text-primary);
+    --border-subtle: rgba(160, 192, 223, .12);
+    --border-default: rgba(160, 192, 223, .2);
+    --border-strong: rgba(160, 192, 223, .34);
+    --card-border-color: var(--border-subtle);
+
+    body {
+      background-image:
+        var(--starlight-stars),
+        radial-gradient(ellipse at 88% 0, rgba(56, 151, 182, .055), transparent 66%),
+        radial-gradient(ellipse at 8% 100%, rgba(65, 112, 174, .04), transparent 65%);
+      background-position: center top, center top, left bottom;
+      background-size: var(--starlight-star-size), 1200px 800px, 1000px 680px;
+      background-repeat: repeat, no-repeat, no-repeat;
+    }
+
+    // Keep the assistant's reading column solid; only its outer gutters show the sky.
+    .tcy-assistant:not(.is-embedded) .chat-main {
+      background-color: var(--site-background);
+      background-image:
+        linear-gradient(to right,
+          transparent var(--column-inset),
+          var(--surface) var(--column-inset),
+          var(--surface) calc(100% - var(--column-inset)),
+          transparent calc(100% - var(--column-inset))),
+        var(--starlight-stars);
+      background-size: auto, var(--starlight-star-size);
+    }
+
+    @media (max-width: 767px) {
+      --starlight-star-size: 1120px 823px;
+
+      body {
+        background-size: var(--starlight-star-size), 900px 680px, 800px 600px;
+      }
+    }
+
+    @media (forced-colors: active) {
+      body,
+      .tcy-assistant:not(.is-embedded) .chat-main {
+        background-image: none;
+      }
+    }
+  }
+}
+
+.starlight-preview {
+  display: inline-block;
+  flex: 0 0 4.5rem;
+  block-size: 2.75rem;
+  border: 1px solid #34465a;
+  border-radius: var(--radius-sm);
+  background: var(--starlight-stars) 20% 24% / 490px 360px, #05080f;
+
+  @media print {
+    display: none;
+  }
+}

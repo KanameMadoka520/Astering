@@ -13,10 +13,12 @@ import {DATE_DISPLAY} from '@/constants/dateDisplay'
 import {TIME_FORMAT} from '@/constants/timeFormat'
 import {RELATION_KIND} from '@/types/IRelationKind'
 
+export type ColorScheme = BasicColorSchema | 'starlight'
+
 export interface FrontendSettings {
 	play_sound_when_done: boolean
 	quick_add_magic_mode: PrefixMode
-	color_schema: BasicColorSchema
+	color_schema: ColorScheme
 	allow_icon_changes: boolean
 	filter_id_used_on_overview: number | null
 	default_view?: DefaultProjectViewKind

@@ -74,7 +74,7 @@ function handleChange(event: Event) {
 			v-bind="{ ...$attrs, ...selectBindings }"
 			:disabled="disabled || undefined"
 			:aria-invalid="error ? true : undefined"
-			:aria-describedby="errorId"
+			:aria-describedby="[$attrs['aria-describedby'], errorId].filter(Boolean).join(' ') || undefined"
 			@change="handleChange"
 		>
 			<template v-if="normalizedOptions">
