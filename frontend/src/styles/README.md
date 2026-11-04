@@ -1,6 +1,6 @@
 # Frontend Styles
 
-This directory contains all global styling for the Vikunja web client. Component-scoped
+This directory contains all global styling for the Astering web client. Component-scoped
 styles live next to their `.vue` file; what lives here is the material every component
 relies on: the Bulma base, the design-token system (CSS custom properties), typography,
 and a handful of cross-cutting theme overrides.
@@ -75,7 +75,7 @@ Add a variable to `common-imports.scss` when you need it available in multiple c
 
 ## Bulma: which variant and why
 
-Vikunja uses [`bulma-css-variables`](https://www.npmjs.com/package/bulma-css-variables), a
+Astering uses [`bulma-css-variables`](https://www.npmjs.com/package/bulma-css-variables), a
 fork of Bulma that emits CSS custom properties (`--primary`, `--text`, `--scheme-main`, …)
 instead of inlining SCSS variables. This is what makes runtime theming (including dark
 mode) possible without recompiling SCSS.
