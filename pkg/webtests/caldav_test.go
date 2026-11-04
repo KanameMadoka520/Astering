@@ -41,7 +41,7 @@ func TestCaldav(t *testing.T) {
 		rec, err := newCaldavTestRequestWithUser(t, e, http.MethodGet, caldav.ProjectHandler, &testuser15, ``, nil, map[string]string{"project": "36"})
 		require.NoError(t, err)
 		assert.Contains(t, rec.Body.String(), "BEGIN:VCALENDAR")
-		assert.Contains(t, rec.Body.String(), "PRODID:-//Vikunja Todo App//EN")
+		assert.Contains(t, rec.Body.String(), "PRODID:-//Astering//EN")
 		assert.Contains(t, rec.Body.String(), "X-WR-CALNAME:Project 36 for Caldav tests")
 		assert.Contains(t, rec.Body.String(), "BEGIN:VTODO")
 		assert.Contains(t, rec.Body.String(), "END:VTODO")

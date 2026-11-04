@@ -27,6 +27,11 @@ async function expectBrand(page: Page, brand: Locator, subtitle: string) {
 	])
 	expect(bounds).not.toBeNull()
 	expect(text).not.toBeNull()
+	expect(bounds!.x).toBeGreaterThanOrEqual(0)
+	expect(text!.x).toBeGreaterThanOrEqual(0)
+	const logo = await brand.locator('.logo').boundingBox()
+	expect(logo).not.toBeNull()
+	expect(logo!.x).toBeGreaterThanOrEqual(0)
 	expect(text!.x).toBeGreaterThanOrEqual(bounds!.x - 1)
 	expect(text!.x + text!.width).toBeLessThanOrEqual(bounds!.x + bounds!.width + 1)
 	expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
@@ -65,6 +70,18 @@ for (const variant of variants) {
 				await expect(page).toHaveURL('/')
 				if (width < 768) {
 					await page.locator('button.menu-show-button:visible').click()
+					const sidebar = page.locator('#app-sidebar')
+					await expect(sidebar).toHaveClass(/\bis-active\b/)
+					// Visibility becomes true before the slide-in finishes. Check its actual
+					// resting transform so screenshots cannot accept a clipped intermediate frame.
+					await expect.poll(() => sidebar.evaluate(element => {
+						const transform = getComputedStyle(element).transform
+						return transform === 'none' ? 0 : new DOMMatrixReadOnly(transform).m41
+					})).toBe(0)
+					const sidebarBounds = await sidebar.boundingBox()
+					expect(sidebarBounds).not.toBeNull()
+					expect(sidebarBounds!.x).toBeGreaterThanOrEqual(0)
+					expect(sidebarBounds!.x + sidebarBounds!.width).toBeLessThanOrEqual(width)
 					await expectBrand(page, page.locator('.menu-header .brand-logo'), variant.subtitle)
 				} else {
 					const brand = page.locator('.navbar .brand-logo')
@@ -76,7 +93,10 @@ for (const variant of variants) {
 					expect(bounds!.y).toBeGreaterThanOrEqual(header!.y - 1)
 					expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(header!.y + header!.height + 1)
 				}
-				await page.screenshot({path: testInfo.outputPath(`astering-navigation-${variant.language}-${width}.png`)})
+				await page.screenshot({
+					path: testInfo.outputPath(`astering-navigation-${variant.language}-${width}.png`),
+					animations: 'disabled',
+				})
 			})
 		})
 	}

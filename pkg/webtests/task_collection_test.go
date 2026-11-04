@@ -17,6 +17,7 @@
 package webtests
 
 import (
+	"encoding/json"
 	"net/url"
 	"testing"
 
@@ -132,49 +133,49 @@ func TestTaskCollection(t *testing.T) {
 			t.Run("by priority", func(t *testing.T) {
 				rec, err := testHandler.testReadAllWithUser(url.Values{"sort_by": []string{"priority"}}, urlParams)
 				require.NoError(t, err)
-				assert.Contains(t, rec.Body.String(), `{"id":33,"title":"task #33 with percent done","description":"","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"0001-01-01T00:00:00Z","reminders":null,"repeat_after":0,"repeat_mode":0,"priority":0,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0.5,"identifier":"TEST1-17","index":17,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}},{"id":47,"title":"task #47 with reminders outside window","description":"","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"0001-01-01T00:00:00Z","reminders":[{"reminder":"2018-08-01T12:00:00Z","relative_period":0,"relative_to":""},{"reminder":"2019-03-01T12:00:00Z","relative_period":0,"relative_to":""}],"repeat_after":0,"repeat_mode":0,"priority":0,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0,"identifier":"TEST1-32","index":32,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}},{"id":48,"title":"Landingpages update","description":"Update all landingpages with new branding","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"0001-01-01T00:00:00Z","reminders":null,"repeat_after":0,"repeat_mode":0,"priority":0,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0,"identifier":"TEST1-33","index":33,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}}]`)
+				assertTaskCollectionSort(t, rec.Body.Bytes(), "priority", false, true, []int64{33, 47, 48})
 			})
 			t.Run("by priority desc", func(t *testing.T) {
 				rec, err := testHandler.testReadAllWithUser(url.Values{"sort_by": []string{"priority"}, "order_by": []string{"desc"}}, urlParams)
 				require.NoError(t, err)
-				assert.Contains(t, rec.Body.String(), `[{"id":3,"title":"task #3 high prio","description":"","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"0001-01-01T00:00:00Z","reminders":null,"repeat_after":0,"repeat_mode":0,"priority":100,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0,"identifier":"TEST1-3","index":3,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}},{"id":4,"title":"task #4 low prio","description":"","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"0001-01-01T00:00:00Z","reminders":null,"repeat_after":0,"repeat_mode":0,"priority":1`)
+				assertTaskCollectionSort(t, rec.Body.Bytes(), "priority", true, false, []int64{3, 4})
 			})
 			t.Run("by priority asc", func(t *testing.T) {
 				rec, err := testHandler.testReadAllWithUser(url.Values{"sort_by": []string{"priority"}, "order_by": []string{"asc"}}, urlParams)
 				require.NoError(t, err)
-				assert.Contains(t, rec.Body.String(), `{"id":33,"title":"task #33 with percent done","description":"","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"0001-01-01T00:00:00Z","reminders":null,"repeat_after":0,"repeat_mode":0,"priority":0,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0.5,"identifier":"TEST1-17","index":17,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}},{"id":47,"title":"task #47 with reminders outside window","description":"","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"0001-01-01T00:00:00Z","reminders":[{"reminder":"2018-08-01T12:00:00Z","relative_period":0,"relative_to":""},{"reminder":"2019-03-01T12:00:00Z","relative_period":0,"relative_to":""}],"repeat_after":0,"repeat_mode":0,"priority":0,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0,"identifier":"TEST1-32","index":32,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}},{"id":48,"title":"Landingpages update","description":"Update all landingpages with new branding","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"0001-01-01T00:00:00Z","reminders":null,"repeat_after":0,"repeat_mode":0,"priority":0,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0,"identifier":"TEST1-33","index":33,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}}]`)
+				assertTaskCollectionSort(t, rec.Body.Bytes(), "priority", false, true, []int64{33, 47, 48})
 			})
 			// should equal duedate asc
 			t.Run("by due_date", func(t *testing.T) {
 				rec, err := testHandler.testReadAllWithUser(url.Values{"sort_by": []string{"due_date"}}, urlParams)
 				require.NoError(t, err)
-				assert.Contains(t, rec.Body.String(), `[{"id":6,"title":"task #6 lower due date","description":"This has something unique","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"2018-11-30T22:25:24Z","reminders":null,"repeat_after":0,"repeat_mode":0,"priority":0,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0,"identifier":"TEST1-6","index":6,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}}`)
+				assertTaskCollectionSort(t, rec.Body.Bytes(), "due_date", false, false, []int64{6})
 			})
 			t.Run("by duedate desc", func(t *testing.T) {
 				rec, err := testHandler.testReadAllWithUser(url.Values{"sort_by": []string{"due_date"}, "order_by": []string{"desc"}}, urlParams)
 				require.NoError(t, err)
-				assert.Contains(t, rec.Body.String(), `[{"id":28,"title":"task #28 with repeat after, start_date, end_date and due_date","description":"","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"2018-12-02T22:25:24Z","reminders":null,"repeat_after":3600,"repeat_mode":0,"priority":0,"start_date":"2018-11-30T22:25:24Z","end_date":"2018-12-13T11:20:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0,"identifier":"TEST1-13","index":13,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}},{"id":5,"title":"task #5 higher due date","description":"","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"2018-12-01T03:58:44Z","reminders":null,"repeat_after":0,"repeat_mode":0,"priority":0,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0,"identifier":"TEST1-5","index":5,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}},{"id":6,"title":"task #6 lower due date`)
+				assertTaskCollectionSort(t, rec.Body.Bytes(), "due_date", true, false, []int64{28, 5, 6})
 			})
 			// Due date without unix suffix
 			t.Run("by duedate asc without  suffix", func(t *testing.T) {
 				rec, err := testHandler.testReadAllWithUser(url.Values{"sort_by": []string{"due_date"}, "order_by": []string{"asc"}}, urlParams)
 				require.NoError(t, err)
-				assert.Contains(t, rec.Body.String(), `[{"id":6,"title":"task #6 lower due date","description":"This has something unique","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"2018-11-30T22:25:24Z","reminders":null,"repeat_after":0,"repeat_mode":0,"priority":0,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0,"identifier":"TEST1-6","index":6,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}}`)
+				assertTaskCollectionSort(t, rec.Body.Bytes(), "due_date", false, false, []int64{6})
 			})
 			t.Run("by due_date without suffix", func(t *testing.T) {
 				rec, err := testHandler.testReadAllWithUser(url.Values{"sort_by": []string{"due_date"}}, urlParams)
 				require.NoError(t, err)
-				assert.Contains(t, rec.Body.String(), `[{"id":6,"title":"task #6 lower due date","description":"This has something unique","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"2018-11-30T22:25:24Z","reminders":null,"repeat_after":0,"repeat_mode":0,"priority":0,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0,"identifier":"TEST1-6","index":6,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}}`)
+				assertTaskCollectionSort(t, rec.Body.Bytes(), "due_date", false, false, []int64{6})
 			})
 			t.Run("by duedate desc without  suffix", func(t *testing.T) {
 				rec, err := testHandler.testReadAllWithUser(url.Values{"sort_by": []string{"due_date"}, "order_by": []string{"desc"}}, urlParams)
 				require.NoError(t, err)
-				assert.Contains(t, rec.Body.String(), `[{"id":28,"title":"task #28 with repeat after, start_date, end_date and due_date","description":"","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"2018-12-02T22:25:24Z","reminders":null,"repeat_after":3600,"repeat_mode":0,"priority":0,"start_date":"2018-11-30T22:25:24Z","end_date":"2018-12-13T11:20:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0,"identifier":"TEST1-13","index":13,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}},{"id":5,"title":"task #5 higher due date","description":"","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"2018-12-01T03:58:44Z","reminders":null,"repeat_after":0,"repeat_mode":0,"priority":0,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0,"identifier":"TEST1-5","index":5,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}},{"id":6,"title":"task #6 lower due date`)
+				assertTaskCollectionSort(t, rec.Body.Bytes(), "due_date", true, false, []int64{28, 5, 6})
 			})
 			t.Run("by duedate asc", func(t *testing.T) {
 				rec, err := testHandler.testReadAllWithUser(url.Values{"sort_by": []string{"due_date"}, "order_by": []string{"asc"}}, urlParams)
 				require.NoError(t, err)
-				assert.Contains(t, rec.Body.String(), `[{"id":6,"title":"task #6 lower due date","description":"This has something unique","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"2018-11-30T22:25:24Z","reminders":null,"repeat_after":0,"repeat_mode":0,"priority":0,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0,"identifier":"TEST1-6","index":6,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}}`)
+				assertTaskCollectionSort(t, rec.Body.Bytes(), "due_date", false, false, []int64{6})
 			})
 			t.Run("invalid sort parameter", func(t *testing.T) {
 				_, err := testHandler.testReadAllWithUser(url.Values{"sort_by": []string{"loremipsum"}}, urlParams)
@@ -380,33 +381,33 @@ func TestTaskCollection(t *testing.T) {
 			t.Run("by priority", func(t *testing.T) {
 				rec, err := testHandler.testReadAllWithUser(url.Values{"sort_by": []string{"priority"}}, nil)
 				require.NoError(t, err)
-				assert.Contains(t, rec.Body.String(), `{"id":33,"title":"task #33 with percent done","description":"","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"0001-01-01T00:00:00Z","reminders":null,"repeat_after":0,"repeat_mode":0,"priority":0,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0.5,"identifier":"TEST1-17","index":17,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}},{"id":39,"title":"task #39","description":"","project_id":25,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"0001-01-01T00:00:00Z","reminders":null,"repeat_after":0,"repeat_mode":0,"priority":0,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0,"identifier":"#0","index":0,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}},{"id":47,"title":"task #47 with reminders outside window","description":"","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"0001-01-01T00:00:00Z","reminders":[{"reminder":"2018-08-01T12:00:00Z","relative_period":0,"relative_to":""},{"reminder":"2019-03-01T12:00:00Z","relative_period":0,"relative_to":""}],"repeat_after":0,"repeat_mode":0,"priority":0,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0,"identifier":"TEST1-32","index":32,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}},{"id":48,"title":"Landingpages update","description":"Update all landingpages with new branding","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"0001-01-01T00:00:00Z","reminders":null,"repeat_after":0,"repeat_mode":0,"priority":0,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0,"identifier":"TEST1-33","index":33,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}}]`)
+				assertTaskCollectionSort(t, rec.Body.Bytes(), "priority", false, true, []int64{33, 39, 47, 48})
 			})
 			t.Run("by priority desc", func(t *testing.T) {
 				rec, err := testHandler.testReadAllWithUser(url.Values{"sort_by": []string{"priority"}, "order_by": []string{"desc"}}, nil)
 				require.NoError(t, err)
-				assert.Contains(t, rec.Body.String(), `[{"id":3,"title":"task #3 high prio","description":"","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"0001-01-01T00:00:00Z","reminders":null,"repeat_after":0,"repeat_mode":0,"priority":100,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0,"identifier":"TEST1-3","index":3,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}},{"id":4,"title":"task #4 low prio","description":"","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"0001-01-01T00:00:00Z","reminders":null,"repeat_after":0,"repeat_mode":0,"priority":1`)
+				assertTaskCollectionSort(t, rec.Body.Bytes(), "priority", true, false, []int64{3, 4})
 			})
 			t.Run("by priority asc", func(t *testing.T) {
 				rec, err := testHandler.testReadAllWithUser(url.Values{"sort_by": []string{"priority"}, "order_by": []string{"asc"}}, nil)
 				require.NoError(t, err)
-				assert.Contains(t, rec.Body.String(), `{"id":33,"title":"task #33 with percent done","description":"","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"0001-01-01T00:00:00Z","reminders":null,"repeat_after":0,"repeat_mode":0,"priority":0,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0.5,"identifier":"TEST1-17","index":17,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}},{"id":39,"title":"task #39","description":"","project_id":25,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"0001-01-01T00:00:00Z","reminders":null,"repeat_after":0,"repeat_mode":0,"priority":0,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0,"identifier":"#0","index":0,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}},{"id":47,"title":"task #47 with reminders outside window","description":"","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"0001-01-01T00:00:00Z","reminders":[{"reminder":"2018-08-01T12:00:00Z","relative_period":0,"relative_to":""},{"reminder":"2019-03-01T12:00:00Z","relative_period":0,"relative_to":""}],"repeat_after":0,"repeat_mode":0,"priority":0,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0,"identifier":"TEST1-32","index":32,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}},{"id":48,"title":"Landingpages update","description":"Update all landingpages with new branding","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"0001-01-01T00:00:00Z","reminders":null,"repeat_after":0,"repeat_mode":0,"priority":0,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0,"identifier":"TEST1-33","index":33,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}}]`)
+				assertTaskCollectionSort(t, rec.Body.Bytes(), "priority", false, true, []int64{33, 39, 47, 48})
 			})
 			// should equal duedate asc
 			t.Run("by due_date", func(t *testing.T) {
 				rec, err := testHandler.testReadAllWithUser(url.Values{"sort_by": []string{"due_date"}}, nil)
 				require.NoError(t, err)
-				assert.Contains(t, rec.Body.String(), `[{"id":6,"title":"task #6 lower due date","description":"This has something unique","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"2018-11-30T22:25:24Z","reminders":null,"repeat_after":0,"repeat_mode":0,"priority":0,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0,"identifier":"TEST1-6","index":6,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}},{"id":5,"title":"task #5 higher due date","description":"","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"2018-12-01T03:58:44Z","reminders":null,"repeat_after":0,"repeat_mode":0,"priority":0,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0,"identifier":"TEST1-5","index":5,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}}`)
+				assertTaskCollectionSort(t, rec.Body.Bytes(), "due_date", false, false, []int64{6, 5})
 			})
 			t.Run("by duedate desc", func(t *testing.T) {
 				rec, err := testHandler.testReadAllWithUser(url.Values{"sort_by": []string{"due_date"}, "order_by": []string{"desc"}}, nil)
 				require.NoError(t, err)
-				assert.Contains(t, rec.Body.String(), `[{"id":28,"title":"task #28 with repeat after, start_date, end_date and due_date","description":"","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"2018-12-02T22:25:24Z","reminders":null,"repeat_after":3600,"repeat_mode":0,"priority":0,"start_date":"2018-11-30T22:25:24Z","end_date":"2018-12-13T11:20:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0,"identifier":"TEST1-13","index":13,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}},{"id":5,"title":"task #5 higher due date","description":"","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"2018-12-01T03:58:44Z","reminders":null,"repeat_after":0,"repeat_mode":0,"priority":0,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0,"identifier":"TEST1-5","index":5,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}},{"id":6,"title":"task #6 lower due date`)
+				assertTaskCollectionSort(t, rec.Body.Bytes(), "due_date", true, false, []int64{28, 5, 6})
 			})
 			t.Run("by duedate asc", func(t *testing.T) {
 				rec, err := testHandler.testReadAllWithUser(url.Values{"sort_by": []string{"due_date"}, "order_by": []string{"asc"}}, nil)
 				require.NoError(t, err)
-				assert.Contains(t, rec.Body.String(), `[{"id":6,"title":"task #6 lower due date","description":"This has something unique","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"2018-11-30T22:25:24Z","reminders":null,"repeat_after":0,"repeat_mode":0,"priority":0,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0,"identifier":"TEST1-6","index":6,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}},{"id":5,"title":"task #5 higher due date","description":"","project_id":1,"done":false,"done_at":"0001-01-01T00:00:00Z","due_date":"2018-12-01T03:58:44Z","reminders":null,"repeat_after":0,"repeat_mode":0,"priority":0,"start_date":"0001-01-01T00:00:00Z","end_date":"0001-01-01T00:00:00Z","assignees":null,"labels":null,"hex_color":"","percent_done":0,"identifier":"TEST1-5","index":5,"related_tasks":{},"attachments":null,"cover_image_attachment_id":0,"is_favorite":false,"created":"2018-12-01T01:12:04Z","updated":"2018-12-01T01:12:04Z","bucket_id":0,"position":0,"reactions":null,"created_by":{"id":1,"name":"","username":"user1","created":"2018-12-01T15:13:12Z","updated":"2018-12-02T15:13:12Z"}}`)
+				assertTaskCollectionSort(t, rec.Body.Bytes(), "due_date", false, false, []int64{6, 5})
 			})
 			t.Run("invalid parameter", func(t *testing.T) {
 				// Invalid parameter should not sort at all
@@ -523,4 +524,52 @@ func TestTaskCollection(t *testing.T) {
 			assertHandlerErrorCode(t, err, models.ErrCodeProjectViewDoesNotExist)
 		})
 	})
+}
+
+// Compare decoded task order so unrelated additive JSON fields cannot invalidate sorting coverage.
+func assertTaskCollectionSort(t *testing.T, body []byte, field string, descending, fromEnd bool, expectedIDs []int64) {
+	t.Helper()
+	var tasks []models.Task
+	require.NoError(t, json.Unmarshal(body, &tasks))
+	require.GreaterOrEqual(t, len(tasks), len(expectedIDs))
+	start := 0
+	if fromEnd {
+		start = len(tasks) - len(expectedIDs)
+	}
+	actualIDs := make([]int64, len(expectedIDs))
+	for i := range expectedIDs {
+		actualIDs[i] = tasks[start+i].ID
+	}
+	assert.Equal(t, expectedIDs, actualIDs)
+
+	undated := false
+	for i, task := range tasks {
+		switch field {
+		case "priority":
+			if i == 0 {
+				continue
+			}
+			if descending {
+				assert.GreaterOrEqual(t, tasks[i-1].Priority, task.Priority, "tasks %d then %d", tasks[i-1].ID, task.ID)
+			} else {
+				assert.LessOrEqual(t, tasks[i-1].Priority, task.Priority, "tasks %d then %d", tasks[i-1].ID, task.ID)
+			}
+		case "due_date":
+			if task.DueDate.IsZero() {
+				undated = true
+				continue
+			}
+			assert.False(t, undated, "undated tasks must follow all dated tasks in either direction")
+			if i == 0 || tasks[i-1].DueDate.IsZero() {
+				continue
+			}
+			if descending {
+				assert.False(t, tasks[i-1].DueDate.Before(task.DueDate), "tasks %d then %d", tasks[i-1].ID, task.ID)
+			} else {
+				assert.False(t, tasks[i-1].DueDate.After(task.DueDate), "tasks %d then %d", tasks[i-1].ID, task.ID)
+			}
+		default:
+			t.Fatalf("unsupported sort assertion field %q", field)
+		}
+	}
 }
