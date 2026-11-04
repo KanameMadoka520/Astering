@@ -1,5 +1,5 @@
 import {watch, ref, onScopeDispose, toValue, type MaybeRefOrGetter} from 'vue'
-import {useQueryClient} from '@tanstack/vue-query'
+import {useQueryClient, type QueryClient} from '@tanstack/vue-query'
 import {tcyAiConversationsEvents, type Conversation} from '@/client/generated'
 import {assertClientRequestContext, captureClientRequestContext} from '@/client/requestContext'
 import {conversationKeys} from './tcyConversations'
@@ -55,8 +55,7 @@ function wait(ms: number, signal: AbortSignal) {
  * immediate reconnect after a healthy stream, so callers skip their polling fallback; it turns false
  * while reconnecting after a failed, empty or short stream, which backs off instead of looping.
  */
-export function useConversationEvents(id: MaybeRefOrGetter<string>) {
-	const client = useQueryClient()
+export function useConversationEvents(id: MaybeRefOrGetter<string>, client: QueryClient = useQueryClient()) {
 	const connected = ref(false)
 	let controller: AbortController | undefined
 	watch(() => toValue(id), value => {

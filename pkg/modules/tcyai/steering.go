@@ -107,7 +107,7 @@ func SteerConversation(uid int64, id string, in SteeringInput) (Conversation, er
 		}
 	}
 	index := len(record.Turns) - 1
-	live := conversations.live[uid]
+	live := conversations.live[liveKey(uid, id)]
 	if index < 0 || record.Turns[index].ID != in.TurnID || record.Turns[index].Status != "running" || live == nil || live.id != id || live.compacting || !live.acceptingSteering || live.cancel == nil {
 		return Conversation{}, ErrSteeringUnavailable
 	}

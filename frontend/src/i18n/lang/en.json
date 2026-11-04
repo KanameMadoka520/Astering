@@ -3578,8 +3578,6 @@
     "statusReconnecting": "Reconnecting",
     "loadingConversation": "Loading the conversation…",
     "conversationGone": "That conversation was deleted or is no longer available to you, so a new chat is open.",
-    "runningElsewhere": "Arona is working in “{title}”. Wait until it finishes, or open it to stop it, before sending here.",
-    "openRunning": "Open it",
     "settingsLoadFailed": "Could not load your model settings, so nothing can be sent yet.",
     "preferencesLoadFailed": "Could not load your templates and default scenario. The built-in defaults apply for now.",
     "presets": {

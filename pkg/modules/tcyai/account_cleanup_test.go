@@ -203,7 +203,7 @@ func TestTCYAIAccountCleanupCancelsJobsAndRejectsLateWriters(t *testing.T) {
 			}
 			require.NoError(t, err)
 			conversations.Lock()
-			live := conversations.live[uid]
+			live := conversations.live[liveKey(uid, chat.ID)]
 			conversations.Unlock()
 			require.NotNil(t, live)
 			t.Cleanup(live.cancel)

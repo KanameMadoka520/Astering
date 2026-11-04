@@ -285,7 +285,7 @@ func precheckDraft(uid int64, cid, id string, fileID int64) (ChatAttachment, boo
 	if err != nil {
 		return ChatAttachment{}, false, err
 	}
-	if live := conversations.live[uid]; live != nil && live.id == cid {
+	if live := conversations.live[liveKey(uid, cid)]; live != nil {
 		return ChatAttachment{}, false, ErrConversationBusy
 	}
 	index, reusable := draftMatchLocked(uid, record, id, fileID)
@@ -307,7 +307,7 @@ func addDriveDraft(uid int64, cid string, item ChatAttachment) (ChatAttachment, 
 	if err != nil {
 		return ChatAttachment{}, err
 	}
-	if live := conversations.live[uid]; live != nil && live.id == cid {
+	if live := conversations.live[liveKey(uid, cid)]; live != nil {
 		return ChatAttachment{}, ErrConversationBusy
 	}
 	index, reusable := draftMatchLocked(uid, record, item.ID, item.DriveFileID)
@@ -427,7 +427,7 @@ func RemoveChatDraftAttachment(uid int64, cid, id string) error {
 	if err != nil {
 		return err
 	}
-	if live := conversations.live[uid]; live != nil && live.id == cid {
+	if live := conversations.live[liveKey(uid, cid)]; live != nil {
 		return ErrConversationBusy
 	}
 	index := slices.IndexFunc(record.DraftAttachments, func(a ChatAttachment) bool { return a.ID == id })

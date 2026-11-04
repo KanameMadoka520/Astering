@@ -82,16 +82,22 @@ response), and entirely when a cached copy is newer than the response.
 
 ## Following a run
 
-The server runs one model job per account. Whichever view sees a conversation with a running turn
-marks it as the account's live run (kept in `sessionStorage` for a reload).
+The server owns each model job by account and conversation. Different conversations can run or
+compact independently; one conversation still has a single active writer. A view or a successful
+send, review or compaction response registers that conversation in the account/session's live set
+(IDs only, kept in `sessionStorage` for a reload, including legacy single-ID hints).
 
-- `useAronaRunObserver()` (mounted once in `ContentAuth.vue`) follows the live run while no
+- `useAronaRunObserver()` (mounted once in `ContentAuth.vue`) follows each live conversation while no
   assistant view shows it: after starting a run on `/ai` and moving to a project, receipts keep
-  applying without opening the floating panel. It streams only that conversation, never the
-  history, and stops when the run finishes, the chat is gone, or a view takes it over.
+  applying without opening the floating panel. A stable effect scope owns each conversation's
+  stream and query, never the history. Finishing, losing access to, or viewing one chat removes
+  only its observer; the others remain connected. Authentication-context changes dispose all
+  previous observers, while normal same-account token refresh preserves them.
 - Event stream (`conversationEvents.ts`): the server ends every stream after 25 seconds. After a
   stream that stayed open (≥ 10 s) and ended cleanly the client reconnects at once and stays
   live; a short stream that delivered state retries after 1.5 s; an empty or failed one backs off
   (1.5 s doubling up to 30 s).
 - The conversation GET polls every second only while a turn runs or a compaction is in progress,
   and only while the event stream is not live.
+
+See [conversation concurrency](agent-concurrency.md) for server locking, cancellation and cleanup.

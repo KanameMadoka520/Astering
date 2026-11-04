@@ -1,4 +1,4 @@
-import {computed, onScopeDispose, ref, shallowReactive, toValue, watch, type MaybeRefOrGetter, type Ref} from 'vue'
+import {onScopeDispose, ref, shallowReactive, toValue, watch, type MaybeRefOrGetter, type Ref} from 'vue'
 import {
 	hashKey,
 	queryOptions,
@@ -143,6 +143,7 @@ export function useCreateConversation() {
 }
 
 export function useConversationAction() {
+	const client = useQueryClient()
 	type Input = {
 		id: string
 		action: 'rename' | 'delete' | 'stop' | 'fork' | 'compact' | 'organize'
@@ -167,11 +168,18 @@ export function useConversationAction() {
 				case 'delete': await tcyAiConversationsDelete({path}); return
 				case 'stop': await tcyAiConversationsStop({path}); return
 				case 'fork': return (await tcyAiConversationsFork({path, body: {turn_id: input.turnId!}})).data
-				case 'compact': return (await tcyAiConversationsCompact({
-					path,
-					body: {connection_id: input.connectionId ?? ''},
-				})).data
+				case 'compact': return writeConversationSnapshot(
+					client,
+					conversationKeys.detail(input.id),
+					async () => (await tcyAiConversationsCompact({
+						path,
+						body: {connection_id: input.connectionId ?? ''},
+					})).data,
+				)
 			}
+		},
+		onSuccess: (conversation, input, client) => {
+			if (input.action === 'compact') noteAgentRun(client, conversation)
 		},
 		onSettled: (input, client) => Promise.all([
 			client.invalidateQueries({queryKey: conversationKeys.lists()}),
@@ -193,6 +201,7 @@ export function useSendConversation() {
 			conversationKeys.detail(input.id),
 			async () => (await tcyAiConversationsSend({path: {id: input.id}, body: input.body})).data,
 		),
+		onSuccess: (conversation, _input, client) => noteAgentRun(client, conversation),
 		onSettled: (input, client) => Promise.all([
 			client.invalidateQueries({queryKey: conversationKeys.detail(input.id), exact: true}),
 			client.invalidateQueries({queryKey: conversationKeys.lists()}),
@@ -226,6 +235,7 @@ export function useReviewConversation() {
 			conversationKeys.detail(input.id),
 			async () => (await tcyAiConversationsReview({path: {id: input.id}, body: input.body})).data,
 		),
+		onSuccess: (conversation, _input, client) => noteAgentRun(client, conversation),
 		onSettled: (input, client) => Promise.all([
 			client.invalidateQueries({queryKey: conversationKeys.detail(input.id), exact: true}),
 			client.invalidateQueries({queryKey: conversationKeys.lists()}),
@@ -376,8 +386,8 @@ type AgentRunScope = {
 	context: string
 	// Receipt keys (turn + action index) per conversation already reflected, or present before the chat was observed.
 	ledger: Map<string, Set<string>>
-	// The account's running conversation: the server runs one model job per account.
-	live: Ref<string>
+	// Conversations with independent background execution or compaction.
+	live: Ref<string[]>
 	// Conversations a mounted assistant follows itself; the app-level run observer leaves them alone.
 	viewers: Map<string, number>
 }
@@ -402,45 +412,54 @@ export function agentRunScope(client: QueryClient): AgentRunScope {
 		scope = {
 			context,
 			ledger: new Map(),
-			live: ref(''),
+			live: ref<string[]>([]),
 			viewers: shallowReactive(new Map()),
 		}
 		runScopes.set(client, scope)
 	} else if (scope.context !== context) {
 		scope.context = context
 		scope.ledger = new Map()
-		scope.live.value = ''
+		scope.viewers = shallowReactive(new Map())
+		scope.live.value = []
 	}
 	return scope
 }
 
-function setLiveRun(scope: AgentRunScope, id: string) {
-	if (scope.live.value === id) return
-	scope.live.value = id
+function setLiveRuns(scope: AgentRunScope, ids: string[]) {
+	if (ids.length === scope.live.value.length && ids.every((id, index) => id === scope.live.value[index])) return
+	scope.live.value = ids
 	try {
-		if (id) sessionStorage.setItem(liveHintKey(scope.context), id)
+		if (ids.length) sessionStorage.setItem(liveHintKey(scope.context), JSON.stringify(ids))
 		else sessionStorage.removeItem(liveHintKey(scope.context))
 	} catch { /* Browser storage is optional; only a reload during a run loses the hint. */ }
 }
 
-// Follows the run again after a reload, until its conversation shows it finished.
+// Follows each run again after a reload, until its conversation shows it finished.
 export function resumeAgentRun(client: QueryClient) {
 	const scope = agentRunScope(client)
-	if (scope.live.value) return
+	if (scope.live.value.length) return
 	try {
-		scope.live.value = sessionStorage.getItem(liveHintKey(scope.context)) ?? ''
+		const hint = sessionStorage.getItem(liveHintKey(scope.context))
+		if (!hint) return
+		// Older tabs stored one plain conversation ID.
+		const ids: unknown = hint.startsWith('[') ? JSON.parse(hint) : [hint]
+		if (Array.isArray(ids)) {
+			scope.live.value = [...new Set(ids.filter((id): id is string => typeof id === 'string' && Boolean(id)))]
+		}
 	} catch { /* Browser storage is optional. */ }
 }
 
 export function endAgentRun(client: QueryClient, id: string) {
 	const scope = agentRunScope(client)
-	if (scope.live.value === id) setLiveRun(scope, '')
+	setLiveRuns(scope, scope.live.value.filter(value => value !== id))
 }
 
 function noteAgentRun(client: QueryClient, conversation?: Conversation) {
 	if (!conversation?.id) return
-	if (isRunning(conversation)) setLiveRun(agentRunScope(client), conversation.id)
-	else endAgentRun(client, conversation.id)
+	if (conversation.compacting || isRunning(conversation)) {
+		const scope = agentRunScope(client)
+		if (!scope.live.value.includes(conversation.id)) setLiveRuns(scope, [...scope.live.value, conversation.id])
+	} else endAgentRun(client, conversation.id)
 }
 
 // A conversation created in this tab has no history, so its first receipts must refresh caches.
@@ -998,21 +1017,21 @@ export function useApplyAgentReceipts() {
 	}
 }
 
-/** The account's running conversation, if any: the server runs one model job per account. */
-export function useLiveAgentRun() {
-	const client = useQueryClient()
-	return computed(() => agentRunScope(client).live.value)
-}
-
 // For an assistant view: applies the receipts of the conversation it shows and keeps the app-level
 // run observer off that conversation while the view is mounted.
 export function useAgentReceiptRefresh(conversation: MaybeRefOrGetter<Conversation | undefined>) {
 	const client = useQueryClient()
 	const apply = useApplyAgentReceipts()
 	let viewing = ''
+	let context = agentRunScope(client).context
 	function view(id: string) {
+		const scope = agentRunScope(client)
+		if (context !== scope.context) {
+			viewing = ''
+			context = scope.context
+		}
 		if (id === viewing) return
-		const {viewers} = agentRunScope(client)
+		const {viewers} = scope
 		if (viewing) {
 			const count = (viewers.get(viewing) ?? 1) - 1
 			if (count > 0) viewers.set(viewing, count)

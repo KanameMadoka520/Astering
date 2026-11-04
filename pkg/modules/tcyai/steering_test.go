@@ -71,7 +71,7 @@ func steeringStart(t *testing.T, c Connection, execute Executor, prepare Prepare
 	chat, err = StartConversation(context.Background(), 1, chat.ID, RunInput{Message: "ORIGINAL_GOAL", RequestID: uuid.NewString(), Mode: "write", Approval: "auto", MaxRounds: 16, MaxOperations: 40, TimeoutSeconds: 180}, c, execute, prepare)
 	require.NoError(t, err)
 	conversations.Lock()
-	live := conversations.live[1]
+	live := conversations.live[liveKey(1, chat.ID)]
 	conversations.Unlock()
 	require.NotNil(t, live)
 	t.Cleanup(func() { live.cancel(); steeringWait(t, live.done); steeringWait(t, live.watchDone) })
@@ -176,9 +176,13 @@ func steeringRecord(t *testing.T) (*conversationFile, *AgentState, *liveConversa
 	require.NoError(t, writeConversation(1, record))
 	live := &liveConversation{uid: 1, id: record.ID, record: record, cancel: func() {}, acceptingSteering: true, storeRoot: accountKey(1).root}
 	conversations.Lock()
-	conversations.live[1] = live
+	conversations.live[liveKey(1, record.ID)] = live
 	conversations.Unlock()
-	t.Cleanup(func() { conversations.Lock(); delete(conversations.live, 1); conversations.Unlock() })
+	t.Cleanup(func() {
+		conversations.Lock()
+		delete(conversations.live, liveKey(1, record.ID))
+		conversations.Unlock()
+	})
 	return record, state, live
 }
 
@@ -290,7 +294,7 @@ func TestTCYAISteeringReplansToolBatchAtDurableBoundary(t *testing.T) {
 			}
 			conversations.Lock()
 			launchConversation(context.Background(), 1, record, 0, c, execute, prepare)
-			live := conversations.live[1]
+			live := conversations.live[liveKey(1, record.ID)]
 			conversations.Unlock()
 			t.Cleanup(func() { live.cancel(); steeringWait(t, live.done); steeringWait(t, live.watchDone) })
 			steeringWait(t, entered)
@@ -436,7 +440,7 @@ func TestTCYAISteeringStopRestartAndExplicitRetry(t *testing.T) {
 	_, err = ReviewConversation(context.Background(), 1, chat.ID, ReviewInput{TurnID: in.TurnID, Decision: "retry"}, c, nil, nil)
 	require.NoError(t, err)
 	conversations.Lock()
-	retry := conversations.live[1]
+	retry := conversations.live[liveKey(1, chat.ID)]
 	conversations.Unlock()
 	require.NotNil(t, retry)
 	t.Cleanup(func() { retry.cancel(); steeringWait(t, retry.done); steeringWait(t, retry.watchDone) })
@@ -530,7 +534,7 @@ func TestTCYAISteeringHistoryForkAndExport(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, writeConversation(1, record))
 	conversations.Lock()
-	delete(conversations.live, 1)
+	delete(conversations.live, liveKey(1, record.ID))
 	conversations.Unlock()
 	fork, err := ForkConversation(1, record.ID, record.Turns[0].ID)
 	require.NoError(t, err)
@@ -568,7 +572,7 @@ func TestTCYAISteeringStopAfterConfirmedTool(t *testing.T) {
 	}
 	conversations.Lock()
 	launchConversation(context.Background(), 1, record, 0, c, execute, nil)
-	live := conversations.live[1]
+	live := conversations.live[liveKey(1, record.ID)]
 	conversations.Unlock()
 	t.Cleanup(func() { live.cancel(); steeringWait(t, live.done); steeringWait(t, live.watchDone) })
 	steeringWait(t, entered)
@@ -583,7 +587,7 @@ func TestTCYAISteeringStopAfterConfirmedTool(t *testing.T) {
 	_, err = ReviewConversation(context.Background(), 1, record.ID, ReviewInput{TurnID: record.Turns[0].ID, Decision: "retry"}, c, execute, nil)
 	require.NoError(t, err)
 	conversations.Lock()
-	retry := conversations.live[1]
+	retry := conversations.live[liveKey(1, record.ID)]
 	conversations.Unlock()
 	require.NotNil(t, retry)
 	t.Cleanup(func() { retry.cancel(); steeringWait(t, retry.done); steeringWait(t, retry.watchDone) })

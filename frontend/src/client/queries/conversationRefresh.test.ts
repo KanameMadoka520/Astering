@@ -28,7 +28,15 @@ vi.mock('@/message', () => ({
 	translatedError: (key: string) => new Error(key),
 }))
 
-import {conversationKeys, conversationsQuery, useConversationAction, useReviewConversation, useSendConversation, useSteerConversation} from './tcyConversations'
+import {
+	agentRunScope,
+	conversationKeys,
+	conversationsQuery,
+	useConversationAction,
+	useReviewConversation,
+	useSendConversation,
+	useSteerConversation,
+} from './tcyConversations'
 import {chatAttachmentQuery, useAttachDriveFileToChat, useRemoveChatAttachment, useUploadChatAttachment} from './chatAttachments'
 
 function page(items: ConversationSummary[]) {
@@ -50,7 +58,7 @@ describe('conversation writes and attachment bytes', () => {
 			drive: ReturnType<typeof useAttachDriveFileToChat>
 			remove: ReturnType<typeof useRemoveChatAttachment>
 		}
-		mount(defineComponent({
+		const wrapper = mount(defineComponent({
 			setup() {
 				found = {
 					send: useSendConversation(),
@@ -64,7 +72,10 @@ describe('conversation writes and attachment bytes', () => {
 				return () => null
 			},
 		}), {global: {plugins: [[VueQueryPlugin, {queryClient: client}]]}})
-		return found
+		return {
+			...found,
+			unmount: () => wrapper.unmount(),
+		}
 	}
 
 	beforeEach(() => {
@@ -91,6 +102,72 @@ describe('conversation writes and attachment bytes', () => {
 
 		expect(client.getQueryState(detailKey)?.isInvalidated).toBe(true)
 		expect(client.getQueryState(blobKey)?.isInvalidated).toBe(false)
+	})
+
+	it.each(['send', 'review', 'compact'] as const)('tracks a successful %s even after its initiating view unmounts', async operation => {
+		let resolve!: (value: {data: Conversation}) => void
+		const response = new Promise<{data: Conversation}>(done => { resolve = done })
+		const request = operation === 'send' ? sdk.tcyAiConversationsSend
+			: operation === 'review' ? sdk.tcyAiConversationsReview : sdk.tcyAiConversationsCompact
+		request.mockImplementationOnce(() => response)
+		const h = hooks()
+		agentRunScope(client).live.value = ['other']
+		const pending = operation === 'compact'
+			? h.action.mutateAsync({
+				id: 'c1',
+				action: 'compact',
+			})
+			: operation === 'send'
+				? h.send.mutateAsync({
+					id: 'c1',
+					body: {message: 'Continue'} as never,
+				})
+				: h.review.mutateAsync({
+					id: 'c1',
+					body: {decision: 'retry'},
+				})
+		await vi.waitFor(() => expect(request).toHaveBeenCalled())
+		h.unmount()
+		resolve({data: {
+			id: 'c1',
+			compacting: operation === 'compact',
+			turns: [{
+				id: 't1',
+				status: operation === 'compact' ? 'completed' : 'running',
+			}],
+		}})
+		await pending
+		expect(agentRunScope(client).live.value).toEqual(['other', 'c1'])
+		const hint = sessionStorage.getItem(`arona-live:${agentRunScope(client).context}`)
+		expect(JSON.parse(hint!)).toEqual(['other', 'c1'])
+	})
+
+	it.each(['rename', 'organize'] as const)('does not let a late %s response stop another active snapshot', async operation => {
+		let resolve!: (value: {data: Conversation}) => void
+		const response = new Promise<{data: Conversation}>(done => { resolve = done })
+		const request = operation === 'rename' ? sdk.tcyAiConversationsRename : sdk.tcyAiConversationsOrganize
+		request.mockImplementationOnce(() => response)
+		const h = hooks()
+		const pending = h.action.mutateAsync({
+			id: 'c1',
+			action: operation,
+			title: 'Renamed',
+			pinned: true,
+		})
+		await vi.waitFor(() => expect(request).toHaveBeenCalled())
+		client.setQueryData<Conversation>(detailKey, {
+			id: 'c1',
+			compacting: true,
+			turns: [],
+		})
+		agentRunScope(client).live.value = ['other', 'c1']
+		resolve({data: {
+			id: 'c1',
+			compacting: false,
+			turns: [],
+		}})
+		await pending
+		expect(agentRunScope(client).live.value).toEqual(['other', 'c1'])
 	})
 
 	it('does not rewind stream progress when an older steering acknowledgement arrives', async () => {

@@ -28,16 +28,16 @@ import (
 func installActivityFixture(t *testing.T, record *conversationFile) {
 	t.Helper()
 	conversations.Lock()
-	previous := conversations.live[1]
-	conversations.live[1] = &liveConversation{uid: 1, id: record.ID, record: record}
+	previous := conversations.live[liveKey(1, record.ID)]
+	conversations.live[liveKey(1, record.ID)] = &liveConversation{uid: 1, id: record.ID, record: record}
 	conversations.Unlock()
 	t.Cleanup(func() {
 		conversations.Lock()
 		defer conversations.Unlock()
 		if previous == nil {
-			delete(conversations.live, 1)
+			delete(conversations.live, liveKey(1, record.ID))
 		} else {
-			conversations.live[1] = previous
+			conversations.live[liveKey(1, record.ID)] = previous
 		}
 	})
 }

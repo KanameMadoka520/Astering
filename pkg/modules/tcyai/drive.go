@@ -533,7 +533,7 @@ func conversationDriveUsesLocked(uid int64, cid string) (map[int64]driveUse, str
 	case !errors.Is(err, ErrConversationMissing):
 		return nil, "", err
 	}
-	if live := conversations.live[uid]; live != nil && live.id == cid {
+	if live := conversations.live[liveKey(uid, cid)]; live != nil {
 		found, title = true, live.record.Title
 		markVisibleDriveUses(uses, live.record)
 	}

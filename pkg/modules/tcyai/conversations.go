@@ -129,10 +129,24 @@ type liveConversation struct {
 	storeRoot         string
 }
 
+// A durable job owns only its conversation; account-wide writes and revocation
+// retain their separate short-lived fences.
+type conversationLiveKey struct {
+	uid int64
+	id  string
+}
+
+func liveKey(uid int64, id string) conversationLiveKey {
+	return conversationLiveKey{
+		uid: uid,
+		id:  id,
+	}
+}
+
 var conversations = struct {
 	sync.Mutex
-	live map[int64]*liveConversation
-}{live: map[int64]*liveConversation{}}
+	live map[conversationLiveKey]*liveConversation
+}{live: map[conversationLiveKey]*liveConversation{}}
 
 var ErrConversationMissing = errors.New("conversation not found")
 var ErrConversationBusy = errors.New("conversation is running")
@@ -298,7 +312,7 @@ func getConversationLocked(uid int64, id string) (*conversationFile, error) {
 	if accountDeleted(uid) {
 		return nil, ErrAccountDeleted
 	}
-	if live := conversations.live[uid]; live != nil && live.id == id {
+	if live := conversations.live[liveKey(uid, id)]; live != nil {
 		return live.record, nil
 	}
 	return readConversation(uid, id)
@@ -448,7 +462,7 @@ var ErrConversationMetadata = errors.New("invalid conversation title or conflict
 func DeleteConversation(uid int64, id string) error {
 	conversations.Lock()
 	defer conversations.Unlock()
-	if live := conversations.live[uid]; live != nil && live.id == id {
+	if live := conversations.live[liveKey(uid, id)]; live != nil {
 		return ErrConversationBusy
 	}
 	path, err := conversationPath(uid, id)
@@ -471,7 +485,7 @@ func DeleteConversation(uid int64, id string) error {
 func ForkConversation(uid int64, id, turnID string) (Conversation, error) {
 	conversations.Lock()
 	defer conversations.Unlock()
-	if conversations.live[uid] != nil {
+	if conversations.live[liveKey(uid, id)] != nil {
 		return Conversation{}, ErrConversationBusy
 	}
 	record, err := readConversation(uid, id)
@@ -597,7 +611,7 @@ func StartConversation(ctx context.Context, uid int64, id string, in RunInput, c
 			return cloneConversation(record), nil
 		}
 	}
-	if conversations.live[uid] != nil {
+	if conversations.live[liveKey(uid, id)] != nil {
 		return Conversation{}, ErrConversationBusy
 	}
 	if len(record.Turns) > 0 && pausedTurn(record.Turns[len(record.Turns)-1]) {
@@ -722,7 +736,7 @@ func launchConversation(ctx context.Context, uid int64, record *conversationFile
 		jobCtx, cancel = context.WithCancel(baseCtx)
 	}
 	live := &liveConversation{acceptingSteering: true, uid: uid, id: record.ID, record: record, cancel: cancel, done: make(chan struct{}), storeRoot: accountKey(uid).root}
-	conversations.live[uid] = live
+	conversations.live[liveKey(uid, live.id)] = live
 	live.watchDone = make(chan struct{})
 	go func() { defer close(live.watchDone); watchAccount(jobCtx, uid, cancel, live.done) }()
 	go func() {
@@ -788,14 +802,14 @@ func launchConversation(ctx context.Context, uid int64, record *conversationFile
 			live.cancel = nil
 			return
 		}
-		delete(conversations.live, uid)
+		delete(conversations.live, liveKey(uid, live.id))
 	}()
 }
 
 func ReviewConversation(ctx context.Context, uid int64, id string, in ReviewInput, c Connection, execute Executor, prepare Preparer) (Conversation, error) {
 	conversations.Lock()
 	defer conversations.Unlock()
-	if conversations.live[uid] != nil {
+	if conversations.live[liveKey(uid, id)] != nil {
 		return Conversation{}, ErrConversationBusy
 	}
 	record, err := readConversation(uid, id)
@@ -867,7 +881,7 @@ func PendingConnection(uid int64, id string) (RunInput, error) {
 func StopConversation(uid int64, id string) error {
 	conversations.Lock()
 	defer conversations.Unlock()
-	if live := conversations.live[uid]; live != nil && live.id == id {
+	if live := conversations.live[liveKey(uid, id)]; live != nil {
 		live.acceptingSteering = false
 		if live.cancel != nil {
 			live.cancel()
@@ -896,7 +910,7 @@ func StopConversation(uid int64, id string) error {
 func CompactConversation(ctx context.Context, uid int64, id string, c Connection) (Conversation, error) {
 	conversations.Lock()
 	defer conversations.Unlock()
-	if conversations.live[uid] != nil {
+	if conversations.live[liveKey(uid, id)] != nil {
 		return Conversation{}, ErrConversationBusy
 	}
 	record, err := readConversation(uid, id)
@@ -923,7 +937,7 @@ func CompactConversation(ctx context.Context, uid int64, id string, c Connection
 		return Conversation{}, err
 	}
 	live := &liveConversation{uid: uid, id: id, record: record, cancel: cancel, compacting: true, done: make(chan struct{}), storeRoot: accountKey(uid).root}
-	conversations.live[uid] = live
+	conversations.live[liveKey(uid, live.id)] = live
 	live.watchDone = make(chan struct{})
 	go func() { defer close(live.watchDone); watchAccount(requestCtx, uid, cancel, live.done) }()
 	go compactConversationJob(requestCtx, cancel, uid, record, c, through, live)
@@ -969,10 +983,10 @@ func compactConversationJob(ctx context.Context, cancel context.CancelFunc, uid 
 	// Keep an in-memory result if disk persistence fails, and never discard the previous summary.
 	if saveErr := writeConversation(uid, record); saveErr != nil {
 		record.CompactError = saveErr.Error()
-		conversations.live[uid].cancel = nil
+		live.cancel = nil
 		return
 	}
-	delete(conversations.live, uid)
+	delete(conversations.live, liveKey(uid, live.id))
 }
 
 func summarizeConversation(ctx context.Context, record *conversationFile, c Connection, through int, notify func(string, CompactProgress)) (summary string, usage Usage, model string, err error) {
@@ -1108,6 +1122,6 @@ func GetConversationActivity(uid int64, id string) (ConversationActivity, error)
 func ConversationJobRunning(uid int64, id string) bool {
 	conversations.Lock()
 	defer conversations.Unlock()
-	live := conversations.live[uid]
-	return live != nil && live.id == id && live.cancel != nil
+	live := conversations.live[liveKey(uid, id)]
+	return live != nil && live.cancel != nil
 }

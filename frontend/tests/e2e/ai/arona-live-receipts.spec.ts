@@ -38,6 +38,7 @@ type FixtureConversation = {
 	title: string
 	turns: FixtureTurn[]
 	compactions: unknown[]
+	compacting?: boolean
 }
 
 function receipt(tool: string, args: object, result: string): FixtureAction {
@@ -93,7 +94,7 @@ async function aronaServer(page: Page) {
 					id: conversation.id,
 					title: conversation.title,
 					turn_count: conversation.turns.length,
-					running: conversation.turns.some(turn => turn.status === 'running'),
+					running: Boolean(conversation.compacting || conversation.turns.some(turn => turn.status === 'running')),
 				}))
 				return route.fulfill({json: {items, total: items.length, total_pages: 1}})
 			}
@@ -109,7 +110,7 @@ async function aronaServer(page: Page) {
 		const conversation = conversations.get(id)
 		if (!conversation) return route.fulfill({status: 404, json: {message: 'Not found'}})
 		if (action === 'events') {
-			const activity = {turn: conversation.turns.at(-1), compacting: false, compactions: []}
+			const activity = {turn: conversation.turns.at(-1), compacting: Boolean(conversation.compacting), compactions: []}
 			return route.fulfill({
 				status: 200,
 				contentType: 'text/event-stream',
@@ -490,3 +491,86 @@ test.describe('Arona receipts update open pages live', () => {
 		expect(listReads).toHaveLength(1)
 	})
 })
+
+for (const width of [1440, 390]) {
+	test(`independent chats remain usable while another chat compacts at ${width}px`, async ({authenticatedPage: page}) => {
+		await page.setViewportSize({width, height: 900})
+		const server = await aronaServer(page)
+		const finishedTurn = (): FixtureTurn => ({
+			id: crypto.randomUUID(),
+			request_id: crypto.randomUUID(),
+			prompt: 'Remember the current plan',
+			status: 'completed',
+			result: {reply: 'The plan is recorded.', stage: 'completed', steps: [], actions: []},
+		})
+		server.seed({id: 'compact-a', title: 'Chat A compacting', turns: [finishedTurn()], compactions: [], compacting: true})
+		server.seed({id: 'idle-b', title: 'Chat B available', turns: [finishedTurn()], compactions: []})
+		const sends: string[] = []
+		server.onMessage(turn => { sends.push(turn.prompt) })
+		await page.goto('/ai?chat=compact-a')
+		await expect(page.locator('.compact-progress')).toContainText('Compacting the entire conversation')
+		await page.evaluate(() => { (window as unknown as {sameDocument: boolean}).sameDocument = true })
+
+		async function selectChat(id: string) {
+			const link = page.locator(`li[data-chat-id="${id}"] .history-link`)
+			if (!await link.isVisible()) {
+				await page.getByRole('button', {name: 'Conversations', exact: true}).click()
+			}
+			await expect(link).toBeVisible()
+			await link.click()
+			await expect(page).toHaveURL(new RegExp(`chat=${id}`))
+		}
+
+		await selectChat('idle-b')
+		await expect(page.locator('.compact-progress')).toHaveCount(0)
+		await page.getByLabel('Your request').fill('Work in B while A compacts')
+		const send = page.getByRole('button', {name: 'Send request', exact: true})
+		await expect(send).not.toHaveAttribute('aria-disabled', 'true')
+		await send.click()
+		await expect.poll(() => sends).toEqual(['Work in B while A compacts'])
+		await expect(page.getByRole('button', {name: 'Stop execution', exact: true})).toBeVisible()
+		expect(server.conversations.get('compact-a')?.compacting).toBe(true)
+
+		// This is SPA navigation through the real history: no reload or replacement of the query client.
+		await selectChat('compact-a')
+		await expect(page.locator('.compact-progress')).toContainText('Compacting the entire conversation')
+		await page.getByLabel('Your request').fill('Keep this draft until A finishes')
+		await page.getByLabel('Your request').press('Enter')
+		await expect(page.getByText('Context is being compacted. You can send once it finishes; your text stays here.', {exact: true})).toBeVisible()
+		await expect(page.getByLabel('Your request')).toHaveValue('Keep this draft until A finishes')
+		expect(sends).toEqual(['Work in B while A compacts'])
+		expect(server.conversations.get('idle-b')?.turns.at(-1)?.status).toBe('running')
+		expect(await page.evaluate(() => (window as unknown as {sameDocument?: boolean}).sameDocument)).toBe(true)
+		expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+	})
+}
+
+for (const width of [1440, 390]) {
+	test(`independent chats can send while another chat generates at ${width}px`, async ({authenticatedPage: page}) => {
+		await page.setViewportSize({width, height: 900})
+		const server = await aronaServer(page)
+		server.seed({
+			id: 'running-a', title: 'Chat A generating', compactions: [],
+			turns: [{id: 'turn-a', request_id: 'request-a', prompt: 'Keep working', status: 'running',
+				result: {reply: '', stage: 'model', steps: [], actions: []}}],
+		})
+		server.seed({id: 'idle-b', title: 'Chat B available', turns: [], compactions: []})
+		const sends: string[] = []
+		server.onMessage(turn => { sends.push(turn.prompt) })
+		await page.goto('/ai?chat=running-a')
+		await expect(page.getByRole('button', {name: 'Stop execution', exact: true})).toBeVisible()
+		const link = page.locator('li[data-chat-id="idle-b"] .history-link')
+		if (!await link.isVisible()) await page.getByRole('button', {name: 'Conversations', exact: true}).click()
+		await expect(link).toBeVisible()
+		await link.click()
+		await expect(page).toHaveURL(/chat=idle-b/)
+		await page.getByLabel('Your request').fill('An independent request for B')
+		const send = page.getByRole('button', {name: 'Send request', exact: true})
+		await expect(send).not.toHaveAttribute('aria-disabled', 'true')
+		await send.click()
+		await expect.poll(() => sends).toEqual(['An independent request for B'])
+		await expect(page.getByRole('button', {name: 'Stop execution', exact: true})).toBeVisible()
+		expect(server.conversations.get('running-a')?.turns.at(-1)?.status).toBe('running')
+		expect(server.conversations.get('idle-b')?.turns.at(-1)?.status).toBe('running')
+	})
+}

@@ -40,7 +40,6 @@ import {
 	endAgentRun,
 	useAgentReceiptRefresh,
 	useCreateConversation,
-	useLiveAgentRun,
 	useConversationAction,
 	useSendConversation,
 	useReviewConversation,
@@ -565,16 +564,6 @@ const hasAssistant = computed(() => chatModels.value.some(c => c.id === selected
 const needsSetup = computed(() => settings.isSuccess.value && !hasAssistant.value)
 const settingsFailed = computed(() => settings.isError.value && !settings.data.value)
 const preferencesFailed = computed(() => preferences.isError.value && !preferences.data.value)
-// The server runs one model job per account. Sending elsewhere meanwhile would create a chat and then be refused.
-const liveRun = useLiveAgentRun()
-const runningElsewhere = computed(() => Boolean(liveRun.value) && liveRun.value !== chatID.value)
-// Reads the cache only; the app-level run observer keeps that conversation current.
-const liveConversation = useQuery(computed(() => ({
-	...conversationQuery(runningElsewhere.value ? liveRun.value : ''),
-	enabled: false,
-})))
-const liveRunTitle = computed(() => liveConversation.data.value?.title || t('chat.untitled'))
-
 // Steering: text for the open conversation's running turn, which takes it in at its next safe step. A path of its
 // own, so `busy` still blocks files, options and new runs while the run works.
 const steerTurnID = computed(() => {
@@ -583,8 +572,8 @@ const steerTurnID = computed(() => {
 	// Compacting a whole conversation is no run to steer; a run compacting its own context still takes instructions.
 	return conversation?.id === chatID.value && !conversation.compacting && turn?.status === 'running' ? turn.id ?? '' : ''
 })
-// A send still on its way has no running turn yet, and a run listed elsewhere means this one is stale.
-const steering = computed(() => Boolean(steerTurnID.value) && !runningElsewhere.value && !pendingMessage.value)
+// A send still on its way has no confirmed running turn yet.
+const steering = computed(() => Boolean(steerTurnID.value) && !pendingMessage.value)
 const stopRequested = ref('')
 watch(steerTurnID, () => { stopRequested.value = '' })
 const steerBlocked = computed(() => steer.isPending.value || (steering.value && stopRequested.value === steerTurnID.value))
@@ -846,7 +835,6 @@ async function applySuggestion(suggestion: WelcomeSuggestion) {
 
 async function submit() {
 	if ((!prompt.value.trim() && !draftFiles.value.length) || busy.value || !hasAssistant.value || imageMismatch.value) return
-	if (runningElsewhere.value) return
 	if (searchMode.value === 'required' && !canSearch.value) {
 		showNotice(t('webSearch.configureFirst'))
 		return
@@ -1603,23 +1591,6 @@ onBeforeUnmount(() => {
 						:retry="() => preferences.refetch()"
 					/>
 					<p
-						v-if="runningElsewhere && !activeRun"
-						class="paused-notice running-elsewhere"
-						role="status"
-					>
-						<span>{{ t('assistantUI.runningElsewhere', {title: liveRunTitle}) }}</span>
-						<XButton
-							variant="secondary"
-							class="is-small"
-							icon="arrow-right"
-							:shadow="false"
-							:aria-disabled="editingBusy"
-							@click="!editingBusy && selectConversation(liveRun)"
-						>
-							{{ t('assistantUI.openRunning') }}
-						</XButton>
-					</p>
-					<p
 						v-if="paused"
 						class="paused-notice"
 						role="status"
@@ -1866,7 +1837,7 @@ onBeforeUnmount(() => {
 									class="send"
 									icon-only
 									type="submit"
-									:aria-disabled="busy || !hasAssistant || runningElsewhere || (!prompt.trim() && !draftFiles.length) || imageMismatch"
+									:aria-disabled="busy || !hasAssistant || (!prompt.trim() && !draftFiles.length) || imageMismatch"
 								>
 									<span class="is-sr-only">{{ send.isPending.value ? t('chat.sending') : t('tcymc.text.send_request') }}</span>
 								</XButton>
@@ -2542,12 +2513,6 @@ summary {
 	span {
 		flex: 1 1 14rem;
 	}
-}
-
-// Information, not a problem: the send waits for the other conversation.
-.running-elsewhere {
-	border-inline-start-color: var(--info);
-	background: var(--tint-info);
 }
 
 .composer-load-error {

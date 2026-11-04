@@ -5,8 +5,10 @@ import {QueryClient, VueQueryPlugin, useQuery} from '@tanstack/vue-query'
 import type {Conversation} from '@/client/generated'
 import {useConversationEvents} from './conversationEvents'
 import {
+	agentRunScope,
 	conversationKeys,
 	conversationQuery,
+	useConversationAction,
 	useReviewConversation,
 	useSendConversation,
 } from './tcyConversations'
@@ -21,6 +23,7 @@ const sdk = vi.hoisted(() => ({
 	tcyAiConversationsRead: vi.fn(),
 	tcyAiConversationsSend: vi.fn(),
 	tcyAiConversationsReview: vi.fn(),
+	tcyAiConversationsCompact: vi.fn(),
 }))
 const session = vi.hoisted(() => ({
 	id: 1,
@@ -71,16 +74,18 @@ let sendFrame: (payload: object) => void
 function observe() {
 	let send!: ReturnType<typeof useSendConversation>
 	let review!: ReturnType<typeof useReviewConversation>
+	let action!: ReturnType<typeof useConversationAction>
 	wrapper = mount(defineComponent({
 		setup() {
 			const events = useConversationEvents('c1')
 			useQuery(computed(() => conversationQuery('c1', events.connected.value)))
 			send = useSendConversation()
 			review = useReviewConversation()
+			action = useConversationAction()
 			return () => null
 		},
 	}), {global: {plugins: [[VueQueryPlugin, {queryClient: client}]]}})
-	return {send, review}
+	return {send, review, action}
 }
 function activity(turn = finished.turns![0]) {
 	return {
@@ -225,6 +230,50 @@ describe('conversation snapshots racing live events', () => {
 		await flushPromises()
 		expect(cached()?.turns?.[0].status).toBe('completed')
 		refetch.resolve({data: finished})
+		await pending
+	})
+
+	it('does not restart tracking when an old compact acknowledgement follows its final SSE snapshot', async () => {
+		client.setQueryDefaults(key, {staleTime: Infinity})
+		client.setQueryData(key, {
+			...finished,
+			compacting: false,
+		})
+		const {action} = observe()
+		await flushPromises()
+		const post = deferred<{data: Conversation}>()
+		const refetch = deferred<{data: Conversation}>()
+		sdk.tcyAiConversationsRead.mockReturnValueOnce(refetch.promise)
+		sdk.tcyAiConversationsCompact.mockReturnValueOnce(post.promise)
+		const pending = action.mutateAsync({
+			id: 'c1',
+			action: 'compact',
+		})
+		await flushPromises()
+		const compactions = [{
+			summary: 'Complete',
+			through: 1,
+		}]
+		sendFrame({
+			...activity(),
+			compact_text: '',
+			compactions,
+		})
+		await flushPromises()
+		post.resolve({data: {
+			...finished,
+			compacting: true,
+			compact_text: 'Old draft',
+		}})
+		await flushPromises()
+		expect(cached()?.compacting).toBe(false)
+		expect(cached()?.compactions?.[0].summary).toBe('Complete')
+		expect(agentRunScope(client).live.value).toEqual([])
+		refetch.resolve({data: {
+			...finished,
+			compacting: false,
+			compactions,
+		}})
 		await pending
 	})
 

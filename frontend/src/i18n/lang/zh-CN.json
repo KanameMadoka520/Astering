@@ -3578,8 +3578,6 @@
 		"statusReconnecting": "正在重连",
 		"loadingConversation": "正在载入对话…",
 		"conversationGone": "该对话已删除或你已无法访问，已为你打开新对话。",
-		"runningElsewhere": "阿罗娜正在“{title}”中工作。请等它完成，或打开该对话停止后，再在这里发送。",
-		"openRunning": "打开该对话",
 		"settingsLoadFailed": "无法读取模型设置，暂时不能发送。",
 		"preferencesLoadFailed": "无法读取你的模板和默认场景，暂时使用内置默认设置。",
 		"presets": {

@@ -124,13 +124,13 @@ func accountDeleted(uid int64) bool {
 }
 
 func currentLiveAccountLocked(uid int64, live *liveConversation) bool {
-	return live != nil && conversations.live[uid] == live && live.storeRoot == accountKey(uid).root && !accountDeleted(uid)
+	return live != nil && conversations.live[liveKey(uid, live.id)] == live && live.storeRoot == accountKey(uid).root && !accountDeleted(uid)
 }
 
 func finishDeletedLiveAccount(uid int64, live *liveConversation) {
 	conversations.Lock()
-	if conversations.live[uid] == live && (accountDeleted(uid) || live.storeRoot != accountKey(uid).root) {
-		delete(conversations.live, uid)
+	if conversations.live[liveKey(uid, live.id)] == live && (accountDeleted(uid) || live.storeRoot != accountKey(uid).root) {
+		delete(conversations.live, liveKey(uid, live.id))
 	}
 	conversations.Unlock()
 	if live.storeRoot == accountKey(uid).root {
@@ -171,11 +171,14 @@ func (bridge accountCleanupBridge) CleanupDeletedUser(uid int64) error {
 	settingsLock.Lock()
 	conversations.Lock()
 	deletedAccounts.Store(key, struct{}{})
-	if live := conversations.live[uid]; live != nil {
+	for liveID, live := range conversations.live {
+		if liveID.uid != uid {
+			continue
+		}
 		if live.cancel != nil {
 			live.cancel()
 		}
-		delete(conversations.live, uid)
+		delete(conversations.live, liveID)
 	}
 	forgetAccountDriveCache(uid)
 	conversations.Unlock()
@@ -216,8 +219,8 @@ func privateAccountID(name string) (int64, bool) {
 func (bridge accountCleanupBridge) RetryDeletedUsers() error {
 	owners := map[int64]struct{}{}
 	conversations.Lock()
-	for uid := range conversations.live {
-		owners[uid] = struct{}{}
+	for key := range conversations.live {
+		owners[key.uid] = struct{}{}
 	}
 	conversations.Unlock()
 	root := accountKey(0).root

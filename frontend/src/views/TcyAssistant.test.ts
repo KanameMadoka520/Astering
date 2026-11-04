@@ -333,7 +333,7 @@ describe('TcyAssistant composer', () => {
 
 	beforeEach(async () => {
 		sessionStorage.clear()
-		agentRunScope(new QueryClient()).live.value = ''
+		agentRunScope(new QueryClient()).live.value = []
 		client = new QueryClient({defaultOptions: {queries: {staleTime: Infinity, retry: false}}})
 		for (const fn of Object.values(sdk)) fn.mockReset().mockImplementation(never)
 		router = createRouter({
@@ -514,11 +514,11 @@ describe('TcyAssistant composer', () => {
 		expect(wrapper.find('.notice').text()).toContain('assistantUI.conversationGone')
 	})
 
-	it('does not create a conversation while another one runs, and points to it', async () => {
+	it('allows a new conversation while another one runs', async () => {
 		seedSettings()
 		seedPreferences()
 		seedConversation('busy', 'running', 'Weekly review')
-		agentRunScope(client).live.value = 'busy'
+		agentRunScope(client).live.value = ['busy']
 		const wrapper = mountPanel('')
 		await flushPromises()
 		await composer(wrapper).setValue('Another request')
@@ -526,10 +526,8 @@ describe('TcyAssistant composer', () => {
 		await wrapper.find('form.composer').trigger('submit')
 		await flushPromises()
 
-		expect(sdk.tcyAiConversationsCreate).not.toHaveBeenCalled()
-		const note = wrapper.find('.running-elsewhere')
-		expect(note.text()).toContain('"title":"Weekly review"')
-		expect((composer(wrapper).element as HTMLTextAreaElement).value).toBe('Another request')
+		expect(sdk.tcyAiConversationsCreate).toHaveBeenCalledTimes(1)
+		expect(wrapper.find('.running-elsewhere').exists()).toBe(false)
 	})
 
 	it('names a dropped stream as reconnecting unless the conversation is polled', async () => {
@@ -702,16 +700,15 @@ describe('TcyAssistant composer', () => {
 			expect(wrapper.find('.composer-stop').exists()).toBe(true)
 		})
 
-		it('does not steer when the account\'s run is listed in another conversation', async () => {
+		it('steers the open conversation while another conversation runs', async () => {
 			const wrapper = await mountRunning()
-			agentRunScope(client).live.value = 'other'
+			agentRunScope(client).live.value = ['c1', 'other']
 			await composer(wrapper).setValue('Also check due dates')
 
 			await enter(wrapper)
 
-			expect(sdk.tcyAiConversationsSteer).not.toHaveBeenCalled()
+			expect(sdk.tcyAiConversationsSteer).toHaveBeenCalledTimes(1)
 			expect(sdk.tcyAiConversationsSend).not.toHaveBeenCalled()
-			expect(wrapper.find('.composer-steer').exists()).toBe(false)
 		})
 
 		it('does not steer the run its own message is still starting', async () => {

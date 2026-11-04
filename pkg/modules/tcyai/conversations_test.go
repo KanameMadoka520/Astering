@@ -86,7 +86,11 @@ func TestTCYAIConversationOrganization(t *testing.T) {
 	t.Cleanup(func() {
 		config.FilesBasePath.Set(oldPath)
 		config.ServiceSecret.Set(oldSecret)
-		delete(conversations.live, 1)
+		for key := range conversations.live {
+			if key.uid == 1 {
+				delete(conversations.live, key)
+			}
+		}
 	})
 	older, err := CreateConversation(1, "Older chat")
 	require.NoError(t, err)
@@ -142,7 +146,7 @@ func TestTCYAIConversationOrganization(t *testing.T) {
 	live, err := readConversation(1, older.ID)
 	require.NoError(t, err)
 	live.Turns[0].Status = "running"
-	conversations.live[1] = &liveConversation{uid: 1, id: older.ID, record: live}
+	conversations.live[liveKey(1, older.ID)] = &liveConversation{uid: 1, id: older.ID, record: live}
 	title := "Renamed while running"
 	_, err = UpdateConversationMetadata(1, older.ID, ConversationMetadata{Title: &title, Archived: &yes, Pinned: &no})
 	require.NoError(t, err)
@@ -152,7 +156,7 @@ func TestTCYAIConversationOrganization(t *testing.T) {
 	require.ErrorIs(t, DeleteConversation(1, older.ID), ErrConversationBusy)
 	live.Turns[0].Status = "completed"
 	require.NoError(t, writeConversation(1, live))
-	delete(conversations.live, 1)
+	delete(conversations.live, liveKey(1, older.ID))
 	saved, err := GetConversation(1, older.ID)
 	require.NoError(t, err)
 	assert.Equal(t, title, saved.Title)

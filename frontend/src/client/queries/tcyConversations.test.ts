@@ -121,12 +121,12 @@ describe('agent receipts', () => {
 		const observed = conversation('observed', [{id: 't1', actions: [action('delete_task', {id: 2}, {success: true})]}])
 		trackNewConversation(client, 'created')
 		takeAgentReceipts(client, observed)
-		agentRunScope(client).live.value = 'observed'
+		agentRunScope(client).live.value = ['observed']
 
 		// Logging out keeps the query client alive.
 		removeToken()
 
-		expect(agentRunScope(client).live.value).toBe('')
+		expect(agentRunScope(client).live.value).toEqual([])
 		// Not inherited: the previous account's fresh chat replays nothing for the next one.
 		expect(takeAgentReceipts(client, created)).toEqual([])
 		// Not suppressed: what the previous account recorded does not hide a new chat's receipts.
