@@ -10,8 +10,9 @@ const root = fileURLToPath(new URL('../', import.meta.url))
 const brand = path.join(root, 'originalMedia/brand')
 const output = path.join(root, 'public/images/brand')
 const icons = path.join(root, 'public/images/icons')
-const primary = '#6857D9'
-const plate = '#f4f1ff'
+const primary = '#191919'
+const signal = '#fffa00'
+const plate = signal
 const symbolSource = await readFile(path.join(brand, 'astering-symbol.svg'), 'utf8')
 const svg = symbolSource.match(/<svg\b([^>]*)>([\s\S]*?)<\/svg>\s*$/)
 const viewBox = svg?.[1].match(/\bviewBox\s*=\s*(["'])(.*?)\1/)?.[2]
@@ -31,20 +32,18 @@ if (paths.length === 0 || body.replace(/<path\b[^>]*\/>/g, '').trim()
 const geometry = paths.join('\n')
 const avatarInset = extent * 0.06
 const avatar = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg"
-	width="1254" height="1254" viewBox="${viewBox}"><defs>
-	<radialGradient id="night" cx="73%" cy="18%" r="100%">
-	<stop stop-color="#373161"/><stop offset="0.52" stop-color="#1d203b"/>
-	<stop offset="1" stop-color="#101522"/></radialGradient></defs>
-	<rect x="${minX}" y="${minY}" width="${extent}" height="${extent}" fill="url(#night)"/>
-	<g color="#f2efff" transform="translate(${minX + avatarInset} ${minY + avatarInset})
+	width="1254" height="1254" viewBox="${viewBox}">
+	<rect x="${minX}" y="${minY}" width="${extent}" height="${extent}" fill="${primary}"/>
+	<g color="${signal}" transform="translate(${minX + avatarInset} ${minY + avatarInset})
 	scale(.88) translate(${-minX} ${-minY})">${geometry}</g></svg>\n`)
 await writeFile(path.join(brand, 'astering-avatar.svg'), avatar)
 await sharp(avatar).png().toFile(path.join(brand, 'astering-avatar.png'))
-const standalone = (color = primary) => `<svg xmlns="http://www.w3.org/2000/svg" role="img"
-	viewBox="${viewBox}" width="64" height="64" color="${color}" fill="currentColor">
-	<title>Astering</title>${geometry}</svg>\n`
+const standalone = (color = primary, tile = false) => `<svg xmlns="http://www.w3.org/2000/svg" role="img"
+	viewBox="${viewBox}" width="64" height="64" ${color ? `color="${color}"` : ''} fill="currentColor">
+	<title>Astering</title>${tile ? `<rect x="${minX}" y="${minY}" width="${extent}" height="${extent}" rx="${extent * .06}" fill="${signal}"/>` : ''}${geometry}</svg>\n`
 const mark = standalone()
 const mono = standalone('#000')
+const appIcon = standalone(primary, true)
 // Rasterize the vector at its target size instead of enlarging a 64px intermediate.
 const render = (input, size) => sharp(Buffer.from(input), {density: 72 * size / 64})
 	.resize(size, size, {
@@ -62,6 +61,7 @@ const pngOptions = {
 	dither: 0,
 }
 const png = size => render(mark, size).png(pngOptions).toBuffer()
+const appPng = size => render(appIcon, size).png(pngOptions).toBuffer()
 await mkdir(output, {recursive: true})
 await mkdir(icons, {recursive: true})
 await writeFile(path.join(output, 'logo.png'), await png(512))
@@ -72,7 +72,7 @@ await sharp(avatar).resize(960).webp({quality: 86}).toFile(path.join(output, 'av
 // The offline screen uses the same new portrait, bundled so its old mascot cannot reappear.
 await sharp(avatar).resize(1280).webp({quality: 80}).toFile(path.join(root, 'src/assets/astering-nightscape.webp'))
 const scale = 64 / extent
-const wordmarkSymbol = `<g color="${primary}" fill="currentColor"
+const wordmarkSymbol = `<rect width="64" height="64" rx="4" fill="${signal}"/><g color="${primary}" fill="currentColor"
 	transform="matrix(${scale} 0 0 ${scale} ${-minX * scale} ${-minY * scale})">${geometry}</g>`
 const prideAccent = `<defs><linearGradient id="astering-pride">
 	<stop stop-color="#e40303"/><stop offset=".2" stop-color="#ff8c00"/>
@@ -83,17 +83,19 @@ const prideAccent = `<defs><linearGradient id="astering-pride">
 const full = (color = 'currentColor', pride = false) => `<svg xmlns="http://www.w3.org/2000/svg"
 	role="img" viewBox="0 0 300 64" width="300" height="64"><title>Astering</title>${wordmarkSymbol}
 	<text x="74" y="45" fill="${color}" font-family="'Open Sans',system-ui,sans-serif"
-	font-size="38" font-weight="600" letter-spacing="-1">Astering</text>${pride ? prideAccent : ''}</svg>\n`
+	font-size="38" font-weight="700" letter-spacing="-1">Astering</text>${pride ? prideAccent : ''}</svg>\n`
 for (const dir of ['src/assets', 'originalMedia/images']) {
 	await writeFile(path.join(root, dir, 'logo-full.svg'), full())
 	await writeFile(path.join(root, dir, 'logo-full-pride.svg'), full('currentColor', true))
-	await writeFile(path.join(root, dir, 'logo.svg'), mark)
+	await writeFile(path.join(root, dir, 'logo.svg'), standalone(null))
 }
 await writeFile(path.join(root, 'originalMedia/images/logo-full-white.svg'), full('#fff'))
 await writeFile(path.join(output, 'logo.svg'), mark)
-await writeFile(path.join(output, 'wordmark.svg'), full('#17243b'))
-await writeFile(path.join(output, 'wordmark-dark.svg'), full('#eef5ff'))
-await writeFile(path.join(output, 'favicon.svg'), mark)
+await writeFile(path.join(output, 'wordmark.svg'), full(primary))
+await writeFile(path.join(output, 'wordmark-dark.svg'), full('#f2f2f2'))
+await writeFile(path.join(output, 'favicon.svg'), appIcon)
+await writeFile(path.join(output, 'app-icon.svg'), appIcon)
+await writeFile(path.join(output, 'logo-dark.svg'), standalone(signal))
 await writeFile(path.join(output, 'logo-mono.svg'), mono)
 const iconSizes = {
 	'favicon-16x16.png': 16,
@@ -110,9 +112,9 @@ const iconSizes = {
 	'mstile-150x150.png': 150,
 }
 for (const [name, size] of Object.entries(iconSizes)) {
-	// Home-screen tiles have an opaque starlight plate; tiny favicons stay transparent.
+	// Signal-yellow plates keep dark geometry legible in both browser themes.
 	const result = name.startsWith('favicon')
-		? render(mark, size)
+		? render(appIcon, size)
 		: sharp({create: {width: size, height: size, channels: 4, background: plate}})
 			.composite([{input: await render(mark, Math.round(size * 0.84)).png().toBuffer(), gravity: 'center'}])
 	await result.png({palette: true, colours: 256, dither: 0}).toFile(path.join(icons, name))
@@ -123,7 +125,7 @@ await sharp({create: {width: 1024, height: 1024, channels: 4, background: plate}
 	.composite([{input: await png(maskableSymbolSize), gravity: 'center'}])
 	.png({palette: true, colours: 256, dither: 0})
 	.toFile(path.join(icons, 'icon-maskable.png'))
-await sharp(await png(32))
+await sharp(await appPng(32))
 	.composite([{input: Buffer.from('<svg width="32" height="32"><circle cx="7" cy="25" r="6" fill="#ef4444" stroke="white" stroke-width="2"/></svg>')}])
 	.png()
 	.toFile(path.join(icons, 'favicon-tracking-32x32.png'))
@@ -131,7 +133,7 @@ await writeFile(path.join(icons, 'safari-pinned-tab.svg'), mono)
 await render(standalone('#fff'), 96).png().toFile(path.join(icons, 'badge-monochrome.png'))
 // ICO PNG entries cover tab, legacy browser and OS sizes without shipping a large master.
 const sizes = [16, 32, 48]
-const payloads = await Promise.all(sizes.map(png))
+const payloads = await Promise.all(sizes.map(appPng))
 const header = Buffer.alloc(6 + sizes.length * 16)
 header.writeUInt16LE(1, 2)
 header.writeUInt16LE(sizes.length, 4)
