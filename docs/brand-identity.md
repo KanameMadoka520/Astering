@@ -4,22 +4,24 @@
 
 我们赋予 Astering“像星星闪烁、使之星光熠熠”的意象：一条记录、一次行动，逐渐连接成自己的星群。这是本项目的命名与设计寓意，不是已有词典释义的声明。星光可以通过斜向光隙表达，不要求图形是一颗完整五角星。
 
-## 斜切 A 与工业配色
+## 斜切 A 与星蓝配色
 
-从 `aster.52` 起，标识采用两块不对称的斜切面和一道光隙。第一眼呈现向上的方向感，第二眼可以读出 Astering 的 A。采用炭黑 `#191919`、信号黄 `#fffa00`、白灰 `#f2f2f2`，以平面色、粗实体与留白建立张力。
+从 `aster.52` 起，标识采用两块不对称的斜切面和一道光隙。第一眼呈现向上的方向感，第二眼可以读出 Astering 的 A。最初采用炭黑、信号黄与白灰，以平面色、粗实体与留白建立张力。
 
 从 `aster.53` 起，在右上留白处加入一颗小四芒星，保留上述两条 A 主体路径不变。浅底与黄色底板上的星点为星蓝 `#0284c7`，深底上的星点为浅青 `#38bdf8`；单色版三条路径统一着色。星色仅作小面积点缀，不把主体改成放射星形，也不引入环绕花瓣。
 
+`aster.54` 按新的品牌要求，用与站点和星辰主题协调的星蓝配色替代生产素材中的信号黄。两块 A 与小星的几何完全保留：浅底为炭黑 A `#191919`＋星蓝小星 `#0284c7`；深底为浅青 A `#38bdf8`＋近白蓝星 `#e0f2fe`；安装图标及字标底板为浅蓝 `#dbeafe`。应用主色及警告色不随图标调色改变，历史概念原稿及其原始提示词不重写。
+
 此前五瓣旋转星孔容易让人联想到紫荆花，已退出当前素材与生成输入。后续维护应保持非放射的几何结构，不再使用五瓣、五等分花瓣或围绕中心旋转的花形。
 
-色彩参考了[《明日方舟：终末地》官网](https://endfield.gryphline.com/en-us)、[官方宣传海报](https://web-static.hg-cdn.com/upload/image/20261014/be8cb7db7c9e1f307acf5c0caae546e7.jpg)与[官网实际 CSS](https://web-static.hg-cdn.com/endfield/official-v4/_next/static/css/1135c1a3999ef48b.css)。上述颜色确实用于其官方网页的强调色和结构面，不声称找到了一份官方品牌规范。Astering 借鉴配色和工业信息设计方法，没有复制游戏的标志、角色或版式，也不表示获得官方认可。
+最初信号黄方案参考了[《明日方舟：终末地》官网](https://endfield.gryphline.com/en-us)、[官方宣传海报](https://web-static.hg-cdn.com/upload/image/20261014/be8cb7db7c9e1f307acf5c0caae546e7.jpg)与[官网实际 CSS](https://web-static.hg-cdn.com/endfield/official-v4/_next/static/css/1135c1a3999ef48b.css)。上述颜色确实用于其官方网页的强调色和结构面，不声称找到了一份官方品牌规范。Astering 借鉴配色和工业信息设计方法，没有复制游戏的标志、角色或版式，也不表示获得官方认可。
 
 ## 母版与来源
 
 - **共用几何轮廓**：[astering-symbol.svg](../frontend/originalMedia/brand/astering-symbol.svg)。两个继承主体颜色的 A 路径与一个带 `data-brand-accent="starlight"` 的小星路径，只有直线段，无内嵌位图。
 - **生成概念原稿**：[astering-rift-generated.png](../frontend/originalMedia/brand/astering-rift-generated.png)。保留设计来源，不作为运行时依赖。
-- **头像构图**：[SVG](../frontend/originalMedia/brand/astering-avatar.svg)与[PNG](../frontend/originalMedia/brand/astering-avatar.png)。精确复用同一组路径，深底黄标，不进行独立模型重绘。
-- **完整提示词与制作记录**：[astering-prompts.json](../frontend/originalMedia/brand/astering-prompts.json)。记录斜切 A、光帆两个探索方向、最终矢量化方法与 `aster.53` 原生 SVG 小星微调。
+- **头像构图**：[SVG](../frontend/originalMedia/brand/astering-avatar.svg)与[PNG](../frontend/originalMedia/brand/astering-avatar.png)。精确复用同一组路径，深底浅青 A 与近白蓝星，不进行独立模型重绘。
+- **完整提示词与制作记录**：[astering-prompts.json](../frontend/originalMedia/brand/astering-prompts.json)。记录斜切 A、光帆两个探索方向、最终矢量化方法、`aster.53` 原生 SVG 小星微调与 `aster.54` 配色修订。
 
 概念于 2026-11-04 使用内置 **imagegen** 生成，不使用 CLI/API 回退，也不把生成服务密钥写入仓库。生产 SVG 是参照选中概念，以原生多边形重新建立的几何，斜缝做了小尺寸可读性调整；不能将其表述为 imagegen 直接生成的 SVG，也不是原稿逐像素自动描摹。
 
@@ -29,20 +31,20 @@
 
 ## 明暗版本、图标与缓存
 
-信号黄在白底上的对比很低，因此不能把黄色透明图直接放到浅色界面。公开资源位于 `frontend/public/images/brand/`：
+标识根据实际表面的明暗选择版本，不把深色表面用的浅青透明标识直接用于白底。公开资源位于 `frontend/public/images/brand/`：
 
 | 资源 | 使用方式 |
 | --- | --- |
 | `logo.svg` / `logo.png` / `logo-1024.png` | 透明炭黑 A 与星蓝小星，用于浅色表面与邮件。 |
-| `logo-dark.svg` | 透明信号黄 A 与浅青小星，用于深色表面。 |
-| `wordmark.svg` / `wordmark-dark.svg` | 浅深色字标均使用黄色底板与黑色几何，文字分别为炭黑和浅灰。 |
-| `app-icon.svg` / `favicon.svg` | 带信号黄底板的黑色图形，供浏览器与桌面图标使用。 |
+| `logo-dark.svg` | 透明浅青 A 与近白蓝小星，用于深色表面。 |
+| `wordmark.svg` / `wordmark-dark.svg` | 浅深色字标均使用浅蓝底板与黑色几何，文字分别为炭黑和浅灰。 |
+| `app-icon.svg` / `favicon.svg` | 带浅蓝底板的黑色图形，供浏览器与桌面图标使用。 |
 | `logo-mono.svg` | 纯黑同轮廓，供 Safari mask 和单色输出。 |
-| `avatar.png` / `avatar.webp` | 炭黑底、信号黄 A 与浅青小星的品牌头像。 |
+| `avatar.png` / `avatar.webp` | 炭黑底、浅青 A 与近白蓝小星的品牌头像。 |
 
-应用内部独立 SVG 的 A 主体继承页面文字色，小星保持指定星蓝；共享字标继承当前主题的文字色。PWA 图标采用不透明黄色底板，maskable 按实际图形核对中央安全圆；通知 badge 使用透明底与纯白轮廓。桌面各档直接渲染同一个带底板 SVG，不从低分辨率 PNG 放大。
+应用内部独立 SVG 的 A 主体继承页面文字色，小星保持指定星蓝；共享字标继承当前主题的文字色。PWA 图标采用不透明浅蓝底板，maskable 按实际图形核对中央安全圆；通知 badge 使用透明底与纯白轮廓。桌面各档直接渲染同一个带底板 SVG，不从低分辨率 PNG 放大。
 
-固定品牌资源引用使用 `aster53`，覆盖 favicon、Apple/Safari 图标、PWA、登录头像与计时图标，避免继续使用已缓存的旧图样。固定路径仍使用 `no-cache` 与条件重验证；内容哈希构建资源沿用构建系统 URL，私人图片和任意固定路径不能因此获得永久缓存。
+固定品牌资源引用使用 `aster54`，覆盖 favicon、Apple/Safari 图标、PWA、登录头像与计时图标，避免继续使用已缓存的旧图样。固定路径仍使用 `no-cache` 与条件重验证；内容哈希构建资源沿用构建系统 URL，私人图片和任意固定路径不能因此获得永久缓存。
 
 素材验收必须检查实际 16/24/32px、浅深色页面、中英文副标题、小屏溢出、通知单色版和手机裁切。新结构不再以“单连通轮廓、中心星孔”作为验收标准；应检查两块切面、斜缝与整体方向能否辨认。桌面系统可能缓存已安装图标，不能保证资源发布后系统图标立即刷新。
 

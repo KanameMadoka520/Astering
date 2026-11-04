@@ -33,7 +33,7 @@ func isInstanceAdmin(s *xorm.Session, a web.Auth) bool {
 		return false
 	}
 	u, ok := a.(*user.User)
-	if !ok {
+	if !ok || u == nil || u.HasResourceOnlyPermissions() {
 		return false
 	}
 	fresh, err := user.GetUserByID(s, u.ID)

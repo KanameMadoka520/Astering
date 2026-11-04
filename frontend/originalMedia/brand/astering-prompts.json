@@ -19,13 +19,14 @@
     "symbol": "astering-symbol.svg",
     "method": "Native polygon reconstruction of the chosen generated concept; the two approved currentColor A-plane paths remain byte-for-byte unchanged. A single native four-point starlight path is added in the upper-right negative space. The SVG was not generated directly by imagegen.",
     "avatar": "astering-avatar.svg",
-    "avatar_method": "Deterministic SVG composition from the exact shared three path.d values, signal-yellow A on charcoal with a light-cyan star.",
+    "avatar_method": "Deterministic SVG composition from the exact shared three path.d values, sky-blue A on charcoal with an ice-blue star.",
     "palette": {
       "charcoal": "#191919",
-      "signal_yellow": "#fffa00",
+      "sky_blue": "#38bdf8",
+      "installation_plate": "#dbeafe",
       "neutral_light": "#f2f2f2",
       "starlight_blue": "#0284c7",
-      "starlight_on_dark": "#38bdf8"
+      "starlight_on_dark": "#e0f2fe"
     },
     "exports": "frontend/scripts/brand-assets.mjs and desktop/scripts/brand-assets.mjs",
     "starlight_revision": {
@@ -45,6 +46,17 @@
       "dark_surface": "#38bdf8",
       "monochrome": "All three paths inherit one black or white currentColor; geometry is unchanged.",
       "original_concept_preserved": "astering-rift-generated.png"
+    },
+    "palette_revision": {
+      "version": "aster.54",
+      "method": "Native SVG palette adjustment only; no imagegen generation, tracing or path geometry changes.",
+      "brief": "Replace signal yellow with a pale-blue installation plate and sky-blue A on dark surfaces, coordinated with the existing website and Starlight theme.",
+      "light_surface": "Charcoal #191919 A with deep sky-blue #0284c7 star.",
+      "dark_surface": "Sky-blue #38bdf8 A with ice-blue #e0f2fe star on charcoal #191919.",
+      "installation_plate": "Pale blue #dbeafe with charcoal A and deep sky-blue star.",
+      "monochrome": "All three paths retain one black or white currentColor.",
+      "application_primary": "Existing #0b69ff unchanged.",
+      "historical_concepts": "Original concept_prompts, raster and starlight_revision are preserved as design history."
     }
   }
 }

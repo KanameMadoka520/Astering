@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg"
 	width="1254" height="1254" viewBox="0 0 256 256">
 	<rect x="0" y="0" width="256" height="256" fill="#191919"/>
-	<g color="#fffa00" transform="translate(15.36 15.36)
+	<g color="#38bdf8" transform="translate(15.36 15.36)
 	scale(.88) translate(0 0)"><path fill="currentColor" d="M24 209 124 47H195L69 209Z"/>
 <path fill="currentColor" d="m132 143 57-43 43 109h-53l-25-66Z"/>
-<path fill="#38bdf8" data-brand-accent="starlight" d="M216 44 222 60 238 66 222 72 216 88 210 72 194 66 210 60Z"/></g></svg>
+<path fill="#e0f2fe" data-brand-accent="starlight" d="M216 44 222 60 238 66 222 72 216 88 210 72 194 66 210 60Z"/></g></svg>

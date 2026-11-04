@@ -143,3 +143,49 @@ func TestAdminBypass_StaleJWT_DeletedUser(t *testing.T) {
 		assert.False(t, can, "deleted admin must not grant bypass")
 	})
 }
+
+// An assistant's narrowing scope must survive the persisted admin recheck while
+// retaining the same owner and share permissions available to a normal user.
+func TestAdminBypass_ResourceOnlyScope(t *testing.T) {
+	db.LoadAndAssertFixtures(t)
+	license.SetForTests([]license.Feature{license.FeatureAdminPanel})
+	defer license.ResetForTests()
+	s := db.NewSession()
+	defer s.Close()
+	_, err := s.ID(int64(2)).Cols("is_admin").Update(&user.User{IsAdmin: true})
+	require.NoError(t, err)
+	_, err = s.ID(int64(2)).Cols("owner_id").Update(&Project{OwnerID: 2})
+	require.NoError(t, err)
+	admin := &user.User{ID: 2, IsAdmin: true}
+	restricted := user.RestrictToResourcePermissions(admin)
+
+	normal, _, err := (&Project{ID: 1}).CanRead(s, admin)
+	require.NoError(t, err)
+	require.True(t, normal, "ordinary licensed administrator access remains unchanged")
+	for _, tc := range []struct {
+		name      string
+		projectID int64
+		read      bool
+		write     bool
+	}{
+		{"unshared", 1, false, false},
+		{"read-only shared", 3, true, false},
+		{"team write shared", 19, true, true},
+		{"owned", 2, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			canRead, _, readErr := (&Project{ID: tc.projectID}).CanRead(s, restricted)
+			require.NoError(t, readErr)
+			assert.Equal(t, tc.read, canRead)
+			canWrite, writeErr := (&Project{ID: tc.projectID}).CanWrite(s, restricted)
+			require.NoError(t, writeErr)
+			assert.Equal(t, tc.write, canWrite)
+		})
+	}
+	canRead, _, err := (&Task{ID: 1}).CanRead(s, restricted)
+	require.NoError(t, err)
+	assert.False(t, canRead)
+	canWrite, err := (&Task{ID: 1}).CanUpdate(s, restricted)
+	require.NoError(t, err)
+	assert.False(t, canWrite)
+}

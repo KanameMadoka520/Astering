@@ -13,12 +13,12 @@
 
 我们赋予 **Astering**「像星星闪烁、使之星光熠熠」的意象：一次行动、一段研究、一条值得记住的原则，逐渐连接成自己的星群。**Aster的AI集成工业系统**（Aster’s AI-integrated industrial system）是项目的副标题；工具与积累服务于更自由的创造。
 
-- 当前版本：`v2.7.1-aster.53`
+- 当前版本：`v2.7.1-aster.54`
 - 源码与问题反馈：[KanameMadoka520/Astering](https://github.com/KanameMadoka520/Astering)
 - 本机编译的发布产物：[GitHub Releases](https://github.com/KanameMadoka520/Astering/releases)
 - [品牌与升级兼容](docs/brand-migration.md) · [品牌素材](docs/brand-identity.md) · [详细功能与演进记录](docs/product-reference.md)
 
-标识以两块斜切面和一道光隙形成有方向感的 A，右上用一颗星蓝／浅青小星呼应 Astering 的星辰意象。炭黑、信号黄和白灰仍是主体；矢量标识、深色头像与各平台图标共用同一份几何轮廓。设计参考、生成来源和本地重建方法见[品牌素材](docs/brand-identity.md)。
+标识以两块斜切面和一道光隙形成有方向感的 A，右上用一颗小四芒星呼应 Astering 的星辰意象。炭黑、星蓝／浅青和白灰配合浅蓝底板，与站点及星辰主题协调；矢量标识、深色头像与各平台图标共用同一份几何轮廓。设计参考、生成来源和本地重建方法见[品牌素材](docs/brand-identity.md)。
 
 喜欢深色界面时，可在 **设置 → 通用设置 → 外观与行为 → 配色方案** 选择 **星辰**：近黑底、稀疏星点与淡星座线，正文和任务卡片保持清楚的实色表面。选择随账户保存，原有配色和自定义背景继续可用，详见[星辰主题](docs/starlight-theme.md)。
 
@@ -53,6 +53,12 @@ Astering 把不同用途保留在各自合适的空间里，关联真实任务�
 
 详见[阿罗娜集成](docs/arona-integration.md)、[工具模块权限](docs/agent-tool-modules.md)、[运行中补充要求](docs/arona-steering.md)、[外部 MCP 与聊天插图](docs/external-mcp-and-chat-images.md)及[专用语音协议](docs/speech-and-routines-v41.md)。
 
+## 多账户与运行用量
+
+个人模型设置、阿罗娜会话、MCP 连接和个人网盘按账户隔离。项目通过显式的用户或团队共享协作，阿罗娜还受本轮工具模块、读写方式、资源权限与审核约束；实例管理员身份不会让她读取或修改未共享项目。这里是同一实例内的多账户协作，并非独立数据库的组织租户，详见[账户隔离与用量](docs/multi-user-isolation.md)。
+
+被单独授予用量权限的真人账户，可在 **设置 → 站点 → 站点用量** 查看账户状态、角色标记、项目／任务数量与归属存储。该只读能力不授予正文、会话或密钥访问权，也不修改上游许可管理功能。弱网加载浮层显示资源类别、等待阶段和耗时；SDK 文件传输在可测量时提供已收字节、接收速度及可信进度，详见[加载活动](docs/network-activity.md)。
+
 ## 安装与运行
 
 提供源码包、Git bundle、Linux amd64 二进制、Docker 镜像包和 SHA256 校验文件。检查、测试与编译在维护者本机完成，再手工发布；本仓库不使用 GitHub Actions。
@@ -63,15 +69,15 @@ Astering 把不同用途保留在各自合适的空间里，关联真实任务�
 git clone https://github.com/KanameMadoka520/Astering.git
 cd Astering
 docker build -f Dockerfile.aster \
-  --build-arg RELEASE_VERSION=v2.7.1-aster.53 \
+  --build-arg RELEASE_VERSION=v2.7.1-aster.54 \
   --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
-  -t astering:v2.7.1-aster.53 .
+  -t astering:v2.7.1-aster.54 .
 ```
 
 或下载对应 Release，先检查 `sha256sum -c SHA256SUMS`，再导入镜像包：
 
 ```sh
-docker load -i astering-v2.7.1-aster.53.docker.tar.gz
+docker load -i astering-v2.7.1-aster.54.docker.tar.gz
 ```
 
 以下是**新安装**的最小 SQLite 示例；生产也可配置 PostgreSQL。现有部署不要用新建的空目录替换原数据卷。
@@ -87,7 +93,7 @@ docker run -d --name Astering --restart unless-stopped \
   -e ASTERING_SERVICE_SECRET=替换为随机且持久保存的长密钥 \
   -e ASTERING_SERVICE_ENABLEREGISTRATION=false \
   -e ASTERING_SERVICE_TIMEZONE=Asia/Shanghai \
-  astering:v2.7.1-aster.53
+  astering:v2.7.1-aster.54
 ```
 
 在反向代理提供 HTTPS，将 `PUBLICURL` 改为自己的实际域名。创建首个账户前可查看 CLI 参数：

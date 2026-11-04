@@ -26,6 +26,7 @@ import (
 	"github.com/KanameMadoka520/Astering/pkg/log"
 	"github.com/KanameMadoka520/Astering/pkg/models"
 	"github.com/KanameMadoka520/Astering/pkg/modules/auth"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 	"github.com/KanameMadoka520/Astering/pkg/web"
 	"github.com/KanameMadoka520/Astering/pkg/web/handler"
 
@@ -43,6 +44,9 @@ func authFromCtx(ctx context.Context) (web.Auth, error) {
 		// and return a generic 401 so nothing internal leaks to clients.
 		log.Errorf("v2: could not resolve auth from context: %s", err)
 		return nil, huma.Error401Unauthorized("invalid or missing authentication")
+	}
+	if user.ResourcePermissionsOnly(ctx) {
+		a = user.RestrictToResourcePermissions(a)
 	}
 	return a, nil
 }

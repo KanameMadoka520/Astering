@@ -11,10 +11,10 @@ const brand = path.join(root, 'originalMedia/brand')
 const output = path.join(root, 'public/images/brand')
 const icons = path.join(root, 'public/images/icons')
 const primary = '#191919'
-const signal = '#fffa00'
+const onDark = '#38bdf8'
 const starlight = '#0284c7'
-const starlightOnDark = '#38bdf8'
-const plate = signal
+const starlightOnDark = '#e0f2fe'
+const plate = '#dbeafe'
 const symbolSource = await readFile(path.join(brand, 'astering-symbol.svg'), 'utf8')
 const svg = symbolSource.match(/<svg\b([^>]*)>([\s\S]*?)<\/svg>\s*$/)
 const viewBox = svg?.[1].match(/\bviewBox\s*=\s*(["'])(.*?)\1/)?.[2]
@@ -41,13 +41,13 @@ const avatarInset = extent * 0.06
 const avatar = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg"
 	width="1254" height="1254" viewBox="${viewBox}">
 	<rect x="${minX}" y="${minY}" width="${extent}" height="${extent}" fill="${primary}"/>
-	<g color="${signal}" transform="translate(${minX + avatarInset} ${minY + avatarInset})
+	<g color="${onDark}" transform="translate(${minX + avatarInset} ${minY + avatarInset})
 	scale(.88) translate(${-minX} ${-minY})">${darkGeometry}</g></svg>\n`)
 await writeFile(path.join(brand, 'astering-avatar.svg'), avatar)
 await sharp(avatar).png().toFile(path.join(brand, 'astering-avatar.png'))
 const standalone = (color = primary, tile = false, monochrome = false) => `<svg xmlns="http://www.w3.org/2000/svg" role="img"
 	viewBox="${viewBox}" width="64" height="64" ${color ? `color="${color}"` : ''} fill="currentColor">
-	<title>Astering</title>${tile ? `<rect x="${minX}" y="${minY}" width="${extent}" height="${extent}" rx="${extent * .06}" fill="${signal}"/>` : ''}${monochrome ? monochromeGeometry : color === signal ? darkGeometry : geometry}</svg>\n`
+	<title>Astering</title>${tile ? `<rect x="${minX}" y="${minY}" width="${extent}" height="${extent}" rx="${extent * .06}" fill="${plate}"/>` : ''}${monochrome ? monochromeGeometry : color === onDark ? darkGeometry : geometry}</svg>\n`
 const mark = standalone()
 const mono = standalone('#000', false, true)
 const appIcon = standalone(primary, true)
@@ -79,7 +79,7 @@ await sharp(avatar).resize(960).webp({quality: 86}).toFile(path.join(output, 'av
 // The offline screen uses the same new portrait, bundled so its old mascot cannot reappear.
 await sharp(avatar).resize(1280).webp({quality: 80}).toFile(path.join(root, 'src/assets/astering-nightscape.webp'))
 const scale = 64 / extent
-const wordmarkSymbol = `<rect width="64" height="64" rx="4" fill="${signal}"/><g color="${primary}" fill="currentColor"
+const wordmarkSymbol = `<rect width="64" height="64" rx="4" fill="${plate}"/><g color="${primary}" fill="currentColor"
 	transform="matrix(${scale} 0 0 ${scale} ${-minX * scale} ${-minY * scale})">${geometry}</g>`
 const prideAccent = `<defs><linearGradient id="astering-pride">
 	<stop stop-color="#e40303"/><stop offset=".2" stop-color="#ff8c00"/>
@@ -102,7 +102,7 @@ await writeFile(path.join(output, 'wordmark.svg'), full(primary))
 await writeFile(path.join(output, 'wordmark-dark.svg'), full('#f2f2f2'))
 await writeFile(path.join(output, 'favicon.svg'), appIcon)
 await writeFile(path.join(output, 'app-icon.svg'), appIcon)
-await writeFile(path.join(output, 'logo-dark.svg'), standalone(signal))
+await writeFile(path.join(output, 'logo-dark.svg'), standalone(onDark))
 await writeFile(path.join(output, 'logo-mono.svg'), mono)
 const iconSizes = {
 	'favicon-16x16.png': 16,
@@ -119,7 +119,7 @@ const iconSizes = {
 	'mstile-150x150.png': 150,
 }
 for (const [name, size] of Object.entries(iconSizes)) {
-	// Signal-yellow plates keep dark geometry legible in both browser themes.
+	// Pale-blue plates keep dark geometry legible in both browser themes.
 	const result = name.startsWith('favicon')
 		? render(appIcon, size)
 		: sharp({create: {width: size, height: size, channels: 4, background: plate}})

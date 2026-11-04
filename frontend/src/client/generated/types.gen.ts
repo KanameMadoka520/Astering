@@ -41,6 +41,137 @@ export type ApiToken = {
     readonly token?: string;
 };
 
+export type AccountUsageOverview = {
+    /**
+     * Accounts with status 0, including bots.
+     */
+    active_users: number;
+    /**
+     * Actual lengths of legacy SHA-256-named encrypted attachment files; excludes Drive originals already included in file_bytes.
+     */
+    ai_attachment_bytes: number;
+    /**
+     * Sum of independent AI encrypted conversation, legacy attachment and settings file lengths. A lower bound when ai_scan_complete is false.
+     */
+    ai_bytes: number;
+    /**
+     * Actual lengths of canonical encrypted conversation files, including encryption overhead.
+     */
+    ai_conversation_bytes: number;
+    /**
+     * Canonical UUID-named encrypted conversation files; includes archived conversations without decrypting them.
+     */
+    ai_conversations: number;
+    /**
+     * Actual lengths of the account's encrypted model and MCP settings files. No settings are decrypted.
+     */
+    ai_settings_bytes: number;
+    /**
+     * Snapshot collection start, UTC; collection is read-only and may overlap concurrent writes.
+     */
+    as_of: string;
+    /**
+     * Entries in those spaces, including archived and trashed entries; excludes historical revisions.
+     */
+    compass_entries_owned: number;
+    /**
+     * Spaces attributed to their persisted owner_id, including team spaces; does not imply access.
+     */
+    compass_spaces_owned: number;
+    /**
+     * Logical original bytes in personal Drive, including the recycle bin. Overlaps file_bytes; do not add them.
+     */
+    drive_file_bytes: number;
+    /**
+     * Distinct personal Drive originals, including the recycle bin. Overlaps files_uploaded; do not add the counts.
+     */
+    drive_files: number;
+    /**
+     * Recycle-bin subset of drive_file_bytes.
+     */
+    drive_trashed_bytes: number;
+    /**
+     * Recycle-bin subset of drive_files.
+     */
+    drive_trashed_files: number;
+    /**
+     * Sum of uploaded files.size once per file ID. Logical original bytes; excludes previews, database overhead and AI encrypted files.
+     */
+    file_bytes: number;
+    /**
+     * Distinct files rows uploaded by this account, including retained recycle-bin files and exports.
+     */
+    files_uploaded: number;
+    /**
+     * Accounts meeting at least one documented project-volume threshold.
+     */
+    flagged_users: number;
+    /**
+     * Archived subset of projects_owned.
+     */
+    projects_archived: number;
+    /**
+     * Currently owned projects created in the 24 hours before as_of; ownership transfers affect attribution.
+     */
+    projects_created_24h: number;
+    /**
+     * Currently owned projects created in the 7 days before as_of; ownership transfers affect attribution.
+     */
+    projects_created_7d: number;
+    /**
+     * Projects currently owned by this account, including archived projects; not the original creator count.
+     */
+    projects_owned: number;
+    /**
+     * Accounts whose AI metadata scan completed.
+     */
+    scanned_users: number;
+    /**
+     * Whether every account's AI metadata scan completed; SQL failures return 503 instead of fabricated zeroes.
+     */
+    snapshot_complete: boolean;
+    /**
+     * Non-deleted tasks whose persisted created_by_id is this account.
+     */
+    tasks_created: number;
+    /**
+     * Non-deleted tasks in currently owned projects, regardless of task creator or assignee.
+     */
+    tasks_owned: number;
+    /**
+     * file_bytes plus independent ai_bytes. Mixed logical original and encrypted file lengths, not filesystem allocated bytes or total server disk use; incomplete when AI scan is incomplete.
+     */
+    total_storage_bytes: number;
+    /**
+     * Number of accounts in this snapshot, before search and filters.
+     */
+    users: number;
+};
+
+export type AccountUsageSnapshot = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Snapshot collection start, UTC; cached for at most 30 seconds.
+     */
+    as_of: string;
+    /**
+     * Stable explanatory notes for attribution, byte totals and collection limits.
+     */
+    definitions: Array<string> | null;
+    items: Array<InstanceUserUsage> | null;
+    overview: AccountUsageOverview;
+    page: number;
+    per_page: number;
+    /**
+     * Accounts matching search and filters, before pagination.
+     */
+    total: number;
+    total_pages: number;
+};
+
 export type Action = {
     /**
      * Validated operation arguments as JSON.
@@ -1854,6 +1985,133 @@ export type Info = {
     licensed?: boolean;
     max_users?: number;
     validated_at?: string;
+};
+
+export type InstanceUserUsage = {
+    /**
+     * Actual lengths of legacy SHA-256-named encrypted attachment files; excludes Drive originals already included in file_bytes.
+     */
+    ai_attachment_bytes: number;
+    /**
+     * Sum of independent AI encrypted conversation, legacy attachment and settings file lengths. A lower bound when ai_scan_complete is false.
+     */
+    ai_bytes: number;
+    /**
+     * Actual lengths of canonical encrypted conversation files, including encryption overhead.
+     */
+    ai_conversation_bytes: number;
+    /**
+     * Canonical UUID-named encrypted conversation files; includes archived conversations without decrypting them.
+     */
+    ai_conversations: number;
+    /**
+     * False means AI counts and bytes are incomplete or unavailable, never proof of zero usage.
+     */
+    ai_scan_complete: boolean;
+    /**
+     * Actual lengths of the account's encrypted model and MCP settings files. No settings are decrypted.
+     */
+    ai_settings_bytes: number;
+    /**
+     * Read-only hints: projects_owned_1000, projects_created_24h_100, projects_created_7d_500. No action is taken.
+     */
+    anomalies: Array<string> | null;
+    /**
+     * Entries in those spaces, including archived and trashed entries; excludes historical revisions.
+     */
+    compass_entries_owned: number;
+    /**
+     * Spaces attributed to their persisted owner_id, including team spaces; does not imply access.
+     */
+    compass_spaces_owned: number;
+    /**
+     * Account creation time, not last activity.
+     */
+    created: string;
+    /**
+     * Whether account deletion is scheduled; this route cannot change it.
+     */
+    deletion_scheduled: boolean;
+    /**
+     * Logical original bytes in personal Drive, including the recycle bin. Overlaps file_bytes; do not add them.
+     */
+    drive_file_bytes: number;
+    /**
+     * Distinct personal Drive originals, including the recycle bin. Overlaps files_uploaded; do not add the counts.
+     */
+    drive_files: number;
+    /**
+     * Recycle-bin subset of drive_file_bytes.
+     */
+    drive_trashed_bytes: number;
+    /**
+     * Recycle-bin subset of drive_files.
+     */
+    drive_trashed_files: number;
+    /**
+     * Sum of uploaded files.size once per file ID. Logical original bytes; excludes previews, database overhead and AI encrypted files.
+     */
+    file_bytes: number;
+    /**
+     * Distinct files rows uploaded by this account, including retained recycle-bin files and exports.
+     */
+    files_uploaded: number;
+    /**
+     * Account ID; no resource access is granted.
+     */
+    id: number;
+    /**
+     * Read-only account-kind flag.
+     */
+    is_bot: boolean;
+    /**
+     * Read-only stored instance-admin flag; does not grant licensed capabilities.
+     */
+    is_instance_admin: boolean;
+    /**
+     * Whether this active human account is explicitly listed in ASTERING_USAGE_ADMIN_IDS at response time.
+     */
+    is_usage_admin: boolean;
+    /**
+     * Account display name.
+     */
+    name: string;
+    /**
+     * Archived subset of projects_owned.
+     */
+    projects_archived: number;
+    /**
+     * Currently owned projects created in the 24 hours before as_of; ownership transfers affect attribution.
+     */
+    projects_created_24h: number;
+    /**
+     * Currently owned projects created in the 7 days before as_of; ownership transfers affect attribution.
+     */
+    projects_created_7d: number;
+    /**
+     * Projects currently owned by this account, including archived projects; not the original creator count.
+     */
+    projects_owned: number;
+    /**
+     * 0 active, 1 awaiting email confirmation, 2 disabled, 3 locked.
+     */
+    status: number;
+    /**
+     * Non-deleted tasks whose persisted created_by_id is this account.
+     */
+    tasks_created: number;
+    /**
+     * Non-deleted tasks in currently owned projects, regardless of task creator or assignee.
+     */
+    tasks_owned: number;
+    /**
+     * file_bytes plus independent ai_bytes. Mixed logical original and encrypted file lengths, not filesystem allocated bytes or total server disk use; incomplete when AI scan is incomplete.
+     */
+    total_storage_bytes: number;
+    /**
+     * Account username; no email or identity-provider details are returned.
+     */
+    username: string;
 };
 
 export type Interval = {
@@ -4634,6 +4892,17 @@ export type Subscription = {
     readonly id?: number;
 };
 
+export type SystemUsageAccessBodyBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Explicit operational-usage grant; never grants resource access or account management.
+     */
+    can_view_usage: boolean;
+};
+
 export type Totp = {
     /**
      * A URL to the JSON Schema for this object.
@@ -6706,6 +6975,26 @@ export type ApiTokenWritable = {
     title?: string;
 };
 
+export type AccountUsageSnapshotWritable = {
+    /**
+     * Snapshot collection start, UTC; cached for at most 30 seconds.
+     */
+    as_of: string;
+    /**
+     * Stable explanatory notes for attribution, byte totals and collection limits.
+     */
+    definitions: Array<string> | null;
+    items: Array<InstanceUserUsage> | null;
+    overview: AccountUsageOverview;
+    page: number;
+    per_page: number;
+    /**
+     * Accounts matching search and filters, before pagination.
+     */
+    total: number;
+    total_pages: number;
+};
+
 export type AdminIsAdminPatchBodyWritable = {
     /**
      * New admin flag. Omitting it leaves the current value unchanged.
@@ -8774,6 +9063,13 @@ export type SteeringInputWritable = {
      * Exact currently running turn to receive the instruction.
      */
     turn_id?: string;
+};
+
+export type SystemUsageAccessBodyBodyWritable = {
+    /**
+     * Explicit operational-usage grant; never grants resource access or account management.
+     */
+    can_view_usage: boolean;
 };
 
 export type TaskWritable = {
@@ -15478,6 +15774,80 @@ export type SystemStatusResponses = {
 };
 
 export type SystemStatusResponse = SystemStatusResponses[keyof SystemStatusResponses];
+
+export type SystemUsageAccessData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/system/usage/access';
+};
+
+export type SystemUsageAccessErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type SystemUsageAccessError = SystemUsageAccessErrors[keyof SystemUsageAccessErrors];
+
+export type SystemUsageAccessResponses = {
+    /**
+     * OK
+     */
+    200: SystemUsageAccessBodyBody;
+};
+
+export type SystemUsageAccessResponse = SystemUsageAccessResponses[keyof SystemUsageAccessResponses];
+
+export type SystemUsageUsersData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * 1-based page number.
+         */
+        page?: number;
+        /**
+         * Capped at 100 and the configured service.maxitemsperpage.
+         */
+        per_page?: number;
+        /**
+         * Case-insensitive username or display-name search; does not search emails or resource content.
+         */
+        q?: string;
+        status?: 'all' | 'active' | 'email_confirmation_required' | 'disabled' | 'account_locked';
+        /**
+         * Read-only flags; instance_admin does not imply license availability.
+         */
+        role?: 'all' | 'human' | 'bot' | 'instance_admin' | 'usage_admin';
+        /**
+         * Filter documented project-volume hints; never changes or limits accounts.
+         */
+        anomaly?: 'all' | 'flagged';
+        sort_by?: 'id' | 'username' | 'created' | 'projects_owned' | 'projects_created_24h' | 'projects_created_7d' | 'tasks_owned' | 'tasks_created' | 'file_bytes' | 'ai_bytes';
+        order_by?: 'asc' | 'desc';
+    };
+    url: '/system/usage/users';
+};
+
+export type SystemUsageUsersErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type SystemUsageUsersError = SystemUsageUsersErrors[keyof SystemUsageUsersErrors];
+
+export type SystemUsageUsersResponses = {
+    /**
+     * OK
+     */
+    200: AccountUsageSnapshot;
+};
+
+export type SystemUsageUsersResponse = SystemUsageUsersResponses[keyof SystemUsageUsersResponses];
 
 export type TasksListData = {
     body?: never;

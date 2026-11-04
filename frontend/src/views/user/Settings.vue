@@ -10,6 +10,8 @@
 <script setup lang="ts">
 import {computed} from 'vue'
 import {useQuery} from '@tanstack/vue-query'
+import {currentSiteUsageData, siteUsageAccessQuery} from '@/client/queries/siteUsage'
+import {captureClientRequestContext} from '@/client/requestContext'
 import {mailSettingsAccessQuery} from '@/client/queries/mailSettings'
 import {useI18n} from 'vue-i18n'
 import {useTitle} from '@/composables/useTitle'
@@ -24,6 +26,10 @@ useTitle(() => t('user.settings.title'))
 const mailAccess = useQuery(mailSettingsAccessQuery())
 const configStore = useConfigStore()
 const authStore = useAuthStore()
+const usageAccess = useQuery(computed(() => ({
+	...siteUsageAccessQuery(captureClientRequestContext()),
+	enabled: authStore.authUser && Boolean(authStore.identityKey),
+})))
 
 const migratorsEnabled = computed(() => configStore.migratorsEnabled)
 const isLocalUser = computed(() => authStore.info?.is_local_user)
@@ -153,6 +159,15 @@ const navigationItems = computed(() => {
 			routeName: 'user.settings.deletion',
 			group: data,
 			condition: configStore.user_deletion_enabled,
+		},
+		{
+			title: t('siteUsage.title'),
+			icon: 'chart-line',
+			routeName: 'user.settings.usage',
+			group: site,
+			badge: t('user.settings.scope.siteBadge'),
+			condition: authStore.authUser && !usageAccess.isFetching.value && !usageAccess.isError.value
+				&& currentSiteUsageData(usageAccess.data.value)?.can_view_usage === true,
 		},
 		{
 			title: t('mailServer.title'),

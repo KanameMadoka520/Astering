@@ -4,6 +4,7 @@ import {client} from './generated/client.gen'
 import {configureApiClient} from './http'
 import {InvalidApiUrlProvidedError} from '@/helpers/apiUrl'
 import {ApiError} from './problem'
+import {clearNetworkDownloads, clearStaleNetworkDownloads, networkDownloads} from './networkActivity'
 
 const auth = vi.hoisted(() => ({
 	token: null as string | null,
@@ -138,6 +139,8 @@ describe('configureApiClient', () => {
 	})
 
 	afterEach(() => {
+		clearNetworkDownloads()
+		vi.restoreAllMocks()
 		vi.unstubAllGlobals()
 	})
 
@@ -290,6 +293,117 @@ describe('configureApiClient', () => {
 		expect(clone).not.toHaveBeenCalled()
 		expect(data).toBeInstanceOf(Blob)
 		expect(await (data as Blob).text()).toBe('attachment bytes')
+	})
+
+	it('measures actual SDK response chunks without cloning or guessing a speed while waiting', async () => {
+		auth.token = 'session-token'
+		auth.type = 1
+		let time = 0
+		vi.spyOn(performance, 'now').mockImplementation(() => time)
+		let body!: ReadableStreamDefaultController<Uint8Array>
+		const response = new Response(new ReadableStream<Uint8Array>({
+			start(controller) { body = controller },
+		}), {headers: {'Content-Type': 'application/octet-stream', 'Content-Length': '2048'}})
+		const clone = vi.spyOn(response, 'clone')
+		responses = [response]
+		const request = client.get({url: '/drive/files/{file}/download', path: {file: 17}, parseAs: 'blob'})
+		await vi.waitFor(() => expect(networkDownloads.value[0]?.phase).toBe('receiving'))
+		expect(networkDownloads.value[0]).toMatchObject({resource: 'file', resourceId: 17, received: 0, total: 2048})
+		expect(networkDownloads.value[0].bytesPerSecond).toBeUndefined()
+		body.enqueue(new Uint8Array(512))
+		await vi.waitFor(() => expect(networkDownloads.value[0]?.received).toBe(512))
+		expect(networkDownloads.value[0].bytesPerSecond).toBeUndefined()
+		time = 1000
+		body.enqueue(new Uint8Array(1024))
+		await vi.waitFor(() => expect(networkDownloads.value[0]?.received).toBe(1536))
+		expect(networkDownloads.value[0].bytesPerSecond).toBe(1024)
+		body.enqueue(new Uint8Array(512))
+		body.close()
+		const result = await request
+		expect((result.data as Blob).size).toBe(2048)
+		expect(networkDownloads.value).toHaveLength(0)
+		expect(clone).not.toHaveBeenCalled()
+	})
+
+	it.each<{headers: Record<string, string>; cors: boolean}>([
+		{headers: {}, cors: false},
+		{headers: {'Content-Encoding': 'gzip', 'Content-Length': '2'}, cors: false},
+		{headers: {'Content-Length': '2048'}, cors: true},
+	])('leaves totals unknown for unknown or encoded lengths: $headers, CORS $cors', async ({headers, cors}) => {
+		auth.token = 'session-token'
+		auth.type = 1
+		let body!: ReadableStreamDefaultController<Uint8Array>
+		const response = new Response(new ReadableStream<Uint8Array>({
+			start(controller) { body = controller },
+		}), {headers: {'Content-Type': 'application/octet-stream', ...headers}})
+		if (cors) Object.defineProperty(response, 'type', {value: 'cors'})
+		responses = [response]
+		const request = client.get({url: '/probe', parseAs: 'blob'})
+		await vi.waitFor(() => expect(networkDownloads.value[0]?.phase).toBe('receiving'))
+		body.enqueue(new Uint8Array(1024))
+		await vi.waitFor(() => expect(networkDownloads.value[0]?.received).toBe(1024))
+		expect(networkDownloads.value[0].total).toBeUndefined()
+		body.close()
+		await request
+		expect(networkDownloads.value).toHaveLength(0)
+	})
+
+	it('clears an aborted download and prevents its pending stream from restoring activity', async () => {
+		auth.token = 'session-token'
+		auth.type = 1
+		const cancel = vi.fn()
+		responses = [new Response(new ReadableStream({cancel}), {headers: {'Content-Type': 'image/png'}})]
+		const controller = new AbortController()
+		const request = client.get({url: '/probe', parseAs: 'blob', signal: controller.signal})
+		const rejected = expect(request).rejects.toMatchObject({name: 'AbortError'})
+		await vi.waitFor(() => expect(networkDownloads.value[0]?.phase).toBe('receiving'))
+		controller.abort()
+		expect(networkDownloads.value).toHaveLength(0)
+		await rejected
+		expect(cancel).toHaveBeenCalledOnce()
+	})
+
+	it('keeps downloads through token refresh but clears and fences them when the authentication session changes', async () => {
+		auth.token = 'session-token'
+		auth.type = 1
+		const cancel = vi.fn()
+		responses = [new Response(new ReadableStream({cancel}), {headers: {'Content-Type': 'image/png'}})]
+		const request = client.get({url: '/avatar/{username}', path: {username: 'private-name'}, parseAs: 'blob'})
+		const rejected = expect(request).rejects.toMatchObject({name: 'AbortError'})
+		await vi.waitFor(() => expect(networkDownloads.value[0]?.phase).toBe('receiving'))
+		auth.token = 'refreshed-token'
+		clearStaleNetworkDownloads()
+		expect(networkDownloads.value).toHaveLength(1)
+		expect(JSON.stringify(networkDownloads.value)).not.toContain('private-name')
+		auth.sessionEpoch++
+		clearStaleNetworkDownloads()
+		expect(networkDownloads.value).toHaveLength(0)
+		await rejected
+		expect(cancel).toHaveBeenCalledOnce()
+	})
+
+	it('clears a pending download when the API destination changes', async () => {
+		auth.token = 'session-token'
+		auth.type = 1
+		responses = [new Response(new ReadableStream(), {headers: {'Content-Type': 'image/png'}})]
+		const request = client.get({url: '/probe', parseAs: 'blob'})
+		const rejected = expect(request).rejects.toMatchObject({name: 'AbortError'})
+		await vi.waitFor(() => expect(networkDownloads.value[0]?.phase).toBe('receiving'))
+		window.API_URL = 'https://another-api.example.com'
+		configureApiClient()
+		expect(networkDownloads.value).toHaveLength(0)
+		await rejected
+	})
+
+	it('releases activity when the transport fails before response headers arrive', async () => {
+		auth.token = 'session-token'
+		auth.type = 1
+		vi.stubGlobal('fetch', vi.fn(async () => {
+			expect(networkDownloads.value[0]).toMatchObject({phase: 'waiting', received: 0})
+			throw new TypeError('Network disconnected')
+		}))
+		await expect(client.get({url: '/probe', parseAs: 'blob'})).rejects.toThrow('Network disconnected')
+		expect(networkDownloads.value).toHaveLength(0)
 	})
 
 	it('rejects when the session changes while reading a blob response body', async () => {

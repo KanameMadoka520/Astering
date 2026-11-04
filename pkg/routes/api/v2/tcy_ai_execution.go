@@ -30,6 +30,7 @@ import (
 	"github.com/KanameMadoka520/Astering/pkg/events"
 	"github.com/KanameMadoka520/Astering/pkg/models"
 	"github.com/KanameMadoka520/Astering/pkg/modules/tcyai"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 	"github.com/KanameMadoka520/Astering/pkg/web"
 	"github.com/danielgtaylor/huma/v2"
 	"xorm.io/xorm"
@@ -49,7 +50,7 @@ func newAIExecution(ctx context.Context, api huma.API, caller *http.Request, inp
 	if err != nil {
 		return nil, err
 	}
-	return &aiExecution{api: api, caller: caller, auth: a, input: input}, nil
+	return &aiExecution{api: api, caller: caller, auth: user.RestrictToResourcePermissions(a), input: input}, nil
 }
 func (e *aiExecution) scope(pid int64) error {
 	if len(e.input.WriteProjectIDs) > 0 && !slices.Contains(e.input.WriteProjectIDs, pid) {

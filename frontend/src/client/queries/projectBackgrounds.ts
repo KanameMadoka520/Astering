@@ -40,8 +40,8 @@ export function unsplashAuthor(info: unknown): {author: string, author_name: str
 export function projectBackgroundQuery(projectId: number) {
 	return queryOptions({
 		queryKey: projectBackgroundKeys.project(projectId),
-		queryFn: async () => {
-			const {data} = await projectsBackgroundGet({path: {project: projectId}})
+		queryFn: async ({signal}) => {
+			const {data} = await projectsBackgroundGet({path: {project: projectId}, parseAs: 'blob', signal})
 			return expectBlob(data, 'Background')
 		},
 	})
@@ -66,8 +66,8 @@ export function unsplashBackgroundSearchQuery(query: string) {
 export function unsplashBackgroundThumbnailQuery(imageId: string) {
 	return queryOptions({
 		queryKey: projectBackgroundKeys.thumbnail(imageId),
-		queryFn: async () => {
-			const {data} = await backgroundsUnsplashThumb({path: {image: imageId}})
+		queryFn: async ({signal}) => {
+			const {data} = await backgroundsUnsplashThumb({path: {image: imageId}, parseAs: 'blob', signal})
 			return expectBlob(data, 'Background')
 		},
 	})

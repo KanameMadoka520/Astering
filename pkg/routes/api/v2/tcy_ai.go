@@ -315,6 +315,7 @@ func runAI(ctx context.Context, api huma.API, uid int64, in tcyai.RunInput) (*si
 }
 
 func dispatchAI(ctx context.Context, api huma.API, caller *http.Request, name string, raw json.RawMessage) (string, error) {
+	ctx = user.WithResourceOnlyPermissions(ctx)
 	if _, err := tcyai.ValidateTool(name, raw, tcyai.RunInput{
 		Mode:        "write",
 		AllowDelete: true,
@@ -425,6 +426,9 @@ func aiProjectHistoryQuery(args map[string]json.RawMessage, query url.Values) er
 }
 
 func serveAITool(ctx context.Context, api huma.API, caller *http.Request, name, path, method string, args map[string]json.RawMessage, query url.Values) (string, error) {
+	// Internal tool requests keep the user's identity and explicit shares, but
+	// never inherit the instance administrator's business-resource bypass.
+	ctx = user.WithResourceOnlyPermissions(ctx)
 	body, err := json.Marshal(args)
 	if err != nil {
 		return "", err
