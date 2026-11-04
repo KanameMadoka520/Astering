@@ -148,6 +148,12 @@ const navigationItems = computed(() => {
 			condition: migratorsEnabled.value,
 		},
 		{
+			title: t('storage.title'),
+			icon: 'hard-drive',
+			routeName: 'user.settings.storage',
+			group: data,
+		},
+		{
 			title: t('user.export.title'),
 			icon: 'download',
 			routeName: 'user.settings.data-export',

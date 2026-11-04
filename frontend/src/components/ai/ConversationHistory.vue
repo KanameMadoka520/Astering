@@ -116,7 +116,7 @@ defineExpose({focusSearch: () => searchInput.value?.focus()})
 				<li
 					v-for="session in group.items"
 					:key="session.id"
-					:class="{'is-selected': session.id === selected}"
+					:class="{'is-selected': session.id === selected, 'is-unread': session.unread}"
 					:data-chat-id="session.id"
 				>
 					<button
@@ -128,6 +128,13 @@ defineExpose({focusSearch: () => searchInput.value?.focus()})
 						@click="emit('select', session.id!)"
 					>
 						<span class="history-title">{{ session.title || t('chat.untitled') }}</span><small
+							v-if="session.unread"
+							class="history-badge is-unread"
+							:title="t('chatHistory.unreadHint')"
+						><span
+							class="badge-dot"
+							aria-hidden="true"
+						/>{{ t('chatHistory.unread') }}</small><small
 							v-if="session.running"
 							class="history-badge is-running"
 						><span
@@ -387,6 +394,10 @@ li {
 	white-space: nowrap;
 }
 
+.is-unread .history-title {
+	font-weight: var(--weight-semibold);
+}
+
 .history-badge {
 	display: inline-flex;
 	flex-shrink: 0;
@@ -397,6 +408,14 @@ li {
 
 	&.is-running {
 		color: var(--text-secondary);
+	}
+
+	&.is-unread {
+		color: var(--accent-text);
+
+		.badge-dot {
+			background: currentColor;
+		}
 	}
 }
 

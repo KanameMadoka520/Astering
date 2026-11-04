@@ -113,6 +113,28 @@ async function readTask(apiContext: APIRequestContext, token: string, id: number
 }
 
 test.describe('Kanban groups', () => {
+	test('parent hints can be hidden reversibly without removing cards or relations', async ({authenticatedPage: page, apiContext, userToken}) => {
+		await seedProjectBoard()
+		await page.setViewportSize({width: 1440, height: 900})
+		await page.goto('/projects/1/4')
+		const child = page.locator('.kanban .task[data-task-id="1"]')
+		const toggle = page.getByRole('button', {name: 'Show parent tasks', exact: true})
+		await expect(child.locator('.parent-task-link')).toContainText('Phase A')
+		const initialHeight = (await child.boundingBox())!.height
+		await toggle.click()
+		await expect(toggle).toHaveAttribute('aria-pressed', 'false')
+		await expect(child.locator('.task-hierarchy-summary')).toHaveCount(0)
+		await expect(child).toBeVisible()
+		expect((await child.boundingBox())!.height).toBeLessThan(initialHeight)
+		await page.reload()
+		await expect(toggle).toHaveAttribute('aria-pressed', 'false')
+		await expect(child.locator('.parent-task-link')).toHaveCount(0)
+		const stored = await readTask(apiContext, userToken, 1)
+		expect(stored.related_tasks.parenttask.some((task: {id: number}) => task.id === 40)).toBe(true)
+		await toggle.click()
+		await expect(child.locator('.parent-task-link')).toContainText('Phase A')
+	})
+
 	test('groups a long multi-column project honestly, across pages, completion, focus and moves', async ({authenticatedPage: page, apiContext, userToken}, testInfo) => {
 		test.setTimeout(90_000)
 		await seedProjectBoard()

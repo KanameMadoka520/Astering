@@ -20,6 +20,7 @@ export type KanbanTreeContext = {
 	 */
 	canComplete(task: Task): boolean
 	focusId: ComputedRef<number | null>
+	showParents?: ComputedRef<boolean>
 	isCollapsed(bucket: number, group: number): boolean
 	toggleCollapsed(bucket: number, group: number): void
 	focus(id: number): void

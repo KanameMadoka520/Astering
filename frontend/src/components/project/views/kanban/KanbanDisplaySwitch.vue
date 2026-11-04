@@ -3,15 +3,17 @@ import {useI18n} from 'vue-i18n'
 import type {KanbanDisplayMode} from '@/composables/useKanbanDisplayPreferences'
 import BaseButton from '@/components/base/BaseButton.vue'
 
-defineProps<{
+withDefaults(defineProps<{
 	mode: KanbanDisplayMode
+	showParents?: boolean
 	/** Whether any group is collapsed now; the one button then expands them all. */
 	anyCollapsed: boolean
 	canCollapse: boolean
-}>()
+}>(), {showParents: true})
 
 const emit = defineEmits<{
 	'update:mode': [mode: KanbanDisplayMode]
+	'update:showParents': [show: boolean]
 	collapseAll: []
 	expandAll: []
 }>()
@@ -53,6 +55,15 @@ const {t} = useI18n({useScope: 'global'})
 			>{{ t('project.kanban.hierarchy.groupsHint') }}</span>
 		</div>
 		<BaseButton
+			class="kanban-display__parents"
+			:aria-pressed="showParents"
+			:title="t('project.kanban.hierarchy.showParentsHint')"
+			@click="emit('update:showParents', !showParents)"
+		>
+			<Icon icon="level-up-alt" />
+			{{ t('project.kanban.hierarchy.showParents') }}
+		</BaseButton>
+		<BaseButton
 			v-if="mode === 'groups' && canCollapse"
 			v-tooltip="t(anyCollapsed ? 'project.kanban.hierarchy.expandAll' : 'project.kanban.hierarchy.collapseAll')"
 			class="kanban-display__all"
@@ -67,8 +78,31 @@ const {t} = useI18n({useScope: 'global'})
 <style scoped lang="scss">
 .kanban-display {
 	display: inline-flex;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--space-1);
+}
+
+.kanban-display__parents {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-1);
+	min-block-size: var(--control-height);
+	padding-inline: var(--space-2);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-sm);
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+
+	&[aria-pressed='true'] {
+		background: var(--surface-selected);
+		color: var(--accent-text);
+	}
+
+	&:focus-visible {
+		@include focus-ring;
+	}
 }
 
 .kanban-display__switch {

@@ -4,6 +4,7 @@ import {useI18n} from 'vue-i18n'
 import {useRoute, useRouter} from 'vue-router'
 import {useQuery, useQueryClient} from '@tanstack/vue-query'
 import {useDocumentVisibility, useMediaQuery} from '@vueuse/core'
+import {useConversationRead} from '@/composables/useConversationRead'
 import {prepareSpeechFile, speechSampleRate} from '@/helpers/tcyAudio'
 import {useSpeechRecording} from '@/composables/useSpeechRecording'
 import {useConversationEvents} from '@/client/queries/conversationEvents'
@@ -366,6 +367,8 @@ const historyDialog = ref<{kind: 'rename' | 'delete', conversation: Conversation
 const newTitle = ref('')
 const showSystemPrompt = ref(false)
 const thread = ref<HTMLElement>()
+const readSentinel = ref<HTMLElement>()
+useConversationRead({conversation: active, presenting, sentinel: readSentinel, scrollRoot: thread})
 const threadElement = () => thread.value
 const stickToBottom = ref(true)
 // Unsent requests per conversation, for the tab: Expand opens the full page in a new view, and leaving /ai
@@ -1557,6 +1560,11 @@ onBeforeUnmount(() => {
 							@review="reviewOperation"
 							@fork="manage('fork', $event)"
 						/>
+						<span
+							ref="readSentinel"
+							class="reply-read-sentinel"
+							aria-hidden="true"
+						/>
 					</div>
 				</div>
 				<div
@@ -2026,6 +2034,12 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped lang="scss">
+.reply-read-sentinel {
+	display: block;
+	block-size: 1px;
+	inline-size: 1px;
+}
+
 .tcy-assistant {
 	// Banners, thread and composer share one 48rem reading column.
 	--column-gutter: var(--space-6);

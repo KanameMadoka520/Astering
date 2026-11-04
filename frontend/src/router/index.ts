@@ -124,6 +124,7 @@ const router = createRouter({
 			component: () => import('@/views/user/Settings.vue'),
 			redirect: {name: 'user.settings.general'},
 			children: [
+				{path: '/user/settings/storage', name: 'user.settings.storage', component: () => import('@/views/user/settings/Storage.vue')},
 				{path: '/user/settings/showcase', name: 'user.settings.showcase', component: () => import('@/views/user/settings/TcyShowcase.vue')},
 				{path: '/user/settings/usage', name: 'user.settings.usage', component: () => import('@/views/user/settings/SiteUsage.vue')},
 				{path: '/user/settings/mail-server', name: 'user.settings.mail-server', component: () => import('@/views/user/settings/MailServer.vue')},

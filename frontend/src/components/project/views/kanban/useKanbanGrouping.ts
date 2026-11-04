@@ -86,6 +86,7 @@ export function useKanbanGrouping(options: {
 		canMove: options.canMove,
 		canComplete: options.canComplete,
 		focusId: computed(() => focusId.value),
+		showParents: preferences.showParents,
 		isCollapsed: (bucket, group) => preferences.collapsed.value.has(groupKey(bucket, group)),
 		toggleCollapsed: (bucket, group) => preferences.setCollapsed(
 			[groupKey(bucket, group)],
@@ -100,6 +101,8 @@ export function useKanbanGrouping(options: {
 
 	return {
 		displayMode: preferences.mode,
+		showParentTasks: preferences.showParents,
+		setShowParentTasks: preferences.setShowParents,
 		setDisplayMode,
 		grouped,
 		collapsedGroups: preferences.collapsed,

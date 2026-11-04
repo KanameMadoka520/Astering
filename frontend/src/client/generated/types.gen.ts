@@ -1474,6 +1474,10 @@ export type Conversation = {
      */
     readonly id?: string;
     /**
+     * Opaque exact version of the latest terminal assistant result, including failed executions with an explanation.
+     */
+    readonly latest_reply_id?: string;
+    /**
      * Source conversation when created as a branch.
      */
     readonly parent_id?: string;
@@ -1498,6 +1502,10 @@ export type Conversation = {
      */
     readonly turns?: Array<ChatTurn> | null;
     /**
+     * A terminal assistant result has not been explicitly acknowledged as visible; independent of a live job.
+     */
+    readonly unread?: boolean;
+    /**
      * UTC last change timestamp.
      */
     readonly updated?: string;
@@ -1520,6 +1528,29 @@ export type ConversationMetadata = {
      * Rename without altering messages or activity order.
      */
     title?: string;
+};
+
+export type ConversationReadReceipt = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The current account's conversation UUID.
+     */
+    readonly id: string;
+    /**
+     * Opaque version of the latest terminal assistant result, or empty when none exists.
+     */
+    readonly latest_reply_id: string;
+    /**
+     * Opaque exact final-result version acknowledged by this account; monotonically advances by turn order.
+     */
+    readonly read_through_reply_id: string;
+    /**
+     * A newer terminal assistant result has not been explicitly acknowledged as visible.
+     */
+    readonly unread: boolean;
 };
 
 export type ConversationStorage = {
@@ -1563,6 +1594,10 @@ export type ConversationSummary = {
      */
     id?: string;
     /**
+     * Opaque exact version of the latest terminal result; retries of the same turn produce a new version.
+     */
+    readonly latest_reply_id?: string;
+    /**
      * Source conversation when created as a branch.
      */
     parent_id?: string;
@@ -1582,6 +1617,10 @@ export type ConversationSummary = {
      * Number of saved conversation turns.
      */
     turn_count?: number;
+    /**
+     * A terminal assistant result has not been explicitly acknowledged as visible; may coexist with running.
+     */
+    readonly unread?: boolean;
     /**
      * UTC last change timestamp.
      */
@@ -4834,6 +4873,243 @@ export type SteeringInstruction = {
     readonly status?: 'pending' | 'applied';
 };
 
+export type StorageCategory = {
+    /**
+     * Original logical bytes or independent encrypted/derived stored bytes; not filesystem allocated blocks.
+     */
+    bytes: number;
+    /**
+     * Whether this category has a supported cleanup operation; individual references may still block it.
+     */
+    cleanable: boolean;
+    count: number;
+    /**
+     * Mutually exclusive category: images, video, audio, documents, other, trash, previews, conversations, legacy_attachments or settings.
+     */
+    id: string;
+};
+
+export type StorageConversationItem = {
+    /**
+     * Whether this conversation is archived, which does not free disk space.
+     */
+    archived: boolean;
+    /**
+     * Distinct visible attachment content IDs, including drafts; attachments can be shared by other conversations.
+     */
+    attachment_count: number;
+    /**
+     * Encrypted conversation record bytes only; Drive attachments are retained after deleting the conversation.
+     */
+    bytes: number;
+    /**
+     * A live context compaction is active in this conversation.
+     */
+    compacting: boolean;
+    /**
+     * Conversation UUID within the current account.
+     */
+    id: string;
+    kind: 'conversation';
+    /**
+     * Whether the owner pinned this conversation.
+     */
+    pinned: boolean;
+    /**
+     * Opaque version of the encrypted record; deletion rejects stale versions.
+     */
+    revision: string;
+    /**
+     * A live model execution or compaction owns this conversation; deletion is blocked.
+     */
+    running: boolean;
+    /**
+     * Referenced attachment bytes are not exclusive to this record and are not added to its reclaimable bytes.
+     */
+    shared_attachments: boolean;
+    /**
+     * Title of the current account's conversation; no message text is returned.
+     */
+    title: string;
+    /**
+     * Last saved conversation activity.
+     */
+    updated: string;
+    /**
+     * Private conversation location within this application.
+     */
+    url: string;
+};
+
+export type StorageConversationPage = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * False means unreadable or unvisited records are omitted, not empty.
+     */
+    complete: boolean;
+    items: Array<StorageConversationItem> | null;
+    page: number;
+    per_page: number;
+    total: number;
+    total_pages: number;
+    unreadable_count: number;
+};
+
+export type StorageExecute = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Includes idempotent already_done outcomes.
+     */
+    completed: number;
+    /**
+     * Blocked or failed individual targets; other targets may have succeeded.
+     */
+    failed: number;
+    freed_bytes: number;
+    items: Array<StorageExecuteItem> | null;
+};
+
+export type StorageExecuteItem = {
+    action: string;
+    /**
+     * False means freed_bytes is a conservative lower bound.
+     */
+    bytes_complete: boolean;
+    /**
+     * Verified stored bytes removed during this execution only. Moving to recycle bin is always zero.
+     */
+    freed_bytes: number;
+    id: string;
+    kind: string;
+    /**
+     * Stable result code; retry requires a new preview unless purge_retry is returned.
+     */
+    reason: string;
+    status: 'completed' | 'already_done' | 'blocked' | 'failed';
+};
+
+export type StorageFileItem = {
+    /**
+     * State eligibility only; current references can still block permanent deletion.
+     */
+    can_purge: boolean;
+    /**
+     * State eligibility only; cleanup preview rechecks all current references.
+     */
+    can_trash: boolean;
+    created: string;
+    file_id: number;
+    /**
+     * Decimal file ID; never a storage path.
+     */
+    id: string;
+    /**
+     * Only Drive-owned originals can be trashed or permanently deleted here.
+     */
+    in_drive: boolean;
+    kind: 'file';
+    mime: string;
+    name: string;
+    pinned: boolean;
+    preview_bytes: number;
+    /**
+     * Opaque cleanup revision; send exactly as returned.
+     */
+    revision: string;
+    /**
+     * Logical original bytes from file metadata.
+     */
+    size: number;
+    /**
+     * Whether original and derived storage metadata were available; missing original files make this false.
+     */
+    storage_complete: boolean;
+    trash: boolean;
+    /**
+     * Personal Drive location; protected non-Drive originals have an empty location.
+     */
+    url: string;
+    /**
+     * -1 means not scanned; expand the Drive usage endpoint or request cleanup preview for current references.
+     */
+    usage_count: number;
+    usages_complete: boolean;
+};
+
+export type StorageFilePage = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * False means a bounded preview scan returned a partial list; totals are lower bounds.
+     */
+    complete: boolean;
+    items: Array<StorageFileItem> | null;
+    page: number;
+    per_page: number;
+    total: number;
+    total_pages: number;
+};
+
+export type StoragePreview = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    expected_freed_bytes: number;
+    expires_at: string;
+    items: Array<StoragePreviewItem> | null;
+};
+
+export type StoragePreviewItem = {
+    action: 'trash' | 'purge' | 'delete' | 'clear_previews';
+    allowed: boolean;
+    /**
+     * Unique original or encrypted conversation record length; attachments are not duplicated.
+     */
+    bytes: number;
+    /**
+     * Measured upper estimate for this operation; trash always frees zero. Revalidated at execution.
+     */
+    expected_freed_bytes: number;
+    /**
+     * File decimal ID or owned conversation UUID; never a path.
+     */
+    id: string;
+    kind: 'file' | 'conversation';
+    name: string;
+    /**
+     * Stable reason code; empty when allowed.
+     */
+    reason: string;
+    revision: string;
+    /**
+     * Short-lived signed confirmation bound to this account, target, action, revision and reference snapshot; absent for blocked items.
+     */
+    token: string;
+    /**
+     * Current permission-filtered references. Restricted locations never disclose their titles or URLs.
+     */
+    usages: Array<DriveUsage> | null;
+};
+
+export type StorageSelection = {
+    action: 'trash' | 'purge' | 'delete' | 'clear_previews';
+    /**
+     * File decimal ID or owned conversation UUID; never a path.
+     */
+    id: string;
+    kind: 'file' | 'conversation';
+    revision: string;
+};
+
 export type StorageSnapshot = {
     /**
      * PostgreSQL current database relation size, including indexes. Excludes WAL, image layers, backups and other databases.
@@ -4851,6 +5127,52 @@ export type StorageSnapshot = {
      * Last completed storage measurement, refreshed at most once per minute.
      */
     sampled?: string | null;
+};
+
+export type StorageSummary = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    as_of: string;
+    categories: Array<StorageCategory> | null;
+    /**
+     * False means measured bytes are a lower bound, never proof of zero usage.
+     */
+    complete: boolean;
+    conversation_bytes: number;
+    conversation_count: number;
+    /**
+     * Stable accounting notes for presentation and diagnostics.
+     */
+    definitions: Array<string> | null;
+    drive_file_count: number;
+    file_count: number;
+    /**
+     * Legacy encrypted attachments counted once per stored content ID. New Drive attachments are already included in original_file_bytes.
+     */
+    independent_attachment_bytes: number;
+    /**
+     * Database original lengths, once per file ID including recycle-bin originals.
+     */
+    original_file_bytes: number;
+    /**
+     * Actual measured derived thumbnail lengths, counted independently of their original files.
+     */
+    preview_bytes: number;
+    /**
+     * Protected encrypted model/MCP settings, never decrypted or removed by cleanup.
+     */
+    settings_bytes: number;
+    /**
+     * Unique original file bytes plus independent AI ciphertext and measured previews. Excludes database, backups and server/application files.
+     */
+    total_bytes: number;
+    /**
+     * Subset of original_file_bytes; moving files to trash does not free these bytes.
+     */
+    trash_bytes: number;
+    trash_count: number;
 };
 
 export type SubagentTask = {
@@ -5833,6 +6155,17 @@ export type TcyAiConversationsForkRequest = {
     turn_id?: string;
 };
 
+export type TcyAiConversationsMarkReadRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Exact latest_reply_id observed in the visible assistant response; not a turn UUID or client timestamp.
+     */
+    through_reply_id?: string;
+};
+
 export type TcyAiConversationsRenameRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -6428,6 +6761,29 @@ export type UserChangePasswordRequest = {
      * The current password, for confirmation.
      */
     old_password?: string;
+};
+
+export type UserStorageCleanupExecuteRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Explicit acknowledgement of the preview; false never changes data.
+     */
+    confirm: boolean;
+    /**
+     * Confirmation tokens from the same account and login session's preview.
+     */
+    tokens: Array<string> | null;
+};
+
+export type UserStorageCleanupPreviewRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    items: Array<StorageSelection> | null;
 };
 
 export type UserUpdateEmailRequest = {
@@ -9065,6 +9421,92 @@ export type SteeringInputWritable = {
     turn_id?: string;
 };
 
+export type StorageConversationPageWritable = {
+    /**
+     * False means unreadable or unvisited records are omitted, not empty.
+     */
+    complete: boolean;
+    items: Array<StorageConversationItem> | null;
+    page: number;
+    per_page: number;
+    total: number;
+    total_pages: number;
+    unreadable_count: number;
+};
+
+export type StorageExecuteWritable = {
+    /**
+     * Includes idempotent already_done outcomes.
+     */
+    completed: number;
+    /**
+     * Blocked or failed individual targets; other targets may have succeeded.
+     */
+    failed: number;
+    freed_bytes: number;
+    items: Array<StorageExecuteItem> | null;
+};
+
+export type StorageFilePageWritable = {
+    /**
+     * False means a bounded preview scan returned a partial list; totals are lower bounds.
+     */
+    complete: boolean;
+    items: Array<StorageFileItem> | null;
+    page: number;
+    per_page: number;
+    total: number;
+    total_pages: number;
+};
+
+export type StoragePreviewWritable = {
+    expected_freed_bytes: number;
+    expires_at: string;
+    items: Array<StoragePreviewItem> | null;
+};
+
+export type StorageSummaryWritable = {
+    as_of: string;
+    categories: Array<StorageCategory> | null;
+    /**
+     * False means measured bytes are a lower bound, never proof of zero usage.
+     */
+    complete: boolean;
+    conversation_bytes: number;
+    conversation_count: number;
+    /**
+     * Stable accounting notes for presentation and diagnostics.
+     */
+    definitions: Array<string> | null;
+    drive_file_count: number;
+    file_count: number;
+    /**
+     * Legacy encrypted attachments counted once per stored content ID. New Drive attachments are already included in original_file_bytes.
+     */
+    independent_attachment_bytes: number;
+    /**
+     * Database original lengths, once per file ID including recycle-bin originals.
+     */
+    original_file_bytes: number;
+    /**
+     * Actual measured derived thumbnail lengths, counted independently of their original files.
+     */
+    preview_bytes: number;
+    /**
+     * Protected encrypted model/MCP settings, never decrypted or removed by cleanup.
+     */
+    settings_bytes: number;
+    /**
+     * Unique original file bytes plus independent AI ciphertext and measured previews. Excludes database, backups and server/application files.
+     */
+    total_bytes: number;
+    /**
+     * Subset of original_file_bytes; moving files to trash does not free these bytes.
+     */
+    trash_bytes: number;
+    trash_count: number;
+};
+
 export type SystemUsageAccessBodyBodyWritable = {
     /**
      * Explicit operational-usage grant; never grants resource access or account management.
@@ -9427,6 +9869,13 @@ export type TcyAiConversationsForkRequestWritable = {
     turn_id?: string;
 };
 
+export type TcyAiConversationsMarkReadRequestWritable = {
+    /**
+     * Exact latest_reply_id observed in the visible assistant response; not a turn UUID or client timestamp.
+     */
+    through_reply_id?: string;
+};
+
 export type TcyAiConversationsRenameRequestWritable = {
     /**
      * The new title.
@@ -9669,6 +10118,21 @@ export type UserChangePasswordRequestWritable = {
      * The current password, for confirmation.
      */
     old_password?: string;
+};
+
+export type UserStorageCleanupExecuteRequestWritable = {
+    /**
+     * Explicit acknowledgement of the preview; false never changes data.
+     */
+    confirm: boolean;
+    /**
+     * Confirmation tokens from the same account and login session's preview.
+     */
+    tokens: Array<string> | null;
+};
+
+export type UserStorageCleanupPreviewRequestWritable = {
+    items: Array<StorageSelection> | null;
 };
 
 export type UserUpdateEmailRequestWritable = {
@@ -10887,6 +11351,36 @@ export type TcyAiConversationsOrganizeResponses = {
 };
 
 export type TcyAiConversationsOrganizeResponse = TcyAiConversationsOrganizeResponses[keyof TcyAiConversationsOrganizeResponses];
+
+export type TcyAiConversationsMarkReadData = {
+    body: TcyAiConversationsMarkReadRequestWritable;
+    path: {
+        /**
+         * Conversation UUID owned by the signed-in human account.
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/ai/conversations/{id}/read';
+};
+
+export type TcyAiConversationsMarkReadErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type TcyAiConversationsMarkReadError = TcyAiConversationsMarkReadErrors[keyof TcyAiConversationsMarkReadErrors];
+
+export type TcyAiConversationsMarkReadResponses = {
+    /**
+     * OK
+     */
+    200: ConversationReadReceipt;
+};
+
+export type TcyAiConversationsMarkReadResponse = TcyAiConversationsMarkReadResponses[keyof TcyAiConversationsMarkReadResponses];
 
 export type TcyAiConversationsReviewData = {
     body: ReviewInputWritable;
@@ -19238,6 +19732,153 @@ export type UserWebhooksUpdateResponses = {
 };
 
 export type UserWebhooksUpdateResponse = UserWebhooksUpdateResponses[keyof UserWebhooksUpdateResponses];
+
+export type UserStorageSummaryData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/user/storage';
+};
+
+export type UserStorageSummaryErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type UserStorageSummaryError = UserStorageSummaryErrors[keyof UserStorageSummaryErrors];
+
+export type UserStorageSummaryResponses = {
+    /**
+     * OK
+     */
+    200: StorageSummary;
+};
+
+export type UserStorageSummaryResponse = UserStorageSummaryResponses[keyof UserStorageSummaryResponses];
+
+export type UserStorageCleanupExecuteData = {
+    body: UserStorageCleanupExecuteRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/user/storage/cleanup/execute';
+};
+
+export type UserStorageCleanupExecuteErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type UserStorageCleanupExecuteError = UserStorageCleanupExecuteErrors[keyof UserStorageCleanupExecuteErrors];
+
+export type UserStorageCleanupExecuteResponses = {
+    /**
+     * OK
+     */
+    200: StorageExecute;
+};
+
+export type UserStorageCleanupExecuteResponse = UserStorageCleanupExecuteResponses[keyof UserStorageCleanupExecuteResponses];
+
+export type UserStorageCleanupPreviewData = {
+    body: UserStorageCleanupPreviewRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/user/storage/cleanup/preview';
+};
+
+export type UserStorageCleanupPreviewErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type UserStorageCleanupPreviewError = UserStorageCleanupPreviewErrors[keyof UserStorageCleanupPreviewErrors];
+
+export type UserStorageCleanupPreviewResponses = {
+    /**
+     * OK
+     */
+    200: StoragePreview;
+};
+
+export type UserStorageCleanupPreviewResponse = UserStorageCleanupPreviewResponses[keyof UserStorageCleanupPreviewResponses];
+
+export type UserStorageConversationsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        page?: number;
+        per_page?: number;
+        /**
+         * Case-insensitive conversation title search; does not search messages.
+         */
+        q?: string;
+        scope?: 'all' | 'active' | 'archived';
+        sort_by?: 'bytes' | 'updated' | 'title';
+        order_by?: 'asc' | 'desc';
+        running?: 'all' | 'running' | 'idle';
+    };
+    url: '/user/storage/conversations';
+};
+
+export type UserStorageConversationsErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type UserStorageConversationsError = UserStorageConversationsErrors[keyof UserStorageConversationsErrors];
+
+export type UserStorageConversationsResponses = {
+    /**
+     * OK
+     */
+    200: StorageConversationPage;
+};
+
+export type UserStorageConversationsResponse = UserStorageConversationsResponses[keyof UserStorageConversationsResponses];
+
+export type UserStorageFilesData = {
+    body?: never;
+    path?: never;
+    query?: {
+        page?: number;
+        per_page?: number;
+        /**
+         * Case-insensitive original filename search.
+         */
+        q?: string;
+        category?: 'all' | 'images' | 'video' | 'audio' | 'documents' | 'other' | 'previews';
+        scope?: 'all' | 'active' | 'trash';
+        sort_by?: 'bytes' | 'created' | 'name' | 'preview_bytes';
+        order_by?: 'asc' | 'desc';
+    };
+    url: '/user/storage/files';
+};
+
+export type UserStorageFilesErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type UserStorageFilesError = UserStorageFilesErrors[keyof UserStorageFilesErrors];
+
+export type UserStorageFilesResponses = {
+    /**
+     * OK
+     */
+    200: StorageFilePage;
+};
+
+export type UserStorageFilesResponse = UserStorageFilesResponses[keyof UserStorageFilesResponses];
 
 export type UserTimezonesData = {
     body?: never;

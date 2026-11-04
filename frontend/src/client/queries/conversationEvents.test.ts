@@ -2,7 +2,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import {computed, defineComponent, type Ref} from 'vue'
 import {mount} from '@vue/test-utils'
 import {QueryClient, VueQueryPlugin, useQuery, type Query} from '@tanstack/vue-query'
-import type {Conversation} from '@/client/generated'
+import type {ChatTurn, Conversation} from '@/client/generated'
 import {HEALTHY_STREAM_MS, MAX_RETRY_MS, RETRY_MS, SILENT_STREAM_MS, useConversationEvents} from './conversationEvents'
 import {conversationKeys, conversationQuery} from './tcyConversations'
 
@@ -191,6 +191,49 @@ describe('conversation events', () => {
 		})
 		await vi.advanceTimersByTimeAsync(10)
 		expect(client.getQueryData<Conversation>(conversationKeys.detail('c1'))?.turns).toEqual([{id: 't1', status: 'completed'}])
+		wrapper.unmount()
+	})
+
+	it('keeps server unread state as the delta baseline after a local acknowledgement', async () => {
+		const key = conversationKeys.detail('c1')
+		const reply: ChatTurn = {id: 't1', status: 'completed', result: {reply: 'First reply'}}
+		client.setQueryData<Conversation>(key, {
+			id: 'c1',
+			turns: [reply],
+			unread: true,
+			latest_reply_id: 't1:first-result',
+		})
+		const {wrapper} = mountEvents(client)
+		await vi.advanceTimersByTimeAsync(10)
+		// Acknowledgement reaches the cache before an already-sampled server snapshot arrives.
+		client.setQueryData<Conversation>(key, current => ({...current!, unread: false}))
+		streams[0].send({
+			revision: 1,
+			snapshot: {
+				turn: reply,
+				compacting: false,
+				compactions: [],
+				unread: true,
+				latest_reply_id: 't1:first-result',
+			},
+		}, 'snapshot')
+		await vi.advanceTimersByTimeAsync(10)
+		expect(client.getQueryData<Conversation>(key)?.unread).toBe(false)
+		streams[0].send({
+			base: 1,
+			revision: 2,
+			patch: [
+				{op: 'set', path: ['latest_reply_id'], value: 't2:second-result'},
+				{op: 'set', path: ['turn'], value: {id: 't2', status: 'completed', result: {reply: 'New reply'}}},
+			],
+		}, 'delta')
+		await vi.advanceTimersByTimeAsync(10)
+		// The server was already unread=true, so its delta legitimately omits that unchanged field.
+		expect(client.getQueryData<Conversation>(key)).toMatchObject({
+			unread: true,
+			latest_reply_id: 't2:second-result',
+			turns: [reply, {id: 't2', status: 'completed', result: {reply: 'New reply'}}],
+		})
 		wrapper.unmount()
 	})
 

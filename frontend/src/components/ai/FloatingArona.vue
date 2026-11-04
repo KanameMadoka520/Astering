@@ -7,6 +7,7 @@ import {useAuthStore} from '@/stores/auth'
 import {useIsMobile} from '@/composables/useIsMobile'
 import {captureClientRequestContext} from '@/client/requestContext'
 import {useTopModalDialog} from '@/composables/useTopModalDialog'
+import {useFloatingAronaGeometry, type ResizeEdge} from '@/composables/useFloatingAronaGeometry'
 import AronaAvatar from './AronaAvatar.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
 import LoadError from '@/components/misc/state/LoadError.vue'
@@ -43,6 +44,8 @@ const portal = computed<string | HTMLElement>(() => taskDetailDialog.value ?? 'b
 const fullPage = computed(() => route.name === 'tcy-ai')
 // The phone drawer is modal; the dock steps aside (state and streaming stay mounted).
 const isMobile = useIsMobile()
+const geometry = useFloatingAronaGeometry(isMobile)
+const resizeEdges: ResizeEdge[] = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']
 const underDrawer = computed(() => isMobile.value && base.menuActive)
 const taskID = computed(() => route.name === 'task.detail' ? Number(route.params.id) || 0 : 0)
 const accountKey = computed(() => {
@@ -51,6 +54,7 @@ const accountKey = computed(() => {
 	return JSON.stringify([context.apiBaseUrl, auth.info?.id, context.identity?.type])
 })
 watch(accountKey, key => {
+	geometry.cancel()
 	open.value = false; loaded.value = false; running.value = false; waiting.value = false
 	try { conversation.value = sessionStorage.getItem(`arona-floating:${key}`) || '' } catch { conversation.value = '' }
 }, {immediate: true})
@@ -58,6 +62,7 @@ watch(conversation, id => {try { sessionStorage.setItem(`arona-floating:${accoun
 // Follows the full page, including a new chat there (no id): a chat deleted on that page must not reopen here.
 watch(() => route.query.chat, id => {if (fullPage.value) conversation.value = typeof id === 'string' ? id : ''}, {immediate: true})
 async function toggle() {
+	geometry.cancel()
 	open.value = !open.value
 	if (!open.value) return
 	loaded.value = true
@@ -65,7 +70,15 @@ async function toggle() {
 	await nextTick()
 	panel.value?.focus()
 }
-function minimize() { open.value = false; nextTick(() => launcher.value?.$el?.focus()) }
+function minimize() {
+	geometry.cancel()
+	open.value = false
+	nextTick(() => launcher.value?.$el?.focus())
+}
+function panelEscape(event: KeyboardEvent) {
+	if (!geometry.escape(event)) minimize()
+}
+watch([portal, fullPage, underDrawer, isMobile], () => geometry.cancel())
 // Work beats waiting: a paused turn the user is already answering shows as running.
 const status = computed(() => running.value ? 'working' : waiting.value ? 'waiting' : '')
 const launcherTitle = computed(() => [
@@ -90,11 +103,35 @@ function expand() { open.value = false; void router.push({name: 'tcy-ai', query:
 				v-show="open"
 				ref="panel"
 				class="arona-panel"
+				:class="{'is-interacting': geometry.interacting.value}"
+				:style="geometry.style.value"
 				role="region"
 				tabindex="-1"
 				:aria-label="t('floatingArona.title')"
-				@keydown.esc.prevent.stop="minimize"
+				@keydown.esc.prevent.stop="panelEscape"
 			>
+				<template v-if="!isMobile">
+					<button
+						v-for="edge in resizeEdges"
+						:key="edge"
+						type="button"
+						class="panel-resize"
+						:class="`panel-resize--${edge}`"
+						:tabindex="edge === 'se' ? 0 : -1"
+						:aria-label="t('floatingArona.resize')"
+						:title="t('floatingArona.resizeHint')"
+						@pointerdown="geometry.start($event, edge)"
+						@keydown="geometry.keyboard($event, edge)"
+					>
+						<svg
+							v-if="edge === 'se'"
+							viewBox="0 0 16 16"
+							aria-hidden="true"
+						>
+							<path d="M5 13 13 5M10 13l3-3" />
+						</svg>
+					</button>
+				</template>
 				<div class="panel-body">
 					<component
 						:is="assistant"
@@ -111,10 +148,39 @@ function expand() { open.value = false; void router.push({name: 'tcy-ai', query:
 					>
 						<template #panel-actions>
 							<BaseButton
+								v-if="!isMobile"
+								class="panel-button panel-move"
+								:aria-label="t('floatingArona.move')"
+								:title="t('floatingArona.moveHint')"
+								@pointerdown="geometry.start($event, 'move')"
+								@keydown="geometry.keyboard($event, 'move')"
+							>
+								<svg
+									viewBox="0 0 20 20"
+									aria-hidden="true"
+								>
+									<path d="M10 2v16M2 10h16M7 5l3-3 3 3M7 15l3 3 3-3M5 7l-3 3 3 3M15 7l3 3-3 3" />
+								</svg>
+							</BaseButton>
+							<BaseButton
+								v-if="!isMobile"
+								class="panel-button panel-reset"
+								:aria-label="t('floatingArona.resetLayout')"
+								:title="t('floatingArona.resetLayout')"
+								@click="geometry.reset"
+							>
+								<svg
+									viewBox="0 0 20 20"
+									aria-hidden="true"
+								>
+									<path d="M4 7a7 7 0 1 1-.5 5M4 2v5h5" />
+								</svg>
+							</BaseButton>
+							<BaseButton
 								class="panel-button"
 								:aria-label="t('floatingArona.expand')"
 								:title="t('floatingArona.expand')"
-								:disabled="navigationBusy"
+								:aria-disabled="navigationBusy"
 								@click="expand"
 							>
 								<Icon icon="arrow-up-right-from-square" />
@@ -135,6 +201,25 @@ function expand() { open.value = false; void router.push({name: 'tcy-ai', query:
 					>
 						<div class="panel-state__header">
 							<strong>{{ t('floatingArona.title') }}</strong>
+							<BaseButton
+								v-if="!isMobile"
+								class="panel-button panel-move"
+								:aria-label="t('floatingArona.move')"
+								:title="t('floatingArona.moveHint')"
+								@pointerdown="geometry.start($event, 'move')"
+								@keydown="geometry.keyboard($event, 'move')"
+							>
+								↔
+							</BaseButton>
+							<BaseButton
+								v-if="!isMobile"
+								class="panel-button panel-reset"
+								:aria-label="t('floatingArona.resetLayout')"
+								:title="t('floatingArona.resetLayout')"
+								@click="geometry.reset"
+							>
+								↺
+							</BaseButton>
 							<BaseButton
 								class="panel-button"
 								:aria-label="t('floatingArona.minimize')"
@@ -266,6 +351,107 @@ function expand() { open.value = false; void router.push({name: 'tcy-ai', query:
 	background: var(--surface-raised);
 	box-shadow: var(--elevation-3);
 	outline: none;
+
+	&.is-interacting {
+		user-select: none;
+	}
+}
+
+.panel-move {
+	cursor: grab;
+	touch-action: none;
+
+	&:active {
+		cursor: grabbing;
+	}
+}
+
+.panel-button svg,
+.panel-resize svg {
+	inline-size: 1rem;
+	block-size: 1rem;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.5;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.panel-resize {
+	position: absolute;
+	z-index: 3;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: var(--text-tertiary);
+	touch-action: none;
+
+	&:focus-visible {
+		outline: 2px solid var(--primary);
+		outline-offset: -2px;
+	}
+
+	&--n,
+	&--s {
+		inset-inline: 12px;
+		block-size: 6px;
+		cursor: ns-resize;
+	}
+
+	&--e,
+	&--w {
+		inset-block: 12px;
+		inline-size: 6px;
+		cursor: ew-resize;
+	}
+
+	&--n,
+	&--ne,
+	&--nw {
+		inset-block-start: 0;
+	}
+
+	&--s,
+	&--se,
+	&--sw {
+		inset-block-end: 0;
+	}
+
+	&--w,
+	&--nw,
+	&--sw {
+		inset-inline-start: 0;
+	}
+
+	&--e,
+	&--ne,
+	&--se {
+		inset-inline-end: 0;
+	}
+
+	&--ne,
+	&--se,
+	&--nw,
+	&--sw {
+		inline-size: 14px;
+		block-size: 14px;
+	}
+
+	&--ne,
+	&--sw {
+		cursor: nesw-resize;
+	}
+
+	&--nw,
+	&--se {
+		cursor: nwse-resize;
+	}
+
+	&--se {
+		display: grid;
+		place-items: center;
+	}
 }
 
 // Same shape as the assistant's toolbar buttons in the row they join.

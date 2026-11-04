@@ -25,7 +25,7 @@ import {drivePreviewQuery} from '@/client/queries/drive'
 import {useNearViewport} from '@/composables/useNearViewport'
 
 const props = withDefaults(defineProps<{
-	file: DriveEntry
+	file: Pick<DriveEntry, 'file_id' | 'file' | 'purging'>
 	// Next to the file name the picture adds nothing for screen readers.
 	decorative?: boolean
 }>(), {

@@ -78,7 +78,10 @@
 				{{ projectTitle }}
 			</span>
 
-			<TaskHierarchySummary :task="task" />
+			<TaskHierarchySummary
+				:task="task"
+				:show-parents="showParentTasks"
+			/>
 
 			<ProgressBar
 				v-if="task.percent_done > 0"
@@ -165,10 +168,11 @@ import {useProjects} from '@/composables/useProjects'
 import {useDelayedLoading} from '@/composables/useDelayedLoading'
 import {useTaskDoneToggle} from '@/composables/useTaskDoneToggle'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
 	task: TaskResponse,
 	projectId: number,
-}>()
+	showParentTasks?: boolean,
+}>(), {showParentTasks: true})
 
 const emit = defineEmits<{
 	'taskCompletedRecurring': [task: ITask]

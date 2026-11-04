@@ -15,18 +15,23 @@ function assertActivity(value: unknown): asserts value is Activity {
 	if (!isStreamRecord(value) || typeof value.compacting !== 'boolean' || !Array.isArray(value.compactions)
 		|| (value.turn !== undefined && (!isStreamRecord(value.turn) || typeof value.turn.id !== 'string'))
 		|| (value.compact_text !== undefined && typeof value.compact_text !== 'string')
-		|| (value.compact_error !== undefined && typeof value.compact_error !== 'string')) {
+		|| (value.compact_error !== undefined && typeof value.compact_error !== 'string')
+		|| (value.unread !== undefined && typeof value.unread !== 'boolean')
+		|| (value.latest_reply_id !== undefined && typeof value.latest_reply_id !== 'string')) {
 		throw new ConversationStreamSyncError('Invalid conversation event snapshot')
 	}
 }
 
-// Structural sharing may retain older cache objects after a snapshot. Use those exact references for the next patch.
+// Reuse structurally shared result objects, but keep read metadata from the wire:
+// cache acknowledgement can differ from the server baseline used to build its next delta.
 function cachedActivity(activity: Activity, conversation: Conversation): Activity {
 	const retained: Record<string, unknown> = {}
 	for (const key of Object.keys(activity)) {
-		retained[key] = key === 'turn'
-			? conversation.turns?.find(turn => turn.id === activity.turn?.id)
-			: conversation[key as keyof Conversation]
+		retained[key] = key === 'unread' || key === 'latest_reply_id'
+			? activity[key]
+			: key === 'turn'
+				? conversation.turns?.find(turn => turn.id === activity.turn?.id)
+				: conversation[key as keyof Conversation]
 	}
 	return retained as Activity
 }

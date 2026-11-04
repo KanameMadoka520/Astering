@@ -2,6 +2,7 @@ import {onScopeDispose, ref, shallowReactive, toValue, watch, type MaybeRefOrGet
 import {
 	hashKey,
 	queryOptions,
+	replaceEqualDeep,
 	useMutation,
 	useQueryClient,
 	type QueryClient,
@@ -30,6 +31,7 @@ import {
 	type Task,
 	type TcyAiConversationsSendData,
 	type TcyAiConversationsSteerData,
+	type TcyAiConversationsListResponses,
 } from '@/client/generated'
 import {assertClientRequestContext, captureClientRequestContext} from '@/client/requestContext'
 import {PERMISSIONS} from '@/constants/permissions'
@@ -60,6 +62,7 @@ import {parseCompassReceipt, refreshCompassReceipts, type CompassReceiptChange} 
 import {applyServerTaskOrder, parseTaskOrderResult, type TaskOrderResult} from './taskOrder'
 import {defaultToolModules, type ToolModules} from '@/helpers/assistantProfiles'
 import {
+	forgetConversationSnapshot,
 	readConversationSnapshot,
 	shareConversationSnapshot,
 	writeConversationSnapshot,
@@ -76,10 +79,30 @@ export const conversationKeys = {
 
 const projectHistoryKey = ['project-history'] as const
 
+function shareConversationList(previous: unknown, incoming: unknown): unknown {
+	const current = previous as TcyAiConversationsListResponses[200] | undefined
+	const next = incoming as TcyAiConversationsListResponses[200]
+	if (!current?.items || !next?.items) return replaceEqualDeep(previous, incoming)
+	const readReceipts = new Map(current.items
+		.filter(item => item.id && item.latest_reply_id && item.unread === false)
+		.map(item => [item.id, item.latest_reply_id]))
+	if (!readReceipts.size) return replaceEqualDeep(previous, incoming)
+	// An in-flight list GET may have sampled the state before the visible reply was acknowledged.
+	// Preserve only that exact result version; a retry or another reply must still become unread.
+	return replaceEqualDeep(previous, {
+		...next,
+		items: next.items.map(item => item.unread === true && item.latest_reply_id
+			&& readReceipts.get(item.id) === item.latest_reply_id
+			? {...item, unread: false}
+			: item),
+	})
+}
+
 export function conversationsQuery(page: number, q = '', scope: 'all' | 'active' | 'archived' = 'all') {
 	return queryOptions({
 		queryKey: conversationKeys.list(page, q, scope),
 		queryFn: async ({signal}) => (await tcyAiConversationsList({query: {page, q, scope}, signal})).data,
+		structuralSharing: shareConversationList,
 		// Another page keeps the rows on screen while it loads; another search or scope must not show the old rows
 		// under its heading.
 		placeholderData: (previous, previousQuery) => previousQuery?.queryKey[3] === q && previousQuery.queryKey[4] === scope
@@ -142,6 +165,26 @@ export function useCreateConversation() {
 	}))
 }
 
+/** Reach mounted assistant windows before removing a deleted conversation's cached data. */
+export function markConversationDeleted(client: QueryClient, id: string) {
+	const key = conversationKeys.detail(id)
+	// Cancellation synchronously stops the retries and reverts pending reads before observers receive the tombstone.
+	void client.cancelQueries({queryKey: key})
+	forgetConversationSnapshot(client, key)
+	endAgentRun(client, id)
+	const query = client.getQueryCache().find({queryKey: key, exact: true})
+	if (query) {
+		query.setState({
+			data: undefined,
+			status: 'error',
+			fetchStatus: 'idle',
+			error: Object.assign(new Error('Conversation deleted'), {status: 404}),
+			errorUpdatedAt: Date.now(),
+		})
+	}
+	client.removeQueries({queryKey: key})
+}
+
 export function useConversationAction() {
 	const client = useQueryClient()
 	type Input = {
@@ -180,6 +223,7 @@ export function useConversationAction() {
 		},
 		onSuccess: (conversation, input, client) => {
 			if (input.action === 'compact') noteAgentRun(client, conversation)
+			if (input.action === 'delete') return markConversationDeleted(client, input.id)
 		},
 		onSettled: (input, client) => Promise.all([
 			client.invalidateQueries({queryKey: conversationKeys.lists()}),

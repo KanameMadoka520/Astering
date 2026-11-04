@@ -1,5 +1,5 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
-import {computed, defineComponent} from 'vue'
+import {computed, defineComponent, h} from 'vue'
 import {flushPromises, mount, type VueWrapper} from '@vue/test-utils'
 import {QueryClient, VueQueryPlugin, useQuery} from '@tanstack/vue-query'
 import type {Conversation} from '@/client/generated'
@@ -8,6 +8,7 @@ import {
 	agentRunScope,
 	conversationKeys,
 	conversationQuery,
+	markConversationDeleted,
 	useConversationAction,
 	useReviewConversation,
 	useSendConversation,
@@ -136,6 +137,39 @@ afterEach(() => {
 })
 
 describe('conversation snapshots racing live events', () => {
+	it('notifies a mounted assistant of confirmed deletion and rejects a late write snapshot', async () => {
+		client.setQueryData(key, finished)
+		wrapper = mount(defineComponent({
+			setup() {
+				const query = useQuery(conversationQuery('c1'))
+				return () => h('div', String((query.error.value as {status?: number} | null)?.status
+					?? query.data.value?.title ?? 'empty'))
+			},
+		}), {global: {plugins: [[VueQueryPlugin, {queryClient: client}]]}})
+		await flushPromises()
+		const write = deferred<Conversation>()
+		const pending = writeConversationSnapshot(client, key, () => write.promise)
+		const rejected = expect(pending).rejects.toMatchObject({name: 'AbortError'})
+		await markConversationDeleted(client, 'c1')
+		await flushPromises()
+		expect(wrapper.text()).toBe('404')
+		expect(cached()).toBeUndefined()
+		write.resolve(initial)
+		await rejected
+		expect(cached()).toBeUndefined()
+	})
+
+	it('cancels a pending detail read before notifying deletion without restoring its old snapshot', async () => {
+		const read = deferred<{data: Conversation}>()
+		sdk.tcyAiConversationsRead.mockReturnValueOnce(read.promise)
+		observe()
+		await flushPromises()
+		await markConversationDeleted(client, 'c1')
+		read.resolve({data: finished})
+		await flushPromises()
+		expect(cached()).toBeUndefined()
+	})
+
 	it('does not replace a completed SSE turn with an older in-flight GET', async () => {
 		client.setQueryData(key, initial)
 		const read = deferred<{data: Conversation}>()

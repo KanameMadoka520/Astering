@@ -78,6 +78,8 @@ func cloneCompactProgress(progress *CompactProgress) *CompactProgress {
 }
 
 type Conversation struct {
+	Unread           bool                 `json:"unread" readOnly:"true" doc:"A terminal assistant result has not been explicitly acknowledged as visible; independent of a live job."`
+	LatestReplyID    string               `json:"latest_reply_id" readOnly:"true" doc:"Opaque exact version of the latest terminal assistant result, including failed executions with an explanation."`
 	Pinned           bool                 `json:"pinned" readOnly:"true" doc:"Keep this conversation above unpinned history."`
 	Archived         bool                 `json:"archived" readOnly:"true" doc:"Hidden from regular history; messages and running work remain available."`
 	DraftAttachments []ChatAttachment     `json:"draft_attachments,omitempty" readOnly:"true" doc:"Uploaded files waiting to be sent."`
@@ -96,23 +98,27 @@ type Conversation struct {
 	Compactions      []Compaction         `json:"compactions" readOnly:"true" doc:"Saved context summaries; only the most recent is sent on subsequent requests."`
 }
 type ConversationSummary struct {
-	Pinned    bool      `json:"pinned" readOnly:"true" doc:"Keep this conversation above unpinned history."`
-	Archived  bool      `json:"archived" readOnly:"true" doc:"Hidden from regular history; messages and running work remain available."`
-	ID        string    `json:"id" doc:"Server-generated identifier."`
-	Title     string    `json:"title" doc:"User title or first-message title."`
-	Updated   time.Time `json:"updated" doc:"UTC last change timestamp."`
-	TurnCount int       `json:"turn_count" doc:"Number of saved conversation turns."`
-	Running   bool      `json:"running" doc:"Whether a model run is active."`
-	ParentID  string    `json:"parent_id,omitempty" doc:"Source conversation when created as a branch."`
+	Unread        bool      `json:"unread" readOnly:"true" doc:"A terminal assistant result has not been explicitly acknowledged as visible; may coexist with running."`
+	LatestReplyID string    `json:"latest_reply_id" readOnly:"true" doc:"Opaque exact version of the latest terminal result; retries of the same turn produce a new version."`
+	Pinned        bool      `json:"pinned" readOnly:"true" doc:"Keep this conversation above unpinned history."`
+	Archived      bool      `json:"archived" readOnly:"true" doc:"Hidden from regular history; messages and running work remain available."`
+	ID            string    `json:"id" doc:"Server-generated identifier."`
+	Title         string    `json:"title" doc:"User title or first-message title."`
+	Updated       time.Time `json:"updated" doc:"UTC last change timestamp."`
+	TurnCount     int       `json:"turn_count" doc:"Number of saved conversation turns."`
+	Running       bool      `json:"running" doc:"Whether a model run is active."`
+	ParentID      string    `json:"parent_id,omitempty" doc:"Source conversation when created as a branch."`
 }
 type storedMessage struct {
 	Message
 	Native json.RawMessage `json:"native,omitempty"`
 }
 type conversationFile struct {
-	ContextRebased map[string]bool `json:"context_rebased,omitempty"`
-	OwnerID        int64           `json:"-"`
-	States         []*AgentState   `json:"states,omitempty"`
+	ReadThroughReplyID *string `json:"read_through_reply_id,omitempty"`
+	replyReadCache     *conversationReplyCache
+	ContextRebased     map[string]bool `json:"context_rebased,omitempty"`
+	OwnerID            int64           `json:"-"`
+	States             []*AgentState   `json:"states,omitempty"`
 	Conversation
 	Contexts [][]storedMessage `json:"contexts"`
 	Requests map[string]string `json:"requests,omitempty"`
@@ -228,6 +234,7 @@ func readConversation(uid int64, id string) (*conversationFile, error) {
 			}
 		}
 	}
+	initializeConversationReadCursor(&record)
 	return &record, nil
 }
 func writeConversation(uid int64, record *conversationFile) error {
@@ -281,6 +288,8 @@ func writeConversationFile(uid int64, record *conversationFile) error {
 }
 func cloneConversation(record *conversationFile) Conversation {
 	out := record.Conversation
+	readStatus := conversationReadStatus(record)
+	out.Unread, out.LatestReplyID = readStatus.Unread, readStatus.LatestReplyID
 	out.CompactProgress = cloneCompactProgress(record.CompactProgress)
 	out.DraftAttachments = append([]ChatAttachment{}, out.DraftAttachments...)
 	out.Turns = append([]ChatTurn{}, out.Turns...)
@@ -381,7 +390,19 @@ func searchConversationsLocked(uid int64, query, scope string) ([]ConversationSu
 				running = true
 			}
 		}
-		result = append(result, ConversationSummary{Pinned: record.Pinned, Archived: record.Archived, ID: record.ID, Title: record.Title, Updated: record.Updated, TurnCount: len(record.Turns), Running: running, ParentID: record.ParentID})
+		readStatus := conversationReadStatus(record)
+		result = append(result, ConversationSummary{
+			Unread:        readStatus.Unread,
+			LatestReplyID: readStatus.LatestReplyID,
+			Pinned:        record.Pinned,
+			Archived:      record.Archived,
+			ID:            record.ID,
+			Title:         record.Title,
+			Updated:       record.Updated,
+			TurnCount:     len(record.Turns),
+			Running:       running,
+			ParentID:      record.ParentID,
+		})
 	}
 	sort.Slice(result, func(i, j int) bool {
 		if result[i].Pinned != result[j].Pinned {
@@ -406,6 +427,7 @@ func CreateConversation(uid int64, title string) (Conversation, error) {
 	}
 	now := time.Now().UTC()
 	record := &conversationFile{OwnerID: uid, Conversation: Conversation{ID: uuid.NewString(), Title: strings.TrimSpace(title), Created: now, Updated: now, Turns: []ChatTurn{}, Compactions: []Compaction{}}, Contexts: [][]storedMessage{}}
+	initializeConversationReadCursor(record)
 	if err = writeConversation(uid, record); err != nil {
 		return Conversation{}, err
 	}
@@ -537,6 +559,8 @@ func ForkConversation(uid int64, id, turnID string) (Conversation, error) {
 			record.Turns[i].Result.Pending = nil
 		}
 	}
+	record.ReadThroughReplyID = nil
+	initializeConversationReadCursor(record)
 	if err = writeForkWithDrivePins(uid, record); err != nil {
 		return Conversation{}, err
 	}
@@ -1088,6 +1112,8 @@ func summarizeConversation(ctx context.Context, record *conversationFile, c Conn
 
 // Activity snapshots never grant execution; reconnecting only observes the saved job.
 type ConversationActivity struct {
+	Unread          bool                 `json:"unread" readOnly:"true" doc:"A terminal result has not been explicitly acknowledged as visible."`
+	LatestReplyID   string               `json:"latest_reply_id" readOnly:"true" doc:"Opaque exact version of the latest terminal result."`
 	Storage         *ConversationStorage `json:"storage,omitempty"`
 	CompactProgress *CompactProgress     `json:"compact_progress,omitempty"`
 	Turn            *ChatTurn            `json:"turn,omitempty"`
@@ -1113,6 +1139,8 @@ func GetConversationActivity(uid int64, id string) (ConversationActivity, error)
 	}
 	decorateAttachmentsWithHistory(uid, &snapshot, record.Turns[:last])
 	out := ConversationActivity{Storage: snapshot.Storage, CompactProgress: cloneCompactProgress(record.CompactProgress), Compacting: record.Compacting, CompactText: record.CompactText, CompactError: record.CompactError, Compactions: append([]Compaction{}, record.Compactions...)}
+	readStatus := conversationReadStatus(record)
+	out.Unread, out.LatestReplyID = readStatus.Unread, readStatus.LatestReplyID
 	if len(snapshot.Turns) > 0 {
 		out.Turn = &snapshot.Turns[0]
 	}

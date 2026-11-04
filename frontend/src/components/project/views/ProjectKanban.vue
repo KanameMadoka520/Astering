@@ -8,9 +8,11 @@
 		<template #header>
 			<KanbanDisplaySwitch
 				:mode="displayMode"
+				:show-parents="showParentTasks"
 				:any-collapsed="anyGroupCollapsed"
 				:can-collapse="groupKeys.length > 0"
 				@update:mode="setDisplayMode"
+				@update:showParents="setShowParentTasks"
 				@collapseAll="setGroupsCollapsed(groupKeys, true)"
 				@expandAll="setGroupsCollapsed([...collapsedGroups], false)"
 			/>
@@ -327,6 +329,7 @@
 											<KanbanCard
 												class="kanban-card"
 												:task="task"
+												:show-parent-tasks="showParentTasks"
 												:project-id="projectId"
 												@taskCompletedRecurring="handleRecurringTaskCompletion"
 											/>
@@ -647,6 +650,8 @@ const getBucketById = (id: number) => buckets.value.find(bucket => bucket.id ===
 
 const {
 	displayMode,
+	showParentTasks,
+	setShowParentTasks,
 	setDisplayMode,
 	grouped,
 	collapsedGroups,

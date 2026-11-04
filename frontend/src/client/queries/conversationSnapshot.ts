@@ -18,6 +18,8 @@ export type ConversationActivity = Pick<Conversation,
 	| 'compact_text'
 	| 'compact_error'
 	| 'compactions'
+	| 'unread'
+	| 'latest_reply_id'
 > & {turn?: ChatTurn}
 type Entry = {
 	revision: number
@@ -132,13 +134,21 @@ function beginConversationSnapshot(client: QueryClient, key: QueryKey, signal?: 
 	return request
 }
 function withActivity(current: Conversation, activity: Omit<ConversationActivity, 'turn'>): Conversation {
-	return {
+	return preserveReadReceipt(current, {
 		...current,
 		...activity,
 		compact_progress: activity.compact_progress,
 		compact_text: activity.compact_text ?? '',
 		compact_error: activity.compact_error ?? '',
-	}
+	})
+}
+
+function preserveReadReceipt(current: Conversation | undefined, next: Conversation): Conversation {
+	// A reply cannot become unread again because an older GET or queued event arrives after its acknowledgement.
+	return current?.latest_reply_id && current.latest_reply_id === next.latest_reply_id
+		&& current.unread === false && next.unread === true
+		? {...next, unread: false}
+		: next
 }
 function withTurn(current: Conversation, turn: ChatTurn): Conversation {
 	const turns = current.turns ?? []
@@ -169,7 +179,7 @@ function reconcile(request: SnapshotRequest, incoming: Conversation, current?: C
 	for (const turn of entry.turns.values()) {
 		if (turn.revision > revision) next = withTurn(next, turn.value)
 	}
-	return next
+	return preserveReadReceipt(current, next)
 }
 
 /** Tag the raw response; reconcile at Query's actual cache commit, after its promise continuation. */
@@ -245,4 +255,10 @@ export function applyConversationActivity(client: QueryClient, key: QueryKey, va
 		const next = withActivity(current, activity)
 		return turn ? withTurn(next, turn) : next
 	})
+}
+
+/** A confirmed deletion fences snapshots already waiting to commit, including mutation responses. */
+export function forgetConversationSnapshot(client: QueryClient, key: QueryKey) {
+	const scope = scopes.get(client)
+	if (scope) forget(scope, hashKey(key))
 }

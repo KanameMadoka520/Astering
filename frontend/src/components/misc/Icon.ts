@@ -116,6 +116,7 @@ import {
 	faEnvelope,
 	faKey,
 	faServer,
+	faHardDrive,
 	faShieldHalved,
 	faSliders,
 	faUserGear,
@@ -284,6 +285,7 @@ library.add(faArrowUp)
 library.add(faEnvelope)
 library.add(faKey)
 library.add(faServer)
+library.add(faHardDrive)
 library.add(faShieldHalved)
 library.add(faSliders)
 library.add(faUserGear)

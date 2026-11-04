@@ -1,5 +1,5 @@
-import {afterEach, describe, expect, it, vi} from 'vitest'
-import {flushPromises, enableAutoUnmount, mount} from '@vue/test-utils'
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
+import {flushPromises, enableAutoUnmount, mount, DOMWrapper} from '@vue/test-utils'
 import {createMemoryHistory, createRouter} from 'vue-router'
 
 vi.mock('@/views/TcyAssistant.vue', async () => {
@@ -33,6 +33,8 @@ vi.mock('vue-i18n', async importOriginal => ({
 import FloatingArona from './FloatingArona.vue'
 
 enableAutoUnmount(afterEach)
+beforeEach(() => localStorage.removeItem('astering-floating-arona-layout:v1'))
+afterEach(() => { document.body.innerHTML = '' })
 
 async function mountPanel() {
 	const router = createRouter({
@@ -44,17 +46,20 @@ async function mountPanel() {
 		}],
 	})
 	await router.push('/')
-	const wrapper = mount(FloatingArona, {
+	const app = mount(FloatingArona, {
+		attachTo: document.body,
 		global: {
 			plugins: [router],
 			stubs: {
-				teleport: true,
+				teleport: false,
 				Icon: true,
 			},
 		},
 	})
+	// Use the real Teleport: VTU's generated teleport stub changes identity on every render.
+	const wrapper = new DOMWrapper(document.body)
 	const launcher = () => wrapper.find('.arona-launcher')
-	const assistant = () => wrapper.findComponent({name: 'AssistantStub'})
+	const assistant = () => app.findComponent({name: 'AssistantStub'})
 	const open = async () => {
 		await launcher().trigger('click')
 		await flushPromises()
@@ -103,5 +108,64 @@ describe('FloatingArona', () => {
 	it('describes nothing while idle', async () => {
 		const {launcher} = await mountPanel()
 		expect(launcher().attributes('aria-describedby')).toBeUndefined()
+	})
+
+	it('moves and resizes from keyboard, remembers only geometry and resets without remounting the conversation', async () => {
+		localStorage.setItem('astering-floating-arona-layout:v1', JSON.stringify({
+			x: 100,
+			y: 100,
+			width: 500,
+			height: 400,
+		}))
+		const {wrapper, assistant, open} = await mountPanel()
+		await open()
+		const instance = assistant().vm.$.uid
+		expect(wrapper.find('.arona-panel').attributes('style')).toContain('left: 100px')
+		await wrapper.find('.panel-move').trigger('keydown', {key: 'ArrowLeft'})
+		expect(wrapper.find('.arona-panel').attributes('style')).toContain('left: 92px')
+		expect(assistant().vm.$.uid, 'after move').toBe(instance)
+		await wrapper.find('.panel-resize--se').trigger('keydown', {
+			key: 'ArrowRight',
+			shiftKey: true,
+		})
+		expect(wrapper.find('.arona-panel').attributes('style')).toContain('width: 532px')
+		expect(assistant().vm.$.uid, 'after resize').toBe(instance)
+		const saved = JSON.parse(localStorage.getItem('astering-floating-arona-layout:v1')!)
+		expect(Object.keys(saved).sort()).toEqual(['height', 'width', 'x', 'y'])
+		expect(saved.x).toBe(92)
+		expect(saved.width).toBe(532)
+		await wrapper.find('.panel-reset').trigger('click')
+		expect(wrapper.find('.arona-panel').attributes('style')).toContain('width: 460px')
+		expect(localStorage.getItem('astering-floating-arona-layout:v1')).toBeNull()
+		expect(assistant().vm.$.uid).toBe(instance)
+		expect(assistant().props('presenting')).toBe(true)
+	})
+
+	it('cancels pointer movement on Escape without minimizing or saving a late animation frame', async () => {
+		const {wrapper, assistant, open} = await mountPanel()
+		await open()
+		const before = wrapper.find('.arona-panel').attributes('style')
+		const handle = wrapper.find('.panel-move').element
+		const down = new Event('pointerdown', {bubbles: true, cancelable: true})
+		Object.assign(down, {
+			pointerId: 12,
+			button: 0,
+			clientX: 500,
+			clientY: 150,
+			isPrimary: true,
+		})
+		handle.dispatchEvent(down)
+		const move = new Event('pointermove')
+		Object.assign(move, {
+			pointerId: 12,
+			clientX: 300,
+			clientY: 200,
+		})
+		window.dispatchEvent(move)
+		await wrapper.find('.arona-panel').trigger('keydown', {key: 'Escape'})
+		await new Promise(resolve => setTimeout(resolve, 30))
+		expect(wrapper.find('.arona-panel').attributes('style')).toBe(before)
+		expect(assistant().props('presenting')).toBe(true)
+		expect(localStorage.getItem('astering-floating-arona-layout:v1')).toBeNull()
 	})
 })

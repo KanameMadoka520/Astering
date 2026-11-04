@@ -96,7 +96,7 @@ describe('kanban display preferences', () => {
 	it('survives damaged storage', () => {
 		expect(parseKanbanDisplay('{not json').views).toEqual({})
 		const parsed = parseKanbanDisplay(JSON.stringify({views: {'1:4': {mode: 'odd', collapsed: [1, '2:3']}, '1:5': null}}))
-		expect(parsed.views['1:4']).toEqual({mode: 'cards', collapsed: ['2:3'], used: 0})
+		expect(parsed.views['1:4']).toEqual({mode: 'cards', collapsed: ['2:3'], showParents: true, used: 0})
 		expect(parsed.views['1:5']).toBeUndefined()
 	})
 

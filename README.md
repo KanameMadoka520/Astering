@@ -13,7 +13,7 @@
 
 我们赋予 **Astering**「像星星闪烁、使之星光熠熠」的意象：一次行动、一段研究、一条值得记住的原则，逐渐连接成自己的星群。**Aster的AI集成工业系统**（Aster’s AI-integrated industrial system）是项目的副标题；工具与积累服务于更自由的创造。
 
-- 当前版本：`v2.7.1-aster.54`
+- 当前版本：`v2.7.1-aster.55`
 - 源码与问题反馈：[KanameMadoka520/Astering](https://github.com/KanameMadoka520/Astering)
 - 本机编译的发布产物：[GitHub Releases](https://github.com/KanameMadoka520/Astering/releases)
 - [品牌与升级兼容](docs/brand-migration.md) · [品牌素材](docs/brand-identity.md) · [详细功能与演进记录](docs/product-reference.md)
@@ -34,9 +34,12 @@ Astering 把不同用途保留在各自合适的空间里，关联真实任务�
 | 回看过去 | 项目回顾 | 按真实日期汇总项目时间线，另看完成与归档记录；没有日期的数据不会被编成工作时段。 |
 | 留住原则与想法 | 星图 | 空间、图文条目、主题和修订，支持归档与回收站；内容不自动灌入每次模型请求。 |
 | 复用文件 | 个人网盘 | 查找已上传文件、复用附件、查看引用与回收站，删除时保留引用检查。 |
+| 清点和清理空间 | 设置 → 数据 → 存储空间 | 分类查看本人文件、预览与对话占用；选择条目后预览影响，再按引用保护规则清理，详见[统计与清理边界](docs/personal-storage.md)。 |
 | 让别人知道何时有空 | 公开主页与忙闲 | 明确选择公开范围、别名和展示内容；公开页不自动获得私人项目的完整访问权限。 |
 
 电脑端支持信息密集的视图，手机保留可达的触控入口。常规编辑与阿罗娜操作共用状态更新路径，尽量局部呈现变化，同时保护正在输入的草稿。弱网下区分加载中、旧结果、失败和离线；公开构建资源按实际访问缓存，私人业务数据不会因为扩展名像图片就进入 Service Worker 离线缓存。
+
+看板可收起卡片里的上级关系提示，保留任务与子任务进度，并记住每个看板的显示选择。阿罗娜会话列表区分工作中与未读回复；桌面浮窗支持拖动、边角缩放和恢复默认，调整布局时保留草稿与后台执行。
 
 ## 阿罗娜：能执行，也能追溯
 
@@ -69,15 +72,15 @@ Astering 把不同用途保留在各自合适的空间里，关联真实任务�
 git clone https://github.com/KanameMadoka520/Astering.git
 cd Astering
 docker build -f Dockerfile.aster \
-  --build-arg RELEASE_VERSION=v2.7.1-aster.54 \
+  --build-arg RELEASE_VERSION=v2.7.1-aster.55 \
   --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
-  -t astering:v2.7.1-aster.54 .
+  -t astering:v2.7.1-aster.55 .
 ```
 
 或下载对应 Release，先检查 `sha256sum -c SHA256SUMS`，再导入镜像包：
 
 ```sh
-docker load -i astering-v2.7.1-aster.54.docker.tar.gz
+docker load -i astering-v2.7.1-aster.55.docker.tar.gz
 ```
 
 以下是**新安装**的最小 SQLite 示例；生产也可配置 PostgreSQL。现有部署不要用新建的空目录替换原数据卷。
@@ -93,7 +96,7 @@ docker run -d --name Astering --restart unless-stopped \
   -e ASTERING_SERVICE_SECRET=替换为随机且持久保存的长密钥 \
   -e ASTERING_SERVICE_ENABLEREGISTRATION=false \
   -e ASTERING_SERVICE_TIMEZONE=Asia/Shanghai \
-  astering:v2.7.1-aster.54
+  astering:v2.7.1-aster.55
 ```
 
 在反向代理提供 HTTPS，将 `PUBLICURL` 改为自己的实际域名。创建首个账户前可查看 CLI 参数：

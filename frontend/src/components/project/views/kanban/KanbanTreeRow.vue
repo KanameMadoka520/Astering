@@ -112,7 +112,7 @@ async function toggleDone() {
 		</span>
 		<div class="kanban-tree-row__main">
 			<p
-				v-if="trail && trail.items.length"
+				v-if="tree.showParents?.value !== false && trail && trail.items.length"
 				class="kanban-tree-trail"
 				:title="trailText"
 			>
@@ -151,7 +151,7 @@ async function toggleDone() {
 					class="kanban-tree-here"
 				>{{ t('project.kanban.hierarchy.here', {count: groupSize}, groupSize) }}</span>
 				<span
-					v-if="others.length"
+					v-if="tree.showParents?.value !== false && others.length"
 					class="kanban-tree-others"
 					:title="t('project.kanban.hierarchy.otherParents', {titles: others.map(label).join(', ')})"
 				>

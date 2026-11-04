@@ -3,11 +3,11 @@ import {computed} from 'vue'
 import {useI18n} from 'vue-i18n'
 import type {Task} from '@/client/generated'
 import BaseButton from '@/components/base/BaseButton.vue'
-const props = withDefaults(defineProps<{task: Task; inlineTree?: boolean; expanded?: boolean}>(), {inlineTree: false, expanded: true})
+const props = withDefaults(defineProps<{task: Task; inlineTree?: boolean; expanded?: boolean; showParents?: boolean}>(), {inlineTree: false, expanded: true, showParents: true})
 defineEmits<{toggle: []}>()
 const {t} = useI18n({useScope: 'global'})
 function unique(tasks: Task[]) { return [...new Map(tasks.filter(task => task.id !== undefined && task.id !== props.task.id).map(task => [task.id, task])).values()] }
-const parents = computed(() => unique(props.task.related_tasks?.parenttask ?? []))
+const parents = computed(() => props.showParents ? unique(props.task.related_tasks?.parenttask ?? []) : [])
 const children = computed(() => unique(props.task.related_tasks?.subtask ?? []))
 const label = computed(() => t('task.hierarchy.children', {done: children.value.filter(child => child.done).length, total: children.value.length}))
 </script>
