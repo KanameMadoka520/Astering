@@ -4,7 +4,7 @@ import {createSharedComposable, tryOnMounted} from '@vueuse/core'
 import {useTimeTracking} from '@/composables/useTimeTracking'
 import {getFullBaseUrl} from '@/helpers/getFullBaseUrl'
 
-const TRACKING_FAVICON = `${getFullBaseUrl()}images/icons/favicon-tracking-32x32.png?v=aster50`
+const TRACKING_FAVICON = `${getFullBaseUrl()}images/icons/favicon-tracking-32x32.png?v=aster51`
 
 function getFaviconLink(): HTMLLinkElement | null {
 	return document.querySelector<HTMLLinkElement>('link[rel="icon"]')

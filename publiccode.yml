@@ -3,7 +3,7 @@ name: Astering
 url: 'https://github.com/KanameMadoka520/Astering'
 landingURL: 'https://github.com/KanameMadoka520/Astering'
 isBasedOn: 'https://github.com/go-vikunja/vikunja'
-softwareVersion: 'v2.7.1-aster.50'
+softwareVersion: 'v2.7.1-aster.51'
 releaseDate: '2026-11-04'
 logo: 'frontend/public/images/brand/logo.png'
 platforms:
