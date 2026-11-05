@@ -114,7 +114,10 @@ const scannedAt = computed(() => {
 				<strong>{{ t('storage.suggestions.trash') }}</strong>
 				<small>{{ t('storage.itemsAndSize', {count: number(trashCount), size: bytes(trashBytes)}) }}</small>
 			</span>
-			<Icon icon="chevron-right" />
+			<Icon
+				class="storage-suggestion__chevron"
+				icon="chevron-right"
+			/>
 		</XButton>
 		<XButton
 			variant="secondary"
@@ -130,7 +133,10 @@ const scannedAt = computed(() => {
 				<strong>{{ t('storage.suggestions.previews') }}</strong>
 				<small>{{ bytes(previewBytes) }} · {{ t('storage.suggestions.previewsHint') }}</small>
 			</span>
-			<Icon icon="chevron-right" />
+			<Icon
+				class="storage-suggestion__chevron"
+				icon="chevron-right"
+			/>
 		</XButton>
 		<XButton
 			variant="secondary"
@@ -146,7 +152,10 @@ const scannedAt = computed(() => {
 				<strong>{{ t('storage.suggestions.large') }}</strong>
 				<small>{{ t('storage.suggestions.largeHint') }}</small>
 			</span>
-			<Icon icon="chevron-right" />
+			<Icon
+				class="storage-suggestion__chevron"
+				icon="chevron-right"
+			/>
 		</XButton>
 		<XButton
 			variant="secondary"
@@ -162,7 +171,10 @@ const scannedAt = computed(() => {
 				<strong>{{ t('storage.suggestions.conversations') }}</strong>
 				<small>{{ t('storage.itemsAndSize', {count: number(conversationCount), size: bytes(conversationBytes)}) }}</small>
 			</span>
-			<Icon icon="chevron-right" />
+			<Icon
+				class="storage-suggestion__chevron"
+				icon="chevron-right"
+			/>
 		</XButton>
 	</div>
 </template>
@@ -315,7 +327,7 @@ const scannedAt = computed(() => {
 		color: var(--text-secondary);
 		font-size: var(--text-xs);
 	}
-	:deep(svg:last-child) {
+	.storage-suggestion__chevron {
 		flex: none;
 		margin-inline-start: auto;
 		color: var(--text-secondary);
@@ -331,6 +343,13 @@ const scannedAt = computed(() => {
 	border-radius: .8rem;
 	background: var(--surface-sunken);
 	color: var(--primary);
+
+	:deep(svg) {
+		display: block;
+		inline-size: 1.125rem;
+		block-size: 1.125rem;
+		margin: 0;
+	}
 }
 @media (width <= 768px) {
 	.storage-summary__legend {

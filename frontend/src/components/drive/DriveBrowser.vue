@@ -148,6 +148,18 @@
 					</button>
 				</div>
 			</div>
+			<DriveBatchManager
+				v-if="!picker"
+				v-model:selected="batchSelected"
+				v-model:selecting="batchSelecting"
+				v-model:busy="batchBusy"
+				:files="files"
+				:ready="batchReady"
+				:trash="trash"
+				:scope-key="batchScope"
+				@update:reviewing="value => batchReviewing = value"
+				@inspect="inspect"
+			/>
 		</div>
 		<div class="drive-body">
 			<p
@@ -283,14 +295,28 @@
 					v-for="file in files"
 					:key="file.file_id"
 					class="drive-card"
+					:class="{'is-selecting': batchSelecting, 'is-selected': batchSelected.some(item => item.file_id === file.file_id)}"
+					:data-file-id="file.file_id"
 				>
+					<label
+						v-if="batchSelecting"
+						class="drive-card-selection"
+					>
+						<input
+							type="checkbox"
+							:checked="batchSelected.some(item => item.file_id === file.file_id)"
+							:aria-label="t('drive.batch.selectFile', {name: file.file?.name ?? ''})"
+							:aria-disabled="!batchReady || batchBusy || file.purging || undefined"
+							@click.prevent="toggleBatchFile(file)"
+						>
+					</label>
 					<!-- Mouse shortcut only: the labelled buttons below carry the same action for keyboards and screen readers. -->
 					<button
 						type="button"
 						class="drive-preview"
 						tabindex="-1"
 						aria-hidden="true"
-						@click="picker ? choose(file) : inspect(file)"
+						@click="previewFile(file)"
 					>
 						<DriveThumbnail
 							:file="file"
@@ -350,6 +376,7 @@
 								{{ t('drive.details') }}
 							</XButton>
 							<XButton
+								v-if="!batchSelecting"
 								v-tooltip="trashActionLabel(file)"
 								variant="tertiary"
 								class="is-small"
@@ -679,6 +706,7 @@
 <script setup lang="ts">
 import {computed, nextTick, onBeforeUnmount, ref, useId, watch} from 'vue'
 import {useQuery, useQueryClient} from '@tanstack/vue-query'
+import {useRoute} from 'vue-router'
 import {useI18n} from 'vue-i18n'
 import {refDebounced, useDropZone, useMediaQuery, useStorage} from '@vueuse/core'
 import type {IconProp} from '@fortawesome/fontawesome-svg-core'
@@ -694,7 +722,8 @@ import {
 } from '@/client/queries/drive'
 import {runUploadQueue} from '@/helpers/uploadQueue'
 import {chooseImageBatch, type ImageBatch} from '@/helpers/uploadTransport'
-import {isRequestContextAbort} from '@/client/requestContext'
+import {captureClientRequestContext, isRequestContextAbort} from '@/client/requestContext'
+import {useAuthStore} from '@/stores/auth'
 import {useUnsavedLeaveGuard} from '@/composables/useUnsavedLeaveGuard'
 import {error, getErrorText} from '@/message'
 import Modal from '@/components/misc/Modal.vue'
@@ -702,6 +731,8 @@ import EmptyState from '@/components/misc/state/EmptyState.vue'
 import LoadError from '@/components/misc/state/LoadError.vue'
 import PageHeader from '@/components/misc/state/PageHeader.vue'
 import DriveThumbnail from './DriveThumbnail.vue'
+import DriveBatchManager from './DriveBatchManager.vue'
+import {DRIVE_BATCH_LIMIT} from '@/client/queries/driveBatch'
 
 type DriveView = 'grid' | 'list'
 type DetailAction = 'edit' | 'trash' | 'purge'
@@ -721,6 +752,8 @@ const SIZE_UNITS = ['B', 'KiB', 'MiB', 'GiB', 'TiB'] as const
 
 const {t, locale} = useI18n()
 const client = useQueryClient()
+const route = useRoute()
+const auth = useAuthStore()
 
 const search = ref('')
 const category = ref('')
@@ -741,11 +774,45 @@ const query = useQuery(computed(() => driveQuery({
 	images: props.images,
 })))
 const files = computed(() => query.data.value?.files ?? [])
+const batchSelecting = ref(false)
+const batchSelected = ref<DriveEntry[]>([])
+const batchBusy = ref(false)
+const batchReviewing = ref(false)
+const batchReady = computed(() => Boolean(query.data.value) && !query.isPending.value
+	&& !query.isPlaceholderData.value && !query.isError.value && !props.busy
+	&& search.value === debouncedSearch.value && !batchActive.value && !change.isPending.value)
+const batchScope = computed(() => {
+	void auth.session
+	return JSON.stringify([
+		captureClientRequestContext(), route.fullPath, page.value, search.value,
+		category.value, pinned.value, trash.value, props.picker, props.images,
+	])
+})
+watch(batchScope, () => {
+	batchSelected.value = []
+	batchSelecting.value = false
+}, {flush: 'sync'})
+
+function toggleBatchFile(file: DriveEntry) {
+	if (!batchReady.value || batchBusy.value || file.purging) return
+	const existing = batchSelected.value.some(item => item.file_id === file.file_id)
+	if (!existing && batchSelected.value.length >= DRIVE_BATCH_LIMIT) return
+	batchSelected.value = existing
+		? batchSelected.value.filter(item => item.file_id !== file.file_id)
+		: [...batchSelected.value, {...file, file: file.file ? {...file.file} : undefined}]
+}
+
+function previewFile(file: DriveEntry) {
+	if (batchSelecting.value) toggleBatchFile(file)
+	else if (props.picker) choose(file)
+	else inspect(file)
+}
 const categories = computed(() => query.data.value?.categories ?? [])
 const total = computed(() => query.data.value?.total ?? 0)
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / PAGE_SIZE)))
-watch(() => query.data.value?.total, value => {
-	if (value !== undefined) page.value = Math.min(page.value, Math.max(1, Math.ceil(value / PAGE_SIZE)))
+watch([() => query.data.value?.total, batchReviewing], ([value, reviewing]) => {
+	// Refetching the now-empty last page must not close the batch result before it can be read.
+	if (!reviewing && value !== undefined) page.value = Math.min(page.value, Math.max(1, Math.ceil(value / PAGE_SIZE)))
 })
 const hasFilters = computed(() => Boolean(search.value || category.value || pinned.value))
 
@@ -968,6 +1035,7 @@ function fieldsOf(file: DriveEntry) {
 }
 
 function inspect(file: DriveEntry, mode: DetailAction = 'edit') {
+	if (batchBusy.value) return
 	selected.value = file
 	seeded = fieldsOf(file)
 	name.value = seeded.name
@@ -1374,8 +1442,38 @@ async function download(file: DriveEntry) {
 }
 
 .drive-card {
+	position: relative;
 	min-inline-size: 0;
 	transition: border-color var(--motion-fast) var(--ease-standard);
+}
+
+.drive-files .drive-card.is-selected {
+	outline: 2px solid var(--primary);
+	outline-offset: -2px;
+	background: var(--surface-selected);
+}
+
+.drive-card-selection {
+	display: grid;
+	flex: none;
+	place-items: center;
+	inline-size: 2.75rem;
+	block-size: 2.75rem;
+	margin: 0;
+	border-radius: var(--radius-sm);
+	background: var(--surface);
+	cursor: pointer;
+
+	input {
+		inline-size: 1.125rem;
+		block-size: 1.125rem;
+		margin: 0;
+		accent-color: var(--primary);
+	}
+
+	&:has(:focus-visible) {
+		@include focus-ring;
+	}
 }
 
 .drive-preview {
@@ -1445,6 +1543,13 @@ async function download(file: DriveEntry) {
 }
 
 .is-grid {
+	.drive-card-selection {
+		position: absolute;
+		inset-block-start: var(--space-1);
+		inset-inline-start: var(--space-1);
+		z-index: 1;
+	}
+
 	.drive-card {
 		display: flex;
 		flex-direction: column;
@@ -1486,6 +1591,11 @@ async function download(file: DriveEntry) {
 }
 
 .is-list {
+	.drive-card.is-selecting {
+		grid-template-columns: 2.75rem 2.25rem minmax(0, 1fr) auto;
+		gap: var(--space-2);
+	}
+
 	.drive-card {
 		display: grid;
 		grid-template-columns: 2.25rem minmax(0, 1fr) auto;

@@ -3435,6 +3435,55 @@
     "stage_compacting": "Compacting context automatically"
   },
   "drive": {
+    "batch": {
+      "manage": "Manage selected files",
+      "enter": "Select files",
+      "exit": "Exit selection",
+      "selected": "{count} selected",
+      "selectPage": "Select current page",
+      "clear": "Clear selection",
+      "selectFile": "Select {name}",
+      "pageHint": "Select files on this page (up to 60). Changing the page, filters or account clears your selection.",
+      "actionsLabel": "Actions for selected files",
+      "review": "Review selected files",
+      "scanning": "Checking {count} of {total} files…",
+      "scanFailed": "Could not prepare this selection. Close this window, reload the files and select them again.",
+      "reviewCount": "{count} of {total} selected files can be updated. Protected files will be skipped.",
+      "categoryHint": "This sets the same category for the selected files. Leave it empty to remove their categories. Files are not moved into folders.",
+      "trashHint": "Only files with no verified references can be recycled here. Existing and newly added references are protected. Recycling does not free storage.",
+      "confirmTrash": "I confirm recycling {count} unused file. | I confirm recycling {count} unused files.",
+      "progress": "Processed {count} of {total} files · {completed} completed",
+      "progressLabel": "File operation progress",
+      "resultsHint": "Successful changes are kept. Failed or uncertain requests are not retried automatically. Review the refreshed files and select again before retrying.",
+      "apply": "Apply to eligible files",
+      "purgeHint": "For permanent deletion, open Details and usages for each file. References and the full file-name confirmation are checked there.",
+      "actions": {
+        "pin": "Pin selected",
+        "unpin": "Unpin selected",
+        "category": "Set category",
+        "trash": "Move selected to recycle bin",
+        "restore": "Restore selected"
+      },
+      "status": {
+        "ready": "Ready",
+        "waiting": "Waiting",
+        "completed": "Completed",
+        "blocked": "Protected",
+        "failed": "Failed",
+        "unknown": "Result unknown"
+      },
+      "reasons": {
+        "in_use": "This file is in use. Review its usages in the file details; bulk recycling keeps it unchanged.",
+        "references_unavailable": "Its usages could not be verified. The file was kept.",
+        "purging": "Permanent deletion is already in progress. Use the individual file's retry action.",
+        "not_trashed": "This file is no longer in the recycle bin. Reload and check its current state.",
+        "trashed": "This file is in the recycle bin. Restore it before changing it.",
+        "unavailable": "This file is no longer available or does not belong to this account.",
+        "changed": "This file changed after selection. Reload and review it before trying again.",
+        "request_rejected": "The server rejected this change. Review the file's details before trying again.",
+        "unknown": "The response was lost or the server reported an error. The change may have been saved; reload and check before trying again."
+      }
+    },
     "noMatches": "No files match these filters.",
     "emptyTrash": "The recycle bin is empty.",
     "clearFilters": "Clear filters",
