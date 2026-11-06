@@ -457,6 +457,12 @@
 						</div>
 						<dl class="drive-detail-meta">
 							<div>
+								<dt>{{ t('drive.owner') }}</dt>
+								<dd class="drive-detail-owner">
+									{{ auth.userDisplayName || t('drive.ownerYou') }}
+								</dd>
+							</div>
+							<div>
 								<dt>{{ t('drive.size') }}</dt>
 								<dd>{{ formatSize(selected.file?.size ?? 0) }}</dd>
 							</div>
@@ -477,6 +483,9 @@
 								</dd>
 							</div>
 						</dl>
+						<p class="drive-muted drive-original-note">
+							{{ t('drive.originalReuseHint') }}
+						</p>
 						<XButton
 							variant="secondary"
 							icon="download"
@@ -527,7 +536,7 @@
 						<section class="drive-usages-section">
 							<h3>{{ t('drive.usedIn') }}</h3>
 							<p
-								v-if="usages.isPending.value"
+								v-if="usages.isPending.value || (usages.fetchStatus.value !== 'idle' && !usageCount)"
 								class="drive-muted"
 								role="status"
 							>
@@ -560,11 +569,17 @@
 								</li>
 							</ul>
 							<p
-								v-else
+								v-else-if="usagesReady"
 								class="drive-muted"
 							>
 								{{ t('drive.unused') }}
 							</p>
+							<details class="drive-reference-rules">
+								<summary>{{ t('drive.referenceRules') }}</summary>
+								<p>{{ t('drive.referenceSharingHint') }}</p>
+								<p>{{ t('drive.trashNote') }}</p>
+								<p>{{ t('drive.referenceProtectionHint') }}</p>
+							</details>
 						</section>
 						<p
 							v-if="selectedTrashed && usageCount"
@@ -1019,7 +1034,9 @@ function usageLabel(usage: DriveUsage) {
 		|| (usage.kind === 'chat_draft' ? t('chat.untitled') : usage.kind === 'chat' ? t('drive.unreadableChat') : '')
 	return title ? `${kind} · ${title}` : kind
 }
-const usagesReady = computed(() => !usages.isPending.value && !usages.isError.value)
+// A cached empty result is not proof of no references while its fresh check is still running.
+const usagesReady = computed(() => usages.isSuccess.value
+	&& usages.fetchStatus.value === 'idle' && !usages.isPlaceholderData.value)
 // A failed scan of encrypted conversations is not a known use: say why the list is missing, the file stays.
 const usagesError = computed(() => (usages.error.value as {detail?: string} | null)?.detail === 'drive_chat_unreadable'
 	? t('drive.errors.drive_chat_unreadable')
@@ -1871,6 +1888,14 @@ async function download(file: DriveEntry) {
 	min-inline-size: 0;
 }
 
+.drive-detail-owner {
+	overflow-wrap: anywhere;
+}
+
+.drive-original-note {
+	margin: 0;
+}
+
 .drive-field {
 	display: grid;
 	gap: var(--space-1);
@@ -1922,6 +1947,22 @@ async function download(file: DriveEntry) {
 .drive-muted {
 	color: var(--text-secondary);
 	font-size: var(--text-sm);
+}
+
+.drive-reference-rules {
+	margin-block-start: var(--space-2);
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+
+	summary {
+		padding-block: var(--space-3);
+		font-weight: var(--weight-semibold);
+		cursor: pointer;
+	}
+
+	p {
+		margin-block: 0 var(--space-2);
+	}
 }
 
 .drive-confirm {

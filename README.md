@@ -13,7 +13,7 @@
 
 我们赋予 **Astering**「像星星闪烁、使之星光熠熠」的意象：一次行动、一段研究、一条值得记住的原则，逐渐连接成自己的星群。**Aster的AI集成工业系统**（Aster’s AI-integrated industrial system）是项目的副标题；工具与积累服务于更自由的创造。
 
-- 当前版本：`v2.7.1-aster.57`
+- 当前版本：`v2.7.1-aster.58`
 - 源码与问题反馈：[KanameMadoka520/Astering](https://github.com/KanameMadoka520/Astering)
 - 本机编译的发布产物：[GitHub Releases](https://github.com/KanameMadoka520/Astering/releases)
 - [品牌与升级兼容](docs/brand-migration.md) · [品牌素材](docs/brand-identity.md) · [详细功能与演进记录](docs/product-reference.md)
@@ -54,7 +54,7 @@ Astering 把不同用途保留在各自合适的空间里，关联真实任务�
 3. **执行中补充要求**保留原目标，将新要求排队在安全的模型或工具边界应用。已经执行的操作不会因一句补充要求自动回滚。
 4. **记录与恢复**保留服务商返回的中间说明、工具步骤、错误、用量和时间指标；不编造隐藏推理。失败后按安全边界重试，结果未知的写入不会自动重放。
 
-会话支持管理、置顶、分支、压缩和导出；不同会话可以独立执行或压缩，停止一个会话不会取消其他会话，同一会话保留必要互斥，详见[会话并发](docs/agent-concurrency.md)。图片可来自上传或网盘；阿罗娜可按需查看当前会话附件清单，以真实图片 ID 复用到有权编辑的任务描述中，插入位置沿用描述版本和审核保护。语音输入支持点按开始与结束，触屏长按作为补充；识别结果先进入草稿，不自动发送为任务指令。外部 MCP 按连接和本轮选择使用，不在页面打开时遍历全部远端工具。
+会话支持管理、置顶、分支、压缩和导出；不同会话可以独立执行或压缩，停止一个会话不会取消其他会话，同一会话保留必要互斥，详见[会话并发](docs/agent-concurrency.md)。图片可来自上传或网盘；阿罗娜可按需查看当前会话附件清单，以真实图片 ID 复用到有权编辑的任务描述中，插入位置沿用描述版本和审核保护。插图成功后，任务附件独立于会话存在；文件详情与删除确认会说明原件归属、使用位置和引用保护，详见[附件归属与保留](docs/attachment-retention.md)。语音输入支持点按开始与结束，触屏长按作为补充；识别结果先进入草稿，不自动发送为任务指令。外部 MCP 按连接和本轮选择使用，不在页面打开时遍历全部远端工具。
 
 详见[阿罗娜集成](docs/arona-integration.md)、[工具模块权限](docs/agent-tool-modules.md)、[运行中补充要求](docs/arona-steering.md)、[外部 MCP 与聊天插图](docs/external-mcp-and-chat-images.md)及[专用语音协议](docs/speech-and-routines-v41.md)。
 
@@ -74,15 +74,15 @@ Astering 把不同用途保留在各自合适的空间里，关联真实任务�
 git clone https://github.com/KanameMadoka520/Astering.git
 cd Astering
 docker build -f Dockerfile.aster \
-  --build-arg RELEASE_VERSION=v2.7.1-aster.57 \
+  --build-arg RELEASE_VERSION=v2.7.1-aster.58 \
   --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
-  -t astering:v2.7.1-aster.57 .
+  -t astering:v2.7.1-aster.58 .
 ```
 
 或下载对应 Release，先检查 `sha256sum -c SHA256SUMS`，再导入镜像包：
 
 ```sh
-docker load -i astering-v2.7.1-aster.57.docker.tar.gz
+docker load -i astering-v2.7.1-aster.58.docker.tar.gz
 ```
 
 以下是**新安装**的最小 SQLite 示例；生产也可配置 PostgreSQL。现有部署不要用新建的空目录替换原数据卷。
@@ -98,7 +98,7 @@ docker run -d --name Astering --restart unless-stopped \
   -e ASTERING_SERVICE_SECRET=替换为随机且持久保存的长密钥 \
   -e ASTERING_SERVICE_ENABLEREGISTRATION=false \
   -e ASTERING_SERVICE_TIMEZONE=Asia/Shanghai \
-  astering:v2.7.1-aster.57
+  astering:v2.7.1-aster.58
 ```
 
 在反向代理提供 HTTPS，将 `PUBLICURL` 改为自己的实际域名。创建首个账户前可查看 CLI 参数：

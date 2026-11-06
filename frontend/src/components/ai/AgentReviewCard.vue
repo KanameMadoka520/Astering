@@ -44,8 +44,11 @@ const compassFields = computed(() => {
 	}
 })
 const orderTool = computed(() => !external.value && pending.value?.tool === 'reorder_view_tasks')
-const imageTool = computed(() => ['insert_chat_image', 'update_task_description_image', 'remove_task_description_image']
-	.includes(pending.value?.tool ?? ''))
+const imageTool = computed(() => !external.value && [
+	'insert_chat_image',
+	'update_task_description_image',
+	'remove_task_description_image',
+].includes(pending.value?.tool ?? ''))
 const reviewHint = computed(() => external.value ? t('tcy.mcp.externalReview')
 	: compassTool.value ? t(pending.value?.tool === 'restore_compass_revision'
 		? 'agent.compassReview.restoreHint' : 'agent.compassReview.hint')

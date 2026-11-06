@@ -1,5 +1,9 @@
+import type {Route} from '@playwright/test'
 import {test, expect} from '../../support/fixtures'
 import {Factory} from '../../support/factory'
+import {TaskFactory} from '../../factories/task'
+import {updateUserSettings} from '../../support/updateUserSettings'
+import {createProjects} from '../project/prepareProjects'
 
 test('removing the final file on page two returns to the remaining files', async ({authenticatedPage: page, currentUser}) => {
 	await Factory.seed('files', Array.from({length: 61}, (_, i) => ({id: i + 1, name: `document-${i + 1}.txt`, mime: 'text/plain', size: 1, created_by_id: currentUser.id})))
@@ -153,6 +157,148 @@ for (const width of [1440, 360]) {
 		await expect(page.getByText('No files match these filters.')).toBeVisible()
 		await page.getByRole('button', {name: 'Clear filters'}).click()
 		await expect(page.locator('.drive-card')).toHaveCount(1)
+	})
+}
+
+for (const scenario of [
+	{
+		width: 1440,
+		language: 'en',
+		details: 'Details and usages',
+		owner: 'File owner',
+		rules: 'Ownership and deletion rules',
+		original: 'Reusing it in tasks, chats or other places does not create another copy.',
+		sharing: 'without gaining access to your Drive or original chat.',
+		protection: 'A file cannot be permanently deleted while any location still uses it.',
+		unused: 'No locations currently reference this file.',
+		loading: 'Loading…',
+		close: 'Close dialog',
+		moveToTrash: 'Move to recycle bin',
+	},
+	{
+		width: 360,
+		language: 'zh-CN',
+		details: '详情与使用位置',
+		owner: '文件所有者',
+		rules: '归属与删除规则',
+		original: '在任务、会话等位置重复使用不会增加一份原件。',
+		sharing: '但不能因此浏览你的网盘或原会话。',
+		protection: '只要仍被任何位置引用，就不能永久删除。',
+		unused: '当前没有位置引用此文件。',
+		loading: '载入中...',
+		close: '关闭对话框',
+		moveToTrash: '移入回收站',
+	},
+]) {
+	test(`Drive ownership and a refreshed task reference stay safe at ${scenario.width}px in ${scenario.language}`, async ({authenticatedPage: page, apiContext, userToken}, testInfo) => {
+		test.setTimeout(60_000)
+		const ownerName = 'CurrentOwnerWithALongUnbrokenDisplayName'.repeat(3)
+		await updateUserSettings(apiContext, userToken, {language: scenario.language, name: ownerName})
+		const headers = {Authorization: `Bearer ${userToken}`}
+		const account = await apiContext.get('/api/v2/user', {headers})
+		expect(account.ok()).toBe(true)
+		expect((await account.json()).name).toBe(ownerName)
+		await createProjects(1)
+		const [task] = await TaskFactory.create(1, {title: 'A task that keeps the Drive original'})
+		await page.setViewportSize({width: scenario.width, height: 900})
+		await page.goto('/drive')
+		const filename = 'one-original-many-uses.txt'
+		const bytes = Buffer.from('This original is shared by reference, never copied for the task.')
+		const upload = page.waitForResponse(response => response.url().endsWith('/api/v2/drive/files')
+			&& response.request().method() === 'POST')
+		await page.locator('.drive-browser input[type=file]').setInputFiles({
+			name: filename,
+			mimeType: 'text/plain',
+			buffer: bytes,
+		})
+		const uploaded = await upload
+		expect(uploaded.ok()).toBe(true)
+		const file = await uploaded.json() as {file_id: number, revision: number}
+		await expect(page.locator('.drive-card')).toHaveCount(1)
+		const usagesPath = `/api/v2/drive/files/${file.file_id}/usages`
+		const firstRead = page.waitForResponse(response => response.url().endsWith(usagesPath))
+		await page.locator('.drive-card').getByRole('button', {name: scenario.details, exact: true}).click()
+		expect(await (await firstRead).json()).toEqual([])
+		const panel = page.getByRole('dialog', {name: scenario.details, exact: true})
+		await expect(panel.locator('dt', {hasText: scenario.owner})).toBeVisible()
+		await expect(panel.locator('.drive-detail-owner')).toHaveText(ownerName)
+		await expect(panel.locator('.drive-detail-owner')).toBeVisible()
+		await expect(panel.locator('.drive-original-note')).toContainText(scenario.original)
+		await expect(panel.getByText(scenario.unused, {exact: true})).toBeVisible()
+		const rules = panel.locator('.drive-reference-rules')
+		await expect(rules).toHaveJSProperty('open', false)
+		await expect(rules.locator('p').first()).not.toBeVisible()
+		await rules.getByText(scenario.rules, {exact: true}).click()
+		await expect(rules).toHaveJSProperty('open', true)
+		await expect(rules).toContainText(scenario.sharing)
+		await expect(rules).toContainText(scenario.protection)
+		expect(await panel.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+		await page.screenshot({path: testInfo.outputPath(`drive-reference-rules-${scenario.language}.png`), animations: 'disabled'})
+		await panel.getByRole('button', {name: scenario.close, exact: true}).click()
+		await expect(panel).not.toBeVisible()
+
+		// The browser still caches the real empty list; an independent client creates a real task reference.
+		const attached = await apiContext.post(`/api/v2/drive/files/${file.file_id}/attach`, {
+			headers,
+			data: {revision: file.revision, task_id: task.id},
+		})
+		expect(attached.ok()).toBe(true)
+		let release: () => void = () => {}
+		const held = new Promise<void>(resolve => {
+			release = resolve
+		})
+		let continued: () => void = () => {}
+		const continuation = new Promise<void>(resolve => {
+			continued = resolve
+		})
+		let heldReads = 0
+		const pattern = `**${usagesPath}`
+		const holdUsages = async (route: Route) => {
+			heldReads++
+			try {
+				await held
+				await route.continue()
+			} finally {
+				continued()
+			}
+		}
+		await page.route(pattern, holdUsages)
+		try {
+			await page.locator('.drive-card').getByRole('button', {name: scenario.moveToTrash, exact: true}).click()
+			await expect.poll(() => heldReads).toBe(1)
+			await expect(panel.locator('.drive-usages-section [role=status]')).toHaveText(scenario.loading)
+			await expect(panel.getByText(scenario.unused, {exact: true})).toHaveCount(0)
+			const confirm = panel.getByRole('button', {name: scenario.moveToTrash, exact: true})
+			await expect(confirm).toBeDisabled()
+			release()
+			const taskLink = panel.locator('.drive-usages').getByRole('link', {name: new RegExp(task.title)})
+			await expect(taskLink).toBeVisible()
+			await expect(taskLink).toHaveAttribute('href', `/tasks/${task.id}`)
+			await expect(confirm).toBeDisabled()
+			await expect(panel.locator('.drive-confirm').getByRole('checkbox')).not.toBeChecked()
+			await page.evaluate(() => document.documentElement.setAttribute('data-drive-spa-probe', 'same-document'))
+			await taskLink.click()
+			await expect(page).toHaveURL(new RegExp(`/tasks/${task.id}(?:[?#]|$)`))
+			await expect(page.locator('html')).toHaveAttribute('data-drive-spa-probe', 'same-document')
+			await expect(page.locator('.content.attachments')).toContainText(filename)
+			const listing = await apiContext.get('/api/v2/drive/files', {headers})
+			expect(listing.ok()).toBe(true)
+			const persisted = await listing.json()
+			expect(persisted.total).toBe(1)
+			expect(persisted.files[0].file_id).toBe(file.file_id)
+			const taskResponse = await apiContext.get(`/api/v2/tasks/${task.id}`, {headers})
+			expect(taskResponse.ok()).toBe(true)
+			const savedTask = await taskResponse.json()
+			expect(savedTask.attachments).toHaveLength(1)
+			expect(savedTask.attachments[0].file.id).toBe(file.file_id)
+			const download = await apiContext.get(`/api/v2/drive/files/${file.file_id}/download`, {headers})
+			expect(download.ok()).toBe(true)
+			expect(await download.body()).toEqual(bytes)
+		} finally {
+			release()
+			if (heldReads > 0) await continuation
+			await page.unroute(pattern, holdUsages)
+		}
 	})
 }
 

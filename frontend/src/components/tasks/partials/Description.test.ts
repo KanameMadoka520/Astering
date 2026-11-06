@@ -8,6 +8,8 @@ import {removeToken, saveToken} from '@/helpers/auth'
 import {editorDraftNamespace} from '@/helpers/draftScope'
 import {scopedEditorDraftKey} from '@/helpers/editorDraftStorage'
 import {clearAccountDrafts} from '@/helpers/localDrafts'
+import {success} from '@/message'
+import type {Task} from '@/client/generated'
 
 const sdk = vi.hoisted(() => ({patchTasksRead: vi.fn(), tasksRead: vi.fn()}))
 vi.mock('@/client/generated', async original => ({...await original<typeof import('@/client/generated')>(), ...sdk}))
@@ -32,10 +34,10 @@ let wrapper: VueWrapper | undefined
 let client: QueryClient
 const token = (id: number) => `header.${btoa(JSON.stringify({id, type: 1}))}.signature`
 const draftKey = (taskId: number) => `editorDraft-${scopedEditorDraftKey(editorDraftNamespace(), `task-description-${taskId}`)}`
-function setup(signedIn = true) {
+function setup(signedIn = true, changes: Partial<Task> = {}) {
  if (signedIn) saveToken(token(1), false)
  client = new QueryClient({defaultOptions: {queries: {retry: false, staleTime: Infinity}}})
- const task = normalizeTask({id: 1, project_id: 1, title: 'Test', description: 'old', attachments: []})
+ const task = normalizeTask({id: 1, project_id: 1, title: 'Test', description: 'old', attachments: [], ...changes})
  client.setQueryData(taskKeys.detail(1), task)
  sdk.tasksRead.mockResolvedValue({data: task})
  wrapper = mount(Description, {props: {modelValue: task, canWrite: true}, global: {plugins: [createPinia(), [VueQueryPlugin, {queryClient: client}]], stubs: {Icon: true, CustomTransition: true}, mocks: {$t: (key: string) => key}}})
@@ -45,6 +47,56 @@ afterEach(async () => {wrapper?.unmount(); await flushPromises(); vi.clearAllMoc
 const saveButton = (view: VueWrapper) => view.find('.tiptap__task-description button:not(.discard)')
 
 describe('description save races', () => {
+ it('announces retained images only after the server confirms a successful description removal', async () => {
+  const attachment = {id: 5, task_id: 1, file: {id: 12}}
+  const image = '<img src="/api/v2/tasks/1/attachments/5">'
+  let reject!: (error: Error) => void
+  sdk.patchTasksRead.mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail }))
+   .mockResolvedValue({data: {id: 1, description: '<p>Kept text</p>', attachments: [attachment]}})
+  const view = setup(true, {description: image + '<p>Kept text</p>', attachments: [attachment]})
+  await view.find('textarea').setValue('<p>Kept text</p>')
+  expect(success).not.toHaveBeenCalled()
+  await saveButton(view).trigger('click')
+  await flushPromises()
+  expect(success).not.toHaveBeenCalled()
+  reject(new Error('offline'))
+  await flushPromises()
+  expect(success).not.toHaveBeenCalled()
+  await saveButton(view).trigger('click')
+  await flushPromises()
+  expect(success).toHaveBeenCalledExactlyOnceWith({message: 'tcy.chatImages.receiptRemoved'})
+  expect(sdk.patchTasksRead.mock.calls[1][0].body).toEqual([
+   {op: 'add', path: '/description', value: '<p>Kept text</p>'},
+  ])
+ })
+ it('does not announce an image removal that the user undoes while its save is pending', async () => {
+  const attachment = {id: 5, task_id: 1, file: {id: 12}}
+  const image = '<img src="/api/v2/tasks/1/attachments/5">'
+  let resolve!: (value: unknown) => void
+  sdk.patchTasksRead.mockImplementationOnce(() => new Promise(done => { resolve = done }))
+   .mockResolvedValue({data: {id: 1, description: image, attachments: [attachment]}})
+  const view = setup(true, {description: image, attachments: [attachment]})
+  await view.find('textarea').setValue('')
+  await saveButton(view).trigger('click')
+  await flushPromises()
+  await view.find('textarea').setValue(image)
+  resolve({data: {id: 1, description: '', attachments: [attachment]}})
+  await flushPromises()
+  expect(success).not.toHaveBeenCalled()
+  expect(view.find('textarea').element.value).toBe(image)
+ })
+ it('does not claim retained files when the attachment itself disappeared in the server response', async () => {
+  const attachment = {id: 5, task_id: 1, file: {id: 12}}
+  sdk.patchTasksRead.mockResolvedValue({data: {id: 1, description: '', attachments: []}})
+  const view = setup(true, {
+   description: '<img src="/api/v2/tasks/1/attachments/5">',
+   attachments: [attachment],
+  })
+  await view.find('textarea').setValue('')
+  await saveButton(view).trigger('click')
+  await flushPromises()
+  expect(success).not.toHaveBeenCalled()
+ })
  it('retains newer typing while an earlier save is pending and writes only the description', async () => {
   let resolve!: (value: unknown) => void
   sdk.patchTasksRead.mockImplementationOnce(() => new Promise(done => {resolve = done})).mockResolvedValue({data: {id: 1, description: 'newer'}})

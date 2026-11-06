@@ -24,6 +24,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -359,6 +360,100 @@ func TestTCYAIChatImagePlacementAndRetention(t *testing.T) {
 	links, err = s.Where("task_id = ? AND file_id = ?", 1, source.DriveFileID).Count(&models.TaskAttachment{})
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, links)
+}
+
+func TestTCYAIChatImageSurvivesConversationDeletionAndDriveTrash(t *testing.T) {
+	e, ctx, source := chatImageFixture(t)
+	chatID := tcyai.ChatImagesFromContext(ctx).ConversationID
+	_, original, err := tcyai.DownloadChatAttachment(1, chatID, source.ID)
+	require.NoError(t, err)
+	require.NotEmpty(t, original)
+	s := db.NewSession()
+	fileCount, err := s.Count(&files.File{})
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+	_, err = chatImageInvoke(ctx, t, e, "insert_chat_image", aiChatImageArgs{
+		ID:                 1,
+		DescriptionVersion: descriptionHash(chatImageTask(t).Description),
+		AttachmentID:       source.ID,
+		Position:           "end",
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, tcyai.DeleteConversation(1, chatID))
+	_, err = tcyai.GetConversation(1, chatID)
+	require.ErrorIs(t, err, tcyai.ErrConversationMissing)
+	_, _, err = tcyai.DownloadChatAttachment(1, chatID, source.ID)
+	require.ErrorIs(t, err, tcyai.ErrConversationMissing)
+
+	assertPreserved := func(trashed bool) *files.DriveFile {
+		t.Helper()
+		s := db.NewSession()
+		defer s.Close()
+		link := &models.TaskAttachment{}
+		found, err := s.Where("task_id = ? AND file_id = ?", 1, source.DriveFileID).Get(link)
+		require.NoError(t, err)
+		require.True(t, found)
+		assert.EqualValues(t, 1, link.CreatedByID)
+		count, err := s.Where("task_id = ? AND file_id = ?", 1, source.DriveFileID).Count(&models.TaskAttachment{})
+		require.NoError(t, err)
+		assert.EqualValues(t, 1, count)
+		count, err = s.Count(&files.File{})
+		require.NoError(t, err)
+		assert.Equal(t, fileCount, count, "the task keeps the original without copying its bytes")
+		count, err = s.Where("owner_id = ? AND conversation_id = ? AND file_id = ?", 1, chatID, source.DriveFileID).Count(&files.DriveChatRef{})
+		require.NoError(t, err)
+		assert.Zero(t, count, "a stale conversation pin must not be what protects the task image")
+		drive, err := models.GetDriveItem(s, e.auth, source.DriveFileID)
+		require.NoError(t, err)
+		assert.EqualValues(t, 1, drive.OwnerID)
+		assert.EqualValues(t, 1, drive.File.CreatedByID)
+		assert.Equal(t, trashed, !drive.TrashedAt.IsZero())
+		assert.False(t, drive.Purging)
+		_, err = models.GetDriveItem(s, &user.User{ID: 2}, source.DriveFileID)
+		require.ErrorIs(t, err, models.ErrDriveMissing)
+		require.NoError(t, s.Close())
+
+		document := chatImageLayout(t)
+		require.Len(t, document.images, 1)
+		assert.Contains(t, imageAttribute(document.images[0], "src"), fmt.Sprintf("/tasks/1/attachments/%d", link.ID))
+		assert.NotContains(t, imageAttribute(document.images[0], "src"), chatID)
+		stored, err := models.GetTaskAttachmentForDownload(e.auth, 1, link.ID)
+		require.NoError(t, err)
+		data, readErr := io.ReadAll(stored.File)
+		require.NoError(t, stored.File.Close())
+		require.NoError(t, readErr)
+		assert.Equal(t, original, data)
+		return drive
+	}
+
+	drive := assertPreserved(false)
+	change := models.DriveChange{
+		Action:   "trash",
+		Revision: drive.Revision,
+		Confirm:  true,
+	}
+	models.PrepareDriveChange(e.auth, source.DriveFileID, &change)
+	s = db.NewSession()
+	_, err = models.ChangeDriveItem(s, e.auth, source.DriveFileID, change)
+	require.NoError(t, err)
+	require.NoError(t, s.Commit())
+	require.NoError(t, s.Close())
+	drive = assertPreserved(true)
+
+	change = models.DriveChange{
+		Action:      "purge",
+		Revision:    drive.Revision,
+		Confirm:     true,
+		ConfirmName: drive.File.Name,
+	}
+	models.PrepareDriveChange(e.auth, source.DriveFileID, &change)
+	s = db.NewSession()
+	_, err = models.ChangeDriveItem(s, e.auth, source.DriveFileID, change)
+	require.ErrorIs(t, err, models.ErrDriveInUse)
+	require.NoError(t, s.Rollback())
+	require.NoError(t, s.Close())
+	assertPreserved(true)
 }
 
 func TestTCYAIChatImageGuards(t *testing.T) {

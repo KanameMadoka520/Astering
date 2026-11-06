@@ -180,8 +180,8 @@
 <script setup lang="ts">
 import DescriptionStages from './DescriptionStages.vue'
 import {descriptionStages, stageTemplate} from '@/helpers/descriptionStages'
-import {removeAttachmentImages} from '@/helpers/attachmentImages'
-import {getErrorText} from '@/message'
+import {hasRemovedAttachmentImages, removeAttachmentImages} from '@/helpers/attachmentImages'
+import {getErrorText, success} from '@/message'
 import {
 	ref,
 	computed,
@@ -580,6 +580,10 @@ async function save(): Promise<boolean> {
 		return true
 	}
 	const submitted = description.value
+	const previousDescription = props.modelValue.description ?? ''
+	const previousFiles = new Map((props.modelValue.attachments ?? [])
+		.filter(attachment => attachment.task_id === taskId && attachment.file?.id)
+		.map(attachment => [attachment.id, attachment.file!.id]))
 	const storageKey = descriptionStorageKey.value
 	if (changeTimeout.value !== null) clearTimeout(changeTimeout.value)
 	saveEditorDraft(storageKey, submitted, draftLease)
@@ -593,6 +597,14 @@ async function save(): Promise<boolean> {
 			const updated = await updateTask.mutateAsync({id: taskId, description: submitted})
 			if (props.modelValue.id !== taskId) return true
 			if (description.value === submitted) {
+				const retainedIds = (updated.attachments ?? [])
+					.filter(attachment => attachment.task_id === taskId && attachment.id !== undefined
+						&& attachment.file?.id !== undefined && previousFiles.get(attachment.id) === attachment.file.id)
+					.map(attachment => attachment.id!)
+				if (updated.id === taskId && typeof updated.description === 'string'
+					&& hasRemovedAttachmentImages(previousDescription, updated.description, taskId, retainedIds)) {
+					success({message: t('tcy.chatImages.receiptRemoved')})
+				}
 				description.value = updated.description ?? ''
 				hasChanges.value = false
 				clearEditorDraft(storageKey, draftLease, submitted)

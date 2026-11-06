@@ -3082,7 +3082,7 @@
     "availableTools": "Available tool definitions",
     "promptNote": "This is the current system prompt. Each message also includes saved conversation context and your request. Its actual prompt is saved with the response.",
     "sendFailed": "The message could not be sent. Your draft has been kept.",
-    "deleteConfirm": "Delete this conversation and its saved model context? This does not delete tasks or projects.",
+    "deleteConfirm": "Delete this conversation and its saved model context? Drive originals and images already attached to tasks are kept.",
     "forkConfirm": "Create a new conversation through this response? Existing task and project changes remain in place; branching does not undo or replay them.",
     "compactConfirm": "Create a handoff checkpoint from the entire current conversation, including real tool outcomes? Original messages are kept. This consumes model tokens and continues in the background when you leave the page.",
     "unavailable": "Not provided",
@@ -3435,6 +3435,12 @@
     "stage_compacting": "Compacting context automatically"
   },
   "drive": {
+    "owner": "File owner",
+    "ownerYou": "You (current account)",
+    "originalReuseHint": "The original stays in your personal Drive. Reusing it in tasks, chats or other places does not create another copy.",
+    "referenceRules": "Ownership and deletion rules",
+    "referenceSharingHint": "Task attachments follow the task’s access permissions. People who can view the task can open this attachment, without gaining access to your Drive or original chat.",
+    "referenceProtectionHint": "A file cannot be permanently deleted while any location still uses it. Remove the references at their source first; removing an image from task text may still leave its task attachment.",
     "batch": {
       "manage": "Manage selected files",
       "enter": "Select files",
@@ -3524,8 +3530,8 @@
     "pin": "Pin this file",
     "usedIn": "Used in",
     "restricted": "Restricted reference: this file is used by a project or account you cannot access.",
-    "unused": "No attachments, project covers or avatars currently reference this file.",
-    "unlinkFirst": "Remove the attachment or replace the cover/avatar at each location before permanently deleting this file. Images in task descriptions also use attachment references; check the description when removing them. For chats, remove the file from the unsent draft, or delete the conversation that sent it, including its branches: a sent message cannot drop a single attachment. Restricted references require help from an authorized member.",
+    "unused": "No locations currently reference this file.",
+    "unlinkFirst": "Remove the attachment or replace the cover/avatar at each location before permanently deleting this file. Removing an image from task text alone may leave its task attachment; delete that attachment to remove the task reference. For chats, remove the file from the unsent draft, or delete the conversation that sent it, including its branches: a sent message cannot drop a single attachment. Restricted references require help from an authorized member.",
     "purgeWarning": "This permanently deletes the original file. It cannot be restored from the recycle bin. Check the file name carefully.",
     "trashWarning": "The file will move to the recycle bin. Existing references remain available, and the file will no longer appear in the attachment picker.",
     "typeName": "Type the full file name to confirm permanent deletion",
@@ -3718,6 +3724,8 @@
     "tokens": "{value} tokens"
   },
   "chatHistory": {
+    "attachmentRules": "Attachment retention rules",
+    "legacyAttachmentHint": "Older chat attachments that were stored separately, outside Drive, are removed only when no other conversation uses them. This does not delete task attachments or Drive originals.",
     "options": "Options for {title}",
     "menu": "Conversation actions",
     "pin": "Pin chat",
@@ -3739,7 +3747,7 @@
     "archiveHint": "Archive finished chats to keep this list tidy. You can restore them here anytime.",
     "archivedNotice": "This chat is archived. Its messages remain available.",
     "title": "Chat title",
-    "deleteHint": "This permanently deletes the chat and its unshared chat attachments. It cannot be undone. Tasks and projects already changed by Arona, and files still used by other chats, are kept.",
+    "deleteHint": "This permanently deletes this conversation and its saved model context. It cannot be undone. Drive originals, images already attached to tasks, and task or project content are kept.",
     "previousPage": "Previous page",
     "nextPage": "Next page",
     "unread": "Unread",
@@ -4884,7 +4892,13 @@
 	},
   "tcy": {
     "chatImages": {
-      "updateHint": "Moving an existing image or changing its text keeps its current visibility. Replacing it with a chat image shares that image with people who can access this task; originals remain available.",
+      "receiptInserted": "Attached to the task. Deleting this conversation will not delete the task image.",
+      "receiptRemoved": "Removed from the description. Files in task attachments and Drive are kept.",
+      "receiptReplaced": "Replaced the description image. Existing files are kept.",
+      "receiptMoved": "Moved the description image. File ownership is unchanged.",
+      "receiptUpdated": "Updated the description image text. File ownership is unchanged.",
+      "receiptScope": "People with access to the task can see the attached image. This does not share the conversation or Drive, and original ownership is unchanged.",
+      "updateHint": "Moving an existing image or editing its text does not change its audience. Replacing it with a chat image shares only the selected image with people who can access this task, not your conversation or Drive. Original ownership is unchanged and existing files are kept.",
       "start": "At the start",
       "end": "At the end",
       "before": "Before the selected block",
@@ -4903,7 +4917,7 @@
       "insert": "Insert chat image into task description",
       "update": "Update task description image",
       "remove": "Remove image from task description",
-      "shareHint": "This shares a picture from this private conversation with everyone who can access the target task. The original file stays in your chat and Drive.",
+      "shareHint": "The image will be attached to the task and visible to people with task access. Original ownership is unchanged. This does not share your conversation or Drive, and deleting this conversation will not delete the retained task image.",
       "removeHint": "Only this image node is removed from the task description. Task attachments, the cover, Drive files and chat originals stay available."
     },
     "mcp": {
@@ -5162,6 +5176,7 @@
     }
   },
   "storage": {
+    "chatKeepHint": "Deleting these conversation records keeps Drive originals and images already attached to tasks. It does not undo changes Arona made to tasks or projects.",
     "title": "Storage",
     "intro": "See what your account stores, inspect where files are used, and choose what to clean up.",
     "overview": "Personal storage overview",
@@ -5248,7 +5263,7 @@
       "purge": "Only Drive files already in the recycle bin and with no current references can be deleted permanently. You will review the effect and confirm again.",
       "clear_previews": "Remove generated preview images while keeping original files and their uses. Opening an image later may recreate its preview."
     },
-    "chatDeleteHint": "Deleting a conversation removes its saved messages and record. Attached Drive originals and your model settings are kept. Running or compacting conversations cannot be deleted.",
+    "chatDeleteHint": "Deleting a conversation permanently removes its messages and model context. Drive originals, images already attached to tasks, and model settings are kept. Running or compacting conversations cannot be deleted.",
     "loadingItems": "Loading this list…",
     "listCount": "{count} matching items",
     "selectionHint": "Select items yourself · up to 50 per cleanup. Changing filters clears the selection.",

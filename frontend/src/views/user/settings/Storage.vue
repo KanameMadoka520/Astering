@@ -115,6 +115,7 @@ const dialog = ref<CleanupDialog | null>(null)
 const previewSnapshot = ref<ScopedStorage<StoragePreview>>()
 const currentPreview = computed(() => currentStorageData(previewSnapshot.value))
 const eligible = computed(() => currentPreview.value?.items.filter(item => item.allowed && item.token) ?? [])
+const deletingConversation = computed(() => eligible.value.some(item => item.kind === 'conversation' && item.action === 'delete'))
 const stage = ref<'review' | 'confirm' | 'results'>('review')
 const confirmed = ref(false)
 const confirmText = ref('')
@@ -183,12 +184,16 @@ function selectable(item: StorageFile | StorageConversation) {
 	if (action.value === 'clear_previews') return item.preview_bytes > 0
 	return action.value === 'purge' ? item.can_purge : item.can_trash
 }
-function toggle(item: StorageFile | StorageConversation) {
-	if (busy.value || !selectable(item)) return
-	const next = new Map(selected.value)
+function toggle(item: StorageFile | StorageConversation, event: Event) {
+	const input = event.currentTarget as HTMLInputElement
 	const key = itemKey(item)
-	if (next.has(key)) next.delete(key)
-	else if (next.size < 50) next.set(key, item)
+	if (busy.value || !selectable(item) || (input.checked && !selected.value.has(key) && selected.value.size >= 50)) {
+		input.checked = selected.value.has(key)
+		return
+	}
+	const next = new Map(selected.value)
+	if (input.checked) next.set(key, item)
+	else next.delete(key)
 	selected.value = next
 }
 function toggleExpanded(id: string) {
@@ -561,7 +566,7 @@ function resultLabel(item: CleanupResult) { return t(`storage.statuses.${item.st
 								:checked="selected.has(itemKey(file))"
 								:aria-label="t('storage.selectItem', {name: file.name})"
 								:aria-disabled="busy || !selectable(file) || (selected.size >= 50 && !selected.has(itemKey(file)))"
-								@click.prevent="toggle(file)"
+								@change="toggle(file, $event)"
 							>
 						</label>
 						<span
@@ -622,7 +627,7 @@ function resultLabel(item: CleanupResult) { return t(`storage.statuses.${item.st
 								:checked="selected.has(itemKey(chat))"
 								:aria-label="t('storage.selectItem', {name: chat.title || t('chat.untitled')})"
 								:aria-disabled="busy || !selectable(chat) || (selected.size >= 50 && !selected.has(itemKey(chat)))"
-								@click.prevent="toggle(chat)"
+								@change="toggle(chat, $event)"
 							>
 						</label>
 						<span
@@ -751,6 +756,9 @@ function resultLabel(item: CleanupResult) { return t(`storage.statuses.${item.st
 						<small>{{ t('storage.estimateHint') }}</small>
 					</div>
 					<p>{{ t('storage.reviewCount', {allowed: number(eligible.length), total: number(currentPreview.items.length)}) }}</p>
+					<p v-if="deletingConversation">
+						{{ t('storage.chatKeepHint') }}
+					</p>
 					<p class="storage-cleanup__warning">
 						{{ t('storage.validUntil', {time: date(currentPreview.expires_at)}) }}
 					</p>
@@ -790,6 +798,9 @@ function resultLabel(item: CleanupResult) { return t(`storage.statuses.${item.st
 					class="storage-final-confirm"
 				>
 					<p>{{ t('storage.permanentWarning') }}</p>
+					<p v-if="deletingConversation">
+						{{ t('storage.chatKeepHint') }}
+					</p>
 					<label class="storage-confirm-check">
 						<input
 							ref="confirmationCheck"

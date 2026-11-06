@@ -1,6 +1,6 @@
 {
   "name": "vikunja-desktop",
-  "version": "2.7.1-aster.57",
+  "version": "2.7.1-aster.58",
   "description": "Astering frontend as a standalone desktop application, based on Vikunja.",
   "main": "main.js",
   "repository": "https://github.com/KanameMadoka520/Astering",

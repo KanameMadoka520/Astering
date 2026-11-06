@@ -109,6 +109,61 @@ async function aronaServer(page: Page, conversation: FixtureConversation) {
 	})
 }
 
+for (const width of [1440, 390]) {
+	test(`Arona image receipts explain retained files at ${width}px`, async ({authenticatedPage: page}, testInfo) => {
+		await page.setViewportSize({width, height: 900})
+		const changes = [
+			{tool: 'insert_chat_image', args: {id: 11, attachment_id: 'fixture-image'}, resultID: 11, success: true},
+			{tool: 'remove_task_description_image', args: {id: 11, image_index: 0}, resultID: 11, success: true},
+			{tool: 'insert_chat_image', args: {id: 11, attachment_id: 'fixture-image'}, resultID: 11, success: false},
+			{tool: 'insert_chat_image', args: {id: 11, attachment_id: 'fixture-image'}, resultID: 99, success: true},
+		]
+		const conversation = conversationWith('Reusable task image', {
+			stage: 'completed',
+			reply: 'The recorded image changes are ready.',
+			steps: changes.map((change, index) => step(index + 1, {
+				tool_calls: [toolCall(`image-${index}`, change.tool, JSON.stringify(change.args))],
+			})),
+			actions: changes.map((change, index) => action(index + 1, change.tool, JSON.stringify(change.args), JSON.stringify({
+				id: change.resultID,
+				project_id: 1,
+				description: '<p>Saved task content</p>',
+			}), change.success)),
+		})
+		conversation.turns[0].status = 'completed'
+		await aronaServer(page, conversation)
+		await page.goto(`/ai?chat=${conversation.id}`)
+		const receipts = page.locator('.chat-image-receipt')
+		await expect(receipts).toHaveCount(2)
+		await expect(receipts.nth(0)).toContainText('Deleting this conversation will not delete the task image.')
+		await expect(receipts.nth(1)).toContainText('Files in task attachments and Drive are kept.')
+		await expect(receipts.nth(0).getByRole('link')).toHaveAttribute('href', '/tasks/11')
+		await expect(page.locator('.timeline-step[data-round="3"] .chat-image-receipt')).toHaveCount(0)
+		await expect(page.locator('.timeline-step[data-round="4"] .chat-image-receipt')).toHaveCount(0)
+		const inserted = page.locator('.timeline-step[data-round="1"] .tool-row')
+		await expect(inserted.locator('.tool-body')).toHaveCount(0)
+		await inserted.locator('.tool-disclosure > summary').click()
+		await expect(inserted).toContainText('This does not share the conversation or Drive')
+		await inserted.locator('.tool-disclosure > summary').click()
+		await expect(receipts.nth(0)).toBeVisible()
+		await receipts.nth(0).scrollIntoViewIfNeeded()
+		await page.screenshot({path: testInfo.outputPath(`image-receipts-${width}.png`)})
+		expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+		await page.locator('.assistant-heading .chat-menu-trigger').click()
+		await page.getByRole('menuitem', {name: 'Delete conversation', exact: true}).click()
+		const deletion = page.getByRole('dialog', {name: 'Delete conversation', exact: true})
+		await expect(deletion).toContainText('Drive originals, images already attached to tasks, and task or project content are kept.')
+		const rules = deletion.locator('.history-attachment-rules')
+		await expect(rules).not.toHaveAttribute('open', '')
+		await rules.locator('summary').click()
+		await expect(rules).toContainText('This does not delete task attachments or Drive originals.')
+		await page.screenshot({path: testInfo.outputPath(`delete-retention-${width}.png`)})
+		await deletion.getByRole('button', {name: 'Cancel', exact: true}).click()
+		await expect(deletion).not.toBeVisible()
+		await expect(receipts).toHaveCount(2)
+	})
+}
+
 const ROUND_TEXTS = [
 	'Round one: I will look up the Launch project first.',
 	'Round two: reading both launch tasks.',

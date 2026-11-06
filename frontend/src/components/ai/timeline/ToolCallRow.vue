@@ -5,6 +5,8 @@ import type {IconProp} from '@fortawesome/fontawesome-svg-core'
 import type {Action, Operation, ToolCall} from '@/client/generated'
 import WebSearchEvidence from '@/components/ai/WebSearchEvidence.vue'
 import TaskOrderReceipt from '@/components/ai/TaskOrderReceipt.vue'
+import ChatImageReceipt from '@/components/ai/ChatImageReceipt.vue'
+import {parseChatImageReceipt} from '@/components/ai/chatImageReceipt'
 import {parseTaskOrderResult} from '@/helpers/taskOrder'
 import {usePreferredOpen} from '@/composables/useAronaDisplayPreferences'
 import {argumentSummary, callArguments, callName, isSteeringReplan} from '@/helpers/aronaTimeline'
@@ -75,6 +77,7 @@ const taskOrder = computed(() => {
 		return undefined
 	}
 })
+const chatImage = computed(() => parseChatImageReceipt(props.action, props.operation))
 function pretty(value?: string) {
 	if (!value) return t('chat.unavailable')
 	try { return JSON.stringify(JSON.parse(value), null, 2) } catch { return value }
@@ -131,6 +134,12 @@ function pretty(value?: string) {
 					{{ t('aronaSteer.skippedNote') }}
 				</p>
 				<template v-if="action">
+					<p
+						v-if="chatImage"
+						class="tool-note"
+					>
+						{{ t('tcy.chatImages.receiptScope') }}
+					</p>
 					<WebSearchEvidence
 						v-if="action.search"
 						:result="action.search"
@@ -156,6 +165,10 @@ function pretty(value?: string) {
 				</template>
 			</div>
 		</details>
+		<ChatImageReceipt
+			v-if="chatImage"
+			:receipt="chatImage"
+		/>
 		<TaskOrderReceipt
 			v-if="taskOrder"
 			:result="taskOrder"

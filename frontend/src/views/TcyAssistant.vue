@@ -2130,7 +2130,12 @@ onBeforeUnmount(() => {
 				<template v-if="historyDialog?.kind === 'delete'">
 					<p class="history-delete-title">
 						{{ historyDialog.conversation.title || t('chat.untitled') }}
-					</p><p>{{ t('chatHistory.deleteHint') }}</p>
+					</p>
+					<p>{{ t('chatHistory.deleteHint') }}</p>
+					<details class="history-attachment-rules">
+						<summary>{{ t('chatHistory.attachmentRules') }}</summary>
+						<p>{{ t('chatHistory.legacyAttachmentHint') }}</p>
+					</details>
 				</template>
 				<label v-else>{{ t('chatHistory.title') }}<input
 					v-model="newTitle"
@@ -3250,6 +3255,20 @@ summary {
 .history-delete-title {
 	margin-block-end: var(--space-2);
 	font-weight: var(--weight-semibold);
+}
+
+.history-attachment-rules {
+	margin-block-start: var(--space-2);
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+
+	summary {
+		min-block-size: var(--target-min);
+		padding-block: var(--space-3);
+		cursor: pointer;
+
+		&:focus-visible { @include focus-ring; }
+	}
 }
 
 .history-dialog-actions {
