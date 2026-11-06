@@ -25,6 +25,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"xorm.io/xorm"
 )
 
 func TestProjectCreateInitializesTaskIndexCounter(t *testing.T) {
@@ -148,6 +149,7 @@ func TestTaskIndexesAreNeverReused(t *testing.T) {
 		usr := &user.User{ID: 1}
 
 		s := db.NewSession()
+		defer s.Close()
 		created := &Task{Title: "to permanently delete", ProjectID: 1}
 		require.NoError(t, created.Create(s, usr))
 		assert.Equal(t, int64(35), created.Index)
@@ -155,6 +157,7 @@ func TestTaskIndexesAreNeverReused(t *testing.T) {
 		require.NoError(t, s.Close())
 
 		s = db.NewSession()
+		defer s.Close()
 		require.NoError(t, hardDeleteTask(s, created))
 		require.NoError(t, s.Commit())
 		require.NoError(t, s.Close())
@@ -171,6 +174,8 @@ func TestTaskIndexesAreNeverReused(t *testing.T) {
 		usr := &user.User{ID: 1}
 
 		s := db.NewSession()
+		defer s.Close()
+		grantTaskIndexProjectWrite(t, s)
 		created := &Task{Title: "move me", ProjectID: 2}
 		require.NoError(t, created.Create(s, usr))
 		assert.Equal(t, int64(3), created.Index)
@@ -178,6 +183,7 @@ func TestTaskIndexesAreNeverReused(t *testing.T) {
 		require.NoError(t, s.Close())
 
 		s = db.NewSession()
+		defer s.Close()
 		moved := &Task{ID: created.ID, ProjectID: 1}
 		require.NoError(t, moved.Update(s, usr))
 		require.NoError(t, s.Commit())
@@ -194,6 +200,8 @@ func TestTaskIndexesAreNeverReused(t *testing.T) {
 func TestTaskIndexReservationRollsBackWithTaskChanges(t *testing.T) {
 	db.LoadAndAssertFixtures(t)
 	s := db.NewSession()
+	defer s.Close()
+	grantTaskIndexProjectWrite(t, s)
 	move := &Task{ID: 12, ProjectID: 2, CoverImageAttachmentID: 999}
 	err := move.Update(s, &user.User{ID: 1})
 	var attachmentErr *ErrAttachmentDoesNotBelongToTask
@@ -226,6 +234,7 @@ func TestTaskIndexAliases(t *testing.T) {
 		s := db.NewSession()
 		defer s.Close()
 
+		grantTaskIndexProjectWrite(t, s)
 		moved := &Task{ID: 12, ProjectID: 2}
 		require.NoError(t, moved.Update(s, &user.User{ID: 1}))
 		assert.Equal(t, int64(3), moved.Index)
@@ -253,6 +262,7 @@ func TestTaskIndexAliases(t *testing.T) {
 		s := db.NewSession()
 		defer s.Close()
 
+		grantTaskIndexProjectWrite(t, s)
 		firstMove := &Task{ID: 12, ProjectID: 2}
 		require.NoError(t, firstMove.Update(s, &user.User{ID: 1}))
 		assert.Equal(t, int64(3), firstMove.Index)
@@ -273,6 +283,7 @@ func TestTaskIndexAliases(t *testing.T) {
 		s := db.NewSession()
 		defer s.Close()
 
+		grantTaskIndexProjectWrite(t, s)
 		_, err := s.Insert(&TaskIndexAlias{ProjectID: 1, Index: 12, TaskID: 1})
 		require.NoError(t, err)
 
@@ -288,12 +299,15 @@ func TestTaskIndexAliases(t *testing.T) {
 	t.Run("soft deletion retains aliases and counters", func(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
 		moveSession := db.NewSession()
+		defer moveSession.Close()
+		grantTaskIndexProjectWrite(t, moveSession)
 		moved := &Task{ID: 12, ProjectID: 2}
 		require.NoError(t, moved.Update(moveSession, &user.User{ID: 1}))
 		require.NoError(t, moveSession.Commit())
 		require.NoError(t, moveSession.Close())
 
 		deleteSession := db.NewSession()
+		defer deleteSession.Close()
 		require.NoError(t, (&Task{ID: 12}).Delete(deleteSession, &user.User{ID: 3}))
 		require.NoError(t, deleteSession.Commit())
 		require.NoError(t, deleteSession.Close())
@@ -309,4 +323,13 @@ func TestTaskIndexAliases(t *testing.T) {
 		require.True(t, has)
 		assert.Equal(t, int64(3), counter.LastIndex)
 	})
+}
+
+func grantTaskIndexProjectWrite(t *testing.T, s *xorm.Session) {
+	t.Helper()
+	_, err := s.Insert(&ProjectUser{ProjectID: 2, UserID: 1, Permission: PermissionWrite})
+	require.NoError(t, err)
+	canWrite, err := (&Project{ID: 2}).CanWrite(s, &user.User{ID: 1})
+	require.NoError(t, err)
+	require.True(t, canWrite)
 }

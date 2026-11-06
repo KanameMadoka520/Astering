@@ -241,6 +241,18 @@ func compactToolResult(name string, raw json.RawMessage, data string) string {
 		output = selectFields(asObject(value), "years", "unknown", "milestones", "projects", "active_days", "items", "total", "page", "total_pages")
 	case "set_project_completed":
 		output = selectFields(asObject(value), "id", "title", "is_completed", "completed_at", "is_archived", "updated")
+	case "restore_project_version":
+		item := asObject(value)
+		output = selectFields(item, "project_id", "restored_from_version_id", "before_version_id", "version", "current_hash", "verified")
+		// UI and audit retain the full ID mapping; an LLM only needs counts unless it asks for more.
+		counts := map[string]int{}
+		for _, key := range []string{"changed_task_ids", "removed_task_ids"} {
+			if ids, ok := item[key].([]any); ok {
+				counts[key] = len(ids)
+			}
+		}
+		output.(map[string]any)["change_counts"] = counts
+		output.(map[string]any)["details_omitted"] = true
 	case "configure_task_routine", "check_in_task_routine", "set_task_routine_progress":
 		output = selectFields(asObject(value), "id", "project_id", "title", "done", "routine", "updated")
 	case "set_task_repeat_bucket":

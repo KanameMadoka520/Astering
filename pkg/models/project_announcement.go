@@ -78,6 +78,13 @@ func (n *ProjectAnnouncement) ReadOne(s *xorm.Session, _ web.Auth) error {
 	return err
 }
 func (n *ProjectAnnouncement) Update(s *xorm.Session, a web.Auth) error {
+	if err := LockProjectsForVersionMutation(s, n.ProjectID); err != nil {
+		return err
+	}
+	if err := requireCurrentProjectWrite(s, a, n.ProjectID); err != nil {
+		return err
+	}
+
 	if n.Revision < 0 || utf8.RuneCountInString(n.Title) > 160 || len(n.Content) > 65536 {
 		return InvalidFieldErrorWithMessage([]string{"title", "content", "revision"}, "Invalid announcement length or revision")
 	}

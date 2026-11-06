@@ -285,6 +285,10 @@ func TestProjectAccessLossCleanup(t *testing.T) {
 	t.Run("deleting the user deletes their webhooks on foreign projects", func(t *testing.T) {
 		f := setupAccessLoss(t)
 		f.shareDirectly(t, PermissionWrite)
+		// Account deletion is a new request, with its complete project scope
+		// acquired before the setup transaction's project locks are taken.
+		require.NoError(t, f.s.Commit())
+		require.NoError(t, f.s.Begin())
 
 		u, err := user.GetUserByID(f.s, f.member.ID)
 		require.NoError(t, err)

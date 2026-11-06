@@ -97,8 +97,12 @@ func (b *TaskBucket) upsert(s *xorm.Session) (err error) {
 
 // updateTaskBucket is internally used to actually do the update.
 func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
+	if err := lockAuthorizedTasksForProjectMutation(s, a, []int64{b.TaskID}); err != nil {
+		return err
+	}
+
 	oldTaskBucket := &TaskBucket{}
-	_, err = s.
+	_, err = routineCurrentRead(s).
 		Where("task_id = ? AND project_view_id = ?", b.TaskID, b.ProjectViewID).
 		Get(oldTaskBucket)
 	if err != nil {
@@ -110,12 +114,12 @@ func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 		return
 	}
 
-	view, err := GetProjectViewByIDAndProject(s, b.ProjectViewID, b.ProjectID)
+	view, err := GetProjectViewByIDAndProject(routineCurrentRead(s), b.ProjectViewID, b.ProjectID)
 	if err != nil {
 		return err
 	}
 
-	bucket, err := getBucketByID(s, b.BucketID)
+	bucket, err := getBucketByID(routineCurrentRead(s), b.BucketID)
 	if err != nil {
 		return err
 	}
@@ -132,6 +136,16 @@ func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 	err = task.ReadOne(s, a)
 	if err != nil {
 		return err
+	}
+	// ReadOne hydrates the response's related data, but its ordinary read can
+	// come from a MySQL view established before waiting for the project gate.
+	// Reload persisted fields for recurrence/Done calculations from current data.
+	exists, err := routineCurrentRead(s).ID(task.ID).NoAutoCondition().Get(task)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return ErrTaskDoesNotExist{ID: task.ID}
 	}
 
 	var updateBucket = true
@@ -167,7 +181,7 @@ func updateTaskBucket(s *xorm.Session, a web.Auth, b *TaskBucket) (err error) {
 
 	// Recurrence may redirect a Done move; validate and report its actual destination.
 	if bucket.ID != b.BucketID {
-		bucket, err = getBucketByID(s, b.BucketID)
+		bucket, err = getBucketByID(routineCurrentRead(s), b.BucketID)
 		if err != nil {
 			return err
 		}
@@ -231,7 +245,7 @@ func persistTaskBucketDoneState(s *xorm.Session, task *Task, view *ProjectView) 
 	// Since the done state of the task was changed, we need to move the task into all done buckets everywhere
 	if task.Done {
 		viewsWithDoneBucket := []*ProjectView{}
-		err = s.
+		err = routineCurrentRead(s).
 			Where("project_id = ? AND view_kind = ? AND bucket_configuration_mode = ? AND id != ? AND done_bucket_id != 0",
 				view.ProjectID, ProjectViewKindKanban, BucketConfigurationModeManual, view.ID).
 			Find(&viewsWithDoneBucket)

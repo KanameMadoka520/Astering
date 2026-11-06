@@ -54,10 +54,11 @@ func TestProjectPermissions_OwnerInMultipleTeamsWithDifferentPermissions(t *test
 	require.NoError(t, err)
 	err = s.Commit()
 	require.NoError(t, err)
+	require.NoError(t, s.Begin())
 
 	// Verify User A has admin permissions as the owner
 	t.Run("owner has admin permissions before sharing", func(t *testing.T) {
-		s = db.NewSession()
+		s := db.NewSession()
 		defer s.Close()
 
 		canRead, maxPerm, err := project.CanRead(s, userA)
@@ -83,6 +84,7 @@ func TestProjectPermissions_OwnerInMultipleTeamsWithDifferentPermissions(t *test
 		err = teamY.Create(sess, userA)
 		require.NoError(t, err)
 		require.NoError(t, sess.Commit())
+		require.NoError(t, sess.Begin())
 
 		// Share project with Team Y (admin permissions)
 		teamProjectY := &TeamProject{
@@ -93,6 +95,7 @@ func TestProjectPermissions_OwnerInMultipleTeamsWithDifferentPermissions(t *test
 		err = teamProjectY.Create(sess, userA)
 		require.NoError(t, err)
 		require.NoError(t, sess.Commit())
+		require.NoError(t, sess.Begin())
 	}
 
 	// Setup sharing with Team Y
@@ -102,7 +105,7 @@ func TestProjectPermissions_OwnerInMultipleTeamsWithDifferentPermissions(t *test
 
 	// Verify User A still has admin permissions after sharing with Team Y
 	t.Run("owner has admin permissions after sharing with team Y (admin)", func(t *testing.T) {
-		s = db.NewSession()
+		s := db.NewSession()
 		defer s.Close()
 
 		canRead, maxPerm, err := project.CanRead(s, userA)
@@ -128,6 +131,7 @@ func TestProjectPermissions_OwnerInMultipleTeamsWithDifferentPermissions(t *test
 		err = teamZ.Create(sess, userA)
 		require.NoError(t, err)
 		require.NoError(t, sess.Commit())
+		require.NoError(t, sess.Begin())
 
 		// Share project with Team Z (read-only permissions)
 		teamProjectZ := &TeamProject{
@@ -138,6 +142,7 @@ func TestProjectPermissions_OwnerInMultipleTeamsWithDifferentPermissions(t *test
 		err = teamProjectZ.Create(sess, userA)
 		require.NoError(t, err)
 		require.NoError(t, sess.Commit())
+		require.NoError(t, sess.Begin())
 	}
 
 	// Setup sharing with Team Z
@@ -148,7 +153,7 @@ func TestProjectPermissions_OwnerInMultipleTeamsWithDifferentPermissions(t *test
 	// Verify User A STILL has admin permissions after sharing with Team Z
 	// user should retain highest permission (owner/admin), not be downgraded to read-only
 	t.Run("owner has admin permissions after sharing with team Z (read-only)", func(t *testing.T) {
-		s = db.NewSession()
+		s := db.NewSession()
 		defer s.Close()
 
 		canRead, maxPerm, err := project.CanRead(s, userA)
@@ -190,6 +195,7 @@ func TestProjectPermissions_OwnerInMultipleTeamsAdminThenWrite(t *testing.T) {
 	require.NoError(t, err)
 	err = s.Commit()
 	require.NoError(t, err)
+	require.NoError(t, s.Begin())
 
 	// Create Team Y with admin permissions - User A will be automatically added as a member
 	teamY := &Team{
@@ -199,6 +205,7 @@ func TestProjectPermissions_OwnerInMultipleTeamsAdminThenWrite(t *testing.T) {
 	require.NoError(t, err)
 	err = s.Commit()
 	require.NoError(t, err)
+	require.NoError(t, s.Begin())
 
 	teamProjectY := &TeamProject{
 		TeamID:     teamY.ID,
@@ -209,6 +216,7 @@ func TestProjectPermissions_OwnerInMultipleTeamsAdminThenWrite(t *testing.T) {
 	require.NoError(t, err)
 	err = s.Commit()
 	require.NoError(t, err)
+	require.NoError(t, s.Begin())
 
 	// Create Team Z with write permissions - User A will be automatically added as a member
 	teamZ := &Team{
@@ -218,6 +226,7 @@ func TestProjectPermissions_OwnerInMultipleTeamsAdminThenWrite(t *testing.T) {
 	require.NoError(t, err)
 	err = s.Commit()
 	require.NoError(t, err)
+	require.NoError(t, s.Begin())
 
 	teamProjectZ := &TeamProject{
 		TeamID:     teamZ.ID,
@@ -228,10 +237,11 @@ func TestProjectPermissions_OwnerInMultipleTeamsAdminThenWrite(t *testing.T) {
 	require.NoError(t, err)
 	err = s.Commit()
 	require.NoError(t, err)
+	require.NoError(t, s.Begin())
 
 	// Test: User A should still have admin permissions (not downgraded to write)
 	t.Run("owner has admin permissions after sharing with admin team then write team", func(t *testing.T) {
-		s = db.NewSession()
+		s := db.NewSession()
 		defer s.Close()
 
 		canRead, maxPerm, err := project.CanRead(s, userA)
@@ -275,6 +285,7 @@ func TestProjectPermissions_NonOwnerInMultipleTeams(t *testing.T) {
 	require.NoError(t, err)
 	err = s.Commit()
 	require.NoError(t, err)
+	require.NoError(t, s.Begin())
 
 	// Create Team Y with admin permissions
 	teamY := &Team{
@@ -284,6 +295,7 @@ func TestProjectPermissions_NonOwnerInMultipleTeams(t *testing.T) {
 	require.NoError(t, err)
 	err = s.Commit()
 	require.NoError(t, err)
+	require.NoError(t, s.Begin())
 
 	// Add User B to Team Y
 	teamMemberY := &TeamMember{
@@ -294,6 +306,7 @@ func TestProjectPermissions_NonOwnerInMultipleTeams(t *testing.T) {
 	require.NoError(t, err)
 	err = s.Commit()
 	require.NoError(t, err)
+	require.NoError(t, s.Begin())
 
 	// Share project with Team Y (admin)
 	teamProjectY := &TeamProject{
@@ -305,10 +318,11 @@ func TestProjectPermissions_NonOwnerInMultipleTeams(t *testing.T) {
 	require.NoError(t, err)
 	err = s.Commit()
 	require.NoError(t, err)
+	require.NoError(t, s.Begin())
 
 	// Verify User B has admin permissions through Team Y
 	t.Run("non-owner has admin through team Y", func(t *testing.T) {
-		s = db.NewSession()
+		s := db.NewSession()
 		defer s.Close()
 
 		canRead, maxPerm, err := project.CanRead(s, userB)
@@ -329,6 +343,7 @@ func TestProjectPermissions_NonOwnerInMultipleTeams(t *testing.T) {
 	require.NoError(t, err)
 	err = s.Commit()
 	require.NoError(t, err)
+	require.NoError(t, s.Begin())
 
 	// Add User B to Team Z
 	teamMemberZ := &TeamMember{
@@ -339,6 +354,7 @@ func TestProjectPermissions_NonOwnerInMultipleTeams(t *testing.T) {
 	require.NoError(t, err)
 	err = s.Commit()
 	require.NoError(t, err)
+	require.NoError(t, s.Begin())
 
 	// Share project with Team Z (read-only)
 	teamProjectZ := &TeamProject{
@@ -350,10 +366,11 @@ func TestProjectPermissions_NonOwnerInMultipleTeams(t *testing.T) {
 	require.NoError(t, err)
 	err = s.Commit()
 	require.NoError(t, err)
+	require.NoError(t, s.Begin())
 
 	// Test: User B should still have admin permissions (highest of Team Y and Team Z)
 	t.Run("non-owner retains admin after adding to read-only team Z", func(t *testing.T) {
-		s = db.NewSession()
+		s := db.NewSession()
 		defer s.Close()
 
 		canRead, maxPerm, err := project.CanRead(s, userB)
@@ -393,6 +410,7 @@ func TestProjectPermissions_OrderOfSharingDoesNotMatter(t *testing.T) {
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		// Create and share with read-only team first
 		teamRead := &Team{Name: "Read First Team"}
@@ -400,12 +418,14 @@ func TestProjectPermissions_OrderOfSharingDoesNotMatter(t *testing.T) {
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		teamMemberRead := &TeamMember{TeamID: teamRead.ID, Username: "user2"}
 		err = teamMemberRead.Create(s, owner)
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		teamProjectRead := &TeamProject{
 			TeamID:     teamRead.ID,
@@ -416,6 +436,7 @@ func TestProjectPermissions_OrderOfSharingDoesNotMatter(t *testing.T) {
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		// Now share with admin team
 		teamAdmin := &Team{Name: "Admin Second Team"}
@@ -423,12 +444,14 @@ func TestProjectPermissions_OrderOfSharingDoesNotMatter(t *testing.T) {
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		teamMemberAdmin := &TeamMember{TeamID: teamAdmin.ID, Username: "user2"}
 		err = teamMemberAdmin.Create(s, owner)
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		teamProjectAdmin := &TeamProject{
 			TeamID:     teamAdmin.ID,
@@ -439,17 +462,18 @@ func TestProjectPermissions_OrderOfSharingDoesNotMatter(t *testing.T) {
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		// Verify user has admin permission
-		s = db.NewSession()
-		defer s.Close()
+		readSession := db.NewSession()
+		defer readSession.Close()
 
-		canRead, maxPerm, err := project.CanRead(s, userB)
+		canRead, maxPerm, err := project.CanRead(readSession, userB)
 		require.NoError(t, err)
 		assert.True(t, canRead)
 		assert.Equal(t, int(PermissionAdmin), maxPerm, "User should have admin even though read-only was shared first")
 
-		isAdmin, err := project.IsAdmin(s, userB)
+		isAdmin, err := project.IsAdmin(readSession, userB)
 		require.NoError(t, err)
 		assert.True(t, isAdmin)
 	})
@@ -466,6 +490,7 @@ func TestProjectPermissions_OrderOfSharingDoesNotMatter(t *testing.T) {
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		// Create and share with admin team first
 		teamAdmin := &Team{Name: "Admin First Team"}
@@ -473,12 +498,14 @@ func TestProjectPermissions_OrderOfSharingDoesNotMatter(t *testing.T) {
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		teamMemberAdmin := &TeamMember{TeamID: teamAdmin.ID, Username: "user2"}
 		err = teamMemberAdmin.Create(s, owner)
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		teamProjectAdmin := &TeamProject{
 			TeamID:     teamAdmin.ID,
@@ -489,6 +516,7 @@ func TestProjectPermissions_OrderOfSharingDoesNotMatter(t *testing.T) {
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		// Now share with read-only team
 		teamRead := &Team{Name: "Read Second Team"}
@@ -496,12 +524,14 @@ func TestProjectPermissions_OrderOfSharingDoesNotMatter(t *testing.T) {
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		teamMemberRead := &TeamMember{TeamID: teamRead.ID, Username: "user2"}
 		err = teamMemberRead.Create(s, owner)
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		teamProjectRead := &TeamProject{
 			TeamID:     teamRead.ID,
@@ -512,17 +542,18 @@ func TestProjectPermissions_OrderOfSharingDoesNotMatter(t *testing.T) {
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		// Verify user STILL has admin permission (not downgraded to read)
-		s = db.NewSession()
-		defer s.Close()
+		readSession := db.NewSession()
+		defer readSession.Close()
 
-		canRead, maxPerm, err := project.CanRead(s, userB)
+		canRead, maxPerm, err := project.CanRead(readSession, userB)
 		require.NoError(t, err)
 		assert.True(t, canRead)
 		assert.Equal(t, int(PermissionAdmin), maxPerm, "User should STILL have admin even though read-only was shared last")
 
-		isAdmin, err := project.IsAdmin(s, userB)
+		isAdmin, err := project.IsAdmin(readSession, userB)
 		require.NoError(t, err)
 		assert.True(t, isAdmin, "User should STILL be admin even though read-only was shared last")
 	})
@@ -557,6 +588,7 @@ func TestProjectPermissions_UserInMultipleTeamsWithSamePermission(t *testing.T) 
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		// Create first team with read-only permission
 		team1 := &Team{Name: "Team 1 Read"}
@@ -564,12 +596,14 @@ func TestProjectPermissions_UserInMultipleTeamsWithSamePermission(t *testing.T) 
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		teamMember1 := &TeamMember{TeamID: team1.ID, Username: "user2"}
 		err = teamMember1.Create(s, owner)
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		teamProject1 := &TeamProject{
 			TeamID:     team1.ID,
@@ -580,6 +614,7 @@ func TestProjectPermissions_UserInMultipleTeamsWithSamePermission(t *testing.T) 
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		// Create second team with read-only permission
 		team2 := &Team{Name: "Team 2 Read"}
@@ -587,12 +622,14 @@ func TestProjectPermissions_UserInMultipleTeamsWithSamePermission(t *testing.T) 
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		teamMember2 := &TeamMember{TeamID: team2.ID, Username: "user2"}
 		err = teamMember2.Create(s, owner)
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		teamProject2 := &TeamProject{
 			TeamID:     team2.ID,
@@ -603,21 +640,22 @@ func TestProjectPermissions_UserInMultipleTeamsWithSamePermission(t *testing.T) 
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		// Verify user has read permission (not more, not less)
-		s = db.NewSession()
-		defer s.Close()
+		readSession := db.NewSession()
+		defer readSession.Close()
 
-		canRead, maxPerm, err := project.CanRead(s, userB)
+		canRead, maxPerm, err := project.CanRead(readSession, userB)
 		require.NoError(t, err)
 		assert.True(t, canRead, "User should be able to read")
 		assert.Equal(t, int(PermissionRead), maxPerm, "User should have exactly read permission when all teams grant read-only")
 
-		canWrite, err := project.CanWrite(s, userB)
+		canWrite, err := project.CanWrite(readSession, userB)
 		require.NoError(t, err)
 		assert.False(t, canWrite, "User should NOT be able to write with only read permissions")
 
-		isAdmin, err := project.IsAdmin(s, userB)
+		isAdmin, err := project.IsAdmin(readSession, userB)
 		require.NoError(t, err)
 		assert.False(t, isAdmin, "User should NOT be admin with only read permissions")
 	})
@@ -635,6 +673,7 @@ func TestProjectPermissions_UserInMultipleTeamsWithSamePermission(t *testing.T) 
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		// Create first team with write permission
 		team1 := &Team{Name: "Team 1 Write"}
@@ -642,12 +681,14 @@ func TestProjectPermissions_UserInMultipleTeamsWithSamePermission(t *testing.T) 
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		teamMember1 := &TeamMember{TeamID: team1.ID, Username: "user2"}
 		err = teamMember1.Create(s, owner)
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		teamProject1 := &TeamProject{
 			TeamID:     team1.ID,
@@ -658,6 +699,7 @@ func TestProjectPermissions_UserInMultipleTeamsWithSamePermission(t *testing.T) 
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		// Create second team with write permission
 		team2 := &Team{Name: "Team 2 Write"}
@@ -665,12 +707,14 @@ func TestProjectPermissions_UserInMultipleTeamsWithSamePermission(t *testing.T) 
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		teamMember2 := &TeamMember{TeamID: team2.ID, Username: "user2"}
 		err = teamMember2.Create(s, owner)
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		teamProject2 := &TeamProject{
 			TeamID:     team2.ID,
@@ -681,21 +725,22 @@ func TestProjectPermissions_UserInMultipleTeamsWithSamePermission(t *testing.T) 
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
+		require.NoError(t, s.Begin())
 
 		// Verify user has write permission
-		s = db.NewSession()
-		defer s.Close()
+		readSession := db.NewSession()
+		defer readSession.Close()
 
-		canRead, maxPerm, err := project.CanRead(s, userB)
+		canRead, maxPerm, err := project.CanRead(readSession, userB)
 		require.NoError(t, err)
 		assert.True(t, canRead, "User should be able to read")
 		assert.Equal(t, int(PermissionWrite), maxPerm, "User should have exactly write permission when all teams grant write")
 
-		canWrite, err := project.CanWrite(s, userB)
+		canWrite, err := project.CanWrite(readSession, userB)
 		require.NoError(t, err)
 		assert.True(t, canWrite, "User should be able to write")
 
-		isAdmin, err := project.IsAdmin(s, userB)
+		isAdmin, err := project.IsAdmin(readSession, userB)
 		require.NoError(t, err)
 		assert.False(t, isAdmin, "User should NOT be admin with only write permissions")
 	})

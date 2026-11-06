@@ -1,7 +1,9 @@
 import {QueryClient, VueQueryPlugin} from '@tanstack/vue-query'
 import {shallowMount} from '@vue/test-utils'
 import {defineComponent, h} from 'vue'
+import {createMemoryHistory, createRouter} from 'vue-router'
 import {beforeEach, describe, expect, it, vi} from 'vitest'
+import {PERMISSIONS} from '@/constants/permissions'
 
 const subscriptionMutation = vi.hoisted(() => ({
 	mutateAsync: vi.fn(() => Promise.resolve(null)),
@@ -42,11 +44,15 @@ const SubscriptionStub = defineComponent({
 import ProjectSettingsDropdown from './ProjectSettingsDropdown.vue'
 
 function mountDropdown(project: InstanceType<typeof ProjectSettingsDropdown>['$props']['project']) {
+	const router = createRouter({
+		history: createMemoryHistory(),
+		routes: [{path: '/:pathMatch(.*)*', component: {render: () => null}}],
+	})
 	return shallowMount(ProjectSettingsDropdown, {
-		props: {project},
+		props: {project: {max_permission: PERMISSIONS.READ_WRITE, ...project}},
 		attrs: {class: 'project-title-dropdown'},
 		global: {
-			plugins: [[VueQueryPlugin, {queryClient: new QueryClient()}]],
+			plugins: [router, [VueQueryPlugin, {queryClient: new QueryClient()}]],
 			stubs: {
 				BaseButton: true,
 				Dropdown: DropdownStub,

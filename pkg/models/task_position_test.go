@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/KanameMadoka520/Astering/pkg/db"
+	"github.com/KanameMadoka520/Astering/pkg/user"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -285,9 +286,14 @@ func TestUpdateTaskPositionWithConflictResolution(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
 		s := db.NewSession()
 		defer s.Close()
+		_, err := s.Insert([]*Task{
+			{ID: 600, ProjectID: 24, Index: 600, Title: "First position fixture"},
+			{ID: 601, ProjectID: 24, Index: 601, Title: "Second position fixture"},
+		})
+		require.NoError(t, err)
 
 		// Clear existing positions for this view
-		_, err := s.Where("project_view_id = ?", 95).Delete(&TaskPosition{})
+		_, err = s.Where("project_view_id = ?", 95).Delete(&TaskPosition{})
 		require.NoError(t, err)
 
 		// Set up: two tasks with different positions
@@ -303,7 +309,7 @@ func TestUpdateTaskPositionWithConflictResolution(t *testing.T) {
 			Position:      200,
 		}
 
-		err = updateTaskPosition(s, nil, tp)
+		err = updateTaskPosition(s, &user.User{ID: 6}, tp)
 		require.NoError(t, err)
 
 		// Verify both tasks now have unique positions
@@ -320,8 +326,15 @@ func TestUpdateTaskPositionWithConflictResolution(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
 		s := db.NewSession()
 		defer s.Close()
+		_, err := s.Insert([]*Task{
+			{ID: 900, ProjectID: 24, Index: 900, Title: "Left position fixture"},
+			{ID: 901, ProjectID: 24, Index: 901, Title: "Conflicting position fixture"},
+			{ID: 902, ProjectID: 24, Index: 902, Title: "Right position fixture"},
+			{ID: 903, ProjectID: 24, Index: 903, Title: "Moved position fixture"},
+		})
+		require.NoError(t, err)
 
-		_, err := s.Where("project_view_id = ?", 93).Delete(&TaskPosition{})
+		_, err = s.Where("project_view_id = ?", 93).Delete(&TaskPosition{})
 		require.NoError(t, err)
 
 		// The gap between the neighbours of the target position only leaves
@@ -340,7 +353,7 @@ func TestUpdateTaskPositionWithConflictResolution(t *testing.T) {
 			Position:      conflictPosition,
 		}
 
-		err = updateTaskPosition(s, nil, tp)
+		err = updateTaskPosition(s, &user.User{ID: 6}, tp)
 		require.NoError(t, err)
 
 		var positions []*TaskPosition

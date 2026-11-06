@@ -322,6 +322,9 @@ func driveCover(ctx context.Context, in *struct {
 	}
 	s := db.NewSession()
 	defer s.Close()
+	if err := models.LockProjectsForVersionMutation(s, in.Body.ProjectID); err != nil {
+		return nil, translateDomainError(err)
+	}
 	d, err := models.LockDriveItem(s, a, in.ID, in.Body.Revision)
 	if err != nil {
 		return nil, driveError(err)

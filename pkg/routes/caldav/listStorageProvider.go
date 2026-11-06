@@ -609,6 +609,9 @@ func (vcls *VikunjaCaldavProjectStorage) CreateResource(rpath, content string) (
 	}
 
 	// Create the task
+	if err := lockCaldavRelationProjects(s, vcls.user, vTask, vTask.RelatedTasks); err != nil {
+		return nil, err
+	}
 	err = vTask.Create(s, vcls.user)
 	if err != nil {
 		log.Errorf("[CALDAV] Failed to create task in CreateResource: %v, task: %+v", err, vTask)
@@ -805,6 +808,9 @@ func (vcls *VikunjaCaldavProjectStorage) UpdateResource(rpath, content string) (
 		base.Reminders = vTask.Reminders
 	}
 
+	if err := lockCaldavRelationProjects(s, vcls.user, &base, vTask.RelatedTasks); err != nil {
+		return nil, err
+	}
 	err = base.Update(s, vcls.user)
 	if err != nil {
 		log.Errorf("[CALDAV] Failed to update task in UpdateResource: %v, task: %+v", err, base)
@@ -999,8 +1005,49 @@ func removeStaleRelations(s *xorm.Session, a web.Auth, task *models.Task, newRel
 // Bounds the tasks a single VTODO can mint via unknown RELATED-TO UIDs.
 const maxPlaceholdersPerVTODO = 50
 
+// A CalDAV write can touch another project's relation endpoint after updating
+// its own task. Declare the whole authorized scope before any task/view lock,
+// including old relations that this VTODO will remove. Missing and inaccessible
+// UIDs remain indistinguishable and never add a foreign project's lock scope.
+func lockCaldavRelationProjects(s *xorm.Session, a web.Auth, task *models.Task, relations map[models.RelationKind][]*models.Task) error {
+	projectIDs := []int64{task.ProjectID}
+	uids := []string{}
+	for _, related := range relations {
+		for _, candidate := range related {
+			if candidate != nil && candidate.UID != "" {
+				uids = append(uids, candidate.UID)
+			}
+		}
+	}
+	if len(uids) > 0 {
+		accessible, err := models.GetTasksByUIDs(s, uids, a)
+		if err != nil {
+			return err
+		}
+		for _, candidate := range accessible {
+			projectIDs = append(projectIDs, candidate.ProjectID)
+		}
+	}
+	if task.ID > 0 {
+		current := &models.Task{ID: task.ID}
+		if err := current.ReadOne(s, a); err != nil {
+			return err
+		}
+		projectIDs = append(projectIDs, current.ProjectID)
+		for _, related := range current.RelatedTasks {
+			for _, candidate := range related {
+				projectIDs = append(projectIDs, candidate.ProjectID)
+			}
+		}
+	}
+	return models.LockProjectViewsForTaskMutation(s, projectIDs...)
+}
+
 // Persist new relations provided by the VTODO entry:
 func persistRelations(s *xorm.Session, a web.Auth, task *models.Task, newRelations map[models.RelationKind][]*models.Task) (err error) {
+	if err = lockCaldavRelationProjects(s, a, task, newRelations); err != nil {
+		return err
+	}
 
 	err = removeStaleRelations(s, a, task, newRelations)
 	if err != nil {

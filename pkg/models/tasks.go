@@ -252,6 +252,7 @@ type taskSearchOptions struct {
 	projectIDs         []int64
 	expand             []TaskCollectionExpandable
 	projectViewID      int64
+	currentCountOnly   bool
 
 	// userProvidedSort distinguishes an explicit sort_by from the id/position
 	// defaults appended later, so relevance ordering only replaces the default sort.
@@ -881,23 +882,38 @@ func addMoreInfoToTasks(s *xorm.Session, taskMap map[int64]*Task, a web.Auth, vi
 
 // checkBucketLimit counts pendingInBatch tasks whose task_buckets rows aren't inserted yet, and returns taskCount even on overflow so callers can tell which task overflows.
 func checkBucketLimit(s *xorm.Session, a web.Auth, t *Task, bucket *Bucket, view *ProjectView, pendingInBatch int64) (taskCount int64, err error) {
-	if view.ProjectID < 0 || (view.Filter != nil && view.Filter.Filter != "") {
+	switch {
+	case view.ProjectID < 0 || (view.Filter != nil && view.Filter.Filter != ""):
 		// For saved filters or views with a filter, the count must be scoped to
 		// this bucket *and* the filter: raw task_buckets rows can include tasks
 		// that no longer match the filter (#355), while the unscoped filter total
 		// counts tasks across all buckets, not just this one (#2672). ReadAll
 		// combines the bucket_id condition with the saved-filter / view filter.
 		tc := &TaskCollection{
-			ProjectID:     view.ProjectID,
-			ProjectViewID: bucket.ProjectViewID,
-			Filter:        "bucket_id = " + strconv.FormatInt(bucket.ID, 10),
+			ProjectID:        view.ProjectID,
+			ProjectViewID:    bucket.ProjectViewID,
+			Filter:           "bucket_id = " + strconv.FormatInt(bucket.ID, 10),
+			currentCountOnly: db.Type() == schemas.MYSQL,
 		}
 
 		_, _, taskCount, err = tc.ReadAll(s, a, "", 1, 1)
 		if err != nil {
 			return 0, err
 		}
-	} else {
+	case db.Type() == schemas.MYSQL:
+		// A waiting writer's ordinary COUNT would retain its old repeatable-
+		// read view. Read current placements within the existing transaction so
+		// restored tasks and earlier writes in this batch both count toward WIP.
+		placements := []*TaskBucket{}
+		if err := routineCurrentRead(s).Where("bucket_id = ?", bucket.ID).Cols("task_id").Find(&placements); err != nil {
+			return 0, err
+		}
+		ids := make(map[int64]struct{}, len(placements))
+		for _, placement := range placements {
+			ids[placement.TaskID] = struct{}{}
+		}
+		taskCount = int64(len(ids))
+	default:
 		taskCount, err = s.
 			Where("bucket_id = ?", bucket.ID).
 			GroupBy("task_id").
@@ -1067,27 +1083,30 @@ func resolveProvidedBuckets(s *xorm.Session, a web.Auth, projectID int64, tasks 
 
 // createTasks inserts row by row because multi-row inserts don't reliably return autoincrement ids on all supported databases.
 func createTasks(s *xorm.Session, projectID int64, tasks []*Task, a web.Auth, updateAssignees bool, setBucket, preserveIndexes bool) (err error) {
+	if err := LockProjectViewsForTaskMutation(s, projectID); err != nil {
+		return err
+	}
+
+	if err := requireCurrentProjectWrite(s, a, projectID); err != nil {
+		return err
+	}
+
 	if len(tasks) == 0 {
 		return nil
 	}
 
-	for i, t := range tasks {
-		err = validateTaskForCreation(t)
-		if err != nil {
-			return ErrInvalidTaskInBulkCreation{Index: i, Err: err}
-		}
-
-		t.ProjectID = projectID
-		t.ID = 0
-		if !preserveIndexes {
-			t.Index = 0
-		}
+	if err = prepareTasksForCreation(tasks, projectID, preserveIndexes); err != nil {
+		return err
 	}
 
 	// Check if the project exists
-	p, err := GetProjectSimpleByID(s, projectID)
+	p, exists, err := getProjectSimple(routineCurrentRead(s), builder.Eq{"id": projectID})
 	if err != nil {
 		return err
+	}
+
+	if !exists {
+		return ErrProjectDoesNotExist{ID: projectID}
 	}
 
 	createdBy, err := GetUserOrLinkShareUser(s, a)
@@ -1100,20 +1119,8 @@ func createTasks(s *xorm.Session, projectID int64, tasks []*Task, a web.Auth, up
 		return err
 	}
 
-	for _, t := range tasks {
-		t.CreatedByID = createdBy.ID
-
-		// Generate a uuid if we don't already have one
-		if t.UID == "" {
-			t.UID = uuid.NewString()
-		}
-
-		t.HexColor = utils.NormalizeHex(t.HexColor)
-
-		_, err = s.Insert(t)
-		if err != nil {
-			return err
-		}
+	if err = insertNewTaskRows(s, tasks, createdBy.ID); err != nil {
+		return err
 	}
 
 	taskProvidedBucket, err := resolveProvidedBuckets(s, a, projectID, tasks)
@@ -1208,6 +1215,39 @@ func createTasks(s *xorm.Session, projectID int64, tasks []*Task, a web.Auth, up
 
 	err = updateProjectLastUpdated(s, &Project{ID: projectID})
 	return
+}
+
+func insertNewTaskRows(s *xorm.Session, tasks []*Task, creatorID int64) error {
+	for _, t := range tasks {
+		t.CreatedByID = creatorID
+
+		// Generate a uuid if we don't already have one
+		if t.UID == "" {
+			t.UID = uuid.NewString()
+		}
+
+		t.HexColor = utils.NormalizeHex(t.HexColor)
+
+		if _, err := s.Insert(t); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func prepareTasksForCreation(tasks []*Task, projectID int64, preserveIndexes bool) error {
+	for i, t := range tasks {
+		if err := validateTaskForCreation(t); err != nil {
+			return ErrInvalidTaskInBulkCreation{Index: i, Err: err}
+		}
+
+		t.ProjectID = projectID
+		t.ID = 0
+		if !preserveIndexes {
+			t.Index = 0
+		}
+	}
+	return nil
 }
 
 func refreshCreatedTaskTimestamps(s *xorm.Session, tasks []*Task) error {
@@ -1344,6 +1384,9 @@ func (t *Task) Update(s *xorm.Session, a web.Auth) (err error) {
 
 //nolint:gocyclo
 func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (err error) {
+	if err := lockAuthorizedTasksForProjectMutation(s, a, []int64{t.ID}, t.ProjectID); err != nil {
+		return err
+	}
 
 	// Row lock so concurrent movers serialize; bypasses the session memo so the read is not the earlier permission-check copy.
 	ot, err := GetTaskSimple(lockingSession(s), &Task{ID: t.ID})
@@ -1518,7 +1561,7 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 			return
 		}
 
-		err = s.
+		err = routineCurrentRead(s).
 			Where("project_id = ? AND view_kind = ? AND bucket_configuration_mode = ?",
 				t.ProjectID, ProjectViewKindKanban, BucketConfigurationModeManual).
 			Find(&views)
@@ -1791,6 +1834,10 @@ func (t *Task) updateSingleTask(s *xorm.Session, a web.Auth, fields []string) (e
 // updateTasks updates multiple tasks with the same payload.
 // If fields is nil, it updates the default set of columns.
 func updateTasks(s *xorm.Session, a web.Auth, t *Task, ids []int64, fields []string) (tasks []*Task, err error) {
+	if err := lockAuthorizedTasksForProjectMutation(s, a, ids, t.ProjectID); err != nil {
+		return nil, err
+	}
+
 	seen := make(map[int64]struct{}, len(ids))
 	uniqueIDs := make([]int64, 0, len(ids))
 	for _, id := range ids {
@@ -2268,6 +2315,9 @@ func updateTaskLastUpdated(s *xorm.Session, task *Task) error {
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /tasks/{id} [delete]
 func (t *Task) Delete(s *xorm.Session, a web.Auth) (err error) {
+	if err := lockAuthorizedTasksForProjectMutation(s, a, []int64{t.ID}); err != nil {
+		return err
+	}
 
 	// duplicate the task for the event
 	fullTask := &Task{ID: t.ID}
@@ -2317,6 +2367,13 @@ func (t *Task) Delete(s *xorm.Session, a web.Auth) (err error) {
 // It does not dispatch a TaskDeletedEvent — that already happened when the
 // task was soft-deleted by the user.
 func hardDeleteTask(s *xorm.Session, t *Task) (err error) {
+	if _, err := lockTasksForProjectMutation(s, []int64{t.ID}); err != nil {
+		if IsErrTaskDoesNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
 	if _, err = s.Where("task_id = ?", t.ID).Delete(&TaskRoutineCheckin{}); err != nil {
 		return err
 	}

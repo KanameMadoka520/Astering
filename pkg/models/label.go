@@ -131,6 +131,18 @@ func (l *Label) Update(s *xorm.Session, a web.Auth) (err error) {
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /labels/{id} [delete]
 func (l *Label) Delete(s *xorm.Session, _ web.Auth) (err error) {
+	links := []*LabelTask{}
+	if err := s.Where("label_id = ?", l.ID).Find(&links); err != nil {
+		return err
+	}
+	taskIDs := make([]int64, 0, len(links))
+	for _, link := range links {
+		taskIDs = append(taskIDs, link.TaskID)
+	}
+	if _, err := lockTasksForProjectMutation(s, taskIDs); err != nil {
+		return err
+	}
+
 	// No FK cascade in the schema, so the associations must go explicitly.
 	_, err = s.Where("label_id = ?", l.ID).Delete(&LabelTask{})
 	if err != nil {

@@ -405,6 +405,14 @@ const router = createRouter({
 			},
 		},
 		{
+			path: '/projects/:projectId(\\d+)/versions',
+			name: 'project.versions',
+			meta: {
+				title: 'projectVersions.title',
+			},
+			component: () => import('@/views/project/ProjectVersions.vue'),
+		},
+		{
 			path: '/projects/:projectId(\\d+)/settings/edit',
 			name: 'project.settings.edit',
 			component: () => import('@/views/project/settings/ProjectSettingsEdit.vue'),

@@ -30,6 +30,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humaecho"
+	"xorm.io/xorm/schemas"
 )
 
 // models.TaskAttachment.ReadAll returns []*models.TaskAttachment.
@@ -168,7 +169,20 @@ func taskAttachmentsUpload(ctx context.Context, in *taskAttachmentUploadInput) (
 	}
 
 	s := db.NewSession()
-	defer s.Close()
+	defer func() {
+		_ = s.Rollback()
+		events.CleanupPending(s)
+		_ = s.Close()
+	}()
+	db.SetSessionContext(ctx, s)
+	if db.Type() == schemas.SQLITE {
+		// Reserve SQLite's writer before permission reads create a WAL snapshot.
+		// No row matches: this changes no attachment and avoids replaying file
+		// writes when a background event commits during the upload's checks.
+		if _, err := s.Table(new(models.TaskAttachment)).Where("1 = 0").Update(map[string]any{"id": int64(0)}); err != nil {
+			return nil, translateDomainError(err)
+		}
+	}
 
 	formFiles := in.RawBody.Data().Files
 	uploads := make([]*models.AttachmentToUpload, 0, len(formFiles))
@@ -178,14 +192,10 @@ func taskAttachmentsUpload(ctx context.Context, in *taskAttachmentUploadInput) (
 
 	success, failures, err := models.UploadTaskAttachments(s, a, in.TaskID, uploads)
 	if err != nil {
-		_ = s.Rollback()
-		events.CleanupPending(s)
 		return nil, translateDomainError(err)
 	}
 
 	if err := s.Commit(); err != nil {
-		_ = s.Rollback()
-		events.CleanupPending(s)
 		return nil, translateDomainError(err)
 	}
 	events.DispatchPending(ctx, s)

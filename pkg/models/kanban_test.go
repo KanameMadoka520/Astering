@@ -193,7 +193,7 @@ func TestBucket_Delete(t *testing.T) {
 			ProjectID:     18,
 			ProjectViewID: 72,
 		}
-		err := b.Delete(s, u)
+		err := b.Delete(s, &user.User{ID: 7})
 		require.Error(t, err)
 		assert.True(t, IsErrCannotRemoveLastBucket(err))
 		err = s.Commit()

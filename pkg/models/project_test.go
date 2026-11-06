@@ -454,11 +454,21 @@ func TestProject_CreateOrUpdate(t *testing.T) {
 			db.LoadAndAssertFixtures(t)
 			s := db.NewSession()
 			defer s.Close()
+			_, err := s.Insert(&ProjectUser{
+				ProjectID:  4,
+				UserID:     2,
+				Permission: PermissionAdmin,
+			})
+			require.NoError(t, err)
+			actor := &user.User{ID: 2}
+			canUpdate, err := (&Project{ID: 4}).CanUpdate(s, actor)
+			require.NoError(t, err)
+			require.True(t, canUpdate)
 			project := Project{
 				ID:         4,
 				IsArchived: true,
 			}
-			err := project.Update(s, &user.User{ID: 2})
+			err = project.Update(s, actor)
 			require.Error(t, err)
 			assert.True(t, IsErrCannotArchiveDefaultProject(err))
 		})
@@ -499,13 +509,20 @@ func TestProject_CreateOrUpdate(t *testing.T) {
 			s := db.NewSession()
 			defer s.Close()
 
-			// 40 is archived individually under unarchived 3
-			project := Project{ID: 3, Title: "Test3 renamed", IsArchived: false}
-			err := project.Update(s, &user.User{ID: 1})
+			// 40 is archived individually under unarchived 3, whose owner is user 3.
+			project := Project{
+				ID:         3,
+				Title:      "Test3 renamed",
+				IsArchived: false,
+			}
+			err := project.Update(s, &user.User{ID: 3})
 			require.NoError(t, err)
 			require.NoError(t, s.Commit())
 
-			db.AssertExists(t, "projects", map[string]interface{}{"id": 40, "is_archived": true}, false)
+			db.AssertExists(t, "projects", map[string]interface{}{
+				"id":          40,
+				"is_archived": true,
+			}, false)
 		})
 		t.Run("move under archived parent is rejected", func(t *testing.T) {
 			db.LoadAndAssertFixtures(t)
@@ -713,10 +730,20 @@ func TestProject_Delete(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
 		s := db.NewSession()
 		defer s.Close()
+		_, err := s.Insert(&ProjectUser{
+			ProjectID:  4,
+			UserID:     2,
+			Permission: PermissionAdmin,
+		})
+		require.NoError(t, err)
+		actor := &user.User{ID: 2}
+		canDelete, err := (&Project{ID: 4}).CanDelete(s, actor)
+		require.NoError(t, err)
+		require.True(t, canDelete)
 		project := Project{
 			ID: 4,
 		}
-		err := project.Delete(s, &user.User{ID: 2})
+		err = project.Delete(s, actor)
 		require.Error(t, err)
 		assert.True(t, IsErrCannotDeleteDefaultProject(err))
 	})
@@ -782,6 +809,10 @@ func TestProject_DeleteBackgroundFileIfExists(t *testing.T) {
 			BackgroundFileID: file.ID,
 		}
 		err := SetProjectBackground(s, project.ID, file, "")
+		require.Error(t, err)
+		require.True(t, files.IsErrFileDoesNotExist(err))
+		// Legacy dangling references still need tolerant cleanup; new writes must reject them.
+		_, err = s.ID(project.ID).Cols("background_file_id").Update(&project)
 		require.NoError(t, err)
 		err = project.DeleteBackgroundFileIfExists(s)
 		require.NoError(t, err)

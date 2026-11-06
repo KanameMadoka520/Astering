@@ -64,6 +64,10 @@ func (*LabelTask) TableName() string {
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /tasks/{task}/labels/{label} [delete]
 func (lt *LabelTask) Delete(s *xorm.Session, auth web.Auth) (err error) {
+	if err := lockAuthorizedTasksForProjectMutation(s, auth, []int64{lt.TaskID}); err != nil {
+		return err
+	}
+
 	_, err = s.Delete(&LabelTask{LabelID: lt.LabelID, TaskID: lt.TaskID})
 	if err != nil {
 		return err
@@ -100,6 +104,10 @@ func (lt *LabelTask) Delete(s *xorm.Session, auth web.Auth) (err error) {
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /tasks/{task}/labels [put]
 func (lt *LabelTask) Create(s *xorm.Session, auth web.Auth) (err error) {
+	if err := lockAuthorizedTasksForProjectMutation(s, auth, []int64{lt.TaskID}); err != nil {
+		return err
+	}
+
 	// Check if the label is already added
 	exists, err := s.Exist(&LabelTask{LabelID: lt.LabelID, TaskID: lt.TaskID})
 	if err != nil {
@@ -352,6 +360,9 @@ func addLabelCreators(s *xorm.Session, labels []*LabelWithTaskID) (err error) {
 
 // Create or update a bunch of task labels
 func (t *Task) UpdateTaskLabels(s *xorm.Session, creator web.Auth, labels []*Label) (err error) {
+	if err := lockAuthorizedTasksForProjectMutation(s, creator, []int64{t.ID}); err != nil {
+		return err
+	}
 
 	// If we don't have any new labels, delete everything right away. Saves us some hassle.
 	if len(labels) == 0 && len(t.Labels) > 0 {
@@ -471,6 +482,10 @@ type LabelTaskBulk struct {
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /tasks/{taskID}/labels/bulk [post]
 func (ltb *LabelTaskBulk) Create(s *xorm.Session, a web.Auth) (err error) {
+	if err := lockAuthorizedTasksForProjectMutation(s, a, []int64{ltb.TaskID}); err != nil {
+		return err
+	}
+
 	task, err := GetTaskByIDSimple(s, ltb.TaskID)
 	if err != nil {
 		return

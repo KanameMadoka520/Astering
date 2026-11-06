@@ -6,6 +6,8 @@ import type {Action, Operation, ToolCall} from '@/client/generated'
 import WebSearchEvidence from '@/components/ai/WebSearchEvidence.vue'
 import TaskOrderReceipt from '@/components/ai/TaskOrderReceipt.vue'
 import ChatImageReceipt from '@/components/ai/ChatImageReceipt.vue'
+import ProjectVersionReceipt from '@/components/ai/ProjectVersionReceipt.vue'
+import {parseProjectVersionReceipt} from '@/helpers/projectVersionReceipt'
 import {parseChatImageReceipt} from '@/components/ai/chatImageReceipt'
 import {parseTaskOrderResult} from '@/helpers/taskOrder'
 import {usePreferredOpen} from '@/composables/useAronaDisplayPreferences'
@@ -78,6 +80,7 @@ const taskOrder = computed(() => {
 	}
 })
 const chatImage = computed(() => parseChatImageReceipt(props.action, props.operation))
+const projectVersion = computed(() => parseProjectVersionReceipt(props.action, props.operation))
 function pretty(value?: string) {
 	if (!value) return t('chat.unavailable')
 	try { return JSON.stringify(JSON.parse(value), null, 2) } catch { return value }
@@ -172,6 +175,10 @@ function pretty(value?: string) {
 		<TaskOrderReceipt
 			v-if="taskOrder"
 			:result="taskOrder"
+		/>
+		<ProjectVersionReceipt
+			v-if="projectVersion"
+			:receipt="projectVersion"
 		/>
 	</div>
 </template>

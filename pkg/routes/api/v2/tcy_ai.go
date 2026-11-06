@@ -329,6 +329,9 @@ func dispatchAI(ctx context.Context, api huma.API, caller *http.Request, name st
 	if tcyai.IsCompassTool(name) {
 		return dispatchCompassAI(ctx, api, caller, name, raw)
 	}
+	if tcyai.IsProjectVersionTool(name) {
+		return dispatchProjectVersionAI(ctx, api, caller, name, raw)
+	}
 	var args map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &args); err != nil {
 		return "", tcylocale.Error("e21")
@@ -395,15 +398,22 @@ func dispatchAI(ctx context.Context, api huma.API, caller *http.Request, name st
 			return "", routeErr
 		}
 	}
+	if err := validateAIContentFields(name, method, args); err != nil {
+		return "", err
+	}
+	return serveAITool(ctx, api, caller, name, path, method, args, query)
+}
+
+func validateAIContentFields(name, method string, args map[string]json.RawMessage) error {
 	if (method == "PATCH" || method == "POST") && (name == "create_task" || name == "update_task" || name == "create_project") {
 		allowed := map[string]bool{"title": true, "description": true, "due_date": true, "start_date": true, "end_date": true, "all_day": true, "all_day_start": true, "all_day_end": true, "priority": true, "done": true, "reminders": true, "hex_color": true, "percent_done": true, "is_favorite": true, "repeat_after": true, "repeat_mode": true, "project_id": true, "cover_image_attachment_id": true}
 		for k := range args {
 			if !allowed[k] {
-				return "", tcylocale.Error("e17", k)
+				return tcylocale.Error("e17", k)
 			}
 		}
 	}
-	return serveAITool(ctx, api, caller, name, path, method, args, query)
+	return nil
 }
 
 func aiProjectHistoryQuery(args map[string]json.RawMessage, query url.Values) error {

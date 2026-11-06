@@ -307,107 +307,75 @@ func createProjectWithEverything(s *xorm.Session, project *models.ProjectWithTas
 		}
 	}
 
-	// Create all buckets
-	bucketsByOldID := make(map[int64]*models.Bucket) // old bucket id is the key
-	if len(project.Buckets) > 0 {
-		log.Debugf("[creating structure] Creating %d buckets", len(project.Buckets))
+	// Establish valid same-project views before creating their buckets. Import
+	// formats carry old view IDs (or no IDs), which must never be passed to a
+	// normal bucket writer as if they belonged to the new project.
+	viewsByOldIDs := make(map[int64]*models.ProjectView, len(oldViews))
+	type bucketDefaults struct{ defaultID, doneID int64 }
+	defaults := make(map[int64]bucketDefaults, len(oldViews))
+	if len(oldViews) > 0 {
+		for _, view := range oldViews {
+			oldID := view.ID
+			defaults[oldID] = bucketDefaults{
+				defaultID: view.DefaultBucketID,
+				doneID:    view.DoneBucketID,
+			}
+			view.ID = 0
+			view.ProjectID = project.ID
+			view.DefaultBucketID = 0
+			view.DoneBucketID = 0
+			if err = view.Create(s, user); err != nil {
+				return err
+			}
+			viewsByOldIDs[oldID] = view
+		}
+		project.Views = oldViews
+	} else {
+		if err = models.CreateDefaultViewsForProject(s, &project.Project, user, true, true); err != nil {
+			return err
+		}
 	}
-
+	var legacyKanbanViewID int64
+	for _, view := range project.Views {
+		if view.ViewKind == models.ProjectViewKindKanban {
+			legacyKanbanViewID = view.ID
+			break
+		}
+	}
+	bucketsByOldID := make(map[int64]*models.Bucket)
 	for _, bucket := range originalBuckets {
 		if _, exists := bucketsByOldID[bucket.ID]; exists {
 			continue
 		}
-
 		oldID := bucket.ID
-		bucket.ID = 0 // We want a new id
-		bucket.ProjectID = project.ID
-		err = bucket.Create(s, user)
-		if err != nil {
-			return
-		}
-
-		bucketsByOldID[oldID] = bucket
-		log.Debugf("[creating structure] Created bucket %d, old ID was %d", bucket.ID, oldID)
-	}
-
-	// project_view_id is intentionally not writable through Bucket.Update
-	// (blocks cross-tenant relocation, GHSA-569v). The importer legitimately
-	// remaps buckets onto same-project views, so persist that column directly.
-	persistBucketView := func(b *models.Bucket) error {
-		_, err := s.Where("id = ?", b.ID).Cols("project_view_id").Update(b)
-		return err
-	}
-
-	// Create all views, create default views if we don't have any
-	viewsByOldIDs := make(map[int64]*models.ProjectView, len(oldViews))
-	if len(oldViews) > 0 {
-		for _, view := range oldViews {
-			oldID := view.ID
-			view.ID = 0
-
-			if view.DefaultBucketID != 0 {
-				bucket, has := bucketsByOldID[view.DefaultBucketID]
-				if has {
-					view.DefaultBucketID = bucket.ID
-				}
-			}
-
-			if view.DoneBucketID != 0 {
-				bucket, has := bucketsByOldID[view.DoneBucketID]
-				if has {
-					view.DoneBucketID = bucket.ID
-				}
-			}
-
-			view.ProjectID = project.ID
-
-			err = view.Create(s, user)
-			if err != nil {
-				return
-			}
-			viewsByOldIDs[oldID] = view
-		}
-
-		for oldID, bucket := range bucketsByOldID {
-			newView, has := viewsByOldIDs[bucket.ProjectViewID]
-			if !has {
-				err = bucket.Delete(s, user)
-				if err != nil {
-					return
-				}
-				delete(bucketsByOldID, oldID)
+		if len(oldViews) > 0 {
+			view, exists := viewsByOldIDs[bucket.ProjectViewID]
+			if !exists {
 				continue
 			}
-
-			bucket.ProjectViewID = newView.ID
-			err = persistBucketView(bucket)
-			if err != nil {
-				return
-			}
+			bucket.ProjectViewID = view.ID
+		} else {
+			bucket.ProjectViewID = legacyKanbanViewID
 		}
-	} else {
-		if len(project.Views) == 0 {
-			err = models.CreateDefaultViewsForProject(s, &project.Project, user, true, true)
-			if err != nil {
-				return
-			}
+		bucket.ID = 0
+		bucket.ProjectID = project.ID
+		if err = bucket.Create(s, user); err != nil {
+			return err
 		}
-
-		// Only using the default views
-		// Add all buckets to the default kanban view
-		for _, view := range project.Views {
-			if view.ViewKind == models.ProjectViewKindKanban {
-				for _, b := range bucketsByOldID {
-					b.ProjectViewID = view.ID
-					err = persistBucketView(b)
-					if err != nil {
-						return
-					}
-				}
-				break
-			}
+		bucketsByOldID[oldID] = bucket
+	}
+	// Defaults refer forward to imported buckets. All views and buckets above
+	// have already passed the normal project guard and ownership checks.
+	for oldID, view := range viewsByOldIDs {
+		if bucket := bucketsByOldID[defaults[oldID].defaultID]; defaults[oldID].defaultID != 0 && bucket != nil && bucket.ProjectViewID == view.ID {
+			view.DefaultBucketID = bucket.ID
 		}
-
+		if bucket := bucketsByOldID[defaults[oldID].doneID]; defaults[oldID].doneID != 0 && bucket != nil && bucket.ProjectViewID == view.ID {
+			view.DoneBucketID = bucket.ID
+		}
+		if _, err = s.ID(view.ID).Cols("default_bucket_id", "done_bucket_id").Update(view); err != nil {
+			return err
+		}
 	}
 
 	log.Debugf("[creating structure] Creating %d tasks", len(tasks))

@@ -282,6 +282,7 @@ func TestListUsersFromProjectPublicTeamMembers(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			env := setupTeamVisibilityEnv(t)
 			defer env.s.Close()
+			require.NoError(t, env.s.Begin())
 
 			previous := config.ServiceEnablePublicTeams.GetBool()
 			config.ServiceEnablePublicTeams.Set(tt.enabled)

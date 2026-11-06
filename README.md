@@ -13,7 +13,7 @@
 
 我们赋予 **Astering**「像星星闪烁、使之星光熠熠」的意象：一次行动、一段研究、一条值得记住的原则，逐渐连接成自己的星群。**Aster的AI集成工业系统**（Aster’s AI-integrated industrial system）是项目的副标题；工具与积累服务于更自由的创造。
 
-- 当前版本：`v2.7.1-aster.58`
+- 当前版本：`v2.7.1-aster.59`
 - 源码与问题反馈：[KanameMadoka520/Astering](https://github.com/KanameMadoka520/Astering)
 - 本机编译的发布产物：[GitHub Releases](https://github.com/KanameMadoka520/Astering/releases)
 - [品牌与升级兼容](docs/brand-migration.md) · [品牌素材](docs/brand-identity.md) · [详细功能与演进记录](docs/product-reference.md)
@@ -32,6 +32,7 @@ Astering 把不同用途保留在各自合适的空间里，关联真实任务�
 | 安排时间 | 独立日历 | 月、周、日与议程查看真实任务日期；精确时段、独立截止与全天自然日分别表达，不猜测午夜等于全天。 |
 | 形成习惯 | 周期任务 | 同一任务保留按日、周、月的进度历史，可设换日时间、额度与单位，不为漏掉的周期自动补打卡。 |
 | 回看过去 | 项目回顾 | 按真实日期汇总项目时间线，另看完成与归档记录；没有日期的数据不会被编成工作时段。 |
+| 比较与恢复内容 | 项目内容历史 | 建立命名保存点，先预览差异再恢复；自动保存恢复前状态，保留后来的评论、打卡事实和当前成员权限。 |
 | 留住原则与想法 | 星图 | 空间、图文条目、主题和修订，支持归档与回收站；内容不自动灌入每次模型请求。 |
 | 复用文件 | 个人网盘 | 查找已上传文件、复用附件、查看引用与回收站；多选后批量置顶、设置分类、回收或恢复，引用中的文件保留单项确认，详见[网盘多选管理](docs/drive-batch-management.md)。 |
 | 清点和清理空间 | 设置 → 数据 → 存储空间 | 分类查看本人文件、预览与对话占用；选择条目后预览影响，再按引用保护规则清理，详见[统计与清理边界](docs/personal-storage.md)。 |
@@ -74,15 +75,15 @@ Astering 把不同用途保留在各自合适的空间里，关联真实任务�
 git clone https://github.com/KanameMadoka520/Astering.git
 cd Astering
 docker build -f Dockerfile.aster \
-  --build-arg RELEASE_VERSION=v2.7.1-aster.58 \
+  --build-arg RELEASE_VERSION=v2.7.1-aster.59 \
   --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
-  -t astering:v2.7.1-aster.58 .
+  -t astering:v2.7.1-aster.59 .
 ```
 
 或下载对应 Release，先检查 `sha256sum -c SHA256SUMS`，再导入镜像包：
 
 ```sh
-docker load -i astering-v2.7.1-aster.58.docker.tar.gz
+docker load -i astering-v2.7.1-aster.59.docker.tar.gz
 ```
 
 以下是**新安装**的最小 SQLite 示例；生产也可配置 PostgreSQL。现有部署不要用新建的空目录替换原数据卷。
@@ -98,7 +99,7 @@ docker run -d --name Astering --restart unless-stopped \
   -e ASTERING_SERVICE_SECRET=替换为随机且持久保存的长密钥 \
   -e ASTERING_SERVICE_ENABLEREGISTRATION=false \
   -e ASTERING_SERVICE_TIMEZONE=Asia/Shanghai \
-  astering:v2.7.1-aster.58
+  astering:v2.7.1-aster.59
 ```
 
 在反向代理提供 HTTPS，将 `PUBLICURL` 改为自己的实际域名。创建首个账户前可查看 CLI 参数：
@@ -108,6 +109,8 @@ docker exec -it Astering /app/astering/astering user create --help
 ```
 
 注册默认建议关闭。SMTP 可使用 `ASTERING_MAILER_*`（兼容旧 `VIKUNJA_MAILER_*`）环境配置，受授权的管理员也可在网站发信设置页管理。账号名中包含 `admin` 不会自动获得额外权限。主机指标使用[只读挂载模板](deploy/compose.host-status.yml)，不需要 Docker socket 或特权容器。
+
+项目菜单中的「项目历史版本」用于保存服务器上已提交的项目内容、任务、看板布局与附件引用；它与完成／归档历程分开。未改变的历史实体按内容去重，媒体原件不复制；只记录明确保存的保存点，不能找回上线前或未保存的编辑。恢复要求当前项目管理员并使用最新差异预览，阿罗娜也始终需要人工审核。详细范围、存储口径及保留边界见[项目内容历史](docs/project-versions.md)。
 
 ## 从旧版本升级
 

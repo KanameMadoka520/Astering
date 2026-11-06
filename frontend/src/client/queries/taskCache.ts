@@ -221,6 +221,12 @@ export function isTaskDeleted(client: QueryClient, id: number): boolean {
 	return deletedTaskIds(client).has(id)
 }
 
+/** Only a verified project restore can make a soft-deleted task with the same identity active again. */
+export function reviveRestoredTasks(client: QueryClient, ids: readonly number[]) {
+	const deleted = deletedTaskIds(client)
+	for (const id of ids) deleted.delete(id)
+}
+
 /**
  * Puts mounted detail queries of a task deleted elsewhere into an error state. Removing a query from the
  * cache does not reach an observer that already holds it, which would leave a stale, editable detail open.

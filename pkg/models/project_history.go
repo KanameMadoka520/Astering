@@ -48,13 +48,11 @@ func recordProjectArchive(s *xorm.Session, id int64, archived bool) error {
 // modifies tasks or cascades completion to child projects. A guarded update makes
 // retries idempotent; the event and state change share the caller's transaction.
 func SetProjectCompleted(s *xorm.Session, a web.Auth, id int64, completed bool) (*Project, error) {
-	p := &Project{ID: id}
-	allowed, err := p.IsAdmin(s, a)
-	if err != nil {
+	if err := LockProjectsForVersionMutation(s, id); err != nil {
 		return nil, err
 	}
-	if !allowed {
-		return nil, ErrGenericForbidden{}
+	if err := requireCurrentProjectPermission(s, a, id, PermissionAdmin); err != nil {
+		return nil, err
 	}
 	stamp := time.Time{}
 	kind := "reopened"
@@ -72,7 +70,7 @@ func SetProjectCompleted(s *xorm.Session, a web.Auth, id int64, completed bool) 
 			return nil, err
 		}
 	}
-	p = &Project{}
+	p := &Project{}
 	exists, err := s.ID(id).Get(p)
 	if err != nil {
 		return nil, err

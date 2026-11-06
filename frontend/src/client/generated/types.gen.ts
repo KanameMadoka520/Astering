@@ -1881,7 +1881,7 @@ export type DriveUsage = {
     /**
      * attachment, task_cover, project_cover, avatar, chat (sent AI conversation messages) chat_draft (only unsent AI conversation attachments), or a Compass entry, trash, revision or space background reference.
      */
-    kind?: 'attachment' | 'task_cover' | 'project_cover' | 'avatar' | 'chat' | 'chat_draft' | 'compass_entry' | 'compass_trash' | 'compass_history' | 'compass_background';
+    kind?: 'attachment' | 'task_cover' | 'project_cover' | 'avatar' | 'chat' | 'chat_draft' | 'compass_entry' | 'compass_trash' | 'compass_history' | 'compass_background' | 'project_history';
     /**
      * Something the viewer cannot access uses this file.
      */
@@ -3211,6 +3211,30 @@ export type PaginatedProject = {
     total_pages?: number;
 };
 
+export type PaginatedProjectVersionEntityIndex = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    items?: Array<ProjectVersionEntityIndex> | null;
+    page?: number;
+    per_page?: number;
+    total?: number;
+    total_pages?: number;
+};
+
+export type PaginatedProjectVersionSummary = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    items?: Array<ProjectVersionSummary> | null;
+    page?: number;
+    per_page?: number;
+    total?: number;
+    total_pages?: number;
+};
+
 export type PaginatedProjectView = {
     /**
      * A URL to the JSON Schema for this object.
@@ -3515,6 +3539,23 @@ export type ProjectCompletionRequest = {
      * True marks the project complete; false reopens it. Task states remain unchanged.
      */
     completed?: boolean;
+};
+
+export type ProjectVersionsCreateRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    name?: string;
+    request_id?: string;
+};
+
+export type ProjectVersionsDeleteRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    confirm_name?: string;
 };
 
 export type ProjectAnnouncement = {
@@ -3938,6 +3979,441 @@ export type ProjectUser = {
      * The username of the user to share with. On update and delete this comes from the URL path, not the body.
      */
     username?: string;
+};
+
+export type ProjectVersionActor = {
+    /**
+     * Account that saved this checkpoint.
+     */
+    id?: number;
+    /**
+     * Display name at the time of saving.
+     */
+    name?: string;
+    /**
+     * Username at the time of saving.
+     */
+    username?: string;
+};
+
+export type ProjectVersionChange = {
+    /**
+     * Stable checkpoint-local entity identity; compound identities use a colon separator.
+     */
+    entity_id?: string;
+    /**
+     * Changed top-level whitelist fields; values are fetched on demand.
+     */
+    fields?: Array<string> | null;
+    /**
+     * Entity kind used for on-demand historical content reads.
+     */
+    kind?: string;
+    /**
+     * Change from current project content to the selected checkpoint.
+     */
+    operation?: 'add' | 'update' | 'remove';
+    /**
+     * Historical or currently authorized display title.
+     */
+    title?: string;
+};
+
+export type ProjectVersionChanges = {
+    /**
+     * Only this page of actual changes.
+     */
+    items?: Array<ProjectVersionChange> | null;
+    /**
+     * One-based page.
+     */
+    page?: number;
+    /**
+     * Items per page.
+     */
+    per_page?: number;
+    /**
+     * Total changes before pagination.
+     */
+    total?: number;
+    /**
+     * Total pages.
+     */
+    total_pages?: number;
+};
+
+export type ProjectVersionConflict = {
+    /**
+     * Stable conflict code; no partial restore is applied.
+     */
+    code?: string;
+    /**
+     * Affected checkpoint-local entity identity.
+     */
+    entity_id?: string;
+    /**
+     * Affected checkpoint entity kind.
+     */
+    kind?: string;
+    /**
+     * Safe explanation without inaccessible resource names.
+     */
+    message?: string;
+};
+
+export type ProjectVersionDiffSummary = {
+    /**
+     * Attachment relationships to restore, reusing original bytes.
+     */
+    added_attachments?: number;
+    /**
+     * Buckets to recreate.
+     */
+    added_buckets?: number;
+    /**
+     * Tasks that will return or be recreated.
+     */
+    added_tasks?: number;
+    /**
+     * Views to recreate.
+     */
+    added_views?: number;
+    /**
+     * Project content or announcement changes.
+     */
+    project_changed?: boolean;
+    /**
+     * Live attachment relationships absent from the target; originals stay retained.
+     */
+    removed_attachments?: number;
+    /**
+     * Buckets absent from the target.
+     */
+    removed_buckets?: number;
+    /**
+     * Current tasks absent from the target; soft-removed with facts retained.
+     */
+    removed_tasks?: number;
+    /**
+     * Views absent from the target.
+     */
+    removed_views?: number;
+    /**
+     * Attachment relationships to update.
+     */
+    updated_attachments?: number;
+    /**
+     * Buckets to update.
+     */
+    updated_buckets?: number;
+    /**
+     * Existing tasks whose content will change.
+     */
+    updated_tasks?: number;
+    /**
+     * Views to update.
+     */
+    updated_views?: number;
+};
+
+export type ProjectVersionEntityContent = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Explicit historical content whitelist; excludes permissions and credentials.
+     */
+    content?: {
+        [key: string]: unknown;
+    };
+    /**
+     * Hash verified before decoding historical content.
+     */
+    content_hash?: string;
+    /**
+     * Current entity content only if it still belongs to this authorized project; null otherwise.
+     */
+    current_content?: {
+        [key: string]: unknown;
+    };
+    /**
+     * Checkpoint-local entity identity.
+     */
+    entity_id?: string;
+    /**
+     * Whitelisted entity kind.
+     */
+    kind?: string;
+    /**
+     * Authorized current project.
+     */
+    project_id?: number;
+    /**
+     * Requested immutable checkpoint.
+     */
+    version_id?: number;
+};
+
+export type ProjectVersionEntityIndex = {
+    /**
+     * Hash of this canonical entity JSON.
+     */
+    content_hash?: string;
+    /**
+     * Checkpoint-local entity identity.
+     */
+    entity_id?: string;
+    /**
+     * Whitelisted entity kind.
+     */
+    kind?: string;
+    /**
+     * Safe historical display title.
+     */
+    title?: string;
+};
+
+export type ProjectVersionIdMap = {
+    /**
+     * Checkpoint attachment IDs mapped to live attachment IDs; inline references are rewritten.
+     */
+    attachments?: {
+        [key: string]: number;
+    };
+    /**
+     * Checkpoint bucket IDs mapped to live bucket IDs.
+     */
+    buckets?: {
+        [key: string]: number;
+    };
+    /**
+     * Checkpoint task IDs mapped to live task IDs.
+     */
+    tasks?: {
+        [key: string]: number;
+    };
+    /**
+     * Checkpoint view IDs mapped to live view IDs.
+     */
+    views?: {
+        [key: string]: number;
+    };
+};
+
+export type ProjectVersionPreserved = {
+    /**
+     * Actual recorded check-ins retained unchanged.
+     */
+    checkins?: number;
+    /**
+     * Current task attachment relationships retained because preserved comments still embed them.
+     */
+    comment_attachments?: number;
+    /**
+     * Current comments retained unchanged.
+     */
+    comments?: number;
+    /**
+     * Current ownership, members, shares and inherited access remain unchanged.
+     */
+    permissions?: boolean;
+    /**
+     * Actual periodic progress rows retained unchanged.
+     */
+    progress?: number;
+    /**
+     * Recorded work-time entries retained unchanged.
+     */
+    time_entries?: number;
+};
+
+export type ProjectVersionPreview = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Current actor is a project administrator and the plan has no conflicts.
+     */
+    can_restore?: boolean;
+    /**
+     * Paginated content differences.
+     */
+    changes?: ProjectVersionChanges;
+    /**
+     * Any conflict prevents the whole restore.
+     */
+    conflicts?: Array<ProjectVersionConflict> | null;
+    /**
+     * Current canonical content hash; excludes comments, check-ins and volatile timestamps.
+     */
+    current_hash?: string;
+    /**
+     * Binds the exact source, target, actor and complete restore plan; independent of pagination.
+     */
+    plan_hash?: string;
+    /**
+     * Facts and permissions intentionally outside the rollback scope.
+     */
+    preserved?: ProjectVersionPreserved;
+    /**
+     * Authorized current project.
+     */
+    project_id?: number;
+    /**
+     * Counts for the whole plan, not just this page.
+     */
+    summary?: ProjectVersionDiffSummary;
+    /**
+     * Target immutable content hash.
+     */
+    target_hash?: string;
+    /**
+     * Immutable checkpoint to restore.
+     */
+    target_version_id?: number;
+};
+
+export type ProjectVersionRestoreInput = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Current hash returned by the reviewed preview.
+     */
+    expected_current_hash?: string;
+    /**
+     * Exact reviewed plan hash; stale previews return 409 without writes.
+     */
+    plan_hash?: string;
+    /**
+     * Unique request ID retained for idempotent retry after transport failure.
+     */
+    request_id?: string;
+};
+
+export type ProjectVersionRestoreResult = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Automatic checkpoint saved immediately before the restore in the same transaction.
+     */
+    before_version_id?: number;
+    /**
+     * Live task details and project lists to refresh locally.
+     */
+    changed_task_ids?: Array<number> | null;
+    /**
+     * Canonical hash of the successfully restored content.
+     */
+    current_hash?: string;
+    /**
+     * Explicit source-to-live identity mapping.
+     */
+    id_map?: ProjectVersionIdMap;
+    /**
+     * Restored project, unchanged identity and permissions.
+     */
+    project_id?: number;
+    /**
+     * Tasks now soft-removed; invalidate still-mounted editors before refetching.
+     */
+    removed_task_ids?: Array<number> | null;
+    /**
+     * Reviewed source checkpoint.
+     */
+    restored_from_version_id?: number;
+    /**
+     * True only after the complete restore has been validated.
+     */
+    verified?: boolean;
+    /**
+     * New automatic checkpoint of the restored result.
+     */
+    version?: ProjectVersionSummary;
+};
+
+export type ProjectVersionSummary = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Number of saved task attachment relationships.
+     */
+    attachment_count?: number;
+    /**
+     * Number of saved manual view buckets.
+     */
+    bucket_count?: number;
+    /**
+     * Uncompressed canonical entity JSON bytes in this checkpoint.
+     */
+    content_bytes?: number;
+    /**
+     * SHA-256 of the canonical checkpoint entity manifest.
+     */
+    content_hash?: string;
+    /**
+     * When the checkpoint was atomically saved.
+     */
+    created?: string;
+    /**
+     * Historical attribution, not an access grant.
+     */
+    created_by?: ProjectVersionActor;
+    /**
+     * Distinct referenced original files; file bytes are never copied.
+     */
+    file_count?: number;
+    /**
+     * Immutable saved checkpoint ID.
+     */
+    id?: number;
+    /**
+     * User-saved or automatic pre/post restore checkpoint.
+     */
+    kind?: 'manual' | 'before_restore' | 'restored';
+    /**
+     * Explicit checkpoint name or automatic recovery label.
+     */
+    name?: string;
+    /**
+     * New compressed entity bytes introduced when this checkpoint was created; excludes database indexes.
+     */
+    new_object_bytes?: number;
+    /**
+     * Current project controlling access to this checkpoint.
+     */
+    project_id?: number;
+    /**
+     * Sum of distinct referenced original file sizes; shared files are counted once here.
+     */
+    referenced_file_bytes?: number;
+    /**
+     * Source checkpoint for an automatic restored version, otherwise zero.
+     */
+    restored_from_version_id?: number;
+    /**
+     * Version of the explicit content schema, independent from the application version.
+     */
+    schema_version?: number;
+    /**
+     * Monotonically increasing checkpoint number within the project.
+     */
+    sequence?: number;
+    /**
+     * Number of saved active tasks.
+     */
+    task_count?: number;
+    /**
+     * Number of saved project views.
+     */
+    view_count?: number;
 };
 
 export type ProjectView = {
@@ -8597,6 +9073,22 @@ export type PaginatedProjectWritable = {
     total_pages?: number;
 };
 
+export type PaginatedProjectVersionEntityIndexWritable = {
+    items?: Array<ProjectVersionEntityIndex> | null;
+    page?: number;
+    per_page?: number;
+    total?: number;
+    total_pages?: number;
+};
+
+export type PaginatedProjectVersionSummaryWritable = {
+    items?: Array<ProjectVersionSummaryWritable> | null;
+    page?: number;
+    per_page?: number;
+    total?: number;
+    total_pages?: number;
+};
+
 export type PaginatedProjectViewWritable = {
     items?: Array<ProjectViewWritable> | null;
     page?: number;
@@ -8771,6 +9263,15 @@ export type ProjectCompletionRequestWritable = {
     completed?: boolean;
 };
 
+export type ProjectVersionsCreateRequestWritable = {
+    name?: string;
+    request_id?: string;
+};
+
+export type ProjectVersionsDeleteRequestWritable = {
+    confirm_name?: string;
+};
+
 export type ProjectAnnouncementWritable = {
     /**
      * Rich text; an empty title and content remove the visible announcement.
@@ -8938,6 +9439,213 @@ export type ProjectUserWritable = {
      * The username of the user to share with. On update and delete this comes from the URL path, not the body.
      */
     username?: string;
+};
+
+export type ProjectVersionEntityContentWritable = {
+    /**
+     * Explicit historical content whitelist; excludes permissions and credentials.
+     */
+    content?: {
+        [key: string]: unknown;
+    };
+    /**
+     * Hash verified before decoding historical content.
+     */
+    content_hash?: string;
+    /**
+     * Current entity content only if it still belongs to this authorized project; null otherwise.
+     */
+    current_content?: {
+        [key: string]: unknown;
+    };
+    /**
+     * Checkpoint-local entity identity.
+     */
+    entity_id?: string;
+    /**
+     * Whitelisted entity kind.
+     */
+    kind?: string;
+    /**
+     * Authorized current project.
+     */
+    project_id?: number;
+    /**
+     * Requested immutable checkpoint.
+     */
+    version_id?: number;
+};
+
+export type ProjectVersionPreviewWritable = {
+    /**
+     * Current actor is a project administrator and the plan has no conflicts.
+     */
+    can_restore?: boolean;
+    /**
+     * Paginated content differences.
+     */
+    changes?: ProjectVersionChanges;
+    /**
+     * Any conflict prevents the whole restore.
+     */
+    conflicts?: Array<ProjectVersionConflict> | null;
+    /**
+     * Current canonical content hash; excludes comments, check-ins and volatile timestamps.
+     */
+    current_hash?: string;
+    /**
+     * Binds the exact source, target, actor and complete restore plan; independent of pagination.
+     */
+    plan_hash?: string;
+    /**
+     * Facts and permissions intentionally outside the rollback scope.
+     */
+    preserved?: ProjectVersionPreserved;
+    /**
+     * Authorized current project.
+     */
+    project_id?: number;
+    /**
+     * Counts for the whole plan, not just this page.
+     */
+    summary?: ProjectVersionDiffSummary;
+    /**
+     * Target immutable content hash.
+     */
+    target_hash?: string;
+    /**
+     * Immutable checkpoint to restore.
+     */
+    target_version_id?: number;
+};
+
+export type ProjectVersionRestoreInputWritable = {
+    /**
+     * Current hash returned by the reviewed preview.
+     */
+    expected_current_hash?: string;
+    /**
+     * Exact reviewed plan hash; stale previews return 409 without writes.
+     */
+    plan_hash?: string;
+    /**
+     * Unique request ID retained for idempotent retry after transport failure.
+     */
+    request_id?: string;
+};
+
+export type ProjectVersionRestoreResultWritable = {
+    /**
+     * Automatic checkpoint saved immediately before the restore in the same transaction.
+     */
+    before_version_id?: number;
+    /**
+     * Live task details and project lists to refresh locally.
+     */
+    changed_task_ids?: Array<number> | null;
+    /**
+     * Canonical hash of the successfully restored content.
+     */
+    current_hash?: string;
+    /**
+     * Explicit source-to-live identity mapping.
+     */
+    id_map?: ProjectVersionIdMap;
+    /**
+     * Restored project, unchanged identity and permissions.
+     */
+    project_id?: number;
+    /**
+     * Tasks now soft-removed; invalidate still-mounted editors before refetching.
+     */
+    removed_task_ids?: Array<number> | null;
+    /**
+     * Reviewed source checkpoint.
+     */
+    restored_from_version_id?: number;
+    /**
+     * True only after the complete restore has been validated.
+     */
+    verified?: boolean;
+    /**
+     * New automatic checkpoint of the restored result.
+     */
+    version?: ProjectVersionSummaryWritable;
+};
+
+export type ProjectVersionSummaryWritable = {
+    /**
+     * Number of saved task attachment relationships.
+     */
+    attachment_count?: number;
+    /**
+     * Number of saved manual view buckets.
+     */
+    bucket_count?: number;
+    /**
+     * Uncompressed canonical entity JSON bytes in this checkpoint.
+     */
+    content_bytes?: number;
+    /**
+     * SHA-256 of the canonical checkpoint entity manifest.
+     */
+    content_hash?: string;
+    /**
+     * When the checkpoint was atomically saved.
+     */
+    created?: string;
+    /**
+     * Historical attribution, not an access grant.
+     */
+    created_by?: ProjectVersionActor;
+    /**
+     * Distinct referenced original files; file bytes are never copied.
+     */
+    file_count?: number;
+    /**
+     * Immutable saved checkpoint ID.
+     */
+    id?: number;
+    /**
+     * User-saved or automatic pre/post restore checkpoint.
+     */
+    kind?: 'manual' | 'before_restore' | 'restored';
+    /**
+     * Explicit checkpoint name or automatic recovery label.
+     */
+    name?: string;
+    /**
+     * New compressed entity bytes introduced when this checkpoint was created; excludes database indexes.
+     */
+    new_object_bytes?: number;
+    /**
+     * Current project controlling access to this checkpoint.
+     */
+    project_id?: number;
+    /**
+     * Sum of distinct referenced original file sizes; shared files are counted once here.
+     */
+    referenced_file_bytes?: number;
+    /**
+     * Source checkpoint for an automatic restored version, otherwise zero.
+     */
+    restored_from_version_id?: number;
+    /**
+     * Version of the explicit content schema, independent from the application version.
+     */
+    schema_version?: number;
+    /**
+     * Monotonically increasing checkpoint number within the project.
+     */
+    sequence?: number;
+    /**
+     * Number of saved active tasks.
+     */
+    task_count?: number;
+    /**
+     * Number of saved project views.
+     */
+    view_count?: number;
 };
 
 export type ProjectViewWritable = {
@@ -15176,6 +15884,267 @@ export type ProjectUsersUpdateResponses = {
 };
 
 export type ProjectUsersUpdateResponse = ProjectUsersUpdateResponses[keyof ProjectUsersUpdateResponses];
+
+export type ProjectVersionsListData = {
+    body?: never;
+    path: {
+        project: number;
+    };
+    query?: {
+        page?: number;
+        per_page?: number;
+    };
+    url: '/projects/{project}/versions';
+};
+
+export type ProjectVersionsListErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type ProjectVersionsListError = ProjectVersionsListErrors[keyof ProjectVersionsListErrors];
+
+export type ProjectVersionsListResponses = {
+    /**
+     * OK
+     */
+    200: PaginatedProjectVersionSummary;
+};
+
+export type ProjectVersionsListResponse = ProjectVersionsListResponses[keyof ProjectVersionsListResponses];
+
+export type ProjectVersionsCreateData = {
+    body: ProjectVersionsCreateRequestWritable;
+    path: {
+        project: number;
+    };
+    query?: never;
+    url: '/projects/{project}/versions';
+};
+
+export type ProjectVersionsCreateErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type ProjectVersionsCreateError = ProjectVersionsCreateErrors[keyof ProjectVersionsCreateErrors];
+
+export type ProjectVersionsCreateResponses = {
+    /**
+     * OK
+     */
+    200: ProjectVersionSummary;
+};
+
+export type ProjectVersionsCreateResponse = ProjectVersionsCreateResponses[keyof ProjectVersionsCreateResponses];
+
+export type ProjectVersionsDeleteData = {
+    body: ProjectVersionsDeleteRequestWritable;
+    path: {
+        project: number;
+        version: number;
+    };
+    query?: never;
+    url: '/projects/{project}/versions/{version}';
+};
+
+export type ProjectVersionsDeleteErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type ProjectVersionsDeleteError = ProjectVersionsDeleteErrors[keyof ProjectVersionsDeleteErrors];
+
+export type ProjectVersionsDeleteResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type ProjectVersionsDeleteResponse = ProjectVersionsDeleteResponses[keyof ProjectVersionsDeleteResponses];
+
+export type ProjectVersionsReadData = {
+    body?: never;
+    path: {
+        project: number;
+        version: number;
+    };
+    query?: never;
+    url: '/projects/{project}/versions/{version}';
+};
+
+export type ProjectVersionsReadErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type ProjectVersionsReadError = ProjectVersionsReadErrors[keyof ProjectVersionsReadErrors];
+
+export type ProjectVersionsReadResponses = {
+    /**
+     * OK
+     */
+    200: ProjectVersionSummary;
+};
+
+export type ProjectVersionsReadResponse = ProjectVersionsReadResponses[keyof ProjectVersionsReadResponses];
+
+export type ProjectVersionEntitiesListData = {
+    body?: never;
+    path: {
+        project: number;
+        version: number;
+    };
+    query?: {
+        kind?: '' | 'project' | 'task' | 'view' | 'bucket' | 'attachment' | 'position' | 'announcement' | 'routine' | 'assignee' | 'label' | 'reminder' | 'relation';
+        page?: number;
+        per_page?: number;
+    };
+    url: '/projects/{project}/versions/{version}/entities';
+};
+
+export type ProjectVersionEntitiesListErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type ProjectVersionEntitiesListError = ProjectVersionEntitiesListErrors[keyof ProjectVersionEntitiesListErrors];
+
+export type ProjectVersionEntitiesListResponses = {
+    /**
+     * OK
+     */
+    200: PaginatedProjectVersionEntityIndex;
+};
+
+export type ProjectVersionEntitiesListResponse = ProjectVersionEntitiesListResponses[keyof ProjectVersionEntitiesListResponses];
+
+export type ProjectVersionEntityReadData = {
+    body?: never;
+    path: {
+        project: number;
+        version: number;
+        kind: 'project' | 'task' | 'view' | 'bucket' | 'attachment' | 'position' | 'announcement' | 'routine' | 'assignee' | 'label' | 'reminder' | 'relation';
+        entity: string;
+    };
+    query?: never;
+    url: '/projects/{project}/versions/{version}/entities/{kind}/{entity}';
+};
+
+export type ProjectVersionEntityReadErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type ProjectVersionEntityReadError = ProjectVersionEntityReadErrors[keyof ProjectVersionEntityReadErrors];
+
+export type ProjectVersionEntityReadResponses = {
+    /**
+     * OK
+     */
+    200: ProjectVersionEntityContent;
+};
+
+export type ProjectVersionEntityReadResponse = ProjectVersionEntityReadResponses[keyof ProjectVersionEntityReadResponses];
+
+export type ProjectVersionFileReadData = {
+    body?: never;
+    path: {
+        project: number;
+        version: number;
+        file: number;
+    };
+    query?: never;
+    url: '/projects/{project}/versions/{version}/files/{file}';
+};
+
+export type ProjectVersionFileReadErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type ProjectVersionFileReadError = ProjectVersionFileReadErrors[keyof ProjectVersionFileReadErrors];
+
+export type ProjectVersionFileReadResponses = {
+    /**
+     * OK
+     */
+    200: unknown;
+};
+
+export type ProjectVersionsPreviewData = {
+    body?: never;
+    path: {
+        project: number;
+        version: number;
+    };
+    query?: {
+        page?: number;
+        per_page?: number;
+    };
+    url: '/projects/{project}/versions/{version}/preview';
+};
+
+export type ProjectVersionsPreviewErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type ProjectVersionsPreviewError = ProjectVersionsPreviewErrors[keyof ProjectVersionsPreviewErrors];
+
+export type ProjectVersionsPreviewResponses = {
+    /**
+     * OK
+     */
+    200: ProjectVersionPreview;
+};
+
+export type ProjectVersionsPreviewResponse = ProjectVersionsPreviewResponses[keyof ProjectVersionsPreviewResponses];
+
+export type ProjectVersionsRestoreData = {
+    body: ProjectVersionRestoreInputWritable;
+    path: {
+        project: number;
+        version: number;
+    };
+    query?: never;
+    url: '/projects/{project}/versions/{version}/restore';
+};
+
+export type ProjectVersionsRestoreErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type ProjectVersionsRestoreError = ProjectVersionsRestoreErrors[keyof ProjectVersionsRestoreErrors];
+
+export type ProjectVersionsRestoreResponses = {
+    /**
+     * OK
+     */
+    200: ProjectVersionRestoreResult;
+};
+
+export type ProjectVersionsRestoreResponse = ProjectVersionsRestoreResponses[keyof ProjectVersionsRestoreResponses];
 
 export type ProjectViewsListData = {
     body?: never;

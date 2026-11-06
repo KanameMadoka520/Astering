@@ -131,7 +131,7 @@ func TestTeamProject_Create(t *testing.T) {
 			ProjectID:  3,
 			Permission: PermissionAdmin,
 		}
-		err := tl.Create(s, u)
+		err := tl.Create(s, &user.User{ID: 3})
 		require.Error(t, err)
 		assert.True(t, IsErrTeamAlreadyHasAccess(err))
 	})
@@ -175,7 +175,7 @@ func TestTeamProject_Create(t *testing.T) {
 }
 
 func TestTeamProject_Delete(t *testing.T) {
-	user := &user.User{ID: 1}
+	actor := &user.User{ID: 3}
 
 	t.Run("normal", func(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
@@ -185,7 +185,7 @@ func TestTeamProject_Delete(t *testing.T) {
 			TeamID:    1,
 			ProjectID: 3,
 		}
-		err := tl.Delete(s, user)
+		err := tl.Delete(s, actor)
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
@@ -200,9 +200,9 @@ func TestTeamProject_Delete(t *testing.T) {
 		defer s.Close()
 		tl := TeamProject{
 			TeamID:    9999,
-			ProjectID: 1,
+			ProjectID: 3,
 		}
-		err := tl.Delete(s, user)
+		err := tl.Delete(s, actor)
 		require.Error(t, err)
 		assert.True(t, IsErrTeamDoesNotExist(err))
 	})
@@ -214,9 +214,9 @@ func TestTeamProject_Delete(t *testing.T) {
 			TeamID:    1,
 			ProjectID: 9999,
 		}
-		err := tl.Delete(s, user)
+		err := tl.Delete(s, actor)
 		require.Error(t, err)
-		assert.True(t, IsErrTeamDoesNotHaveAccessToProject(err))
+		assert.True(t, IsErrProjectDoesNotExist(err))
 	})
 }
 
@@ -288,7 +288,7 @@ func TestTeamProject_Update(t *testing.T) {
 				CRUDable:    tt.fields.CRUDable,
 				Permissions: tt.fields.Permissions,
 			}
-			err := tl.Update(s, &user.User{ID: 1})
+			err := tl.Update(s, &user.User{ID: 3})
 			if (err != nil) != tt.wantErr {
 				t.Errorf("TeamProject.Update() error = %v, wantErr %v", err, tt.wantErr)
 			}

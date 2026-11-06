@@ -56,7 +56,7 @@
 			</BaseButton>
 
 			<ProjectSettingsDropdown
-				v-if="canWriteCurrentProject && currentProject.id !== -1"
+				v-if="canReadCurrentProject && currentProject.id !== -1"
 				class="project-title-dropdown"
 				:project="currentProject"
 			>
@@ -233,10 +233,12 @@ const baseStore = useBaseStore()
 const tour = useGuidedTourStore()
 const {currentProject} = useCurrentProject()
 const background = computed(() => baseStore.background)
-const canWriteCurrentProject = computed(() =>
+const canReadCurrentProject = computed(() =>
 	currentProject.value?.max_permission !== null &&
 	currentProject.value?.max_permission !== undefined &&
-	currentProject.value.max_permission > Permissions.READ,
+	(currentProject.value.id > 0
+		? currentProject.value.max_permission >= Permissions.READ
+		: currentProject.value.max_permission > Permissions.READ),
 )
 const menuActive = computed(() => baseStore.menuActive)
 // The start cluster follows the sidebar width so the title lines up with the content edge.

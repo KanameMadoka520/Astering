@@ -5,6 +5,7 @@ import type {ChatTurn, ReviewInput} from '@/client/generated'
 import {DESTRUCTIVE_TOOLS, toolLabels} from './toolLabels'
 import BucketImpactPreview from './BucketImpactPreview.vue'
 import TaskOrderPreview from './TaskOrderPreview.vue'
+import ProjectVersionReview from './ProjectVersionReview.vue'
 const props = defineProps<{turn: ChatTurn; busy: boolean}>()
 const emit = defineEmits<{review: [input: ReviewInput]}>()
 const {t, locale} = useI18n({useScope: 'global'})
@@ -44,6 +45,10 @@ const compassFields = computed(() => {
 	}
 })
 const orderTool = computed(() => !external.value && pending.value?.tool === 'reorder_view_tasks')
+const projectVersionTool = computed(() => !external.value && [
+	'save_project_version',
+	'restore_project_version',
+].includes(pending.value?.tool ?? ''))
 const imageTool = computed(() => !external.value && [
 	'insert_chat_image',
 	'update_task_description_image',
@@ -175,7 +180,7 @@ const rows = computed(() => {
 	// The impact preview describes bucket changes; the field table would list locators instead.
 	// Compass preparation intentionally stores a slim snapshot, not a full entry body.
 	// Never compare an entry's proposed title/content to its parent space or pretend absent fields are empty.
-	if (bucketImpact.value || external.value || orderTool.value || compassTool.value) return []
+	if (bucketImpact.value || external.value || orderTool.value || compassTool.value || projectVersionTool.value) return []
 	try {
 		const before = JSON.parse(pending.value?.before ?? 'null')
 		const proposed = JSON.parse(pending.value?.arguments ?? '{}')
@@ -274,6 +279,10 @@ function decide(decision: ReviewInput['decision']) {
 			<p v-if="reviewHint">
 				{{ reviewHint }}
 			</p>
+			<ProjectVersionReview
+				v-if="projectVersionTool"
+				:operation="pending"
+			/>
 			<p
 				v-if="destructive"
 				class="destructive-warning"

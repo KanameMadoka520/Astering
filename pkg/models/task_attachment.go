@@ -74,6 +74,9 @@ func (*TaskAttachment) TableName() string {
 
 // NewAttachment creates a new task attachment
 func (ta *TaskAttachment) NewAttachment(s *xorm.Session, f io.ReadSeeker, realname string, realsize uint64, a web.Auth) error {
+	if err := lockAuthorizedTasksForProjectMutation(s, a, []int64{ta.TaskID}); err != nil {
+		return err
+	}
 
 	// Store the file using the existing session to avoid nested transactions
 	file, err := files.CreateWithSession(s, f, realname, realsize, a)
@@ -588,6 +591,10 @@ func (ta *TaskAttachment) Delete(s *xorm.Session, a web.Auth) error {
 	// Load the attachment
 	err := ta.ReadOne(s, a)
 	if err != nil && !files.IsErrFileDoesNotExist(err) {
+		return err
+	}
+
+	if err := lockAuthorizedTasksForProjectMutation(s, a, []int64{ta.TaskID}); err != nil {
 		return err
 	}
 

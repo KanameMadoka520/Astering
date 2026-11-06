@@ -107,7 +107,7 @@ func LockDriveItem(s *xorm.Session, a web.Auth, id, revision int64) (*files.Driv
 }
 
 type DriveUsage struct {
-	Kind       string `json:"kind" enum:"attachment,task_cover,project_cover,avatar,chat,chat_draft,compass_entry,compass_trash,compass_history,compass_background" doc:"attachment, task_cover, project_cover, avatar, chat (sent AI conversation messages) chat_draft (only unsent AI conversation attachments), or a Compass entry, trash, revision or space background reference."`
+	Kind       string `json:"kind" enum:"attachment,task_cover,project_cover,avatar,chat,chat_draft,compass_entry,compass_trash,compass_history,compass_background,project_history" doc:"attachment, task_cover, project_cover, avatar, chat (sent AI conversation messages) chat_draft (only unsent AI conversation attachments), or a Compass entry, trash, revision or space background reference."`
 	Title      string `json:"title" doc:"Task, project, account or conversation title; empty when restricted."`
 	URL        string `json:"url" doc:"Frontend location; empty when restricted."`
 	Restricted bool   `json:"restricted" doc:"Something the viewer cannot access uses this file."`
@@ -133,9 +133,17 @@ func driveUsages(s *xorm.Session, a web.Auth, id int64, resolveChats bool) ([]Dr
 		return nil, err
 	}
 	for _, attachment := range attachments {
-		task, err := GetTaskByIDSimple(s, attachment.TaskID)
+		task := Task{}
+		exists, err := s.Unscoped().ID(attachment.TaskID).Get(&task)
 		if err != nil {
 			return nil, err
+		}
+		if !exists || !task.DeletedAt.IsZero() {
+			// Soft-removed tasks retain facts and attachment relationships. Their
+			// current task route is unavailable; a history usage supplies the
+			// separately authorized checkpoint location when one exists.
+			usages = append(usages, DriveUsage{Kind: "attachment", Restricted: true})
+			continue
 		}
 		can, _, err := task.CanRead(s, a)
 		if err != nil {
@@ -184,6 +192,11 @@ func driveUsages(s *xorm.Session, a web.Auth, id int64, resolveChats bool) ([]Dr
 		return nil, err
 	}
 	usages = append(usages, compass...)
+	history, err := projectVersionDriveUsages(s, a, id)
+	if err != nil {
+		return nil, err
+	}
+	usages = append(usages, history...)
 	chats, err := driveChatUsages(s, a, id, resolveChats)
 	if err != nil {
 		return nil, err
@@ -302,6 +315,10 @@ func ChangeDriveItem(s *xorm.Session, a web.Auth, id int64, in DriveChange) (*fi
 }
 
 func AttachDriveFile(s *xorm.Session, a web.Auth, id, revision, taskID int64) (*TaskAttachment, error) {
+	if err := lockAuthorizedTasksForProjectMutation(s, a, []int64{taskID}); err != nil {
+		return nil, err
+	}
+
 	d, err := LockDriveItem(s, a, id, revision)
 	if err != nil {
 		return nil, err

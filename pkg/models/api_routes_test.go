@@ -659,3 +659,29 @@ func TestCompassImagesExcludedFromAPITokens(t *testing.T) {
 	require.True(t, token.CanUseRoute("/api/v2/compass/entries/:entry", http.MethodGet))
 	require.Error(t, PermissionsAreValid(APIPermissions{"compass": {"spaces_images"}}))
 }
+
+func TestProjectVersionsAPITokenRoutesRemainDistinct(t *testing.T) {
+	resetAPITokenRoutes(t)
+	routes := []echo.RouteInfo{
+		{Method: http.MethodGet, Path: "/api/v2/projects/:project/versions"},
+		{Method: http.MethodPost, Path: "/api/v2/projects/:project/versions"},
+		{Method: http.MethodGet, Path: "/api/v2/projects/:project/versions/:version"},
+		{Method: http.MethodDelete, Path: "/api/v2/projects/:project/versions/:version"},
+		{Method: http.MethodGet, Path: "/api/v2/projects/:project/versions/:version/preview"},
+		{Method: http.MethodPost, Path: "/api/v2/projects/:project/versions/:version/restore"},
+		{Method: http.MethodGet, Path: "/api/v2/projects/:project/versions/:version/entities"},
+		{Method: http.MethodGet, Path: "/api/v2/projects/:project/versions/:version/entities/:kind/:entity"},
+		{Method: http.MethodGet, Path: "/api/v2/projects/:project/versions/:version/files/:file"},
+	}
+	for _, route := range routes {
+		require.NotPanics(t, func() { CollectRoutesForAPITokenUsage(route, true) })
+	}
+	require.Equal(t, routes[0].Path, apiTokenRoutesV2["projects_versions"]["read_all"].Path)
+	require.Equal(t, routes[2].Path, apiTokenRoutesV2["projects_versions"]["read_one"].Path)
+	require.Equal(t, routes[3].Path, apiTokenRoutesV2["projects_versions"]["delete"].Path)
+	require.Equal(t, routes[6].Path, apiTokenRoutesV2["projects_versions_entities"]["read_all"].Path)
+	require.Equal(t, routes[7].Path, apiTokenRoutesV2["projects_versions_entities"]["read_one"].Path)
+	require.Equal(t, routes[8].Path, apiTokenRoutesV2["projects_versions_files"]["read_one"].Path)
+	require.Equal(t, routes[4].Path, apiTokenRoutesV2["projects"]["versions_preview"].Path)
+	require.Equal(t, routes[5].Path, apiTokenRoutesV2["projects"]["versions_restore"].Path)
+}

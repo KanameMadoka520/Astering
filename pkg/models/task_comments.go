@@ -75,6 +75,10 @@ func (tc *TaskComment) Create(s *xorm.Session, a web.Auth) (err error) {
 }
 
 func (tc *TaskComment) CreateWithTimestamps(s *xorm.Session, a web.Auth) (err error) {
+	if err := lockAuthorizedTasksForProjectMutation(s, a, []int64{tc.TaskID}); err != nil {
+		return err
+	}
+
 	// Check if the task exists
 	task, err := GetTaskSimple(lockingSession(s), &Task{ID: tc.TaskID})
 	if err != nil {
@@ -132,6 +136,10 @@ func (tc *TaskComment) Delete(s *xorm.Session, a web.Auth) error {
 		return err
 	}
 
+	if err := lockAuthorizedTasksForProjectMutation(s, a, []int64{tc.TaskID}); err != nil {
+		return err
+	}
+
 	deleted, err := s.
 		ID(tc.ID).
 		NoAutoCondition().
@@ -178,6 +186,10 @@ func (tc *TaskComment) Update(s *xorm.Session, a web.Auth) error {
 		return err
 	}
 	tc.TaskID = saved.TaskID
+	if err := lockAuthorizedTasksForProjectMutation(s, a, []int64{tc.TaskID}); err != nil {
+		return err
+	}
+
 	if _, err := GetTaskSimple(lockingSession(s), &Task{ID: tc.TaskID}); err != nil {
 		return err
 	}

@@ -192,6 +192,9 @@ func setTaskRoutineProgressAt(s *xorm.Session, a web.Auth, id int64, date string
 		return nil, err
 	}
 	r := &TaskRoutine{TaskID: id}
+	if err := requireCurrentProjectWrite(s, a, task.ProjectID); err != nil {
+		return nil, err
+	}
 	allowed, err := r.CanUpdate(s, a)
 	if err != nil {
 		return nil, err

@@ -93,3 +93,20 @@ func TestFilterAttachmentImagesProtocolRelativeOrigin(t *testing.T) {
 	assert.Empty(t, FilterAttachmentImages(image, "http://front.test/app/", remove, "http://api.test/backend/"))
 	assert.Equal(t, image, FilterAttachmentImages(image, "", remove, "https://api.test/backend/"), "unknown document scheme must not manufacture a trusted origin")
 }
+
+func TestRewriteAttachmentImagesKeepsUnrelatedContentAndOriginBoundary(t *testing.T) {
+	source := `<p>before &amp; after</p><img src="/api/v2/tasks/7/attachments/5/preview?size=md" alt="a > b" data-src="/api/v2/tasks/7/attachments/5"><a href="/api/v2/tasks/7/attachments/5">original link</a><img src="https://foreign.test/api/v2/tasks/7/attachments/5"><img src="/api/v2/tasks/8/attachments/6">`
+	actual := RewriteAttachmentImages(source, "https://task.test", func(taskID, attachmentID int64) string {
+		if taskID == 7 && attachmentID == 5 {
+			return "/api/v2/tasks/70/attachments/50"
+		}
+		return ""
+	})
+	assert.Contains(t, actual, `src="/api/v2/tasks/70/attachments/50"`)
+	assert.Contains(t, actual, `alt="a &gt; b"`)
+	assert.NotContains(t, actual, `data-src=`)
+	assert.Contains(t, actual, `<p>before &amp; after</p>`)
+	assert.Contains(t, actual, `<a href="/api/v2/tasks/7/attachments/5">original link</a>`)
+	assert.Contains(t, actual, `<img src="https://foreign.test/api/v2/tasks/7/attachments/5">`)
+	assert.Contains(t, actual, `<img src="/api/v2/tasks/8/attachments/6">`)
+}

@@ -17,6 +17,7 @@
 package models
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"slices"
@@ -233,6 +234,9 @@ func bulkInsertTaskPositions(s *xorm.Session, positions []*TaskPosition, overwri
 // SQLite allows only a single writer at a time and does not support FOR UPDATE,
 // so no explicit lock is needed there.
 func lockPositionsForViewUpdate(s *xorm.Session, viewID int64) (err error) {
+	if err = lockViewProjectsForMutation(s, viewID); err != nil {
+		return err
+	}
 	if db.Type() == schemas.SQLITE {
 		return nil
 	}
@@ -248,6 +252,13 @@ func lockPositionsForViewUpdate(s *xorm.Session, viewID int64) (err error) {
 // writing a row first and taking a view lock later inverts the order against a
 // concurrent recalculation and deadlocks (Sentry API-CLOUD-48).
 func lockViewsForPositionUpdate(s *xorm.Session, views []*ProjectView) (err error) {
+	projectIDs := make([]int64, 0, len(views))
+	for _, view := range views {
+		projectIDs = append(projectIDs, view.ProjectID)
+	}
+	if err = LockProjectsForVersionMutation(s, projectIDs...); err != nil {
+		return err
+	}
 	for _, id := range viewLockOrder(views) {
 		err = lockPositionsForViewUpdate(s, id)
 		if err != nil {
@@ -269,6 +280,9 @@ func viewLockOrder(views []*ProjectView) []int64 {
 }
 
 func lockProjectViewsForPositionUpdate(s *xorm.Session, projectIDs ...int64) (views []*ProjectView, err error) {
+	if err = LockProjectsForVersionMutation(s, projectIDs...); err != nil {
+		return nil, err
+	}
 	seen := make(map[int64]bool, len(projectIDs))
 	for _, projectID := range projectIDs {
 		if seen[projectID] {
@@ -276,8 +290,8 @@ func lockProjectViewsForPositionUpdate(s *xorm.Session, projectIDs ...int64) (vi
 		}
 		seen[projectID] = true
 
-		projectViews, err := getViewsForProject(s, projectID)
-		if err != nil {
+		projectViews := []*ProjectView{}
+		if err := routineCurrentRead(s).Where("project_id = ?", projectID).OrderBy("id").Find(&projectViews); err != nil {
 			return nil, err
 		}
 		views = append(views, projectViews...)
@@ -289,6 +303,10 @@ func lockProjectViewsForPositionUpdate(s *xorm.Session, projectIDs ...int64) (vi
 // updateTaskPosition is the internal function that performs the task position update logic
 // without dispatching events. This is used by moveTaskToDoneBuckets to avoid duplicate events.
 func updateTaskPosition(s *xorm.Session, a web.Auth, tp *TaskPosition) (err error) {
+	if err := lockAuthorizedTasksForProjectMutation(s, a, []int64{tp.TaskID}); err != nil {
+		return err
+	}
+
 	err = lockPositionsForViewUpdate(s, tp.ProjectViewID)
 	if err != nil {
 		return err
@@ -356,13 +374,21 @@ func (tp *TaskPosition) Update(s *xorm.Session, a web.Auth) (err error) {
 }
 
 func RecalculateTaskPositions(s *xorm.Session, view *ProjectView, a web.Auth) (err error) {
+	if !s.IsInTx() {
+		repair := db.NewSession()
+		defer repair.Close()
+		defer events.CleanupPending(repair)
+		if err := RecalculateTaskPositions(repair, view, a); err != nil {
+			return err
+		}
+		if err := repair.Commit(); err != nil {
+			return err
+		}
+		events.DispatchPending(context.Background(), repair)
+		return nil
+	}
 
 	log.Debugf("Recalculating task positions for view %d", view.ID)
-
-	err = lockPositionsForViewUpdate(s, view.ID)
-	if err != nil {
-		return err
-	}
 
 	opts := &taskSearchOptions{
 		projectViewID: view.ID,
@@ -410,6 +436,12 @@ func RecalculateTaskPositions(s *xorm.Session, view *ProjectView, a web.Auth) (e
 
 	for _, p := range projects {
 		opts.projectIDs = append(opts.projectIDs, p.ID)
+	}
+	if err := LockProjectViewsForTaskMutation(s, opts.projectIDs...); err != nil {
+		return err
+	}
+	if err := lockPositionsForViewUpdate(s, view.ID); err != nil {
+		return err
 	}
 
 	dbSearcher := &dbTaskSearcher{
@@ -506,6 +538,15 @@ func AddPositionsToTasks(s *xorm.Session, tasks []*Task) error {
 // Unlike RecalculateTaskPositions, this only operates on tasks that already have
 // positions in the view (doesn't discover new tasks).
 func recalculateTaskPositionsForRepair(s *xorm.Session, view *ProjectView) error {
+	if !s.IsInTx() {
+		repair := db.NewSession()
+		defer repair.Close()
+		defer events.CleanupPending(repair)
+		if err := recalculateTaskPositionsForRepair(repair, view); err != nil {
+			return err
+		}
+		return repair.Commit()
+	}
 	log.Debugf("Recalculating task positions for view %d (repair mode)", view.ID)
 
 	err := lockPositionsForViewUpdate(s, view.ID)
@@ -777,6 +818,11 @@ func ensureTaskPositionsForSavedFilterView(s *xorm.Session, a web.Auth, projects
 	if len(projectIDs) == 0 {
 		return nil
 	}
+	if s.IsInTx() {
+		if err := LockProjectViewsForTaskMutation(s, projectIDs...); err != nil {
+			return err
+		}
+	}
 
 	query := s.
 		Select("tasks.*").
@@ -800,6 +846,18 @@ func ensureTaskPositionsForSavedFilterView(s *xorm.Session, a web.Auth, projects
 
 	if len(tasks) == 0 {
 		return nil
+	}
+	if !s.IsInTx() {
+		// Ordinary collection reads stay autocommit. Only a missing-position
+		// repair opens a short transaction, rechecks under project/view gates,
+		// and commits its writes before the caller's real task query executes.
+		repair := db.NewSession()
+		defer repair.Close()
+		defer events.CleanupPending(repair)
+		if err := ensureTaskPositionsForSavedFilterView(repair, a, projects, view, opts); err != nil {
+			return err
+		}
+		return repair.Commit()
 	}
 
 	// Taken only once there is something to write so plain reads don't serialize.

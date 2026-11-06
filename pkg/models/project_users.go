@@ -76,6 +76,12 @@ type UserWithPermission struct {
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /projects/{id}/users [put]
 func (lu *ProjectUser) Create(s *xorm.Session, a web.Auth) (err error) {
+	if err := lockProjectSubtreeForMutation(s, lu.ProjectID); err != nil {
+		return err
+	}
+	if err := requireCurrentProjectAdmin(s, a, lu.ProjectID); err != nil {
+		return err
+	}
 
 	// Check if the permission is valid
 	if err := lu.Permission.isValid(); err != nil {
@@ -94,6 +100,9 @@ func (lu *ProjectUser) Create(s *xorm.Session, a web.Auth) (err error) {
 		return err
 	}
 	lu.UserID = u.ID
+	if err := currentProjectMutationUserExists(s, lu.UserID); err != nil {
+		return err
+	}
 
 	// Check if the user already has access or is owner of that project
 	// We explicitly DONT check for teams here
@@ -138,7 +147,13 @@ func (lu *ProjectUser) Create(s *xorm.Session, a web.Auth) (err error) {
 // @Failure 404 {object} web.HTTPError "user or project does not exist."
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /projects/{projectID}/users/{userID} [delete]
-func (lu *ProjectUser) Delete(s *xorm.Session, _ web.Auth) (err error) {
+func (lu *ProjectUser) Delete(s *xorm.Session, a web.Auth) (err error) {
+	if err := lockProjectSubtreeForMutation(s, lu.ProjectID); err != nil {
+		return err
+	}
+	if err := requireCurrentProjectAdmin(s, a, lu.ProjectID); err != nil {
+		return err
+	}
 
 	// Check if the user exists
 	u, err := user.GetUserByUsername(s, lu.Username)
@@ -250,7 +265,13 @@ func (lu *ProjectUser) ReadAll(s *xorm.Session, a web.Auth, search string, page 
 // @Failure 404 {object} web.HTTPError "User or project does not exist."
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /projects/{projectID}/users/{userID} [post]
-func (lu *ProjectUser) Update(s *xorm.Session, _ web.Auth) (err error) {
+func (lu *ProjectUser) Update(s *xorm.Session, a web.Auth) (err error) {
+	if err := lockProjectSubtreeForMutation(s, lu.ProjectID); err != nil {
+		return err
+	}
+	if err := requireCurrentProjectAdmin(s, a, lu.ProjectID); err != nil {
+		return err
+	}
 
 	// Check if the permission is valid
 	if err := lu.Permission.isValid(); err != nil {

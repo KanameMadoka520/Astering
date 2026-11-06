@@ -221,6 +221,7 @@ func TestTaskRoutinePeriodProgressPermissions(t *testing.T) {
 	db.LoadAndAssertFixtures(t)
 	s := db.NewSession()
 	defer s.Close()
+	require.NoError(t, LockProjectsForVersionMutation(s, 1, 2, 7, 9, 10))
 	for i, tc := range []struct {
 		project int64
 		auth    web.Auth

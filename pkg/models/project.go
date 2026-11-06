@@ -987,6 +987,14 @@ func checkProjectBeforeUpdateOrDelete(s *xorm.Session, project *Project) (err er
 }
 
 func CreateProject(s *xorm.Session, project *Project, auth web.Auth, createBacklogBucket bool, createDefaultViews bool) (err error) {
+	if err := LockProjectsForVersionMutation(s, project.parentID()); err != nil {
+		return err
+	}
+	if project.parentID() > 0 {
+		if err := requireCurrentProjectWrite(s, auth, project.parentID()); err != nil {
+			return err
+		}
+	}
 	project.IsCompleted = false
 	project.CompletedAt = time.Time{}
 	err = project.CheckIsArchived(s)
@@ -997,6 +1005,14 @@ func CreateProject(s *xorm.Session, project *Project, auth web.Auth, createBackl
 	doer, err := user.GetFromAuth(auth)
 	if err != nil {
 		return err
+	}
+	if err := currentProjectMutationUserExists(s, doer.ID); err != nil {
+		return err
+	}
+	if doer.IsBot() {
+		if err := currentProjectMutationUserExists(s, doer.BotOwnerID); err != nil {
+			return err
+		}
 	}
 
 	project.ID = 0
@@ -1023,16 +1039,14 @@ func CreateProject(s *xorm.Session, project *Project, auth web.Auth, createBackl
 		project.ParentProjectID = noParentProjectID()
 	}
 
+	archiveOnCreate := project.IsArchived
+	project.IsArchived = false
+
 	// Nullable maps the 0 sentinel to a stored NULL, keeping the index on
 	// parent_project_id to real children; the struct keeps the plain 0 the API returns.
 	_, err = s.Nullable("parent_project_id").Insert(project)
 	if err != nil {
 		return
-	}
-	if project.IsArchived {
-		if err = recordProjectArchive(s, project.ID, true); err != nil {
-			return err
-		}
 	}
 	_, err = s.Insert(&ProjectTaskCounter{ProjectID: project.ID})
 	if err != nil {
@@ -1043,12 +1057,16 @@ func CreateProject(s *xorm.Session, project *Project, auth web.Auth, createBackl
 	if doer.IsBot() {
 		pu := &ProjectUser{
 			ProjectID:  project.ID,
+			UserID:     doer.ID,
 			Username:   doer.Username,
 			Permission: PermissionAdmin,
 		}
-		if err = pu.Create(s, auth); err != nil {
+		// Bootstrap access in this newly inserted project. Its human owner
+		// owns it before the bot has the ordinary existing-project admin grant.
+		if _, err = s.Insert(pu); err != nil {
 			return err
 		}
+		events.DispatchOnCommit(s, &ProjectSharedWithUserEvent{Project: project, User: doer, Doer: doerFromAuth(s, auth)})
 	}
 
 	err = insertProjectAncestors(s, project.ID, project.parentID())
@@ -1074,11 +1092,28 @@ func CreateProject(s *xorm.Session, project *Project, auth web.Auth, createBackl
 		}
 	}
 
+	if err = finalizeCreatedProjectArchive(s, project, archiveOnCreate); err != nil {
+		return err
+	}
+
 	events.DispatchOnCommit(s, &ProjectCreatedEvent{
 		Project: project,
 		Doer:    doerFromAuth(s, auth),
 	})
 	return nil
+}
+
+// Initialize a new project's default views before making its requested archived
+// state effective. Existing archived projects still reject content mutations.
+func finalizeCreatedProjectArchive(s *xorm.Session, project *Project, archived bool) error {
+	if !archived {
+		return nil
+	}
+	project.IsArchived = true
+	if _, err := s.ID(project.ID).Cols("is_archived").Update(&Project{IsArchived: true}); err != nil {
+		return err
+	}
+	return recordProjectArchive(s, project.ID, true)
 }
 
 // CreateNewProjectForUser creates a new inbox project for a user. To prevent import cycles, we can't do that
@@ -1151,7 +1186,13 @@ func checkProjectParentBeforeUpdate(s *xorm.Session, project, storedProject *Pro
 
 	var parent *Project
 	if parentID > 0 {
-		parent, err = GetProjectSimpleByID(s, parentID)
+		parents := []*Project{}
+		err = sharedVersionRows(s, "projects", builder.Eq{"id": parentID}, "id", &parents)
+		if err == nil && len(parents) > 0 {
+			parent = parents[0]
+		} else if err == nil {
+			err = ErrProjectDoesNotExist{ID: parentID}
+		}
 		// An orphaned stored parent must not block un-archiving; a missing
 		// ancestor is no ancestor. A request-supplied target stays strict.
 		if IsErrProjectDoesNotExist(err) && !reparenting {
@@ -1163,23 +1204,15 @@ func checkProjectParentBeforeUpdate(s *xorm.Session, project, storedProject *Pro
 	}
 
 	if reparenting {
-		canAdminMoved, err := project.IsAdmin(s, auth)
-		if err != nil {
+		if err := requireCurrentProjectPermission(s, auth, project.ID, PermissionAdmin); err != nil {
 			return err
-		}
-		if !canAdminMoved {
-			return ErrGenericForbidden{}
 		}
 
 		// Attaching under a new parent additionally requires Admin on
 		// that parent; detaching to the top level (0) has no new parent.
 		if parent != nil {
-			canAdminNewParent, err := parent.IsAdmin(s, auth)
-			if err != nil {
+			if err := requireCurrentProjectPermission(s, auth, parent.ID, PermissionAdmin); err != nil {
 				return err
-			}
-			if !canAdminNewParent {
-				return ErrGenericForbidden{}
 			}
 
 			if parent.IsArchived {
@@ -1195,15 +1228,59 @@ func checkProjectParentBeforeUpdate(s *xorm.Session, project, storedProject *Pro
 	return nil
 }
 
+// An unchanged legacy dangling parent is not a new move target. Revalidate
+// after the guard so a concurrent reparent cannot expand the locked scope.
+func lockProjectUpdateScope(s *xorm.Session, project *Project) error {
+	before := &Project{}
+	exists, err := s.ID(project.ID).Get(before)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return ErrProjectDoesNotExist{ID: project.ID}
+	}
+	targetParent := int64(0)
+	if isReparent(project, before) {
+		targetParent = project.parentID()
+	}
+	if err = lockProjectSubtreeForMutation(s, project.ID, targetParent); err != nil {
+		return err
+	}
+	current := &Project{}
+	exists, err = routineCurrentRead(s).ID(project.ID).Get(current)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return ErrProjectDoesNotExist{ID: project.ID}
+	}
+	if isReparent(project, current) && project.parentID() > 0 && targetParent == 0 {
+		return versionError("project_mutation_scope_changed", "The project parent changed while this operation was waiting. Reload and retry.")
+	}
+	return nil
+}
+
 func UpdateProject(s *xorm.Session, project *Project, auth web.Auth, updateProjectBackground bool) (err error) {
+	if err := lockProjectUpdateScope(s, project); err != nil {
+		return err
+	}
+
+	if err := requireCurrentProjectPermission(s, auth, project.ID, PermissionWrite); err != nil {
+		return err
+	}
+
 	err = checkProjectBeforeUpdateOrDelete(s, project)
 	if err != nil {
 		return
 	}
 
-	storedProject, err := GetProjectSimpleByID(s, project.ID)
+	storedProject, exists, err := getProjectSimple(routineCurrentRead(s), builder.Eq{"id": project.ID})
 	if err != nil {
 		return err
+	}
+
+	if !exists {
+		return ErrProjectDoesNotExist{ID: project.ID}
 	}
 
 	err = checkProjectParentBeforeUpdate(s, project, storedProject, auth)
@@ -1444,6 +1521,28 @@ func (p *Project) isDefaultProject(s *xorm.Session) (is bool, err error) {
 		Exist()
 }
 
+func hardDeleteProjectTasks(s *xorm.Session, projectID int64) error {
+	// Hard-delete all tasks on that project, including soft-deleted ones —
+	// there is nothing to restore them into once the project is gone.
+	// Using the loop to make sure all related entities to all tasks are properly deleted as well.
+	if err := deleteAllProjectVersions(s, projectID); err != nil {
+		return err
+	}
+	tasks := []*Task{}
+	err := routineCurrentRead(s).Unscoped().Where("project_id = ?", projectID).OrderBy("id").Find(&tasks)
+	if err != nil {
+		return err
+	}
+
+	for _, task := range tasks {
+		err = hardDeleteTask(s, task)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Delete implements the delete method of CRUDable
 // @Summary Deletes a project
 // @Description Delets a project
@@ -1457,6 +1556,14 @@ func (p *Project) isDefaultProject(s *xorm.Session) (is bool, err error) {
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /projects/{id} [delete]
 func (p *Project) Delete(s *xorm.Session, a web.Auth) (err error) {
+	if err := lockProjectSubtreeForMutation(s, p.ID); err != nil {
+		return err
+	}
+
+	if err := requireCurrentProjectPermission(s, a, p.ID, PermissionAdmin); err != nil {
+		return err
+	}
+
 	// The handler passes a stub without owner_id.
 	fullProject, err := GetProjectSimpleByID(s, p.ID)
 	if err != nil {
@@ -1478,20 +1585,8 @@ func (p *Project) Delete(s *xorm.Session, a web.Auth) (err error) {
 		return err
 	}
 
-	// Hard-delete all tasks on that project, including soft-deleted ones —
-	// there is nothing to restore them into once the project is gone.
-	// Using the loop to make sure all related entities to all tasks are properly deleted as well.
-	tasks := []*Task{}
-	err = s.Unscoped().Where("project_id = ?", p.ID).Find(&tasks)
-	if err != nil {
-		return
-	}
-
-	for _, task := range tasks {
-		err = hardDeleteTask(s, task)
-		if err != nil {
-			return err
-		}
+	if err = hardDeleteProjectTasks(s, p.ID); err != nil {
+		return err
 	}
 
 	err = fullProject.DeleteBackgroundFileIfExists(s)
@@ -1582,7 +1677,7 @@ func (p *Project) Delete(s *xorm.Session, a web.Auth) (err error) {
 	})
 
 	childProjects := []*Project{}
-	err = s.Where("parent_project_id = ?", fullProject.ID).Find(&childProjects)
+	err = routineCurrentRead(s).Where("parent_project_id = ?", fullProject.ID).OrderBy("id").Find(&childProjects)
 	if err != nil {
 		return
 	}
@@ -1600,6 +1695,10 @@ func (p *Project) Delete(s *xorm.Session, a web.Auth) (err error) {
 // DeleteBackgroundFileIfExists deletes the list's background file from the db and the filesystem,
 // if one exists
 func (p *Project) DeleteBackgroundFileIfExists(s *xorm.Session) (err error) {
+	if err := LockProjectsForVersionMutation(s, p.ID); err != nil {
+		return err
+	}
+
 	if p.BackgroundFileID == 0 {
 		return
 	}
@@ -1615,6 +1714,15 @@ func (p *Project) DeleteBackgroundFileIfExists(s *xorm.Session) (err error) {
 
 // SetProjectBackground sets a background file as project background in the db
 func SetProjectBackground(s *xorm.Session, projectID int64, background *files.File, blurHash string) (err error) {
+	if err := LockProjectsForVersionMutation(s, projectID); err != nil {
+		return err
+	}
+	if background.ID > 0 {
+		if err := files.LockOriginalForReference(s, background.ID); err != nil {
+			return err
+		}
+	}
+
 	l := &Project{
 		ID:                 projectID,
 		BackgroundFileID:   background.ID,
@@ -1629,6 +1737,10 @@ func SetProjectBackground(s *xorm.Session, projectID int64, background *files.Fi
 
 // ClearProjectBackground clears the background fields for a project without touching other columns.
 func ClearProjectBackground(s *xorm.Session, projectID int64) (err error) {
+	if err := LockProjectsForVersionMutation(s, projectID); err != nil {
+		return err
+	}
+
 	_, err = s.
 		Where("id = ?", projectID).
 		Cols("background_file_id", "background_blur_hash").
@@ -1639,6 +1751,10 @@ func ClearProjectBackground(s *xorm.Session, projectID int64) (err error) {
 const archiveStateUpdateBatch = 500
 
 func SetArchiveStateForProjectDescendants(s *xorm.Session, parentProjectID int64, shouldBeArchived bool) error {
+	if err := lockProjectSubtreeForMutation(s, parentProjectID); err != nil {
+		return err
+	}
+
 	var descendantIDs []int64
 	err := s.
 		Table(&ProjectAncestor{}).

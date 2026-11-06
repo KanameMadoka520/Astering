@@ -468,8 +468,10 @@ func TestTaskBucket_Update(t *testing.T) {
 		func() {
 			s := db.NewSession()
 			defer s.Close()
+			_, err := s.Insert(&ProjectUser{ProjectID: 9, UserID: u.ID, Permission: PermissionWrite})
+			require.NoError(t, err)
 			task := &Task{ID: 2, Done: true, ProjectID: 9}
-			err := task.Update(s, u)
+			err = task.Update(s, u)
 			require.NoError(t, err)
 			err = s.Commit()
 			require.NoError(t, err)

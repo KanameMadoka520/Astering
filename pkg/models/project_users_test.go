@@ -123,7 +123,16 @@ func TestProjectUser_Create(t *testing.T) {
 				CRUDable:    tt.fields.CRUDable,
 				Permissions: tt.fields.Permissions,
 			}
-			err := ul.Create(s, tt.args.a)
+			actor := tt.args.a
+			if actor == nil {
+				// Projects 2/3 belong to user 3; task creation does not grant project administration.
+				ownerID := int64(3)
+				if tt.fields.ProjectID == 1 {
+					ownerID = 1
+				}
+				actor = &user.User{ID: ownerID}
+			}
+			err := ul.Create(s, actor)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ProjectUser.Create() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -346,7 +355,7 @@ func TestProjectUser_Update(t *testing.T) {
 				CRUDable:    tt.fields.CRUDable,
 				Permissions: tt.fields.Permissions,
 			}
-			err := lu.Update(s, &user.User{ID: 1})
+			err := lu.Update(s, &user.User{ID: 3})
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ProjectUser.Update() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -429,7 +438,7 @@ func TestProjectUser_Delete(t *testing.T) {
 				CRUDable:    tt.fields.CRUDable,
 				Permissions: tt.fields.Permissions,
 			}
-			err := lu.Delete(s, &user.User{ID: 1})
+			err := lu.Delete(s, &user.User{ID: 3})
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ProjectUser.Delete() error = %v, wantErr %v", err, tt.wantErr)
 			}

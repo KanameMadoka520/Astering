@@ -26,6 +26,7 @@ import (
 	"github.com/KanameMadoka520/Astering/pkg/db"
 	"github.com/KanameMadoka520/Astering/pkg/files"
 	"github.com/KanameMadoka520/Astering/pkg/user"
+	"xorm.io/builder"
 	"xorm.io/xorm"
 	"xorm.io/xorm/schemas"
 )
@@ -182,9 +183,8 @@ func RetryDeletedAccountCleanup() error {
 func cleanupDeletedAccountFile(ownerID, fileID int64) error {
 	s := db.NewSession()
 	defer s.Close()
-	// A conditional write serializes with every Drive reuse operation on SQLite,
-	// PostgreSQL and MySQL; ordinary SELECTs after it could still see an old RR
-	// snapshot, so reference probes below are locking current reads.
+	// A conditional write serializes with every Drive reuse operation. Reference
+	// probes below must not acquire project/space locks in the reverse order.
 	changed, err := s.Exec("UPDATE drive_files SET revision = revision + 1 WHERE file_id = ? AND owner_id = ?", fileID, ownerID)
 	if err != nil {
 		return err
@@ -193,8 +193,9 @@ func cleanupDeletedAccountFile(ownerID, fileID int64) error {
 	if err != nil || n == 0 {
 		return err
 	}
-	owner := &user.User{}
-	exists, err := routineCurrentRead(s).ID(ownerID).Get(owner)
+	owners := []*user.User{}
+	err = sharedVersionRows(s, "users", builder.Eq{"id": ownerID}, "id", &owners)
+	exists := len(owners) > 0
 	if err != nil || exists {
 		return err
 	}
@@ -204,7 +205,17 @@ func cleanupDeletedAccountFile(ownerID, fileID int64) error {
 		return err
 	}
 	if !d.Purging {
-		used, err := deletedAccountFileReferenced(s, fileID)
+		probe := s
+		if db.Type() != schemas.SQLITE {
+			// The Drive gate prevents new committed references. A fresh ordinary
+			// read sees references committed while this gate was waiting without
+			// blocking on a project writer that is itself waiting for this file.
+			// An uncommitted removal remains visible and conservatively keeps the
+			// original until a later cleanup. SQLite uses this writer transaction.
+			probe = db.NewReadSession()
+			defer probe.Close()
+		}
+		used, err := deletedAccountFileReferenced(probe, fileID)
 		if err != nil || used {
 			return err
 		}
@@ -233,11 +244,12 @@ func deletedAccountFileReferenced(s *xorm.Session, fileID int64) (bool, error) {
 		{"compass_entry_media", "file_id"},
 		{"compass_spaces", "background_file_id"},
 		{"drive_chat_refs", "file_id"},
+		{"project_version_file_refs", "file_id"},
 	} {
 		var rows []struct {
 			ID int64 `xorm:"id"`
 		}
-		err := routineCurrentRead(s).Table(reference.table).Select(reference.column+" AS id").Where(reference.column+" = ?", fileID).Limit(1).Find(&rows)
+		err := s.Table(reference.table).Select(reference.column+" AS id").Where(reference.column+" = ?", fileID).Limit(1).Find(&rows)
 		if err != nil {
 			return false, err
 		}

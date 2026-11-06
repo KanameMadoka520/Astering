@@ -200,6 +200,16 @@ func checkTaskRelationCycle(s *xorm.Session, relation *TaskRelation, otherTaskID
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /tasks/{taskID}/relations [put]
 func (rel *TaskRelation) Create(s *xorm.Session, a web.Auth) error {
+	sources, err := lockTasksForProjectMutation(s, []int64{rel.TaskID, rel.OtherTaskID})
+	if err != nil {
+		return err
+	}
+	if err := requireCurrentProjectWrite(s, a, sources[rel.TaskID]); err != nil {
+		return err
+	}
+	if err := requireCurrentProjectPermission(s, a, sources[rel.OtherTaskID], PermissionRead); err != nil {
+		return err
+	}
 
 	// Check if both tasks are the same
 	if rel.TaskID == rel.OtherTaskID {
@@ -312,8 +322,19 @@ func (rel *TaskRelation) ReadOne(s *xorm.Session, _ web.Auth) (err error) {
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /tasks/{taskID}/relations/{relationKind}/{otherTaskID} [delete]
 func (rel *TaskRelation) Delete(s *xorm.Session, a web.Auth) error {
+	sources, err := lockTasksForProjectMutation(s, []int64{rel.TaskID, rel.OtherTaskID})
+	if err != nil {
+		return err
+	}
+	if err := requireCurrentProjectWrite(s, a, sources[rel.TaskID]); err != nil {
+		return err
+	}
+	if err := requireCurrentProjectPermission(s, a, sources[rel.OtherTaskID], PermissionRead); err != nil {
+		return err
+	}
+
 	// Load the full relation first (populates CreatedBy)
-	err := rel.ReadOne(s, a)
+	err = rel.ReadOne(s, a)
 	if err != nil {
 		return err
 	}

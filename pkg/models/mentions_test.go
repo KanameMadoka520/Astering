@@ -123,6 +123,7 @@ func TestSendingMentionNotification(t *testing.T) {
 			Comment: `<p>Lorem Ipsum <mention-user data-id="user1">@user1</mention-user> <mention-user data-id="user2">@user2</mention-user> <mention-user data-id="user3">@user3</mention-user> <mention-user data-id="user4">@user4</mention-user> <mention-user data-id="user5">@user5</mention-user> <mention-user data-id="user6">@user6</mention-user></p>`,
 			TaskID:  32, // user2 has access to the project that task belongs to
 		}
+		grantCommentNotificationWriter(t, s)
 		err = tc.Create(s, u)
 		require.NoError(t, err)
 		n := &TaskCommentNotification{
@@ -180,6 +181,7 @@ func TestSendingMentionNotification(t *testing.T) {
 			Comment: `<p>Lorem Ipsum <mention-user data-id="user2">@user2</mention-user></p>`,
 			TaskID:  32, // user2 has access to the project that task belongs to
 		}
+		grantCommentNotificationWriter(t, s)
 		err = tc.Create(s, u)
 		require.NoError(t, err)
 		n := &TaskCommentNotification{

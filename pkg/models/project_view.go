@@ -273,7 +273,16 @@ func (pv *ProjectView) ReadOne(s *xorm.Session, _ web.Auth) (err error) {
 // @Failure 403 {object} web.HTTPError "The user does not have access to the project view"
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /projects/{project}/views/{id} [delete]
-func (pv *ProjectView) Delete(s *xorm.Session, _ web.Auth) (err error) {
+func (pv *ProjectView) Delete(s *xorm.Session, a web.Auth) (err error) {
+	if err := LockProjectsForVersionMutation(s, pv.ProjectID); err != nil {
+		return err
+	}
+	if pv.ProjectID > 0 {
+		if err := requireCurrentProjectWrite(s, a, pv.ProjectID); err != nil {
+			return err
+		}
+	}
+
 	// Resolve the view under the path project first: the buckets/positions below are deleted by
 	// view id alone, so without this guard a delete scoped to the wrong parent project would still
 	// wipe another project's buckets and positions while matching zero project_views rows.
@@ -294,6 +303,11 @@ func (pv *ProjectView) Delete(s *xorm.Session, _ web.Auth) (err error) {
 	}
 
 	_, err = s.Where("project_view_id = ?", pv.ID).Delete(&TaskPosition{})
+	if err != nil {
+		return
+	}
+
+	_, err = s.Where("project_view_id = ?", pv.ID).Delete(&Bucket{})
 	return
 }
 
@@ -421,6 +435,15 @@ func bucketProjectViewID(s *xorm.Session, bucketID int64) (viewID int64, exists 
 }
 
 func createProjectView(s *xorm.Session, p *ProjectView, a web.Auth, createBacklogBucket bool, addExistingTasksToView bool) (err error) {
+	if err := LockProjectsForVersionMutation(s, p.ProjectID); err != nil {
+		return err
+	}
+	if p.ProjectID > 0 {
+		if err := requireCurrentProjectWrite(s, a, p.ProjectID); err != nil {
+			return err
+		}
+	}
+
 	normalizeBucketConfigurationMode(p)
 
 	err = validateProjectViewFilters(p)
@@ -653,7 +676,16 @@ func taskIDsWithoutBucketInView(s *xorm.Session, viewID int64, cond builder.Cond
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /projects/{project}/views/{id} [post]
 func (pv *ProjectView) Update(s *xorm.Session, a web.Auth) (err error) {
-	oldView, err := GetProjectViewByIDAndProject(s, pv.ID, pv.ProjectID)
+	if err := LockProjectsForVersionMutation(s, pv.ProjectID); err != nil {
+		return err
+	}
+	if pv.ProjectID > 0 {
+		if err := requireCurrentProjectWrite(s, a, pv.ProjectID); err != nil {
+			return err
+		}
+	}
+
+	oldView, err := GetProjectViewByIDAndProject(routineCurrentRead(s), pv.ID, pv.ProjectID)
 	if err != nil {
 		return
 	}

@@ -1,5 +1,8 @@
 <template>
-	<Dropdown v-bind="$attrs">
+	<Dropdown
+		ref="dropdown"
+		v-bind="$attrs"
+	>
 		<template #trigger="triggerProps">
 			<slot
 				name="trigger"
@@ -21,6 +24,13 @@
 
 		<template v-if="project.id > 0">
 			<DropdownItem
+				v-if="typeof project.max_permission === 'number' && project.max_permission >= PERMISSIONS.READ"
+				:to="{name: 'project.versions', params: {projectId: project.id}}"
+				:icon="['far', 'clock']"
+			>
+				{{ $t('projectVersions.title') }}
+			</DropdownItem>
+			<DropdownItem
 				:to="{name: 'projects.history', query: {project: project.id}}"
 				icon="calendar"
 			>
@@ -34,7 +44,7 @@
 				{{ $t(project.is_completed ? 'projectHistory.reopen' : 'projectHistory.complete') }}
 			</DropdownItem>
 		</template>
-		<template v-if="isSavedFilterProject(project)">
+		<template v-if="canWrite && isSavedFilterProject(project)">
 			<DropdownItem
 				:to="{ name: 'filter.settings.edit', params: { projectId: project.id } }"
 				icon="pen"
@@ -57,7 +67,7 @@
 			</DropdownItem>
 		</template>
 
-		<template v-else-if="project.is_archived">
+		<template v-else-if="canWrite && project.is_archived">
 			<DropdownItem
 				:to="{ name: 'project.settings.archive', params: { projectId: project.id } }"
 				icon="archive"
@@ -65,7 +75,7 @@
 				{{ $t('menu.unarchive') }}
 			</DropdownItem>
 		</template>
-		<template v-else>
+		<template v-else-if="canWrite">
 			<DropdownItem
 				:to="{ name: 'project.settings.edit', params: { projectId: project.id } }"
 				icon="pen"
@@ -156,7 +166,8 @@
 </template>
 
 <script setup lang="ts">
-import {computed, ref} from 'vue'
+import {computed, ref, watch} from 'vue'
+import {useRoute} from 'vue-router'
 const props = withDefaults(defineProps<{
 	project: Project & Required<Pick<Project, 'id'>>
 	forceAllActions?: boolean
@@ -178,6 +189,10 @@ import {useConfigStore} from '@/stores/config'
 import {useAuthStore} from '@/stores/auth'
 import {PERMISSIONS} from '@/constants/permissions'
 
+const dropdown = ref<InstanceType<typeof Dropdown> | null>(null)
+const route = useRoute()
+watch(() => route.fullPath, () => dropdown.value?.closeMenu())
+
 const confirmCompletion = ref(false)
 const completionMutation = useProjectCompletionMutation()
 async function changeCompletion() {
@@ -188,6 +203,7 @@ async function changeCompletion() {
 }
 
 const subscriptionMutation = useSetProjectSubscriptionMutation()
+const canWrite = computed(() => props.forceAllActions || (props.project.max_permission ?? -1) > PERMISSIONS.READ)
 
 const configStore = useConfigStore()
 const backgroundsEnabled = computed(() => configStore.enabled_background_providers?.length > 0)

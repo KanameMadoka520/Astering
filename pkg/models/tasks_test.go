@@ -30,6 +30,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"xorm.io/builder"
+	"xorm.io/xorm"
 )
 
 func TestTask_Create(t *testing.T) {
@@ -204,9 +205,13 @@ func TestTask_Create(t *testing.T) {
 			Description: "Lorem Ipsum Dolor",
 			ProjectID:   1,
 		}
-		err := task.Create(s, nUser)
+		canCreate, err := task.CanCreate(s, nUser)
+		require.NoError(t, err)
+		require.False(t, canCreate)
+		err = task.Create(s, nUser)
 		require.Error(t, err)
-		assert.True(t, user.IsErrUserDoesNotExist(err))
+		assert.True(t, IsErrGenericForbidden(err))
+		db.AssertMissing(t, "tasks", map[string]interface{}{"created_by_id": nUser.ID})
 	})
 	t.Run("default bucket different", func(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
@@ -218,7 +223,11 @@ func TestTask_Create(t *testing.T) {
 			Description: "Lorem Ipsum Dolor",
 			ProjectID:   6,
 		}
-		err := task.Create(s, usr)
+		actor := &user.User{ID: 6}
+		canCreate, err := task.CanCreate(s, actor)
+		require.NoError(t, err)
+		require.True(t, canCreate)
+		err = task.Create(s, actor)
 		require.NoError(t, err)
 		require.NoError(t, s.Commit())
 		db.AssertExists(t, "task_buckets", map[string]interface{}{
@@ -300,6 +309,7 @@ func TestTask_Update(t *testing.T) {
 			ID:        1,
 			ProjectID: 2,
 		}
+		grantWriteForTaskMove(t, s, task, u)
 		err := task.Update(s, u)
 		require.NoError(t, err)
 		err = s.Commit()
@@ -366,6 +376,7 @@ func TestTask_Update(t *testing.T) {
 			ID:        1,
 			ProjectID: 2,
 		}
+		grantWriteForTaskMove(t, s, task, u)
 		err := task.Update(s, u)
 		require.NoError(t, err)
 		err = s.Commit()
@@ -390,6 +401,7 @@ func TestTask_Update(t *testing.T) {
 			Done:      true,
 			ProjectID: 2,
 		}
+		grantWriteForTaskMove(t, s, task, u)
 		err := task.Update(s, u)
 		require.NoError(t, err)
 		err = s.Commit()
@@ -567,6 +579,7 @@ func TestTask_Update(t *testing.T) {
 			ID:        12,
 			ProjectID: 2, // From project 1
 		}
+		grantWriteForTaskMove(t, s, task, u)
 		err := task.Update(s, u)
 		require.NoError(t, err)
 		err = s.Commit()
@@ -662,6 +675,8 @@ func TestTask_Update(t *testing.T) {
 		err = s.Commit()
 		require.NoError(t, err)
 		assert.Equal(t, time.Date(2022, time.March, 8, 8, 4, 20, 0, time.UTC), taskBefore.Reminders[0].Reminder)
+
+		require.NoError(t, s.Begin())
 
 		// when start_date is modified
 		task := taskBefore
@@ -1760,4 +1775,17 @@ func TestAddOneMonthToDate(t *testing.T) {
 			assert.Equal(t, tt.want, addOneMonthToDate(tt.in))
 		})
 	}
+}
+
+func grantWriteForTaskMove(t *testing.T, s *xorm.Session, task *Task, actor *user.User) {
+	t.Helper()
+	_, err := s.Insert(&ProjectUser{
+		ProjectID:  task.ProjectID,
+		UserID:     actor.ID,
+		Permission: PermissionWrite,
+	})
+	require.NoError(t, err)
+	canUpdate, err := task.CanUpdate(s, actor)
+	require.NoError(t, err)
+	require.True(t, canUpdate)
 }

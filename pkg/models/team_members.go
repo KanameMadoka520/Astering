@@ -78,6 +78,9 @@ func lastTeamAdmin(members []*TeamMember, target *TeamMember) bool {
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /teams/{id}/members [put]
 func (tm *TeamMember) Create(s *xorm.Session, a web.Auth) (err error) {
+	if err := lockTeamProjectScopesForMutation(s, tm.TeamID); err != nil {
+		return err
+	}
 
 	// Check if the team extst
 	team, err := GetTeamByID(s, tm.TeamID)
@@ -90,6 +93,9 @@ func (tm *TeamMember) Create(s *xorm.Session, a web.Auth) (err error) {
 		return
 	}
 	tm.UserID = member.ID
+	if err := currentProjectMutationUserExists(s, tm.UserID); err != nil {
+		return err
+	}
 
 	// Check if that user is already part of the team
 	exists, err := s.
@@ -128,6 +134,9 @@ func (tm *TeamMember) Create(s *xorm.Session, a web.Auth) (err error) {
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /teams/{id}/members/{username} [delete]
 func (tm *TeamMember) Delete(s *xorm.Session, a web.Auth) (err error) {
+	if err := lockTeamProjectScopesForMutation(s, tm.TeamID); err != nil {
+		return err
+	}
 
 	t, members, err := lockTeamMemberships(s, tm.TeamID)
 	if err != nil {
@@ -212,6 +221,10 @@ func (tm *TeamMember) MembershipExists(s *xorm.Session) (exists bool, err error)
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /teams/{id}/members/{userID}/admin [post]
 func (tm *TeamMember) Update(s *xorm.Session, a web.Auth) (err error) {
+	if err := lockTeamProjectScopesForMutation(s, tm.TeamID); err != nil {
+		return err
+	}
+
 	_, members, err := lockTeamMemberships(s, tm.TeamID)
 	if err != nil {
 		return err

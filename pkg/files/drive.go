@@ -17,6 +17,7 @@
 package files
 
 import (
+	"errors"
 	"os"
 	"time"
 
@@ -68,12 +69,29 @@ func AddToDrive(s *xorm.Session, f *File) error {
 	return err
 }
 func (f *File) keptInDrive(s *xorm.Session) (bool, error) {
-	return s.Where("file_id = ?", f.ID).Exist(&DriveFile{})
+	kept, err := currentFileRead(s).Where("file_id = ?", f.ID).Exist(new(DriveFile))
+	if err != nil || kept {
+		return kept, err
+	}
+	if err = LockOriginalForReference(s, f.ID); err != nil {
+		if IsErrFileDoesNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return ReferencedByProjectVersion(s, f.ID)
 }
 
 // PurgeFromDrive is reserved for the usage-checked recycle-bin operation.
 func (f *File) PurgeFromDrive(s *xorm.Session) error {
-	_, err := s.Where("file_id = ?", f.ID).Cols("purging").Update(&DriveFile{Purging: true})
+	used, err := ReferencedByProjectVersion(s, f.ID)
+	if err != nil {
+		return err
+	}
+	if used {
+		return errors.New("original file is retained by a project checkpoint")
+	}
+	_, err = s.Where("file_id = ?", f.ID).Cols("purging").Update(&DriveFile{Purging: true})
 	return err
 }
 

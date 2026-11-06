@@ -81,6 +81,17 @@ func (pd *ProjectDuplicate) CanCreate(s *xorm.Session, a web.Auth) (canCreate bo
 //
 //nolint:gocyclo
 func (pd *ProjectDuplicate) Create(s *xorm.Session, doer web.Auth) (err error) {
+	if err := LockProjectViewsForTaskMutation(s, pd.ProjectID, pd.ParentProjectID); err != nil {
+		return err
+	}
+	if err := requireCurrentProjectPermission(s, doer, pd.ProjectID, PermissionRead); err != nil {
+		return err
+	}
+	if pd.ParentProjectID > 0 {
+		if err := requireCurrentProjectWrite(s, doer, pd.ParentProjectID); err != nil {
+			return err
+		}
+	}
 
 	log.Debugf("Duplicating project %d", pd.ProjectID)
 

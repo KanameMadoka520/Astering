@@ -46,6 +46,12 @@ func (b *BotUser) Create(s *xorm.Session, a web.Auth) error {
 	if !ok {
 		return ErrGenericForbidden{}
 	}
+	if owner.IsBot() {
+		return &user.ErrBotNotOwned{UserID: owner.ID}
+	}
+	if err := currentProjectMutationUserExists(s, owner.ID); err != nil {
+		return err
+	}
 	b.ID = 0
 	created, err := user.CreateBotUser(s, &b.User, owner)
 	if err != nil {

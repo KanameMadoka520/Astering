@@ -50,6 +50,8 @@ import {
 	type ProjectResponse,
 } from './projects'
 import {projectTimelineKeys} from './projectTimeline'
+import {applyProjectVersionRestoreResult, projectVersionKeys} from './projectVersions'
+import {parseProjectVersionRestore} from '@/helpers/projectVersionReceipt'
 import {
 	cachedTaskCopies,
 	isStaleTask,
@@ -316,6 +318,8 @@ type AgentCacheOperation =
 export type AgentRefreshPlan = {
 	compass: CompassReceiptChange[]
 	orders: TaskOrderResult[]
+	versionSaves: number[]
+	versionRestores: Parameters<typeof applyProjectVersionRestoreResult>[1][]
 	operations: AgentCacheOperation[]
 	// Tasks whose embedded labels, assignees or relations changed without a task in the receipt.
 	fetchTasks: number[]
@@ -536,6 +540,8 @@ function emptyPlan(): AgentRefreshPlan {
 	return {
 		compass: [],
 		orders: [],
+		versionSaves: [],
+		versionRestores: [],
 		operations: [],
 		fetchTasks: [],
 		refetchTasks: [],
@@ -562,6 +568,36 @@ export function planAgentRefresh(receipts: readonly AgentReceipt[]): AgentRefres
 	for (const {tool, arguments: args, result} of receipts) {
 		const id = positiveId(args.id)
 		switch (tool) {
+			case 'save_project_version': {
+				const project = positiveId(args.project_id)
+				if (project && isRecord(result) && result.project_id === project && positiveId(result.id)) {
+					plan.versionSaves.push(project)
+				}
+				break
+			}
+			case 'restore_project_version': {
+				const parsed = parseProjectVersionRestore(args, result)
+				const restore = parsed ? {
+					project_id: parsed.project_id,
+					changed_task_ids: parsed.changed_task_ids,
+					removed_task_ids: parsed.removed_task_ids,
+				} : undefined
+				if (restore) {
+					// Catching up after leaving a chat can deliver several restores at once. Only the
+					// final active set is authoritative; an earlier removal must not hide a revived task.
+					const index = plan.versionRestores.findIndex(previous => previous.project_id === restore.project_id)
+					if (index < 0) plan.versionRestores.push(restore)
+					else {
+						const active = new Set(restore.changed_task_ids)
+						restore.removed_task_ids = [...new Set([
+							...(plan.versionRestores[index].removed_task_ids ?? []),
+							...(restore.removed_task_ids ?? []),
+						])].filter(id => !active.has(id))
+						plan.versionRestores[index] = restore
+					}
+				}
+				break
+			}
 			case 'reorder_view_tasks': {
 				const order = parseTaskOrderResult(result, args)
 				if (order) plan.orders.push(order)
@@ -763,6 +799,7 @@ export function planAgentRefresh(receipts: readonly AgentReceipt[]): AgentRefres
 			}
 		}
 	}
+	plan.versionSaves = [...new Set(plan.versionSaves)]
 	plan.fetchTasks = [...new Set(plan.fetchTasks)]
 	plan.refetchTasks = [...new Set(plan.refetchTasks)]
 	plan.refetchProjects = [...new Set(plan.refetchProjects)]
@@ -996,6 +1033,8 @@ async function settleAgentChanges(client: QueryClient, plan: AgentRefreshPlan) {
 	const lists = changes.length ? false : plan.taskLists
 	await Promise.all([
 		refreshCompassReceipts(client, plan.compass),
+		...plan.versionSaves.map(project => client.invalidateQueries({queryKey: projectVersionKeys.project(project)})),
+		...plan.versionRestores.map(restore => applyProjectVersionRestoreResult(client, restore)),
 		...plan.orders.map(order => applyServerTaskOrder(client, order)),
 		applyServerTaskChanges(client, changes),
 		refreshEmbeddedTaskData(client, embeddedRequests(client, plan)),

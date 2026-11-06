@@ -189,9 +189,14 @@ func convertFiltersToDBFilterCond(rawFilters []*taskFilter, includeNulls bool) (
 // convertFiltersToDBFilterCondWithAlias builds the filter condition against the
 // given task table alias. Passing "parent_tasks" lets the subtask-expansion root
 // condition ask "does the parent satisfy the filter" (see #2646).
+func convertFiltersToDBFilterCondWithAlias(rawFilters []*taskFilter, includeNulls bool, taskAlias string) (filterCond builder.Cond, err error) {
+	return convertFiltersToDBFilterCondCurrent(rawFilters, includeNulls, taskAlias, false)
+}
+
+// Current counts also refresh nested relation filters in MySQL repeatable-read transactions.
 //
 //nolint:gocyclo
-func convertFiltersToDBFilterCondWithAlias(rawFilters []*taskFilter, includeNulls bool, taskAlias string) (filterCond builder.Cond, err error) {
+func convertFiltersToDBFilterCondCurrent(rawFilters []*taskFilter, includeNulls bool, taskAlias string, current bool) (filterCond builder.Cond, err error) {
 
 	var dbFilters = make([]builder.Cond, 0, len(rawFilters))
 	// Track join types separately because after merging consecutive sub-table
@@ -202,7 +207,7 @@ func convertFiltersToDBFilterCondWithAlias(rawFilters []*taskFilter, includeNull
 		f := rawFilters[i]
 
 		if nested, is := f.value.([]*taskFilter); is {
-			nestedDBFilters, err := convertFiltersToDBFilterCondWithAlias(nested, includeNulls || f.includeNulls, taskAlias)
+			nestedDBFilters, err := convertFiltersToDBFilterCondCurrent(nested, includeNulls || f.includeNulls, taskAlias, current)
 			if err != nil {
 				return nil, err
 			}
@@ -267,15 +272,18 @@ func convertFiltersToDBFilterCondWithAlias(rawFilters []*taskFilter, includeNull
 
 			filterSubQuery := subTableFilterParams.ToBaseSubQuery(taskAlias).And(combinedInnerCond)
 
-			var filter builder.Cond
-			if f.comparator == taskFilterComparatorNotEquals || f.comparator == taskFilterComparatorNotIn {
-				filter = builder.NotExists(filterSubQuery)
-			} else {
-				filter = builder.Exists(filterSubQuery)
+			negated := f.comparator == taskFilterComparatorNotEquals || f.comparator == taskFilterComparatorNotIn
+			filter, err := taskFilterExists(filterSubQuery, negated, current)
+			if err != nil {
+				return nil, err
 			}
 
 			if includeNulls && subTableFilterParams.AllowNullCheck {
-				filter = builder.Or(filter, builder.NotExists(subTableFilterParams.ToBaseSubQuery(taskAlias)))
+				missing, missingErr := taskFilterExists(subTableFilterParams.ToBaseSubQuery(taskAlias), true, current)
+				if missingErr != nil {
+					return nil, missingErr
+				}
+				filter = builder.Or(filter, missing)
 			}
 
 			dbFilters = append(dbFilters, filter)
@@ -316,6 +324,50 @@ func convertFiltersToDBFilterCondWithAlias(rawFilters []*taskFilter, includeNull
 	}
 
 	return filterCond, nil
+}
+
+// SQL comes exclusively from the parameterized filter builder. The locking
+// suffix is constant and only requested by MySQL's internal WIP-count path.
+func taskFilterExists(query *builder.Builder, negated, current bool) (builder.Cond, error) {
+	if !current {
+		if negated {
+			return builder.NotExists(query), nil
+		}
+		return builder.Exists(query), nil
+	}
+	statement, args, err := query.ToSQL()
+	if err != nil {
+		return nil, err
+	}
+	operator := "EXISTS"
+	if negated {
+		operator = "NOT EXISTS"
+	}
+	return builder.Expr(operator+" ("+statement+" LOCK IN SHARE MODE)", args...), nil
+}
+
+func (d *dbTaskSearcher) countCurrentMatchingTasks(cond builder.Cond, opts *taskSearchOptions, joinTaskBuckets bool) (int64, error) {
+	query := builder.Dialect(db.GetDialect()).Select("tasks.id").From("tasks").Where(cond)
+	if joinTaskBuckets {
+		join := builder.Expr("task_buckets.task_id = tasks.id")
+		if opts.projectViewID > 0 {
+			join = builder.Expr("task_buckets.task_id = tasks.id AND task_buckets.project_view_id = ?", opts.projectViewID)
+		}
+		query = query.LeftJoin("task_buckets", join)
+	}
+	statement, args, err := query.ToSQL()
+	if err != nil {
+		return 0, err
+	}
+	rows := []struct{ ID int64 }{}
+	if err = d.s.SQL(statement+" LOCK IN SHARE MODE", args...).Find(&rows); err != nil {
+		return 0, err
+	}
+	seen := make(map[int64]struct{}, len(rows))
+	for _, row := range rows {
+		seen[row.ID] = struct{}{}
+	}
+	return int64(len(seen)), nil
 }
 
 func hasBucketIDInParsedFilter(filters []*taskFilter) bool {
@@ -529,7 +581,7 @@ func (d *dbTaskSearcher) Search(opts *taskSearchOptions) (tasks []*Task, totalCo
 		}
 	}
 
-	filterCond, err := convertFiltersToDBFilterCond(opts.parsedFilters, opts.filterIncludeNulls)
+	filterCond, err := convertFiltersToDBFilterCondCurrent(opts.parsedFilters, opts.filterIncludeNulls, "tasks", opts.currentCountOnly)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -637,6 +689,10 @@ func (d *dbTaskSearcher) Search(opts *taskSearchOptions) (tasks []*Task, totalCo
 
 	limit, start := getLimitFromPageIndex(opts.page, opts.perPage)
 	cond := builder.And(builder.Or(projectIDCond, favoritesCond), where, filterCond)
+	if opts.currentCountOnly {
+		totalCount, err = d.countCurrentMatchingTasks(cond, opts, joinTaskBuckets)
+		return []*Task{}, totalCount, err
+	}
 
 	// When the favorites arm is still part of the query (Favorites view, or
 	// out-of-scope favorites exist), its shape is unsupported — stay unranked.

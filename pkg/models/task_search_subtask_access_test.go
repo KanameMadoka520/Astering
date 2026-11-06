@@ -61,6 +61,8 @@ func setupSubtaskAccessEnv(t *testing.T) *subtaskAccessEnv {
 	taskA := &Task{Title: "subtask-access root", ProjectID: shared.ID}
 	require.NoError(t, taskA.Create(s, owner))
 	require.NoError(t, s.Commit())
+	require.NoError(t, s.Begin())
+	require.NoError(t, LockProjectsForVersionMutation(s, shared.ID, crossShared.ID, private.ID))
 
 	return &subtaskAccessEnv{
 		s:           s,

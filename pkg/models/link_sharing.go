@@ -160,6 +160,12 @@ func (share *LinkSharing) toUser() *user.User {
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /projects/{project}/shares [put]
 func (share *LinkSharing) Create(s *xorm.Session, a web.Auth) (err error) {
+	if err := LockProjectsForVersionMutation(s, share.ProjectID); err != nil {
+		return err
+	}
+	if err := requireCurrentProjectAdmin(s, a, share.ProjectID); err != nil {
+		return err
+	}
 
 	err = share.Permission.isValid()
 	if err != nil {
@@ -315,7 +321,14 @@ func (share *LinkSharing) ReadAll(s *xorm.Session, a web.Auth, search string, pa
 // @Failure 404 {object} web.HTTPError "Share Link not found."
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /projects/{project}/shares/{share} [delete]
-func (share *LinkSharing) Delete(s *xorm.Session, _ web.Auth) (err error) {
+func (share *LinkSharing) Delete(s *xorm.Session, a web.Auth) (err error) {
+	if err := LockProjectsForVersionMutation(s, share.ProjectID); err != nil {
+		return err
+	}
+	if err := requireCurrentProjectAdmin(s, a, share.ProjectID); err != nil {
+		return err
+	}
+
 	deleted, err := s.Where("id = ? AND project_id = ?", share.ID, share.ProjectID).Delete(&LinkSharing{})
 	if err != nil {
 		return err

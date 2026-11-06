@@ -27,6 +27,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"xorm.io/builder"
+	"xorm.io/xorm"
 )
 
 func TestExtractQuotedCommentIDs(t *testing.T) {
@@ -82,10 +83,23 @@ func notifQuery(subjectID, userID int64) builder.Cond {
 	)
 }
 
+// Task 32 belongs to project 3. Its creator (user 1) has only read permission
+// in the shared fixtures; notification tests must explicitly allow posting.
+func grantCommentNotificationWriter(t *testing.T, s *xorm.Session) {
+	t.Helper()
+	affected, err := s.Where("project_id = ? AND user_id = ?", 3, 1).
+		Cols("permission").Update(&ProjectUser{Permission: PermissionWrite})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, affected)
+	allowed, err := (&TaskComment{TaskID: 32}).CanCreate(s, &user.User{ID: 1})
+	require.NoError(t, err)
+	require.True(t, allowed)
+}
+
 func TestTaskComment_CommentReplies_Notifications(t *testing.T) {
 	doer := &user.User{ID: 1}
 
-	// task 32 is owned by user 1 (the doer) on project 3.
+	// Task 32 was created by user 1 (the doer) on project 3, owned by user 3.
 	// user 2 has access to project 3 (this is exercised by the existing
 	// "should send notifications for comment mentions" test).
 
@@ -106,6 +120,7 @@ func TestTaskComment_CommentReplies_Notifications(t *testing.T) {
 			Comment: fmt.Sprintf(`<blockquote data-comment-id="%d">original</blockquote><p>thanks!</p>`, parent.ID),
 			TaskID:  32,
 		}
+		grantCommentNotificationWriter(t, s)
 		err = tc.Create(s, doer)
 		require.NoError(t, err)
 		require.NoError(t, s.Commit())
@@ -138,6 +153,7 @@ func TestTaskComment_CommentReplies_Notifications(t *testing.T) {
 			),
 			TaskID: 32,
 		}
+		grantCommentNotificationWriter(t, s)
 		err = tc.Create(s, doer)
 		require.NoError(t, err)
 		require.NoError(t, s.Commit())
@@ -173,6 +189,7 @@ func TestTaskComment_CommentReplies_Notifications(t *testing.T) {
 			),
 			TaskID: 32,
 		}
+		grantCommentNotificationWriter(t, s)
 		err = tc.Create(s, doer)
 		require.NoError(t, err)
 		require.NoError(t, s.Commit())
@@ -204,6 +221,7 @@ func TestTaskComment_CommentReplies_Notifications(t *testing.T) {
 			Comment: fmt.Sprintf(`<blockquote data-comment-id="%d">elsewhere</blockquote>`, offTask.ID),
 			TaskID:  32,
 		}
+		grantCommentNotificationWriter(t, s)
 		err = tc.Create(s, doer)
 		require.NoError(t, err)
 		require.NoError(t, s.Commit())
@@ -233,6 +251,7 @@ func TestTaskComment_CommentReplies_Notifications(t *testing.T) {
 			Comment: `<blockquote data-comment-id="99999">missing</blockquote>`,
 			TaskID:  32,
 		}
+		grantCommentNotificationWriter(t, s)
 		err = tc.Create(s, doer)
 		require.NoError(t, err)
 		require.NoError(t, s.Commit())
@@ -265,6 +284,7 @@ func TestTaskComment_CommentReplies_Notifications(t *testing.T) {
 			Comment: fmt.Sprintf(`<blockquote data-comment-id="%d">by me</blockquote>`, mine.ID),
 			TaskID:  32,
 		}
+		grantCommentNotificationWriter(t, s)
 		err = tc.Create(s, doer)
 		require.NoError(t, err)
 		require.NoError(t, s.Commit())
@@ -294,6 +314,7 @@ func TestTaskComment_CommentReplies_Notifications(t *testing.T) {
 			Comment: `<blockquote data-comment-id="abc">malformed</blockquote>`,
 			TaskID:  32,
 		}
+		grantCommentNotificationWriter(t, s)
 		err = tc.Create(s, doer)
 		require.NoError(t, err)
 		require.NoError(t, s.Commit())
@@ -329,6 +350,7 @@ func TestTaskComment_CommentReplies_Notifications(t *testing.T) {
 			),
 			TaskID: 32,
 		}
+		grantCommentNotificationWriter(t, s)
 		err = tc.Create(s, doer)
 		require.NoError(t, err)
 		require.NoError(t, s.Commit())

@@ -29,6 +29,8 @@ func TestProjectCompletionHistory(t *testing.T) {
 	db.LoadAndAssertFixtures(t)
 	s := db.NewSession()
 	defer s.Close()
+	// This test exercises several independent request scopes in one transaction.
+	require.NoError(t, LockProjectsForVersionMutation(s, 1, 2, 3, 8, 9, 10, 11, 43))
 	u := &user.User{ID: 1}
 	p, err := SetProjectCompleted(s, u, 1, true)
 	require.NoError(t, err)
@@ -54,9 +56,9 @@ func TestProjectCompletionHistory(t *testing.T) {
 		_, err = SetProjectCompleted(s, u, id, true)
 		require.NoError(t, err)
 	}
-	_, err = SetProjectCompleted(s, &LinkSharing{ProjectID: 1, Permission: PermissionRead}, 1, true)
+	_, err = SetProjectCompleted(s, &LinkSharing{ID: 1, ProjectID: 1, Permission: PermissionRead}, 1, true)
 	require.Error(t, err)
-	_, err = SetProjectCompleted(s, &LinkSharing{ProjectID: 1, Permission: PermissionAdmin}, 1, true)
+	_, err = SetProjectCompleted(s, &LinkSharing{ID: 3, ProjectID: 3, Permission: PermissionAdmin}, 3, true)
 	require.NoError(t, err)
 }
 

@@ -69,6 +69,7 @@ func TestNotificationsIncludeProjectPrefix(t *testing.T) {
 	t.Run("task comment", func(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
 		s := db.NewSession()
+		defer s.Close()
 
 		task, err := GetTaskByIDSimple(s, taskIdentifierTestTaskID)
 		require.NoError(t, err)
@@ -78,6 +79,7 @@ func TestNotificationsIncludeProjectPrefix(t *testing.T) {
 			Comment: `<p>Lorem Ipsum <mention-user data-id="user2">@user2</mention-user></p>`,
 			TaskID:  taskIdentifierTestTaskID,
 		}
+		grantCommentNotificationWriter(t, s)
 		require.NoError(t, tc.Create(s, doer))
 		require.NoError(t, s.Commit())
 		_ = s.Close()
@@ -94,6 +96,7 @@ func TestNotificationsIncludeProjectPrefix(t *testing.T) {
 	t.Run("task assigned", func(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
 		s := db.NewSession()
+		defer s.Close()
 
 		task, err := GetTaskByIDSimple(s, taskIdentifierTestTaskID)
 		require.NoError(t, err)
@@ -122,6 +125,7 @@ func TestNotificationsIncludeProjectPrefix(t *testing.T) {
 	t.Run("task deleted", func(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
 		s := db.NewSession()
+		defer s.Close()
 
 		task, err := GetTaskByIDSimple(s, taskIdentifierTestTaskID)
 		require.NoError(t, err)
@@ -149,6 +153,7 @@ func TestNotificationsIncludeProjectPrefix(t *testing.T) {
 	t.Run("mentioned in task description", func(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
 		s := db.NewSession()
+		defer s.Close()
 
 		task, err := GetTaskByIDSimple(s, taskIdentifierTestTaskID)
 		require.NoError(t, err)

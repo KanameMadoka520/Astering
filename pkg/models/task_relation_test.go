@@ -55,16 +55,19 @@ func TestTaskRelation_Create(t *testing.T) {
 
 		rel := TaskRelation{
 			TaskID:       1,
-			OtherTaskID:  13,
+			OtherTaskID:  32, // User 1 can read project 3 without write permission.
 			RelationKind: RelationKindSubtask,
 		}
-		err := rel.Create(s, &user.User{ID: 1})
+		can, err := rel.CanCreate(s, &user.User{ID: 1})
+		require.NoError(t, err)
+		require.True(t, can)
+		err = rel.Create(s, &user.User{ID: 1})
 		require.NoError(t, err)
 		err = s.Commit()
 		require.NoError(t, err)
 		db.AssertExists(t, "task_relations", map[string]interface{}{
 			"task_id":       1,
-			"other_task_id": 13,
+			"other_task_id": 32,
 			"relation_kind": RelationKindSubtask,
 			"created_by_id": 1,
 		}, false)
@@ -308,7 +311,7 @@ func TestTaskRelation_Delete(t *testing.T) {
 		defer s.Close()
 
 		rel := TaskRelation{
-			TaskID:       9999,
+			TaskID:       1,
 			OtherTaskID:  3,
 			RelationKind: RelationKindSubtask,
 		}

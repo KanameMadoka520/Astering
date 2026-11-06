@@ -70,7 +70,24 @@ func deleteExpiredTasks(now time.Time) {
 			defer ts.Close()
 			defer events.CleanupPending(ts)
 
-			err = hardDeleteTask(ts, task)
+			if err = LockProjectsForVersionMutation(ts, task.ProjectID); err != nil {
+				log.Errorf("Could not lock task cleanup: %s", err)
+				return
+			}
+			retained, retentionErr := TaskReferencedInProjectVersions(ts, task.ID)
+			if retentionErr != nil {
+				log.Errorf("Could not check task history retention: %s", retentionErr)
+				return
+			}
+			if retained {
+				return
+			}
+			current := &Task{}
+			exists, readErr := routineCurrentRead(ts).Unscoped().ID(task.ID).Get(current)
+			if readErr != nil || !exists || current.DeletedAt.IsZero() || !current.DeletedAt.Before(now.Add(-TaskDeleteRetention)) {
+				return
+			}
+			err = hardDeleteTask(ts, current)
 			if err != nil {
 				_ = ts.Rollback()
 				log.Errorf("Could not permanently delete task %d: %s", task.ID, err)

@@ -151,3 +151,52 @@ func localAttachmentImage(source string, roots []*url.URL, documentScheme string
 	attachmentID, e2 := strconv.ParseInt(match[2], 10, 64)
 	return taskID, attachmentID, e1 == nil && e2 == nil && taskID > 0 && attachmentID > 0
 }
+
+// RewriteAttachmentImages rewrites only authenticated local attachment image nodes with a nonempty mapped URL.
+func RewriteAttachmentImages(source, publicURL string, rewrite func(taskID, attachmentID int64) string, apiURLs ...string) string {
+	roots, documentScheme := attachmentImageRoots(append([]string{publicURL}, apiURLs...))
+	z := html.NewTokenizer(strings.NewReader(source))
+	var out strings.Builder
+	for {
+		kind := z.Next()
+		if kind == html.ErrorToken {
+			if !errors.Is(z.Err(), io.EOF) {
+				return source
+			}
+			break
+		}
+		raw := string(z.Raw())
+		if kind == html.StartTagToken || kind == html.SelfClosingTagToken {
+			token := z.Token()
+			if token.Data == "img" {
+				var src, data string
+				for _, attr := range token.Attr {
+					if attr.Key == "src" {
+						src = attr.Val
+					}
+					if attr.Key == "data-src" {
+						data = attr.Val
+					}
+				}
+				if data != "" {
+					src = data
+				}
+				if tid, aid, ok := localAttachmentImage(src, roots, documentScheme); ok {
+					if mapped := rewrite(tid, aid); mapped != "" {
+						attrs := make([]html.Attribute, 0, len(token.Attr)+1)
+						for _, attr := range token.Attr {
+							if attr.Key != "src" && attr.Key != "data-src" {
+								attrs = append(attrs, attr)
+							}
+						}
+						attrs = append(attrs, html.Attribute{Key: "src", Val: mapped})
+						token.Attr = attrs
+						raw = token.String()
+					}
+				}
+			}
+		}
+		out.WriteString(raw)
+	}
+	return out.String()
+}

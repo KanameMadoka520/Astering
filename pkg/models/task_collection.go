@@ -67,6 +67,9 @@ type TaskCollection struct {
 	// former sets this so a kanban view path still yields tasks.
 	forceFlatTasks bool
 
+	// Only WIP-limit writers use current matching IDs; public list reads stay paginated.
+	currentCountOnly bool
+
 	web.CRUDable    `xorm:"-" json:"-"`
 	web.Permissions `xorm:"-" json:"-"`
 }
@@ -196,6 +199,9 @@ func (tf *TaskCollection) SetForceFlatTasks() {
 }
 
 func getTaskOrTasksInBuckets(s *xorm.Session, a web.Auth, projects []*Project, view *ProjectView, opts *taskSearchOptions, filteringForBucket, forceFlatTasks bool) (tasks interface{}, resultCount int, totalItems int64, err error) {
+	if opts.currentCountOnly {
+		return getRawTasksForProjects(s, projects, a, opts)
+	}
 	if view != nil && GetSavedFilterIDFromProjectID(view.ProjectID) > 0 {
 		err = ensureTaskPositionsForSavedFilterView(s, a, projects, view, opts)
 		if err != nil {
@@ -299,7 +305,11 @@ func (tf *TaskCollection) ReadAll(s *xorm.Session, a web.Auth, search string, pa
 	// If the project id is < -1 this means we're dealing with a saved filter - in that case we get and populate the filter
 	// -1 is the favorites project which works as intended
 	if !tf.isSavedFilter && tf.ProjectID < -1 {
-		sf, err := GetSavedFilterSimpleByID(s, GetSavedFilterIDFromProjectID(tf.ProjectID))
+		filterSession := s
+		if tf.currentCountOnly {
+			filterSession = routineCurrentRead(s)
+		}
+		sf, err := GetSavedFilterSimpleByID(filterSession, GetSavedFilterIDFromProjectID(tf.ProjectID))
 		if err != nil {
 			return nil, 0, 0, err
 		}
@@ -336,6 +346,7 @@ func (tf *TaskCollection) ReadAll(s *xorm.Session, a web.Auth, search string, pa
 		tc.isSavedFilter = true
 		tc.Expand = tf.Expand
 		tc.forceFlatTasks = tf.forceFlatTasks
+		tc.currentCountOnly = tf.currentCountOnly
 
 		tc.mergeRequestFilter(tf)
 
@@ -345,7 +356,11 @@ func (tf *TaskCollection) ReadAll(s *xorm.Session, a web.Auth, search string, pa
 	var view *ProjectView
 	var filteringForBucket bool
 	if tf.ProjectViewID != 0 {
-		view, err = GetProjectViewByIDAndProject(s, tf.ProjectViewID, tf.ProjectID)
+		viewSession := s
+		if tf.currentCountOnly {
+			viewSession = routineCurrentRead(s)
+		}
+		view, err = GetProjectViewByIDAndProject(viewSession, tf.ProjectViewID, tf.ProjectID)
 		if err != nil {
 			return nil, 0, 0, err
 		}
@@ -398,6 +413,7 @@ func (tf *TaskCollection) ReadAll(s *xorm.Session, a web.Auth, search string, pa
 	opts.perPage = perPage
 	opts.expand = tf.Expand
 	opts.isSavedFilter = tf.isSavedFilter
+	opts.currentCountOnly = tf.currentCountOnly
 
 	if view != nil {
 		var hasOrderByPosition bool

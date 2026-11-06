@@ -57,6 +57,7 @@ func TestTaskPositionCanUpdateValidatesView(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NoError(t, s.Commit())
+		require.NoError(t, s.Begin())
 		return
 	}
 
@@ -70,6 +71,7 @@ func TestTaskPositionCanUpdateValidatesView(t *testing.T) {
 		require.True(t, can)
 
 		require.NoError(t, tp.Update(s, writer))
+		require.NoError(t, s.Commit())
 		db.AssertExists(t, "task_positions", map[string]interface{}{
 			"task_id":         task.ID,
 			"project_view_id": view.ID,
@@ -107,6 +109,8 @@ func TestTaskPositionCanUpdateValidatesView(t *testing.T) {
 			Title:   "position-validation filter",
 			Filters: &TaskCollection{Filter: "title like \"position-validation filter task\""},
 		}
+		require.NoError(t, s.Commit())
+		require.NoError(t, s.Begin())
 		require.NoError(t, sf.Create(s, owner))
 		require.NoError(t, sf.Update(s, owner))
 
@@ -139,6 +143,8 @@ func TestTaskPositionCanUpdateValidatesView(t *testing.T) {
 			Title:   "position-validation foreign filter",
 			Filters: &TaskCollection{Filter: "title like \"position-validation foreign filter task\""},
 		}
+		require.NoError(t, s.Commit())
+		require.NoError(t, s.Begin())
 		require.NoError(t, sf.Create(s, owner))
 		require.NoError(t, sf.Update(s, owner))
 
@@ -168,6 +174,8 @@ func TestTaskPositionCanUpdateValidatesView(t *testing.T) {
 			Title:   "position-validation mismatch filter",
 			Filters: &TaskCollection{Filter: "title like \"something else entirely\""},
 		}
+		require.NoError(t, s.Commit())
+		require.NoError(t, s.Begin())
 		require.NoError(t, sf.Create(s, owner))
 		require.NoError(t, sf.Update(s, owner))
 
@@ -205,6 +213,8 @@ func TestTaskPositionCanUpdateValidatesView(t *testing.T) {
 			Title:   "position-validation tz filter",
 			Filters: &TaskCollection{Filter: "due_date > 2026-08-30"},
 		}
+		require.NoError(t, s.Commit())
+		require.NoError(t, s.Begin())
 		require.NoError(t, sf.Create(s, owner))
 		require.NoError(t, sf.Update(s, owner))
 
@@ -235,6 +245,8 @@ func TestTaskPositionCanUpdateValidatesView(t *testing.T) {
 			Title:   "position-validation missing owner filter",
 			Filters: &TaskCollection{Filter: "title like \"position-validation missing owner task\""},
 		}
+		require.NoError(t, s.Commit())
+		require.NoError(t, s.Begin())
 		require.NoError(t, sf.Create(s, owner))
 		require.NoError(t, sf.Update(s, owner))
 

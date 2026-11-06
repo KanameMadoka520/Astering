@@ -315,6 +315,10 @@ func GetTasksInBucketsForView(s *xorm.Session, view *ProjectView, projects []*Pr
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /projects/{id}/views/{view}/buckets [put]
 func (b *Bucket) Create(s *xorm.Session, a web.Auth) (err error) {
+	if err := lockAuthorizedViewForMutation(s, a, b.ProjectViewID); err != nil {
+		return err
+	}
+
 	b.CreatedBy, err = GetUserOrLinkShareUser(s, a)
 	if err != nil {
 		return
@@ -348,7 +352,11 @@ func (b *Bucket) Create(s *xorm.Session, a web.Auth) (err error) {
 // @Failure 404 {object} web.HTTPError "The bucket does not exist."
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /projects/{projectID}/views/{view}/buckets/{bucketID} [post]
-func (b *Bucket) Update(s *xorm.Session, _ web.Auth) (err error) {
+func (b *Bucket) Update(s *xorm.Session, a web.Auth) (err error) {
+	if err := lockAuthorizedViewForMutation(s, a, b.ProjectViewID); err != nil {
+		return err
+	}
+
 	_, err = s.
 		Where("id = ?", b.ID).
 		Cols(
@@ -375,9 +383,14 @@ func (b *Bucket) Update(s *xorm.Session, _ web.Auth) (err error) {
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /projects/{projectID}/views/{view}/buckets/{bucketID} [delete]
 func (b *Bucket) Delete(s *xorm.Session, a web.Auth) (err error) {
+	if err := lockAuthorizedViewForMutation(s, a, b.ProjectViewID); err != nil {
+		return err
+	}
 
 	// Prevent removing the last bucket
-	total, err := s.Where("project_view_id = ?", b.ProjectViewID).Count(&Bucket{})
+	currentBuckets := []*Bucket{}
+	err = routineCurrentRead(s).Where("project_view_id = ?", b.ProjectViewID).OrderBy("id").Find(&currentBuckets)
+	total := len(currentBuckets)
 	if err != nil {
 		return
 	}
@@ -389,7 +402,7 @@ func (b *Bucket) Delete(s *xorm.Session, a web.Auth) (err error) {
 	}
 
 	// Get the default bucket
-	pv, err := GetProjectViewByIDAndProject(s, b.ProjectViewID, b.ProjectID)
+	pv, err := GetProjectViewByIDAndProject(routineCurrentRead(s), b.ProjectViewID, b.ProjectID)
 	if err != nil {
 		return
 	}

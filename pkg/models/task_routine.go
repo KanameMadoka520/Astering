@@ -105,6 +105,10 @@ func (r *TaskRoutine) setDate(now time.Time) error {
 	return r.setPeriod(now)
 }
 func lockRoutineTask(s *xorm.Session, id int64) (*Task, error) {
+	if _, err := lockTasksForProjectMutation(s, []int64{id}); err != nil {
+		return nil, err
+	}
+
 	if db.Type() == schemas.SQLITE {
 		if _, err := s.Table(new(Task)).Where("id = ?", id).Update(map[string]any{"id": id}); err != nil {
 			return nil, err
@@ -136,6 +140,9 @@ func (r *TaskRoutine) Update(s *xorm.Session, a web.Auth) error {
 	}
 	task, err := lockRoutineTask(s, r.TaskID)
 	if err != nil {
+		return err
+	}
+	if err := requireCurrentProjectWrite(s, a, task.ProjectID); err != nil {
 		return err
 	}
 	allowed, err := r.CanUpdate(s, a)
@@ -203,6 +210,9 @@ func setTaskRoutineCheckinAt(s *xorm.Session, a web.Auth, id int64, date string,
 		return nil, err
 	}
 	r := &TaskRoutine{TaskID: id}
+	if err := requireCurrentProjectWrite(s, a, task.ProjectID); err != nil {
+		return nil, err
+	}
 	allowed, err := r.CanUpdate(s, a)
 	if err != nil {
 		return nil, err

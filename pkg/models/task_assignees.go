@@ -62,6 +62,9 @@ func getRawTaskAssigneesForTasks(s *xorm.Session, taskIDs []int64) (taskAssignee
 
 // Create or update a bunch of task assignees
 func (t *Task) updateTaskAssignees(s *xorm.Session, assignees []*user.User, doer web.Auth) (err error) {
+	if err := lockAuthorizedTasksForProjectMutation(s, doer, []int64{t.ID}); err != nil {
+		return err
+	}
 
 	// Load the current assignees
 	currentAssignees, err := getRawTaskAssigneesForTasks(s, []int64{t.ID})
@@ -171,6 +174,10 @@ func (t *Task) setTaskAssignees(assignees []*user.User) {
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /tasks/{taskID}/assignees/{userID} [delete]
 func (la *TaskAssginee) Delete(s *xorm.Session, a web.Auth) (err error) {
+	if err := lockAuthorizedTasksForProjectMutation(s, a, []int64{la.TaskID}); err != nil {
+		return err
+	}
+
 	_, err = s.Delete(&TaskAssginee{TaskID: la.TaskID, UserID: la.UserID})
 	if err != nil {
 		return err
@@ -213,6 +220,9 @@ func (la *TaskAssginee) Delete(s *xorm.Session, a web.Auth) (err error) {
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /tasks/{taskID}/assignees [put]
 func (la *TaskAssginee) Create(s *xorm.Session, a web.Auth) (err error) {
+	if err := lockAuthorizedTasksForProjectMutation(s, a, []int64{la.TaskID}); err != nil {
+		return err
+	}
 
 	// Get the project to perform later checks
 	project, err := GetProjectSimpleByTaskID(s, la.TaskID)
@@ -225,9 +235,16 @@ func (la *TaskAssginee) Create(s *xorm.Session, a web.Auth) (err error) {
 }
 
 func (t *Task) addNewAssigneeByID(s *xorm.Session, newAssigneeID int64, project *Project, auth web.Auth) (err error) {
+	if err := lockAuthorizedTasksForProjectMutation(s, auth, []int64{t.ID}); err != nil {
+		return err
+	}
+
 	// Check if the user exists and has access to the project
 	newAssignee, err := user.GetUserByID(s, newAssigneeID)
 	if err != nil {
+		return err
+	}
+	if err := currentProjectMutationUserExists(s, newAssigneeID); err != nil {
 		return err
 	}
 	canRead, _, err := project.CanRead(s, newAssignee)
@@ -374,6 +391,10 @@ type BulkAssignees struct {
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /tasks/{taskID}/assignees/bulk [post]
 func (ba *BulkAssignees) Create(s *xorm.Session, a web.Auth) (err error) {
+	if err := lockAuthorizedTasksForProjectMutation(s, a, []int64{ba.TaskID}); err != nil {
+		return err
+	}
+
 	task, err := GetTaskByIDSimple(s, ba.TaskID)
 	if err != nil {
 		return

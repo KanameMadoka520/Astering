@@ -73,6 +73,7 @@ func TestTaskComment_Create(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
 		s := db.NewSession()
 		defer s.Close()
+		author := &user.User{ID: 3} // Owns project 3; users 1 and 2 have read access.
 
 		task, err := GetTaskByIDSimple(s, 32)
 		require.NoError(t, err)
@@ -80,12 +81,12 @@ func TestTaskComment_Create(t *testing.T) {
 			Comment: `<p>Lorem Ipsum <mention-user data-id="user2">@user2</mention-user></p>`,
 			TaskID:  32, // user2 has access to the project that task belongs to
 		}
-		err = tc.Create(s, u)
+		err = tc.Create(s, author)
 		require.NoError(t, err)
 		require.NoError(t, s.Commit())
 		ev := &TaskCommentCreatedEvent{
 			Task:    &task,
-			Doer:    u,
+			Doer:    author,
 			Comment: tc,
 		}
 
@@ -100,6 +101,7 @@ func TestTaskComment_Create(t *testing.T) {
 		db.LoadAndAssertFixtures(t)
 		s := db.NewSession()
 		defer s.Close()
+		author := &user.User{ID: 3} // Owns project 3; users 1 and 2 have read access.
 
 		task, err := GetTaskByIDSimple(s, 32)
 		require.NoError(t, err)
@@ -108,13 +110,13 @@ func TestTaskComment_Create(t *testing.T) {
 			Comment: "test comment",
 			TaskID:  32,
 		}
-		err = tc.Create(s, u)
+		err = tc.Create(s, author)
 		require.NoError(t, err)
 		require.NoError(t, s.Commit())
 
 		ev := &TaskCommentCreatedEvent{
 			Task:    &task,
-			Doer:    u,
+			Doer:    author,
 			Comment: tc,
 		}
 
@@ -127,7 +129,7 @@ func TestTaskComment_Create(t *testing.T) {
 
 		db.AssertMissing(t, "task_unread_statuses", map[string]interface{}{
 			"task_id": task.ID,
-			"user_id": u.ID,
+			"user_id": author.ID,
 		})
 	})
 }

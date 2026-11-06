@@ -71,7 +71,7 @@
 				<Icon :icon="project.is_favorite ? 'star' : ['far', 'star']" />
 			</BaseButton>
 			<ProjectSettingsDropdown
-				v-if="typeof project.max_permission === 'number' && project.max_permission > PERMISSIONS.READ"
+				v-if="typeof project.max_permission === 'number' && (project.id > 0 || project.max_permission > PERMISSIONS.READ) && project.id !== -1"
 				class="settings-dropdown"
 				:project="project"
 			/>

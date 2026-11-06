@@ -22,6 +22,7 @@ import (
 	"github.com/KanameMadoka520/Astering/pkg/config"
 	"github.com/KanameMadoka520/Astering/pkg/db"
 	"github.com/KanameMadoka520/Astering/pkg/events"
+	"github.com/KanameMadoka520/Astering/pkg/license"
 	"github.com/KanameMadoka520/Astering/pkg/user"
 	"github.com/KanameMadoka520/Astering/pkg/web"
 
@@ -89,6 +90,21 @@ func readableTeamSearchCond(a web.Auth) builder.Cond {
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /projects/{id}/teams [put]
 func (tl *TeamProject) Create(s *xorm.Session, a web.Auth) (err error) {
+	if err := lockProjectSubtreeForMutation(s, tl.ProjectID); err != nil {
+		return err
+	}
+	if err := requireCurrentProjectAdmin(s, a, tl.ProjectID); err != nil {
+		return err
+	}
+	// Serialize new grant scope with membership/account removals after taking
+	// the project gate; a member edit must never acquire an unknown project late.
+	teams := []*Team{}
+	if err := sharedVersionRows(s, "teams", builder.Eq{"id": tl.TeamID}, "id", &teams); err != nil {
+		return err
+	}
+	if len(teams) == 0 {
+		return ErrTeamDoesNotExist{TeamID: tl.TeamID}
+	}
 
 	// Check if the permissions are valid
 	if err = tl.Permission.isValid(); err != nil {
@@ -116,6 +132,22 @@ func (tl *TeamProject) Create(s *xorm.Session, a web.Auth) (err error) {
 	}
 	if exists {
 		return ErrTeamAlreadyHasAccess{tl.TeamID, tl.ProjectID}
+	}
+	if !config.ServiceEnablePublicTeams.GetBool() || !teams[0].IsPublic {
+		members := []*TeamMember{}
+		if err := sharedVersionRows(s, "team_members", builder.Eq{"team_id": tl.TeamID, "user_id": a.GetID()}, "id", &members); err != nil {
+			return err
+		}
+		if len(members) == 0 {
+			accounts := []*user.User{}
+			if err := sharedVersionRows(s, "users", builder.Eq{"id": a.GetID()}, "id", &accounts); err != nil {
+				return err
+			}
+			actor, ok := a.(*user.User)
+			if !ok || len(accounts) == 0 || !license.IsFeatureEnabled(license.FeatureAdminPanel) || !accounts[0].IsAdmin || actor.HasResourceOnlyPermissions() {
+				return ErrGenericForbidden{}
+			}
+		}
 	}
 
 	// Insert the new team
@@ -148,7 +180,13 @@ func (tl *TeamProject) Create(s *xorm.Session, a web.Auth) (err error) {
 // @Failure 404 {object} web.HTTPError "Team or project does not exist."
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /projects/{projectID}/teams/{teamID} [delete]
-func (tl *TeamProject) Delete(s *xorm.Session, _ web.Auth) (err error) {
+func (tl *TeamProject) Delete(s *xorm.Session, a web.Auth) (err error) {
+	if err := lockProjectSubtreeForMutation(s, tl.ProjectID); err != nil {
+		return err
+	}
+	if err := requireCurrentProjectAdmin(s, a, tl.ProjectID); err != nil {
+		return err
+	}
 
 	// Check if the team exists
 	_, err = GetTeamByID(s, tl.TeamID)
@@ -296,7 +334,13 @@ func (tl *TeamProject) ReadAll(s *xorm.Session, a web.Auth, search string, page 
 // @Failure 404 {object} web.HTTPError "Team or project does not exist."
 // @Failure 500 {object} models.Message "Internal error"
 // @Router /projects/{projectID}/teams/{teamID} [post]
-func (tl *TeamProject) Update(s *xorm.Session, _ web.Auth) (err error) {
+func (tl *TeamProject) Update(s *xorm.Session, a web.Auth) (err error) {
+	if err := lockProjectSubtreeForMutation(s, tl.ProjectID); err != nil {
+		return err
+	}
+	if err := requireCurrentProjectAdmin(s, a, tl.ProjectID); err != nil {
+		return err
+	}
 
 	// Check if the permission is valid
 	if err := tl.Permission.isValid(); err != nil {

@@ -105,12 +105,8 @@ func deleteUsers() {
 
 func getProjectsToDelete(s *xorm.Session, u *user.User) (projectsToDelete []*Project, err error) {
 	projectsToDelete = []*Project{}
-	projects, _, err := getAllProjectsForUser(s, u.ID, &projectOptions{
-		page:        0,
-		perPage:     -1,
-		getArchived: true,
-	})
-	if err != nil {
+	projects := []*Project{}
+	if err := sharedVersionRows(s, "projects", builder.Eq{"owner_id": u.ID}, "id", &projects); err != nil {
 		return nil, err
 	}
 
@@ -145,12 +141,15 @@ func getProjectsToDelete(s *xorm.Session, u *user.User) (projectsToDelete []*Pro
 // This action is irrevocable.
 // Public to allow deletion from the CLI.
 func DeleteUser(s *xorm.Session, u *user.User) (err error) {
+	if err = lockAccountProjectsForMutation(s, u.ID); err != nil {
+		return err
+	}
 	if err = deleteCompassSpaces(s, builder.Eq{"owner_id": u.ID, "team_id": 0}); err != nil {
 		return err
 	}
 	// Delete any bot users owned by this user first (cascades their data too).
 	var ownedBots []*user.User
-	if err = s.Where("bot_owner_id = ?", u.ID).Find(&ownedBots); err != nil {
+	if err = routineCurrentRead(s).Where("bot_owner_id = ?", u.ID).OrderBy("id").Find(&ownedBots); err != nil {
 		return err
 	}
 	for _, bot := range ownedBots {
@@ -252,7 +251,7 @@ func deleteUserFiles(s *xorm.Session, userID int64) error {
 
 func ensureProjectAdminUser(s *xorm.Session, l *Project) (hadUsers bool, err error) {
 	projectUsers := []*ProjectUser{}
-	err = s.Where("project_id = ?", l.ID).Find(&projectUsers)
+	err = sharedVersionRows(s, "users_projects", builder.Eq{"project_id": l.ID}, "id", &projectUsers)
 	if err != nil {
 		return
 	}
@@ -299,7 +298,7 @@ func ensureProjectAdminUser(s *xorm.Session, l *Project) (hadUsers bool, err err
 
 func ensureProjectAdminTeam(s *xorm.Session, l *Project) (hadTeams bool, err error) {
 	projectTeams := []*TeamProject{}
-	err = s.Where("project_id = ?", l.ID).Find(&projectTeams)
+	err = sharedVersionRows(s, "team_projects", builder.Eq{"project_id": l.ID}, "id", &projectTeams)
 	if err != nil {
 		return
 	}
