@@ -35,7 +35,7 @@ const emit = defineEmits<{
 	fork: [id: string]
 	review: [input: ReviewInput]
 }>()
-const {t} = useI18n({useScope: 'global'})
+const {t, n} = useI18n({useScope: 'global'})
 const {preferences} = useAronaDisplayPreferences()
 const labels = computed(() => toolLabels(t))
 const copied = ref(false)
@@ -45,6 +45,14 @@ const result = computed(() => props.turn.result)
 const steps = computed(() => result.value?.steps ?? NO_STEPS)
 const actions = computed(() => result.value?.actions ?? NO_ACTIONS)
 const lastStep = computed(() => steps.value.at(-1))
+const duration = computed(() => result.value?.duration_ms == null ? '' : t('aronaRun.totalTime', {
+	value: t('chat.seconds', {
+		value: n(result.value.duration_ms / 1000, {
+			minimumFractionDigits: 2,
+			maximumFractionDigits: 2,
+		}),
+	}),
+}))
 const compactions = computed(() => result.value?.auto_compactions ?? NO_COMPACTIONS)
 const subagents = computed(() => result.value?.subagents ?? NO_SUBAGENTS)
 const streamingIndex = computed(() => liveStepIndex(result.value, running.value))
@@ -191,12 +199,6 @@ const announcement = computed(() => {
 				@review="emit('review', $event)"
 			/>
 			<p
-				v-if="result?.budget?.round_limit"
-				class="step-note"
-			>
-				{{ t('agent.budgetProgress', {rounds: result.budget.rounds, roundLimit: result.budget.round_limit, operations: result.budget.operations, operationLimit: result.budget.operation_limit}) }}
-			</p>
-			<p
 				v-if="result?.error"
 				class="run-error"
 				role="status"
@@ -234,25 +236,25 @@ const announcement = computed(() => {
 			</div>
 
 			<!-- Live status sits below the answer, so it can leave without moving text being read. -->
-			<RunStatus
-				v-if="running && !sending"
-				:result="result"
-				running
-			/>
 			<div
-				v-if="!running && (turn.status === 'completed' || steps.length || result?.system_prompt)"
+				v-if="!sending"
 				class="run-meta"
+				:class="{'is-live': running}"
 			>
+				<span
+					v-if="!running && duration"
+					class="run-duration"
+				>{{ duration }}</span>
 				<OutputSpeed
-					v-if="turn.status === 'completed'"
+					v-if="!running && turn.status === 'completed'"
 					:step="lastStep"
 				/>
 				<RunStatus
-					v-if="steps.length || result?.system_prompt"
 					:result="result"
+					:running="running"
 				>
 					<details
-						v-if="result?.system_prompt"
+						v-if="result?.system_prompt && !running"
 						class="request-details"
 					>
 						<summary>{{ t('chat.requestDetails') }}</summary>
@@ -267,6 +269,14 @@ const announcement = computed(() => {
 						<pre>{{ result.system_prompt }}</pre>
 						<p>{{ t('chat.metricNotes') }}</p>
 					</details>
+					<BaseButton
+						class="message-action run-diagnostic"
+						:title="t('debug.openRun')"
+						:aria-label="t('debug.openRun')"
+						@click="openAgentDiagnostic(turn)"
+					>
+						<Icon icon="code" /> {{ t('debug.openRun') }}
+					</BaseButton>
 				</RunStatus>
 			</div>
 			<WebSearchEvidence
@@ -278,25 +288,23 @@ const announcement = computed(() => {
 				<BaseButton
 					v-if="answer"
 					class="message-action"
+					:title="copied ? t('chat.copied') : t('chat.copy')"
+					:aria-label="copied ? t('chat.copied') : t('chat.copy')"
 					@click="copy"
 				>
-					<Icon :icon="copied ? 'check' : 'copy'" /> {{ copied ? t('chat.copied') : t('chat.copy') }}
+					<Icon :icon="copied ? 'check' : 'copy'" />
+					<span class="message-action-label">{{ copied ? t('chat.copied') : t('chat.copy') }}</span>
 				</BaseButton>
 				<BaseButton
 					v-if="!running"
 					class="message-action"
 					:aria-disabled="busy"
+					:title="t('chat.forkHere')"
+					:aria-label="t('chat.forkHere')"
 					@click="!busy && emit('fork', turn.id!)"
 				>
-					<Icon icon="code-branch" /> {{ t('chat.forkHere') }}
-				</BaseButton>
-				<BaseButton
-					class="message-action is-icon"
-					:title="t('debug.openRun')"
-					:aria-label="t('debug.openRun')"
-					@click="openAgentDiagnostic(turn)"
-				>
-					<Icon icon="code" />
+					<Icon icon="code-branch" />
+					<span class="message-action-label">{{ t('chat.forkHere') }}</span>
 				</BaseButton>
 			</div>
 		</div>
@@ -312,6 +320,7 @@ const announcement = computed(() => {
 	content-visibility: auto;
 	contain-intrinsic-size: auto 200px;
 	margin-block: var(--space-4) var(--space-8);
+	min-inline-size: 0;
 }
 
 // A running turn must lay out even off screen, so its live rounds and status never measure as a placeholder.
@@ -383,6 +392,8 @@ const announcement = computed(() => {
 }
 
 .model-badge {
+	min-inline-size: 0;
+	max-inline-size: 100%;
 	padding-inline: var(--space-2);
 	border: 1px solid var(--border-subtle);
 	border-radius: var(--radius-full);
@@ -448,16 +459,25 @@ pre {
 .run-meta {
 	display: flex;
 	flex-wrap: wrap;
-	align-items: baseline;
-	gap: 0 var(--space-4);
+	align-items: center;
+	gap: 0 var(--space-3);
 	min-block-size: var(--control-height-sm);
 	margin-block-start: var(--space-3);
 	color: var(--text-tertiary);
 	font-size: var(--text-xs);
 
+	&.is-live {
+		display: block;
+	}
+
 	> details[open] {
 		flex-basis: 100%;
 	}
+}
+
+.run-duration {
+	font-variant-numeric: tabular-nums;
+	overflow-wrap: anywhere;
 }
 
 .request-details {
@@ -517,6 +537,49 @@ pre {
 
 	svg {
 		inline-size: .85em;
+	}
+}
+
+@media (width <= 768px) {
+	.chat-turn {
+		margin-block: var(--space-3) var(--space-5);
+	}
+
+	.assistant-message {
+		margin-block-start: var(--space-3);
+	}
+
+	.assistant-identity {
+		column-gap: var(--space-2);
+		font-size: var(--text-sm);
+	}
+
+	.run-meta {
+		column-gap: var(--space-2);
+		margin-block-start: var(--space-2);
+		font-size: var(--text-sm);
+	}
+
+	.message-actions {
+		gap: 0;
+		margin-block-start: 0;
+	}
+
+	.message-action {
+		min-inline-size: 2.75rem;
+		min-block-size: 2.75rem;
+		font-size: 1rem;
+	}
+
+	.message-action-label {
+		display: none;
+	}
+
+	.run-diagnostic {
+		justify-content: flex-start;
+		max-inline-size: 100%;
+		font-size: var(--text-sm);
+		overflow-wrap: anywhere;
 	}
 }
 </style>

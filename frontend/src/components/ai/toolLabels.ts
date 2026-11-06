@@ -66,6 +66,7 @@ export function toolLabels(t: (key: string) => string): Record<string, string> {
 		insert_chat_image: t('tcy.chatImages.insert'),
 		update_task_description_image: t('tcy.chatImages.update'),
 		remove_task_description_image: t('tcy.chatImages.remove'),
+		list_chat_attachments: t('mobileChat.listAttachments'),
 		web_search: t('webSearch.title'),
 		invoke_tool: t('cacheEfficiency.callTool'),
 		list_projects: t('tcymc.text.find_projects'),

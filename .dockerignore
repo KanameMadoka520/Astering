@@ -19,6 +19,7 @@ docker-manifest-unstable.tmpl
 
 .git/
 /vikunja
+/astering
 frontend/dist-dev/
 frontend/test-results/
 frontend/playwright-report/

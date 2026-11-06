@@ -15,6 +15,11 @@
   }
 }
 
+body.has-mobile-assistant {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 // General sidebar menu rows: the top navigation links and the project tree share one row shape.
 .menu {
   .menu-list {

@@ -793,6 +793,9 @@ func (state *AgentState) executeAgentTool(ctx context.Context, c Connection, exe
 	case "view_attachment":
 		data, err := state.viewAttachment(c, raw)
 		return data, nil, err
+	case "list_chat_attachments":
+		data, err := state.listChatAttachments(raw)
+		return data, nil, err
 	case "read_tool_result":
 		data, err := state.readToolResult(raw)
 		return data, nil, err

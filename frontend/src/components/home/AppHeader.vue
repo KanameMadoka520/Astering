@@ -1,6 +1,6 @@
 <template>
 	<header
-		:class="{ 'has-background': background, 'menu-active': menuActive }"
+		:class="{ 'has-background': background, 'menu-active': menuActive, 'is-mobile-assistant': mobileAssistant }"
 		class="navbar d-print-none"
 		:style="{'--sidebar-width': sidebarWidthStyle}"
 		:inert="drawerOpen"
@@ -83,103 +83,112 @@
 			<span class="project-title">{{ pageTitle }}</span>
 		</div>
 
-		<div class="navbar-end">
-			<TimerBadge />
-			<OpenQuickActions data-tour="quick-search" />
-			<BaseButton
-				class="trigger-button guide-help"
-				data-tour="guide-help"
-				:title="t('tour.open')"
-				:aria-label="t('tour.open')"
-				@click="tour.show()"
+		<Teleport
+			to="#mobile-assistant-site-actions"
+			:disabled="!mobileAssistant"
+			defer
+		>
+			<div
+				class="navbar-end"
+				:class="{'is-in-assistant-drawer': mobileAssistant}"
 			>
-				<Icon :icon="['far', 'circle-question']" />
-			</BaseButton>
-			<Notifications />
-			<Dropdown ref="accountMenu">
-				<template #trigger="{ toggleOpen, open }">
-					<BaseButton
-						class="username-dropdown-trigger"
-						data-tour="account-menu"
-						variant="secondary"
-						:shadow="false"
-						:aria-expanded="open"
-						@click="toggleOpen"
-					>
-						<UserAvatar
-							:user="authStore.info"
-							:size="56"
-							class="avatar"
-						/>
-						<span class="username">{{ authStore.userDisplayName }}</span>
-						<span
-							class="dropdown-icon icon is-small"
-							:class="{'is-open': open}"
+				<TimerBadge />
+				<OpenQuickActions data-tour="quick-search" />
+				<BaseButton
+					class="trigger-button guide-help"
+					data-tour="guide-help"
+					:title="t('tour.open')"
+					:aria-label="t('tour.open')"
+					@click="tour.show()"
+				>
+					<Icon :icon="['far', 'circle-question']" />
+				</BaseButton>
+				<Notifications @keydown.esc="containNotificationEscape" />
+				<Dropdown ref="accountMenu">
+					<template #trigger="{ toggleOpen, open }">
+						<BaseButton
+							class="username-dropdown-trigger"
+							data-tour="account-menu"
+							variant="secondary"
+							:shadow="false"
+							:aria-expanded="open"
+							@click="toggleOpen"
 						>
-							<Icon icon="chevron-down" />
-						</span>
-					</BaseButton>
-				</template>
+							<UserAvatar
+								:user="authStore.info"
+								:size="56"
+								class="avatar"
+							/>
+							<span class="username">{{ authStore.userDisplayName }}</span>
+							<span
+								class="dropdown-icon icon is-small"
+								:class="{'is-open': open}"
+							>
+								<Icon icon="chevron-down" />
+							</span>
+						</BaseButton>
+					</template>
 
-				<DropdownItem
-					icon="cog"
-					:to="{ name: 'user.settings' }"
-				>
-					{{ $t('user.settings.title') }}
-				</DropdownItem>
-				<DropdownItem
-					v-if="adminPanelEnabled && authStore.info?.is_admin"
-					icon="user-edit"
-					:to="{ name: 'admin.overview' }"
-				>
-					{{ $t('admin.title') }}
-				</DropdownItem>
-				<DropdownItem
-					v-if="imprintUrl"
-					icon="circle-info"
-					:href="imprintUrl"
-				>
-					{{ $t('navigation.imprint') }}
-				</DropdownItem>
-				<DropdownItem
-					v-if="privacyPolicyUrl"
-					icon="lock"
-					:href="privacyPolicyUrl"
-				>
-					{{ $t('navigation.privacy') }}
-				</DropdownItem>
-				<DropdownItem
-					icon="code"
-					@click="accountMenu?.closeMenu({focusTrigger: true}); openDiagnostics()"
-				>
-					{{ t('debug.title') }}<span v-if="diagnostics.length"> ({{ diagnostics.length }})</span>
-				</DropdownItem>
-				<DropdownItem
-					icon="compass"
-					@click="accountMenu?.closeMenu({focusTrigger: true}); tour.show()"
-				>
-					{{ t('tour.open') }}
-				</DropdownItem>
-				<DropdownItem
-					icon="keyboard"
-					@click="accountMenu?.closeMenu({focusTrigger: true}); baseStore.setKeyboardShortcutsActive(true)"
-				>
-					{{ $t('keyboardShortcuts.title') }}
-				</DropdownItem>
-				<DropdownItem
-					icon="circle-info"
-					:to="{ name: 'about' }"
-				>
-					{{ $t('about.title') }}
-				</DropdownItem>
-				<DropdownItem
-					icon="sign-out-alt"
-					@click="accountMenu?.closeMenu({focusTrigger: true}); logoutDialog?.request()"
-				>
-					{{ $t('user.auth.logout') }}
-				</DropdownItem>
-			</Dropdown>
-		</div>
+					<DropdownItem
+						icon="cog"
+						:to="{ name: 'user.settings' }"
+					>
+						{{ $t('user.settings.title') }}
+					</DropdownItem>
+					<DropdownItem
+						v-if="adminPanelEnabled && authStore.info?.is_admin"
+						icon="user-edit"
+						:to="{ name: 'admin.overview' }"
+					>
+						{{ $t('admin.title') }}
+					</DropdownItem>
+					<DropdownItem
+						v-if="imprintUrl"
+						icon="circle-info"
+						:href="imprintUrl"
+					>
+						{{ $t('navigation.imprint') }}
+					</DropdownItem>
+					<DropdownItem
+						v-if="privacyPolicyUrl"
+						icon="lock"
+						:href="privacyPolicyUrl"
+					>
+						{{ $t('navigation.privacy') }}
+					</DropdownItem>
+					<DropdownItem
+						icon="code"
+						@click="accountMenu?.closeMenu({focusTrigger: true}); openDiagnostics()"
+					>
+						{{ t('debug.title') }}<span v-if="diagnostics.length"> ({{ diagnostics.length }})</span>
+					</DropdownItem>
+					<DropdownItem
+						icon="compass"
+						@click="accountMenu?.closeMenu({focusTrigger: true}); tour.show()"
+					>
+						{{ t('tour.open') }}
+					</DropdownItem>
+					<DropdownItem
+						icon="keyboard"
+						@click="accountMenu?.closeMenu({focusTrigger: true}); baseStore.setKeyboardShortcutsActive(true)"
+					>
+						{{ $t('keyboardShortcuts.title') }}
+					</DropdownItem>
+					<DropdownItem
+						icon="circle-info"
+						:to="{ name: 'about' }"
+					>
+						{{ $t('about.title') }}
+					</DropdownItem>
+					<DropdownItem
+						icon="sign-out-alt"
+						@click="accountMenu?.closeMenu({focusTrigger: true}); logoutDialog?.request()"
+					>
+						{{ $t('user.auth.logout') }}
+					</DropdownItem>
+				</Dropdown>
+			</div>
+		</Teleport>
 		<LogoutDialog ref="logoutDialog" />
 	</header>
 </template>
@@ -236,6 +245,13 @@ const drawerOpen = computed(() => isMobile.value && menuActive.value)
 
 // Standalone pages (no project) surface their route's title in the header.
 const route = useRoute()
+const mobileAssistant = computed(() => isMobile.value && route.name === 'tcy-ai')
+function containNotificationEscape(event: KeyboardEvent) {
+	if (!mobileAssistant.value || !(event.target instanceof Element)) return
+	if (!event.target.closest('.notifications-list')) return
+	event.preventDefault()
+	event.stopPropagation()
+}
 const { t } = useI18n()
 const pageTitle = computed(() => {
 	const title = route.meta.title as string | undefined
@@ -310,30 +326,34 @@ const adminPanelEnabled = computed(() => configStore.isProFeatureEnabled(PRO_FEA
 		padding-inline: var(--space-1);
 	}
 
-	// FIXME: notifications should provide a slot for the icon instead, so that we can style it as we want
-	:deep(.trigger-button) {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
-		min-inline-size: var(--navbar-button-size);
-		block-size: var(--navbar-button-size);
-		border-radius: $radius;
-		color: var(--text-secondary);
-		font-size: var(--navbar-icon-size);
-		transition:
-			background-color var(--motion-fast) var(--ease-standard),
-			color var(--motion-fast) var(--ease-standard);
+	&.is-mobile-assistant {
+		display: none;
+	}
+}
 
-		&:hover {
-			background-color: var(--surface-hover);
-			color: var(--text-primary);
-		}
+// FIXME: notifications should provide a slot for the icon instead, so that we can style it as we want
+.navbar-end :deep(.trigger-button) {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	min-inline-size: var(--navbar-button-size);
+	block-size: var(--navbar-button-size);
+	border-radius: $radius;
+	color: var(--text-secondary);
+	font-size: var(--navbar-icon-size);
+	transition:
+		background-color var(--motion-fast) var(--ease-standard),
+		color var(--motion-fast) var(--ease-standard);
 
-		&[aria-expanded="true"] {
-			background-color: var(--surface-active);
-			color: var(--text-primary);
-		}
+	&:hover {
+		background-color: var(--surface-hover);
+		color: var(--text-primary);
+	}
+
+	&[aria-expanded="true"] {
+		background-color: var(--surface-active);
+		color: var(--text-primary);
 	}
 }
 
@@ -478,6 +498,27 @@ const adminPanelEnabled = computed(() => configStore.isProFeatureEnabled(PRO_FEA
 
 	@media screen and (width <= 480px) {
 		gap: 0;
+	}
+
+	&.is-in-assistant-drawer {
+		--navbar-button-size: var(--target-min);
+		--navbar-icon-size: 1.0625rem;
+
+		position: relative;
+
+		flex-wrap: wrap;
+		justify-content: flex-start;
+		gap: var(--space-1);
+		margin: 0;
+		padding: var(--space-2) var(--space-3);
+		border-block-end: 1px solid var(--border-subtle);
+
+		:deep(.notifications-list) {
+			inset-inline: var(--space-2);
+			inline-size: auto;
+			max-inline-size: none;
+			max-block-size: calc(var(--visual-viewport-height, 100dvh) - 9rem);
+		}
 	}
 
 	// A running timer keeps its elapsed time and stop button but shrinks on phones.

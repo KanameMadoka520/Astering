@@ -100,7 +100,10 @@ function pretty(value?: string) {
 					class="state-icon"
 					:icon="ICONS[state]"
 				/>
-				<span class="tool-name">{{ label }}</span>
+				<span
+					class="tool-name"
+					:title="label"
+				>{{ label }}</span>
 				<span
 					v-if="externalSource"
 					class="tool-args"
@@ -284,7 +287,19 @@ pre {
 	}
 }
 
-@media (width <= 480px) {
+@media (width <= 768px) {
+	summary {
+		min-block-size: 2.75rem;
+	}
+
+	.tool-name {
+		flex: 1 1 auto;
+	}
+
+	.tool-state {
+		flex-shrink: 0;
+	}
+
 	.tool-args {
 		display: none;
 	}

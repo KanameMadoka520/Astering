@@ -5347,5 +5347,20 @@
     "listIncomplete": "This scan could not read every item. The list and page totals are lower bounds; an empty page does not prove there is no stored data.",
     "validUntil": "Confirmation expires {time}. The current state is checked again when you proceed.",
     "backToReview": "Back to review"
+  },
+  "mobileChat": {
+    "steeringHint": "Added at the next safe step; this task continues.",
+    "listAttachments": "List conversation attachments",
+    "configuration": "Chat configuration",
+    "configurationSummary": "Model: {model} · Mode: {mode} · Open chat configuration",
+    "read": "Read only",
+    "write": "Can act",
+    "details": "Conversation details",
+    "siteNavigation": "Open Astering navigation",
+    "permissions": "Permissions and execution",
+    "configurationHelp": "These settings apply to your next message.",
+    "closeConfiguration": "Back to chat",
+    "runDetails": "Run details",
+    "runDetailsLabel": "View usage, rounds, and diagnostics"
   }
 }

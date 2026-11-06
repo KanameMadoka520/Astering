@@ -112,7 +112,7 @@ test('floating Arona keeps a scrollable touch layout and unsent draft at 390px',
 	const input = panel.getByLabel('Your request', {exact: true})
 	await input.fill('Keep the phone draft when minimizing and reopening.')
 	const composer = await input.elementHandle()
-	await page.locator('.arona-launcher').click()
+	await panel.getByRole('button', {name: 'Minimize Arona (keep working)', exact: true}).click()
 	await expect(panel).not.toBeVisible()
 	await page.getByRole('button', {name: 'Open floating Arona', exact: true}).click()
 	await expect(input).toHaveValue('Keep the phone draft when minimizing and reopening.')

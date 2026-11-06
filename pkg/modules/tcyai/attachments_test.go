@@ -212,7 +212,10 @@ func TestTCYAttachmentsFourWireProtocols(t *testing.T) {
 		}
 		text := string(raw)
 		assert.Contains(t, text, base64.StdEncoding.EncodeToString(data))
+		assert.Contains(t, text, a.ID, "the model must receive the exact callable image attachment ID")
+		assert.Contains(t, text, "Image 1 attachment reference")
 		assert.NotContains(t, text, "attachment_owner")
+		assert.NotContains(t, text, "drive_file_id")
 		assert.NotContains(t, text, `"attachments"`)
 		w.Header().Set("Content-Type", "application/json")
 		switch protocol {

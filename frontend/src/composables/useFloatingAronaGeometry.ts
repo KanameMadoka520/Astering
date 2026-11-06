@@ -1,4 +1,5 @@
-import {computed, onBeforeUnmount, onMounted, ref, type CSSProperties, type Ref} from 'vue'
+import {computed, onBeforeUnmount, onMounted, ref, watch, type CSSProperties, type Ref} from 'vue'
+import {useVisualViewport, type VisualViewportBounds} from '@/composables/useVisualViewport'
 
 export type PanelGeometry = {
 	x: number
@@ -7,12 +8,7 @@ export type PanelGeometry = {
 	height: number
 }
 
-export type PanelViewport = {
-	width: number
-	height: number
-	left: number
-	top: number
-}
+export type PanelViewport = VisualViewportBounds
 
 export type ResizeEdge = 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw'
 type Operation = 'move' | ResizeEdge
@@ -104,18 +100,8 @@ function parseGeometry(raw: string | null): PanelGeometry | null {
 	}
 }
 
-function readViewport(): PanelViewport {
-	const view = window.visualViewport
-	return {
-		width: view?.width ?? window.innerWidth,
-		height: view?.height ?? window.innerHeight,
-		left: view?.offsetLeft ?? 0,
-		top: view?.offsetTop ?? 0,
-	}
-}
-
 export function useFloatingAronaGeometry(isMobile: Ref<boolean>) {
-	const viewport = ref(readViewport())
+	const {viewport, style: viewportStyle} = useVisualViewport()
 	const preferred = ref<PanelGeometry | null>(null)
 	const interacting = ref(false)
 	const geometry = computed(() => preferred.value
@@ -235,10 +221,7 @@ export function useFloatingAronaGeometry(isMobile: Ref<boolean>) {
 		stop(true)
 		return true
 	}
-	function resizeViewport() {
-		stop(true)
-		viewport.value = readViewport()
-	}
+	watch(viewport, () => stop(true), {flush: 'sync'})
 	function changedStorage(event: StorageEvent) {
 		if (event.key !== STORAGE_KEY && event.key !== null) return
 		stop(true)
@@ -246,21 +229,15 @@ export function useFloatingAronaGeometry(isMobile: Ref<boolean>) {
 	}
 	onMounted(() => {
 		try { preferred.value = parseGeometry(localStorage.getItem(STORAGE_KEY)) } catch { /* Optional browser storage. */ }
-		viewport.value = readViewport()
-		window.addEventListener('resize', resizeViewport)
 		window.addEventListener('storage', changedStorage)
-		window.visualViewport?.addEventListener('resize', resizeViewport)
-		window.visualViewport?.addEventListener('scroll', resizeViewport)
 	})
 	onBeforeUnmount(() => {
 		stop(true)
-		window.removeEventListener('resize', resizeViewport)
 		window.removeEventListener('storage', changedStorage)
-		window.visualViewport?.removeEventListener('resize', resizeViewport)
-		window.visualViewport?.removeEventListener('scroll', resizeViewport)
 	})
 	return {
 		style,
+		viewportStyle,
 		interacting,
 		start,
 		keyboard,

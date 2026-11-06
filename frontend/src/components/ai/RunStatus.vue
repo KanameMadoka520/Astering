@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed, ref, watch} from 'vue'
+import {computed, ref, useId, watch} from 'vue'
 import {useNow} from '@vueuse/core'
 import {useI18n} from 'vue-i18n'
 import {useAronaPresenting} from '@/composables/useAronaPresentation'
@@ -28,6 +28,7 @@ const props = withDefaults(defineProps<{
 })
 const {t, n} = useI18n({useScope: 'global'})
 const open = ref(false)
+const detailsId = useId()
 // The clock ticks only while a model request streams on screen; compaction and tool stages never tick it.
 const presenting = useAronaPresenting()
 const {now, pause, resume} = useNow({interval: 1000, controls: true})
@@ -260,7 +261,7 @@ const summary = computed(() => {
 		v-if="running"
 		class="run-status live-run-panel"
 	>
-		<!-- Figures change every frame; screen readers get the stage line and the card's polite status instead. -->
+		<!-- Mobile collapsed details use display:none; desktop figures remain accessible without live announcements. -->
 		<p class="run-stage">
 			<span
 				class="working-orbit"
@@ -268,34 +269,69 @@ const summary = computed(() => {
 			/>
 			<strong>{{ t(`flow.stage_${result?.stage || 'model'}`) }}<template v-if="stageDetail"> · {{ stageDetail }}</template></strong>
 		</p>
-		<dl
-			v-if="hasWork || context"
-			class="run-figures"
-			aria-hidden="true"
+		<button
+			type="button"
+			class="live-details-toggle"
+			:aria-expanded="open"
+			:aria-controls="detailsId"
+			:aria-label="t('mobileChat.runDetailsLabel')"
+			@click="open = !open"
 		>
-			<div
-				v-for="row in rows"
-				:key="row.scope"
-				:data-scope="row.scope"
+			<Icon :icon="open ? 'chevron-down' : 'chevron-right'" /> {{ t('mobileChat.runDetails') }}
+		</button>
+		<div
+			:id="detailsId"
+			class="live-run-details"
+			:class="{'is-open': open}"
+		>
+			<p
+				v-if="result?.budget?.round_limit"
+				class="run-budget"
 			>
-				<dt>{{ row.label }}</dt>
-				<dd>{{ row.text }}</dd>
-				<dd
-					v-if="row.detail"
-					class="run-detail"
+				{{ t('agent.budgetProgress', {rounds: result.budget.rounds, roundLimit: result.budget.round_limit, operations: result.budget.operations, operationLimit: result.budget.operation_limit}) }}
+			</p>
+			<dl
+				v-if="hasWork || context"
+				class="run-figures"
+			>
+				<div
+					v-for="row in rows"
+					:key="row.scope"
+					:data-scope="row.scope"
 				>
-					{{ row.detail }}
-				</dd>
-			</div>
-		</dl>
+					<dt>{{ row.label }}</dt>
+					<dd>{{ row.text }}</dd>
+					<dd
+						v-if="row.detail"
+						class="run-detail"
+					>
+						{{ row.detail }}
+					</dd>
+				</div>
+			</dl>
+			<slot />
+		</div>
 	</div>
 	<details
 		v-else
 		class="run-status run-summary"
+		:open="open"
 		@toggle="open = ($event.target as HTMLDetailsElement).open"
 	>
-		<summary>{{ summary }}</summary>
+		<summary :title="t('mobileChat.runDetailsLabel')">
+			<span class="run-summary-compact">{{ t('mobileChat.runDetails') }}</span>
+			<span class="run-summary-full">{{ summary }}</span>
+		</summary>
 		<template v-if="open">
+			<p class="run-summary-description">
+				{{ summary }}
+			</p>
+			<p
+				v-if="result?.budget?.round_limit"
+				class="run-budget"
+			>
+				{{ t('agent.budgetProgress', {rounds: result.budget.rounds, roundLimit: result.budget.round_limit, operations: result.budget.operations, operationLimit: result.budget.operation_limit}) }}
+			</p>
 			<dl
 				v-if="hasWork"
 				class="run-figures"
@@ -341,6 +377,19 @@ const summary = computed(() => {
 
 .live-run-panel {
 	margin-block-start: var(--space-3);
+}
+
+.live-details-toggle,
+.run-summary-compact,
+.run-summary-description {
+	display: none;
+}
+
+.run-budget {
+	margin-block: var(--space-1) var(--space-2);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	overflow-wrap: anywhere;
 }
 
 .run-stage {
@@ -403,6 +452,7 @@ const summary = computed(() => {
 }
 
 .run-summary {
+	min-inline-size: 0;
 	color: var(--text-tertiary);
 	font-size: var(--text-xs);
 
@@ -426,6 +476,84 @@ const summary = computed(() => {
 
 	.run-figures {
 		margin-block: var(--space-1) var(--space-2);
+	}
+}
+
+@media (width <= 768px) {
+	.live-run-panel {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0 var(--space-2);
+		margin-block-start: 0;
+	}
+
+	.run-stage {
+		flex: 1 1 8rem;
+		font-size: var(--text-sm);
+	}
+
+	.live-details-toggle {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: var(--space-1);
+		min-block-size: 2.75rem;
+		max-inline-size: 100%;
+		padding: var(--space-1) var(--space-2);
+		border: 0;
+		border-radius: var(--radius-sm);
+		background: transparent;
+		color: var(--text-secondary);
+		font: inherit;
+		font-size: var(--text-sm);
+		cursor: pointer;
+		overflow-wrap: anywhere;
+
+		&:focus-visible {
+			@include focus-ring;
+		}
+
+		svg {
+			inline-size: .65em;
+		}
+	}
+
+	.live-run-details {
+		flex-basis: 100%;
+		min-inline-size: 0;
+
+		&:not(.is-open) {
+			display: none;
+		}
+	}
+
+	.run-summary {
+		font-size: var(--text-sm);
+
+		> summary {
+			min-block-size: 2.75rem;
+			padding-block: .75rem;
+		}
+	}
+
+	.run-summary-full {
+		display: none;
+	}
+
+	.run-summary-compact {
+		display: inline;
+	}
+
+	.run-summary-description {
+		display: block;
+		margin-block: 0 var(--space-2);
+		line-height: var(--leading-normal);
+		overflow-wrap: anywhere;
+	}
+
+	.run-figures {
+		font-size: var(--text-sm);
 	}
 }
 

@@ -20,10 +20,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -88,6 +92,201 @@ func chatImageLayout(t *testing.T) *aiDescriptionDocument {
 	document, err := descriptionDocument(&task)
 	require.NoError(t, err)
 	return document
+}
+
+func TestTCYAIChatImageAttachmentDiscoveryRuntime(t *testing.T) {
+	e, ctx, source := chatImageFixture(t)
+	chatID := tcyai.ChatImagesFromContext(ctx).ConversationID
+	chatImageSetDescription(t, "<p>Keep the original paragraph</p>")
+	before := chatImageTask(t).Description
+	s := db.NewSession()
+	fileCount, err := s.Count(&files.File{})
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+	oldLocal := config.OutgoingRequestsAllowNonRoutableIPs.GetBool()
+	config.OutgoingRequestsAllowNonRoutableIPs.Set(true)
+	t.Cleanup(func() { config.OutgoingRequestsAllowNonRoutableIPs.Set(oldLocal) })
+	var requests atomic.Int32
+	var attachmentID string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Messages []struct {
+				Role    string          `json:"role"`
+				Content json.RawMessage `json:"content"`
+			} `json:"messages"`
+		}
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
+			http.Error(w, "invalid local fixture request", http.StatusBadRequest)
+			return
+		}
+		n := requests.Add(1)
+		lastResult := func(target any) bool {
+			for i := len(body.Messages) - 1; i >= 0; i-- {
+				if body.Messages[i].Role != "tool" {
+					continue
+				}
+				var content string
+				return assert.NoError(t, json.Unmarshal(body.Messages[i].Content, &content)) && assert.NoError(t, json.Unmarshal([]byte(content), target))
+			}
+			return assert.Fail(t, "the next model request must contain a real tool result")
+		}
+		call := func(name string, args any) {
+			encoded, marshalErr := json.Marshal(args)
+			if marshalErr != nil {
+				t.Errorf("encode local model fixture: %v", marshalErr)
+				http.Error(w, "invalid local fixture response", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			assert.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+				"choices": []any{map[string]any{
+					"message": map[string]any{
+						"role": "assistant",
+						"tool_calls": []any{map[string]any{
+							"id":   fmt.Sprintf("attachment-runtime-%d", n),
+							"type": "function",
+							"function": map[string]any{
+								"name":      name,
+								"arguments": string(encoded),
+							},
+						}},
+					},
+					"finish_reason": "tool_calls",
+				}},
+			}))
+		}
+		switch n {
+		case 1:
+			assert.Contains(t, string(body.Messages[len(body.Messages)-1].Content), source.ID, "new image references accompany their pixels")
+			call("find_tools", map[string]any{
+				"query": "list_chat_attachments get_task_description_layout insert_chat_image",
+				"limit": 3,
+			})
+		case 2:
+			var result struct {
+				Tools []struct {
+					Name string `json:"name"`
+				} `json:"tools"`
+			}
+			if lastResult(&result) {
+				names := []string{}
+				for _, tool := range result.Tools {
+					names = append(names, tool.Name)
+				}
+				assert.ElementsMatch(t, []string{"list_chat_attachments", "get_task_description_layout", "insert_chat_image"}, names)
+			}
+			call("invoke_tool", map[string]any{
+				"name":      "list_chat_attachments",
+				"arguments": map[string]any{"limit": 1},
+			})
+		case 3:
+			var result struct {
+				Items []struct {
+					ID      string `json:"id"`
+					Missing bool   `json:"missing"`
+				} `json:"items"`
+			}
+			if lastResult(&result) && assert.Len(t, result.Items, 1) {
+				attachmentID = result.Items[0].ID
+				assert.Equal(t, source.ID, attachmentID)
+				assert.False(t, result.Items[0].Missing)
+			}
+			call("invoke_tool", map[string]any{
+				"name":      "get_task_description_layout",
+				"arguments": map[string]any{"id": 1},
+			})
+		case 4:
+			var layout aiDescriptionLayout
+			if lastResult(&layout) {
+				assert.Equal(t, descriptionHash(before), layout.Version)
+			}
+			call("invoke_tool", map[string]any{
+				"name": "insert_chat_image",
+				"arguments": map[string]any{
+					"id":                  1,
+					"description_version": layout.Version,
+					"attachment_id":       attachmentID,
+					"position":            "end",
+				},
+			})
+		case 5:
+			var task models.Task
+			if lastResult(&task) {
+				assert.EqualValues(t, 1, task.ID)
+				assert.Contains(t, task.Description, "<img")
+			}
+			w.Header().Set("Content-Type", "application/json")
+			assert.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+				"choices": []any{map[string]any{
+					"message": map[string]any{
+						"role":    "assistant",
+						"content": "Inserted after approval.",
+					},
+					"finish_reason": "stop",
+				}},
+			}))
+		default:
+			http.Error(w, "unexpected local model request", http.StatusInternalServerError)
+		}
+	}))
+	t.Cleanup(server.Close)
+	c := tcyai.Connection{
+		BaseURL:      server.URL,
+		Model:        "attachment-runtime-fixture",
+		Protocol:     "openai-chat",
+		NonStreaming: true,
+		InputTypes:   []string{"text", "image"},
+	}
+	// Exercise the existing permission-aware image handlers and the real runtime
+	// review transition. The in-process fixture already supplies the authenticated
+	// user, as in the placement/retention regressions below.
+	_, err = tcyai.StartConversation(context.Background(), 1, chatID, tcyai.RunInput{
+		Message:       "Insert this image into task 1 after the text",
+		RequestID:     "attachment-runtime-discovery",
+		AttachmentIDs: []string{source.ID},
+		Mode:          "write",
+		Approval:      "auto",
+	}, c, e.executeChatImage, e.prepareChatImage)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		assert.NoError(t, tcyai.StopConversation(1, chatID))
+		assert.Eventually(t, func() bool { return !tcyai.ConversationJobRunning(1, chatID) }, 8*time.Second, 10*time.Millisecond)
+	})
+	require.Eventually(t, func() bool { return !tcyai.ConversationJobRunning(1, chatID) }, 8*time.Second, 10*time.Millisecond)
+	chat, err := tcyai.GetConversation(1, chatID)
+	require.NoError(t, err)
+	require.Len(t, chat.Turns, 1)
+	turn := chat.Turns[0]
+	require.Equal(t, "awaiting_approval", turn.Status, turn.Result.Error)
+	require.NotNil(t, turn.Result.Pending)
+	assert.Equal(t, "insert_chat_image", turn.Result.Pending.Tool)
+	assert.Equal(t, before, chatImageTask(t).Description, "even auto approval must pause before this image write")
+	_, err = tcyai.ReviewConversation(context.Background(), 1, chatID, tcyai.ReviewInput{
+		TurnID:      turn.ID,
+		OperationID: turn.Result.Pending.ID,
+		Decision:    "approve",
+	}, c, e.executeChatImage, e.prepareChatImage)
+	require.NoError(t, err)
+	require.Eventually(t, func() bool { return !tcyai.ConversationJobRunning(1, chatID) }, 8*time.Second, 10*time.Millisecond)
+	chat, err = tcyai.GetConversation(1, chatID)
+	require.NoError(t, err)
+	require.Equal(t, "completed", chat.Turns[0].Status, chat.Turns[0].Result.Error)
+	assert.EqualValues(t, 5, requests.Load())
+	assert.Equal(t, "Inserted after approval.", chat.Turns[0].Result.Reply)
+	for _, action := range chat.Turns[0].Result.Actions {
+		assert.True(t, action.Success, "%s: %s", action.Tool, action.Result)
+	}
+	document := chatImageLayout(t)
+	require.Len(t, document.images, 1)
+	assert.Contains(t, chatImageTask(t).Description, "Keep the original paragraph")
+	s = db.NewSession()
+	defer s.Close()
+	afterCount, err := s.Count(&files.File{})
+	require.NoError(t, err)
+	assert.Equal(t, fileCount, afterCount, "inserting reuses the uploaded original bytes")
+	links, err := s.Where("task_id = ? AND file_id = ?", 1, source.DriveFileID).Count(&models.TaskAttachment{})
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, links)
 }
 
 func TestTCYAIChatImagePlacementAndRetention(t *testing.T) {

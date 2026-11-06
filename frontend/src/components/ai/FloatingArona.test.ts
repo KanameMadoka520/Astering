@@ -1,15 +1,27 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import {flushPromises, enableAutoUnmount, mount, DOMWrapper} from '@vue/test-utils'
 import {createMemoryHistory, createRouter} from 'vue-router'
+import {ref} from 'vue'
+
+const isMobile = ref(false)
 
 vi.mock('@/views/TcyAssistant.vue', async () => {
-	const {defineComponent, h} = await import('vue')
+	const {defineComponent, h, ref} = await import('vue')
 	// Marked as a module so the panel's async component unwraps the default export.
 	return {__esModule: true, default: defineComponent({
 		name: 'AssistantStub',
 		props: {presenting: Boolean},
 		emits: ['activity', 'attention', 'navigationBusy', 'update:conversationId'],
-		setup: (_, {slots}) => () => h('div', {class: 'assistant'}, slots['panel-actions']?.()),
+		setup: (_, {slots}) => {
+			const draft = ref('')
+			return () => h('div', {class: 'assistant'}, [
+				...slots['panel-actions']?.() ?? [],
+				h('textarea', {
+					value: draft.value,
+					onInput: (event: Event) => { draft.value = (event.target as HTMLTextAreaElement).value },
+				}),
+			])
+		},
 	})}
 })
 vi.mock('@/stores/base', async () => {
@@ -21,10 +33,7 @@ vi.mock('@/stores/base', async () => {
 	return {useBaseStore: () => base}
 })
 vi.mock('@/stores/auth', () => ({useAuthStore: () => ({info: {id: 1}})}))
-vi.mock('@/composables/useIsMobile', async () => {
-	const {ref} = await import('vue')
-	return {useIsMobile: () => ref(false)}
-})
+vi.mock('@/composables/useIsMobile', () => ({useIsMobile: () => isMobile}))
 vi.mock('vue-i18n', async importOriginal => ({
 	...await importOriginal<typeof import('vue-i18n')>(),
 	useI18n: () => ({t: (key: string) => key}),
@@ -33,8 +42,14 @@ vi.mock('vue-i18n', async importOriginal => ({
 import FloatingArona from './FloatingArona.vue'
 
 enableAutoUnmount(afterEach)
-beforeEach(() => localStorage.removeItem('astering-floating-arona-layout:v1'))
-afterEach(() => { document.body.innerHTML = '' })
+beforeEach(() => {
+	isMobile.value = false
+	localStorage.removeItem('astering-floating-arona-layout:v1')
+})
+afterEach(() => {
+	document.body.innerHTML = ''
+	vi.unstubAllGlobals()
+})
 
 async function mountPanel() {
 	const router = createRouter({
@@ -73,6 +88,33 @@ async function mountPanel() {
 }
 
 describe('FloatingArona', () => {
+	it('keeps the mobile draft and chat instance while the keyboard changes only the visible viewport', async () => {
+		isMobile.value = true
+		const view = Object.assign(new EventTarget(), {
+			width: 390,
+			height: 740,
+			offsetLeft: 0,
+			offsetTop: 0,
+		})
+		vi.stubGlobal('visualViewport', view)
+		const layoutHeight = window.innerHeight
+		const {wrapper, assistant, open} = await mountPanel()
+		await open()
+		const instance = assistant().vm.$.uid
+		await assistant().find('textarea').setValue('Keep this draft when the keyboard opens')
+
+		view.height = 320
+		view.offsetTop = 48
+		view.dispatchEvent(new Event('resize'))
+		await flushPromises()
+		expect(window.innerHeight).toBe(layoutHeight)
+		const floating = wrapper.find<HTMLElement>('.floating-arona').element
+		expect(floating.style.getPropertyValue('--visual-viewport-height')).toBe('320px')
+		expect(floating.style.getPropertyValue('--visual-viewport-top')).toBe('48px')
+		expect(assistant().vm.$.uid).toBe(instance)
+		expect(assistant().find('textarea').element.value).toBe('Keep this draft when the keyboard opens')
+	})
+
 	it('tells the assistant whether the panel is open', async () => {
 		const {launcher, assistant, open} = await mountPanel()
 		await open()

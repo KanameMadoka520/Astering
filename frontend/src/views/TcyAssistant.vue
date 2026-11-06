@@ -51,6 +51,7 @@ import {hasSteeringRequest, pendingSteeringCount, type LocalSteer} from '@/helpe
 import {markSteerInFlight, readSteerQueue, steerQueueOwner, updateSteerQueue, type QueuedSteer} from '@/helpers/steeringQueue'
 import {onTokenRefreshed} from '@/helpers/auth'
 import {useAuthStore} from '@/stores/auth'
+import {useBaseStore} from '@/stores/base'
 import {useProjects} from '@/composables/useProjects'
 import {provideAronaPresenting, usePresentedSnapshot} from '@/composables/useAronaPresentation'
 import {useTitle} from '@/composables/useTitle'
@@ -145,6 +146,9 @@ watch(() => current.error.value, async cause => {
 	queryClient.removeQueries({queryKey: conversationKeys.detail(id), exact: true})
 })
 const conversationTitle = computed(() => active.value?.title || t('chat.untitled'))
+const conversationDetailsLabel = computed(() =>
+	`${t('mobileChat.details')}: ${hasConversation.value ? conversationTitle.value : t('floatingArona.title')}`,
+)
 const archived = computed(() => Boolean(active.value?.archived))
 const storage = computed(() => active.value?.storage)
 const compacting = computed(() => Boolean(active.value?.compacting))
@@ -177,10 +181,17 @@ watch([chatID, activeRun], ([id, running], [previousID, wasRunning]) => {
 	if (id === previousID && wasRunning && !running) void queryClient.invalidateQueries({queryKey: conversationKeys.lists()})
 })
 const lastCompaction = computed(() => active.value?.compactions?.at(-1))
-const hasStatusChips = computed(() => contextTaskID.value > 0
-	|| Boolean(active.value?.archived || active.value?.storage || active.value?.compactions?.length))
+const hasStatusChips = computed(() => contextTaskID.value > 0 || archived.value)
 
 const sidebarOpen = ref(false)
+const configurationOpen = ref(false)
+const detailsOpen = ref(false)
+const mobileLayout = useMediaQuery('(max-width: 768px)')
+const baseStore = useBaseStore()
+function openSiteNavigation() {
+	sidebarOpen.value = false
+	baseStore.setMenuActive(true)
+}
 const wideLayout = useMediaQuery('(min-width: 1100px)')
 // Below 1100px the history covers the conversation instead of squeezing it next to the main navigation.
 const historyOverlay = computed(() => props.embedded || !wideLayout.value)
@@ -230,6 +241,8 @@ const canSearch = computed(() => Boolean(settings.data.value?.connections.find(c
 const showSearchSwitch = computed(() => canSearch.value || searchMode.value === 'required')
 const chatModels = computed(() => settings.data.value?.connections.filter(c => c.kind === 'chat') ?? [])
 const selectedConnection = computed(() => connectionID.value || settings.data.value?.assistant || '')
+const selectedModelName = computed(() => chatModels.value.find(c => c.id === selectedConnection.value)?.name
+	|| t('assistantUI.missingModel'))
 const assignedModelName = computed(() => settings.data.value?.connections.find(c => c.id === settings.data.value?.assistant)?.name
 	|| t('chat.defaultModel'))
 const exportOpen = ref(false)
@@ -368,7 +381,18 @@ const newTitle = ref('')
 const showSystemPrompt = ref(false)
 const thread = ref<HTMLElement>()
 const readSentinel = ref<HTMLElement>()
-useConversationRead({conversation: active, presenting, sentinel: readSentinel, scrollRoot: thread})
+// IntersectionObserver also sees geometry behind overlays; those replies have not actually been viewed.
+const threadReadable = computed(() => presenting.value
+	&& !configurationOpen.value
+	&& !detailsOpen.value
+	&& (!historyOverlay.value || !sidebarOpen.value)
+	&& (!mobileLayout.value || !baseStore.menuActive))
+useConversationRead({
+	conversation: active,
+	presenting: threadReadable,
+	sentinel: readSentinel,
+	scrollRoot: thread,
+})
 const threadElement = () => thread.value
 const stickToBottom = ref(true)
 // Unsent requests per conversation, for the tab: Expand opens the full page in a new view, and leaving /ai
@@ -444,6 +468,11 @@ const currentOptions = computed<AssistantOptions>(() => ({
 	stop_at_segment_limit: stopAtSegmentLimit.value,
 	enable_subagents: enableSubagents.value,
 }))
+const composerModeLabel = computed(() => t(mode.value === 'read' ? 'mobileChat.read' : 'mobileChat.write'))
+const configurationLabel = computed(() => t('mobileChat.configurationSummary', {
+	model: selectedModelName.value,
+	mode: composerModeLabel.value,
+}))
 const profiles = computed(() => [
 	...builtinProfileIDs.map(id => ({id, name: t(`assistantUI.presets.${id}.name`)})),
 	...(preferences.data.value?.profiles ?? []).map(p => ({id: p.id!, name: p.name!})),
@@ -476,7 +505,6 @@ function applyUserOptions(options: AssistantOptions, profile: string) {
 	applyOptions(options, profile)
 }
 function openPreferences() {
-	if (executionScopeLocked.value) return
 	preferencesOpen.value = true
 }
 function selectProfile(id: string) {
@@ -539,6 +567,7 @@ const microphone = useSpeechRecording({
 					: 'tcymc.text.recording_was_interrupted_please_try_again')),
 })
 const {recording, requesting: microphonePending, stopping: microphoneStopping, elapsed} = microphone
+const voiceCaptureActive = computed(() => recording.value || microphonePending.value || microphoneStopping.value)
 const editingBusy = computed(() => Boolean(pendingMessage.value)
 	|| chatUploads.running.value
 	|| drivePicking.value
@@ -585,7 +614,8 @@ const steerStage = computed(() => steering.value ? active.value?.turns?.at(-1)?.
 const steerHint = computed(() => {
 	if (stopRequested.value && stopRequested.value === steerTurnID.value) return 'aronaSteer.stopping'
 	if (steer.isPending.value) return 'aronaSteer.sending'
-	return steerStage.value === 'compacting' ? 'aronaSteer.autoCompacting' : 'aronaSteer.hint'
+	if (steerStage.value === 'compacting') return 'aronaSteer.autoCompacting'
+	return mobileLayout.value ? 'mobileChat.steeringHint' : 'aronaSteer.hint'
 })
 // This account's unconfirmed instructions (sending, failed, refused) survive reloads and closed panels. Acknowledged
 // ones stay in `sentSteers` only until the conversation lists them.
@@ -1136,6 +1166,9 @@ watch([chatID, () => JSON.stringify(speechConnection.value)], () => {
 	cancelVoice()
 }, {flush: 'sync'})
 watch(presenting, shown => { if (!shown) cancelVoice() }, {flush: 'sync'})
+watch(() => mobileLayout.value && baseStore.menuActive, hidden => {
+	if (hidden) cancelVoice()
+}, {flush: 'sync'})
 watch([() => auth.session, tokenRefreshes], () => {
 	if (!speechAttemptIsCurrent() || cleanupOwner && !isClientRequestContextCurrent(cleanupOwner.context)) cancelVoice()
 }, {flush: 'sync'})
@@ -1259,71 +1292,63 @@ onBeforeUnmount(() => {
 		@keydown.capture="voiceKeydown"
 	>
 		<header class="assistant-heading">
-			<div class="heading-actions heading-start">
-				<BaseButton
-					ref="historyToggle"
-					class="toolbar-button"
-					:title="t('chat.conversations')"
-					:aria-label="t('chat.conversations')"
-					:aria-expanded="sidebarOpen"
-					@click="toggleSidebar"
-				>
-					<Icon icon="history" />
-				</BaseButton>
-				<div class="assistant-identity">
-					<AronaAvatar size="small" />
-					<div class="assistant-title">
-						<h1 v-if="!embedded">
-							{{ t('tcymc.text.ai_task_assistant') }}
-						</h1>
-						<template v-else-if="!hasConversation">
-							<strong class="panel-title">{{ t('floatingArona.title') }}</strong>
-							<span class="panel-hint">{{ t('floatingArona.context') }}</span>
-						</template>
-						<p
-							class="live-connection"
-							:class="{
-								'is-idle': !chatID,
-								'is-running': activeRun,
-							}"
-							:title="chatID ? `${liveStatus} · ${t('flow.backgroundNote')}` : undefined"
-						>
-							<template v-if="chatID">
-								<span
-									class="live-dot"
-									:class="{connected: events.connected.value}"
-									aria-hidden="true"
-								/>
-								<span
-									class="live-label"
-									aria-hidden="true"
-								>{{ liveLabel }}</span>
-								<span class="is-sr-only">{{ liveStatus }}</span>
-								<span
-									class="live-separator"
-									aria-hidden="true"
-								>·</span>
-							</template>
-							<span class="background-note">{{ t('flow.backgroundNote') }}</span>
-						</p>
-					</div>
-				</div>
-			</div>
-			<div
-				v-if="hasConversation"
-				class="conversation-toolbar"
+			<BaseButton
+				ref="historyToggle"
+				data-mobile-history-toggle
+				class="toolbar-button"
+				:title="t('chat.conversations')"
+				:aria-label="t('chat.conversations')"
+				:aria-expanded="sidebarOpen"
+				@click="toggleSidebar"
 			>
-				<strong
-					class="conversation-title"
-					:title="conversationTitle"
-				>{{ conversationTitle }}</strong>
-				<ConversationMenu
-					:conversation="currentSummary"
-					current
-					:can-compact="canCompact && !busy"
-					:disabled="editingBusy"
-					@action="historyAction($event, currentSummary)"
-				/>
+				<Icon icon="history" />
+			</BaseButton>
+			<div class="assistant-identity">
+				<AronaAvatar size="small" />
+				<div class="assistant-title">
+					<component
+						:is="embedded ? 'h2' : 'h1'"
+						class="assistant-name"
+					>
+						<BaseButton
+							class="heading-title conversation-details-trigger"
+							:title="conversationTitle"
+							:aria-label="conversationDetailsLabel"
+							:aria-disabled="voiceCaptureActive"
+							aria-haspopup="dialog"
+							@click="detailsOpen = true"
+						>
+							<span>{{ hasConversation ? conversationTitle : t('floatingArona.title') }}</span>
+							<Icon
+								icon="chevron-down"
+								aria-hidden="true"
+							/>
+						</BaseButton>
+					</component>
+					<p
+						class="live-connection"
+						:class="{'is-idle': !chatID, 'is-running': activeRun}"
+						:title="chatID ? `${liveStatus} · ${t('flow.backgroundNote')}` : undefined"
+					>
+						<template v-if="chatID">
+							<span
+								class="live-dot"
+								:class="{connected: events.connected.value}"
+								aria-hidden="true"
+							/>
+							<span
+								class="live-label"
+								aria-hidden="true"
+							>{{ liveLabel }}</span>
+							<span class="is-sr-only">{{ liveStatus }}</span>
+							<span
+								class="live-separator"
+								aria-hidden="true"
+							>·</span>
+						</template>
+						<span class="background-note">{{ t('flow.backgroundNote') }}</span>
+					</p>
+				</div>
 			</div>
 			<div class="heading-actions heading-end">
 				<BaseButton
@@ -1335,15 +1360,28 @@ onBeforeUnmount(() => {
 				>
 					<Icon icon="plus" />
 				</BaseButton>
-				<BaseButton
-					class="toolbar-button"
-					:title="t('debug.title')"
-					:aria-label="t('debug.title')"
-					@click="openDiagnostics"
+				<div
+					v-if="hasConversation"
+					class="conversation-toolbar"
 				>
-					<Icon icon="code" />
+					<ConversationMenu
+						:conversation="currentSummary"
+						current
+						:can-compact="canCompact && !busy"
+						:disabled="editingBusy"
+						@action="historyAction($event, currentSummary)"
+					/>
+				</div>
+				<BaseButton
+					v-else
+					class="toolbar-button"
+					:title="t('mobileChat.details')"
+					:aria-label="t('mobileChat.details')"
+					:aria-disabled="voiceCaptureActive"
+					@click="detailsOpen = true"
+				>
+					<Icon icon="ellipsis-h" />
 				</BaseButton>
-				<!-- The floating panel's own controls share this row instead of stacking a second header. -->
 				<slot name="panel-actions" />
 			</div>
 		</header>
@@ -1367,6 +1405,13 @@ onBeforeUnmount(() => {
 				:aria-label="t('chat.conversations')"
 				@keydown.esc="sidebarKeydown"
 			>
+				<BaseButton
+					class="site-navigation-button"
+					data-mobile-site-menu
+					@click="openSiteNavigation"
+				>
+					<Icon icon="bars" />{{ t('mobileChat.siteNavigation') }}
+				</BaseButton>
 				<ConversationHistory
 					ref="historyPanel"
 					:selected="chatID"
@@ -1434,35 +1479,6 @@ onBeforeUnmount(() => {
 							{{ t('chatHistory.restore') }}
 						</button>
 					</div>
-					<details
-						v-if="storage"
-						class="status-chip conversation-storage"
-					>
-						<summary>{{ t('chatFiles.storageLine', {bytes: chatBytes(storage.total_bytes), count: storage.attachment_count}) }}</summary>
-						<p>{{ t('chatFiles.storageDetail', {record: chatBytes(storage.record_bytes), files: chatBytes(storage.attachment_bytes)}) }}</p>
-						<p>{{ t('chatFiles.storageHint') }}</p>
-						<p v-if="storage.drive_attachment_count">
-							{{ t('chatFiles.storageDrive', {count: storage.drive_attachment_count, bytes: chatBytes(storage.drive_attachment_bytes)}) }}
-						</p>
-						<p v-if="storage.missing_count">
-							{{ t('chatFiles.missingCount', {count: storage.missing_count}) }}
-						</p>
-					</details>
-					<details
-						v-if="lastCompaction"
-						class="status-chip summary-banner"
-					>
-						<summary><Icon icon="compress" /> {{ t('chat.compacted', {count: lastCompaction.through}) }}</summary>
-						<p class="chip-note">
-							{{ t('chat.originalsPreserved') }}
-						</p>
-						<p class="summary-text">
-							{{ lastCompaction.summary }}
-						</p>
-						<p class="chip-note">
-							{{ lastCompaction.model }} · {{ t('chat.totalTokens') }}: {{ lastCompaction.usage?.reported ? (lastCompaction.usage?.input ?? 0) + (lastCompaction.usage?.output ?? 0) : t('chat.unavailable') }}
-						</p>
-					</details>
 				</div>
 				<section
 					v-if="compacting || compactError || compactProgress"
@@ -1722,100 +1738,29 @@ onBeforeUnmount(() => {
 									@upload="chooseAudio"
 									@tidy="tidyText"
 								/>
-								<ToolModulePicker
-									:modules="toolModules"
-									:mode="mode"
-									:mcp-selected="mcpServerIDs.length > 0"
-									:disabled="executionScopeLocked"
-									@change="applyUserOptions({...currentOptions, ...$event}, '')"
-								/>
-								<MCPSessionPicker
-									:model-value="mcpServerIDs"
-									:disabled="executionScopeLocked"
-									:write-scoped="writeProjectIDs.length > 0"
-									@update:modelValue="applyUserOptions({...currentOptions, mcp_server_ids: $event}, '')"
-								/>
-								<label
-									class="composer-chip profile-switch"
-									:title="t('assistantUI.scenarios')"
-								><span class="is-sr-only">{{ t('assistantUI.scenarios') }}</span><select
-									:value="selectedProfile"
-									:disabled="executionScopeLocked"
-									@change="selectProfile(($event.target as HTMLSelectElement).value)"
-								><option
-									v-if="!selectedProfile"
-									value=""
-								>{{ t('assistantUI.custom') }}</option><option
-									v-for="p in profiles"
-									:key="p.id"
-									:value="p.id"
-								>{{ p.name }}</option></select><Icon
-									icon="chevron-down"
-									class="chip-chevron"
-								/></label>
 								<BaseButton
-									class="toolbar-button preferences-toggle"
+									class="configuration-toggle composer-config-trigger"
+									:aria-label="configurationLabel"
+									:aria-disabled="voiceCaptureActive"
+									:aria-expanded="configurationOpen"
+									aria-haspopup="dialog"
+									:title="t('mobileChat.configuration')"
 									data-tour="ai-permissions"
-									:title="t('assistantUI.preferences')"
-									:aria-label="t('assistantUI.preferences')"
-									:disabled="executionScopeLocked"
-									@click="openPreferences"
+									@click="configurationOpen = true"
 								>
-									<Icon icon="cog" />
-								</BaseButton>
-								<label
-									class="composer-chip model-switch"
-									:title="t('chat.model')"
-								><span class="is-sr-only">{{ t('chat.model') }}</span><select
-									v-model="connectionID"
-									:disabled="executionScopeLocked"
-									@change="applyUserOptions(currentOptions, '')"
-								><option value="">{{ assignedModelName }}</option><option
-									v-for="c in chatModels"
-									:key="c.id"
-									:value="c.id"
-								>{{ c.name }}</option><option
-									v-if="connectionID && !chatModels.some(c => c.id === connectionID)"
-									:value="connectionID"
-								>{{ t('assistantUI.missingModel') }}</option></select><Icon
-									icon="chevron-down"
-									class="chip-chevron"
-								/></label>
-								<label
-									v-if="showSearchSwitch"
-									class="composer-chip search-switch"
-									:title="t('webSearch.modeHelp')"
-								>
-									<Icon
-										icon="globe"
-										class="chip-icon"
-									/>
-									<span class="search-label">{{ t('webSearch.title') }}</span>
-									<select
-										v-model="searchMode"
-										:aria-label="t('webSearch.turnMode')"
-										:disabled="executionScopeLocked"
-										@change="applyUserOptions(currentOptions, '')"
-									>
-										<option value="auto">{{ t('webSearch.auto') }}</option>
-										<option
-											value="required"
-											:disabled="!canSearch"
-										>{{ t('webSearch.required') }}</option>
-										<option value="off">{{ t('webSearch.off') }}</option>
-									</select>
+									<span class="configuration-summary">
+										<span class="configuration-model">{{ selectedModelName }}</span>
+										<span class="configuration-mode">
+											<Icon :icon="mode === 'read' ? 'eye' : 'pen'" />
+											{{ composerModeLabel }}
+										</span>
+									</span>
 									<Icon
 										icon="chevron-down"
-										class="chip-chevron"
+										class="configuration-chevron"
+										aria-hidden="true"
 									/>
-								</label>
-								<RouterLink
-									v-if="!canSearch && searchMode === 'required'"
-									class="search-setup"
-									to="/user/settings/ai"
-								>
-									{{ t('webSearch.configure') }}
-								</RouterLink>
+								</BaseButton>
 							</div>
 							<div class="composer-actions">
 								<XButton
@@ -1834,6 +1779,8 @@ onBeforeUnmount(() => {
 									variant="primary"
 									icon="arrow-up"
 									class="composer-steer"
+									icon-only
+									:title="t('aronaSteer.send')"
 									type="submit"
 									:aria-disabled="steerBlocked"
 								>
@@ -1871,20 +1818,6 @@ onBeforeUnmount(() => {
 							class="composer-hint"
 						>
 							{{ t('aronaSteer.compacting') }}
-						</p>
-						<p
-							v-else
-							class="composer-hint"
-							:class="mode === 'read' ? 'is-read' : 'is-write'"
-						>
-							<Icon
-								:icon="mode === 'read' ? 'eye' : 'pen'"
-								class="mode-icon"
-							/>
-							<span>{{ t('assistantUI.nextConfiguration') }} {{ mode === 'read' ? t('assistantUI.readStatus') : t(`assistantUI.write_${approval}`) }}</span>
-							<span v-if="nextProjectTitle">· {{ nextProjectTitle }}</span>
-							<span v-if="enableSubagents">· {{ t('assistantUI.subagentsTag') }}</span>
-							<span class="enter-hint">· {{ t('chat.enterHint') }}</span>
 						</p>
 						<div
 							class="notice-region"
@@ -1965,6 +1898,223 @@ onBeforeUnmount(() => {
 				</div>
 			</section>
 		</div>
+		<Modal
+			v-if="configurationOpen"
+			class="assistant-configuration"
+			:variant="mobileLayout ? 'sheet' : 'default'"
+			:title="t('mobileChat.configuration')"
+			:aria-label="t('mobileChat.configuration')"
+			@close="configurationOpen = false"
+		>
+			<template #header-action>
+				<BaseButton
+					class="toolbar-button"
+					:aria-label="t('misc.close')"
+					@click="configurationOpen = false"
+				>
+					<Icon icon="times" />
+				</BaseButton>
+			</template>
+			<section class="configuration-panel">
+				<h2 v-if="!mobileLayout">
+					{{ t('mobileChat.configuration') }}
+				</h2>
+				<p class="configuration-help">
+					{{ t('mobileChat.configurationHelp') }}
+				</p>
+				<p
+					v-if="executionScopeLocked"
+					class="configuration-locked"
+					role="status"
+				>
+					{{ t('toolModules.locked') }}
+				</p>
+				<div class="configuration-controls">
+					<label
+						class="composer-chip model-switch"
+						:title="t('chat.model')"
+					><span class="configuration-field-label">{{ t('chat.model') }}</span><select
+						v-model="connectionID"
+						:disabled="executionScopeLocked"
+						@change="applyUserOptions(currentOptions, '')"
+					><option value="">{{ assignedModelName }}</option><option
+						v-for="c in chatModels"
+						:key="c.id"
+						:value="c.id"
+					>{{ c.name }}</option><option
+						v-if="connectionID && !chatModels.some(c => c.id === connectionID)"
+						:value="connectionID"
+					>{{ t('assistantUI.missingModel') }}</option></select><Icon
+						icon="chevron-down"
+						class="chip-chevron"
+					/></label>
+					<label
+						class="composer-chip profile-switch"
+						:title="t('assistantUI.scenarios')"
+					><span class="configuration-field-label">{{ t('assistantUI.scenarios') }}</span><select
+						:value="selectedProfile"
+						:disabled="executionScopeLocked"
+						@change="selectProfile(($event.target as HTMLSelectElement).value)"
+					><option
+						v-if="!selectedProfile"
+						value=""
+					>{{ t('assistantUI.custom') }}</option><option
+						v-for="p in profiles"
+						:key="p.id"
+						:value="p.id"
+					>{{ p.name }}</option></select><Icon
+						icon="chevron-down"
+						class="chip-chevron"
+					/></label>
+					<label
+						v-if="showSearchSwitch"
+						class="composer-chip search-switch"
+						:title="t('webSearch.modeHelp')"
+					>
+						<Icon
+							icon="globe"
+							class="chip-icon"
+						/>
+						<span class="search-label">{{ t('webSearch.title') }}</span>
+						<select
+							v-model="searchMode"
+							:aria-label="t('webSearch.turnMode')"
+							:disabled="executionScopeLocked"
+							@change="applyUserOptions(currentOptions, '')"
+						>
+							<option value="auto">{{ t('webSearch.auto') }}</option>
+							<option
+								value="required"
+								:disabled="!canSearch"
+							>{{ t('webSearch.required') }}</option>
+							<option value="off">{{ t('webSearch.off') }}</option>
+						</select>
+						<Icon
+							icon="chevron-down"
+							class="chip-chevron"
+						/>
+					</label>
+					<RouterLink
+						v-if="!canSearch && searchMode === 'required'"
+						class="search-setup"
+						to="/user/settings/ai"
+					>
+						{{ t('webSearch.configure') }}
+					</RouterLink>
+					<ToolModulePicker
+						:modules="toolModules"
+						:mode="mode"
+						:mcp-selected="mcpServerIDs.length > 0"
+						:disabled="executionScopeLocked"
+						@change="applyUserOptions({...currentOptions, ...$event}, '')"
+					/>
+					<MCPSessionPicker
+						:model-value="mcpServerIDs"
+						:disabled="executionScopeLocked"
+						:write-scoped="writeProjectIDs.length > 0"
+						@update:modelValue="applyUserOptions({...currentOptions, mcp_server_ids: $event}, '')"
+					/>
+					<BaseButton
+						class="toolbar-button preferences-toggle"
+						:title="t('mobileChat.permissions')"
+						:aria-label="t('mobileChat.permissions')"
+						@click="openPreferences"
+					>
+						<Icon icon="cog" />{{ t('mobileChat.permissions') }}
+					</BaseButton>
+				</div>
+
+				<p
+					class="composer-hint"
+					:class="mode === 'read' ? 'is-read' : 'is-write'"
+				>
+					<Icon
+						:icon="mode === 'read' ? 'eye' : 'pen'"
+						class="mode-icon"
+					/>
+					<span>{{ t('assistantUI.nextConfiguration') }} {{ mode === 'read' ? t('assistantUI.readStatus') : t(`assistantUI.write_${approval}`) }}</span>
+					<span v-if="nextProjectTitle">· {{ nextProjectTitle }}</span>
+					<span v-if="enableSubagents">· {{ t('assistantUI.subagentsTag') }}</span>
+					<span class="enter-hint">· {{ t('chat.enterHint') }}</span>
+				</p>
+				<XButton
+					class="configuration-done"
+					:shadow="false"
+					@click="configurationOpen = false"
+				>
+					{{ t('mobileChat.closeConfiguration') }}
+				</XButton>
+			</section>
+		</Modal>
+		<Modal
+			v-if="detailsOpen"
+			class="assistant-configuration"
+			:variant="mobileLayout ? 'sheet' : 'default'"
+			:title="t('mobileChat.details')"
+			:aria-label="t('mobileChat.details')"
+			@close="detailsOpen = false"
+		>
+			<template #header-action>
+				<BaseButton
+					class="toolbar-button"
+					:aria-label="t('misc.close')"
+					@click="detailsOpen = false"
+				>
+					<Icon icon="times" />
+				</BaseButton>
+			</template>
+			<section class="configuration-panel conversation-details">
+				<h2 v-if="!mobileLayout">
+					{{ t('mobileChat.details') }}
+				</h2>
+				<strong>{{ hasConversation ? conversationTitle : t('floatingArona.title') }}</strong>
+				<p v-if="chatID">
+					{{ liveStatus }} · {{ t('flow.backgroundNote') }}
+				</p>
+				<details
+					v-if="storage"
+					class="status-chip conversation-storage"
+				>
+					<summary>{{ t('chatFiles.storageLine', {bytes: chatBytes(storage.total_bytes), count: storage.attachment_count}) }}</summary>
+					<p>{{ t('chatFiles.storageDetail', {record: chatBytes(storage.record_bytes), files: chatBytes(storage.attachment_bytes)}) }}</p>
+					<p>{{ t('chatFiles.storageHint') }}</p>
+					<p v-if="storage.drive_attachment_count">
+						{{ t('chatFiles.storageDrive', {count: storage.drive_attachment_count, bytes: chatBytes(storage.drive_attachment_bytes)}) }}
+					</p>
+					<p v-if="storage.missing_count">
+						{{ t('chatFiles.missingCount', {count: storage.missing_count}) }}
+					</p>
+				</details>
+				<details
+					v-if="lastCompaction"
+					class="status-chip summary-banner"
+				>
+					<summary><Icon icon="compress" /> {{ t('chat.compacted', {count: lastCompaction.through}) }}</summary>
+					<p class="chip-note">
+						{{ t('chat.originalsPreserved') }}
+					</p>
+					<p class="summary-text">
+						{{ lastCompaction.summary }}
+					</p>
+					<p class="chip-note">
+						{{ lastCompaction.model }} · {{ t('chat.totalTokens') }}: {{ lastCompaction.usage?.reported ? (lastCompaction.usage?.input ?? 0) + (lastCompaction.usage?.output ?? 0) : t('chat.unavailable') }}
+					</p>
+				</details>
+				<BaseButton
+					class="details-diagnostics"
+					@click="openDiagnostics"
+				>
+					<Icon icon="code" />{{ t('debug.title') }}
+				</BaseButton>
+				<XButton
+					class="configuration-done"
+					:shadow="false"
+					@click="detailsOpen = false"
+				>
+					{{ t('mobileChat.closeConfiguration') }}
+				</XButton>
+			</section>
+		</Modal>
 		<Modal
 			v-if="historyDialog"
 			class="history-action-modal"
@@ -2073,10 +2223,6 @@ onBeforeUnmount(() => {
 	min-inline-size: 0;
 }
 
-.heading-start {
-	flex-shrink: 1;
-}
-
 .heading-end {
 	margin-inline-start: auto;
 }
@@ -2115,6 +2261,7 @@ onBeforeUnmount(() => {
 .assistant-identity {
 	position: relative;
 	display: flex;
+	flex: 1 1 0;
 	align-items: center;
 	gap: var(--space-2);
 	min-inline-size: 0;
@@ -2127,7 +2274,7 @@ onBeforeUnmount(() => {
 	min-inline-size: 0;
 }
 
-h1 {
+.assistant-name {
 	margin: 0;
 	overflow: hidden;
 	color: var(--text-primary);
@@ -2183,44 +2330,47 @@ h1 {
 	}
 }
 
-.panel-title {
-	margin-inline-start: var(--space-2);
-	overflow: hidden;
+.heading-title {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	max-inline-size: 100%;
+	min-block-size: var(--control-height-sm);
 	color: var(--text-primary);
-	font-size: var(--text-md);
-	font-weight: var(--weight-semibold);
-	line-height: var(--leading-tight);
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
+	text-align: start;
 
-.panel-hint {
-	margin-inline-start: var(--space-2);
-	overflow: hidden;
-	color: var(--text-tertiary);
-	font-size: var(--text-xs);
-	line-height: var(--leading-tight);
-	text-overflow: ellipsis;
-	white-space: nowrap;
+	span {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	svg {
+		flex-shrink: 0;
+		inline-size: .6rem;
+		block-size: .6rem;
+		color: var(--text-tertiary);
+	}
 }
 
 .conversation-toolbar {
 	display: flex;
-	flex: 1 1 auto;
+	flex-shrink: 0;
 	align-items: center;
-	justify-content: center;
-	gap: var(--space-1);
-	min-inline-size: 0;
 }
 
-.conversation-title {
-	min-inline-size: 0;
-	overflow: hidden;
-	color: var(--text-primary);
-	font-size: var(--text-md);
-	font-weight: var(--weight-semibold);
-	text-overflow: ellipsis;
-	white-space: nowrap;
+.site-navigation-button {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	min-block-size: var(--target-min);
+	padding: var(--space-2);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-md);
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	text-align: start;
 }
 
 // Shell: optional history column and the conversation.
@@ -2495,6 +2645,7 @@ summary {
 .composer-dock {
 	position: relative;
 	display: flex;
+	flex-shrink: 0;
 	flex-direction: column;
 	min-block-size: 0;
 	padding: var(--space-2) var(--column-inset) var(--space-4);
@@ -2658,22 +2809,183 @@ summary {
 
 .composer-tools {
 	display: flex;
-	align-items: flex-end;
+	align-items: center;
 	justify-content: space-between;
 	gap: var(--space-2);
 }
 
 .composer-context {
 	display: flex;
-	flex-wrap: wrap;
+	flex: 1 1 0;
 	align-items: center;
 	gap: var(--space-1);
 	min-inline-size: 0;
 }
 
-.composer-context .toolbar-button {
-	min-inline-size: var(--control-height-sm);
-	min-block-size: var(--control-height-sm);
+.composer-context :deep(.speech-input-control) {
+	flex-shrink: 0;
+}
+
+.configuration-toggle {
+	display: flex;
+	flex: 1 1 0;
+	align-items: center;
+	justify-content: flex-start;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	max-inline-size: 15rem;
+	min-block-size: var(--target-min);
+	padding: var(--space-1) var(--space-2);
+	border-radius: var(--radius-md);
+	color: var(--text-secondary);
+	text-align: start;
+
+	&:hover,
+	&[aria-expanded='true'] {
+		background: var(--surface-hover);
+	}
+}
+
+.configuration-summary {
+	display: flex;
+	flex: 1 1 0;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 0;
+}
+
+.configuration-model {
+	overflow: hidden;
+	font-size: var(--text-xs);
+	font-weight: var(--weight-semibold);
+	line-height: 1.3;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.configuration-mode {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	font-size: var(--text-xs);
+	line-height: 1.3;
+	white-space: nowrap;
+
+	svg {
+		inline-size: .7rem;
+		block-size: .7rem;
+	}
+}
+
+.configuration-chevron {
+	flex-shrink: 0;
+	inline-size: .6rem;
+	block-size: .6rem;
+	color: var(--text-tertiary);
+}
+
+.configuration-panel {
+	padding: var(--space-2) var(--space-4) var(--space-4);
+
+	h2 {
+		margin-block-end: var(--space-3);
+		font-size: var(--text-lg);
+		font-weight: var(--weight-semibold);
+	}
+}
+
+.configuration-help,
+.configuration-locked {
+	margin: 0 0 var(--space-3);
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+}
+
+.configuration-locked {
+	padding: var(--space-2) var(--space-3);
+	border-radius: var(--radius-md);
+	background: var(--tint-warning);
+}
+
+.configuration-controls {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-3);
+
+	.composer-chip {
+		flex: 1 1 100%;
+		max-inline-size: 100%;
+		min-block-size: var(--target-min);
+		padding-inline: var(--space-3);
+		border-radius: var(--radius-md);
+	}
+
+	select {
+		flex: 1;
+		min-block-size: var(--target-min);
+	}
+
+	.preferences-toggle {
+		flex: 1 1 100%;
+		justify-content: flex-start;
+		gap: var(--space-2);
+		min-block-size: var(--target-min);
+		padding-inline: var(--space-3);
+		border: 1px solid var(--border-default);
+	}
+}
+
+.configuration-field-label {
+	flex: 0 0 auto;
+	margin-inline-end: var(--space-2);
+	color: var(--text-tertiary);
+	font-size: var(--text-xs);
+}
+
+.configuration-done {
+	inline-size: 100%;
+	margin-block-start: var(--space-4);
+}
+
+.conversation-details {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+
+	> strong,
+	> p {
+		margin: 0;
+		font-size: var(--text-sm);
+		line-height: var(--leading-normal);
+		overflow-wrap: anywhere;
+	}
+
+	.status-chip {
+		display: block;
+		padding-block: var(--space-2);
+		border-radius: var(--radius-md);
+	}
+}
+
+.details-diagnostics {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-block-size: var(--target-min);
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+}
+
+:global(.assistant-configuration:not(.bottom-sheet) .modal-content) {
+	inline-size: min(34rem, calc(100vw - 2rem));
+	padding: var(--space-4);
+	border: 1px solid var(--border-default);
+	border-radius: var(--radius-lg);
+	background: var(--surface-raised);
+	box-shadow: var(--elevation-3);
+	color: var(--text-primary);
 }
 
 // Scenario, model and search share one select-chip affordance.
@@ -2756,26 +3068,23 @@ summary {
 	margin-inline-start: auto;
 }
 
-// With the labelled steer button the actions take their own row when the chips leave no room beside them.
-.composer-tools.is-steering {
-	flex-wrap: wrap;
-	row-gap: var(--space-2);
-}
-
-.composer .send {
+.composer .send,
+.composer-steer {
+	display: inline-flex;
 	flex-shrink: 0;
-	inline-size: 2.25rem;
-	block-size: 2.25rem;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--target-min);
+	block-size: var(--target-min);
+	min-inline-size: var(--target-min);
+	min-block-size: var(--target-min);
 	padding: 0;
 	border-radius: var(--radius-full);
-}
 
-.composer-steer {
-	flex-shrink: 0;
-	block-size: 2.25rem;
-	padding-inline: var(--space-3);
-	border-radius: var(--radius-full);
-	white-space: nowrap;
+	:deep(svg) {
+		inline-size: 1rem;
+		block-size: 1rem;
+	}
 }
 
 .composer-hint {
@@ -3000,11 +3309,42 @@ summary {
 	}
 }
 
-@media (width <= 800px) {
+@media (width <= 768px) {
 	.tcy-assistant {
-		--column-gutter: var(--space-4);
+		--column-gutter: var(--space-2);
 	}
 
+	.assistant-heading {
+		gap: var(--space-1);
+		min-block-size: 3.25rem;
+		padding: var(--space-1) var(--space-2);
+	}
+
+	.assistant-identity {
+		padding: 0;
+	}
+
+	.assistant-identity :deep(.arona-avatar) {
+		display: none;
+	}
+
+	.assistant-title,
+	.assistant-name {
+		inline-size: 100%;
+	}
+
+	.heading-title {
+		inline-size: 100%;
+		min-block-size: var(--target-min);
+	}
+
+	.live-connection {
+		position: absolute;
+		inset-block-end: 0;
+		inset-inline-start: 0;
+	}
+
+	.live-label,
 	.live-separator,
 	.background-note {
 		position: absolute;
@@ -3015,61 +3355,38 @@ summary {
 		white-space: nowrap;
 	}
 
+	.live-dot {
+		inline-size: .4rem;
+		block-size: .4rem;
+	}
+
 	.conversation {
-		padding-block: var(--space-4);
+		padding-block: var(--space-3);
 	}
 
 	.composer-dock {
-		padding-block-end: calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
-	}
-}
-
-@media (width <= 540px) {
-	.tcy-assistant {
-		--column-gutter: var(--space-3);
+		padding-block: var(--space-1) calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
 	}
 
-	.assistant-heading {
-		gap: var(--space-1);
-		padding-inline: var(--space-2);
+	.composer {
+		padding: var(--space-1) var(--space-2);
+		border-radius: 1.5rem;
 	}
 
-	// Narrow screens: the title stays for screen readers and the live status becomes a dot on the avatar.
-	h1,
-	.live-label,
-	.live-separator,
-	.background-note,
-	.search-label {
-		position: absolute;
-		inline-size: 1px;
-		block-size: 1px;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
+	.composer .textarea {
+		min-block-size: 2.25rem;
+		padding: var(--space-1);
 	}
 
-	.assistant-identity {
+	.composer-tools,
+	.composer-context,
+	.composer-actions {
 		gap: 0;
 	}
 
-	.live-connection {
-		position: absolute;
-		inset-block-end: -.1rem;
-		inset-inline-start: 1.1rem;
-	}
-
-	.live-dot {
-		inline-size: .6rem;
-		block-size: .6rem;
-		box-shadow: 0 0 0 2px var(--surface);
-	}
-
-	.conversation-toolbar {
-		justify-content: flex-start;
-	}
-
-	.composer-chip {
-		max-inline-size: 9rem;
+	.configuration-toggle {
+		gap: var(--space-1);
+		padding-inline: var(--space-1);
 	}
 
 	.draft-files :deep(.chat-file) {
@@ -3112,17 +3429,20 @@ summary {
 }
 
 .is-embedded {
-	--column-gutter: var(--space-3);
+	--column-gutter: var(--space-2);
 
 	.assistant-heading {
-		min-block-size: 2.75rem;
+		gap: var(--space-1);
 		padding: var(--space-1) var(--space-2);
+	}
+
+	.assistant-identity :deep(.arona-avatar) {
+		display: none;
 	}
 
 	.live-label,
 	.live-separator,
-	.background-note,
-	.search-label {
+	.background-note {
 		position: absolute;
 		inline-size: 1px;
 		block-size: 1px;
@@ -3131,53 +3451,12 @@ summary {
 		white-space: nowrap;
 	}
 
-	.assistant-identity {
-		gap: 0;
-	}
-
-	.live-connection {
-		position: absolute;
-		inset-block-end: -.1rem;
-		inset-inline-start: 1.1rem;
-	}
-
-	.live-dot {
-		inline-size: .6rem;
-		block-size: .6rem;
-		box-shadow: 0 0 0 2px var(--surface);
-	}
-
-	.conversation-toolbar {
-		justify-content: flex-start;
-	}
-
 	.conversation {
 		padding-block: var(--space-3);
 	}
 
 	.composer-dock {
-		padding-block-end: var(--space-2);
-	}
-
-	.composer-chip {
-		max-inline-size: 9rem;
-	}
-
-	// The panel's controls share the header row, so on narrow screens the conversation title takes a second row.
-	@media (width <= 540px) {
-		.assistant-heading {
-			flex-wrap: wrap;
-			row-gap: 0;
-		}
-
-		.heading-start {
-			flex: 1 1 0;
-		}
-
-		.conversation-toolbar {
-			order: 1;
-			flex-basis: 100%;
-		}
+		padding-block-end: calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
 	}
 }
 </style>

@@ -93,7 +93,8 @@ function expand() { open.value = false; void router.push({name: 'tcy-ai', query:
 		<div
 			v-if="!fullPage"
 			class="floating-arona d-print-none"
-			:class="{'is-under-drawer': underDrawer}"
+			:class="{'is-under-drawer': underDrawer, 'is-open': open}"
+			:style="geometry.viewportStyle.value"
 			@mousedown.stop
 			@pointerdown.stop
 			@click.stop
@@ -290,6 +291,30 @@ function expand() { open.value = false; void router.push({name: 'tcy-ai', query:
 	&.is-under-drawer {
 		visibility: hidden;
 	}
+
+	@media screen and (max-width: $tablet - 1px) {
+		inset-block: var(--visual-viewport-top, 0) auto;
+		inset-inline: var(--visual-viewport-left, 0) auto;
+		justify-content: flex-end;
+		inline-size: var(--visual-viewport-width, 100%);
+		block-size: var(--visual-viewport-height, 100dvh);
+		padding: var(--dock-inset-block) var(--dock-inset-inline);
+		pointer-events: none;
+
+		> * {
+			pointer-events: auto;
+		}
+
+		&.is-open {
+			padding-block: env(safe-area-inset-top, 0) 0;
+			padding-inline: env(safe-area-inset-left, 0) env(safe-area-inset-right, 0);
+			background: var(--surface-raised);
+		}
+
+		&.is-open .arona-launcher {
+			display: none;
+		}
+	}
 }
 
 .arona-launcher {
@@ -354,6 +379,14 @@ function expand() { open.value = false; void router.push({name: 'tcy-ai', query:
 
 	&.is-interacting {
 		user-select: none;
+	}
+
+	@media screen and (max-width: $tablet - 1px) {
+		inline-size: 100%;
+		block-size: 100%;
+		border: 0;
+		border-radius: 0;
+		box-shadow: none;
 	}
 }
 

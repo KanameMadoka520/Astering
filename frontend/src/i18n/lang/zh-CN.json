@@ -5347,5 +5347,20 @@
 		"listIncomplete": "本次未能读取全部内容，列表数量和页数只是已知下限；空列表不代表没有占用空间。",
 		"validUntil": "本次确认有效期至 {time}，执行时仍会再次检查最新状态。",
 		"backToReview": "返回影响预览"
+	},
+	"mobileChat": {
+		"steeringHint": "追加要求将在下一安全步骤接收，原任务继续。",
+		"listAttachments": "查看会话附件",
+		"configuration": "对话配置",
+		"configurationSummary": "模型：{model} · 工作方式：{mode} · 打开对话配置",
+		"read": "只读",
+		"write": "可执行",
+		"details": "会话详情",
+		"siteNavigation": "打开 Astering 导航",
+		"permissions": "权限与运行设置",
+		"configurationHelp": "这些设置用于下一条消息。",
+		"closeConfiguration": "返回对话",
+		"runDetails": "运行详情",
+		"runDetailsLabel": "查看用量、轮数与调试详情"
 	}
 }

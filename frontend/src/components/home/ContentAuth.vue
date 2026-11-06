@@ -1,5 +1,9 @@
 <template>
-	<div class="content-auth">
+	<div
+		class="content-auth"
+		:class="{'is-mobile-assistant': mobileAssistant}"
+		:style="mobileAssistant ? viewportStyle : undefined"
+	>
 		<GuidedTour />
 		<FloatingArona />
 		<CustomTransition name="fade">
@@ -102,6 +106,8 @@ import {useWebSocket} from '@/composables/useWebSocket'
 import {useServerCacheEvents} from '@/composables/useServerCacheEvents'
 import {useAronaRunObserver} from '@/composables/useAronaRunObserver'
 import {useRoutineDayRefresh} from '@/composables/useRoutineDayRefresh'
+import {useBodyClass} from '@/composables/useBodyClass'
+import {useVisualViewport} from '@/composables/useVisualViewport'
 import {useAuthStore} from '@/stores/auth'
 
 const authStore = useAuthStore()
@@ -111,6 +117,7 @@ const brightnessFilter = computed(() => {
 })
 
 const {sidebarWidthStyle, isMobile} = useSidebarResize()
+const {style: viewportStyle} = useVisualViewport()
 
 const {routeWithModal, currentModal, closeModal} = useRouteWithModal()
 
@@ -124,7 +131,9 @@ const drawerOpen = computed(() => isMobile.value && menuActive.value)
 function closeDrawer() {
 	baseStore.setMenuActive(false)
 	// The header stays inert until the next render, so focus can only move afterwards.
-	void nextTick(() => document.querySelector<HTMLElement>('.menu-show-button')?.focus())
+	void nextTick(() => document.querySelector<HTMLElement>(
+		mobileAssistant.value ? '[data-mobile-history-toggle]' : '.menu-show-button',
+	)?.focus({preventScroll: true}))
 }
 
 function showKeyboardShortcuts() {
@@ -133,6 +142,9 @@ function showKeyboardShortcuts() {
 
 const route = useRoute()
 const router = useRouter()
+const mobileAssistant = computed(() => isMobile.value && route.name === 'tcy-ai')
+const mobileAssistantBodyClass = useBodyClass('has-mobile-assistant')
+watch(mobileAssistant, active => { mobileAssistantBodyClass.value = active }, {immediate: true})
 
 // Project controls and backgrounds belong only to project routes and task details.
 // Use a positive context check so newly added global pages cannot inherit a stale project.
@@ -219,5 +231,25 @@ onBeforeUnmount(() => {
 	block-size: 100dvh;
 	min-block-size: 0;
 	padding: var(--header-height) 0 0;
+}
+
+.content-auth.is-mobile-assistant {
+	position: fixed;
+	inset-block-start: var(--visual-viewport-top, 0);
+	inset-inline-start: var(--visual-viewport-left, 0);
+	inline-size: var(--visual-viewport-width, 100%);
+	block-size: var(--visual-viewport-height, 100dvh);
+	padding-block-start: env(safe-area-inset-top, 0);
+	padding-inline: env(safe-area-inset-left, 0) env(safe-area-inset-right, 0);
+
+	.app-container {
+		block-size: 100%;
+		min-block-size: 0;
+	}
+
+	.app-content.tcy-ai {
+		block-size: 100%;
+		padding: 0;
+	}
 }
 </style>

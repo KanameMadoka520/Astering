@@ -401,4 +401,10 @@ details[open] > summary > .disclosure-icon {
 .group-body {
 	padding-block-end: var(--space-1);
 }
+
+@media (width <= 768px) {
+	summary {
+		min-block-size: 2.75rem;
+	}
+}
 </style>

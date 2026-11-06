@@ -2,7 +2,11 @@
 	<aside
 		id="app-sidebar"
 		ref="sidebar"
-		:class="{'is-active': baseStore.menuActive, 'is-resizing': isResizing}"
+		:class="{
+			'is-active': baseStore.menuActive,
+			'is-resizing': isResizing,
+			'is-mobile-assistant': mobileAssistant,
+		}"
 		class="menu-container"
 		:style="{'--sidebar-width': sidebarWidthStyle}"
 	>
@@ -28,6 +32,10 @@
 					<Icon icon="times" />
 				</BaseButton>
 			</div>
+			<div
+				id="mobile-assistant-site-actions"
+				class="mobile-assistant-site-actions"
+			/>
 
 			<nav
 				class="menu top-menu"
@@ -317,10 +325,13 @@ const {
 
 const sidebar = ref<HTMLElement>()
 const drawerOpen = computed(() => isMobile.value && baseStore.menuActive)
+const mobileAssistant = computed(() => isMobile.value && route.name === 'tcy-ai')
 
 function focusMenuButton() {
 	// The header is inert while the drawer is open, so focus can only move after the next render.
-	void nextTick(() => document.querySelector<HTMLElement>('.menu-show-button')?.focus())
+	void nextTick(() => document.querySelector<HTMLElement>(
+		mobileAssistant.value ? '[data-mobile-history-toggle]' : '.menu-show-button',
+	)?.focus({preventScroll: true}))
 }
 
 function closeDrawer() {
@@ -404,6 +415,32 @@ const savedFilterProjects = computed(() => projectList.savedFilterProjects)
 
 	&.is-resizing {
 		transition: none;
+	}
+
+	&.is-mobile-assistant {
+		inset-block: var(--visual-viewport-top, 0) auto;
+		inset-inline-start: var(--visual-viewport-left, 0);
+		max-inline-size: var(--visual-viewport-width, 100%);
+		block-size: var(--visual-viewport-height, 100dvh);
+		padding-block-start: env(safe-area-inset-top, 0);
+		padding-inline-start: env(safe-area-inset-left, 0);
+
+		.menu-header {
+			position: sticky;
+			inset-block-start: 0;
+			z-index: 2;
+			flex-shrink: 0;
+			padding-block-end: var(--space-2);
+			background: var(--surface-raised);
+		}
+	}
+}
+
+.mobile-assistant-site-actions {
+	display: none;
+
+	.is-mobile-assistant & {
+		display: block;
 	}
 }
 

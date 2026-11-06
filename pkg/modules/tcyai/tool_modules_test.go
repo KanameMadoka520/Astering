@@ -460,3 +460,42 @@ func TestTCYAIToolModulesInvalidProfileAndPrompt(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, string(catalog), "bucket/column")
 }
+
+func TestTCYAIListChatAttachmentsDiscoveryAndValidation(t *testing.T) {
+	in := RunInput{
+		Mode: "read",
+		ToolModules: ToolModules{
+			ProjectTasks: "off",
+			Compass:      "off",
+		},
+	}
+	assert.False(t, IsWriteTool("list_chat_attachments"))
+	assert.False(t, NeedsReview("list_chat_attachments", in))
+	_, err := ValidateTool("list_chat_attachments", json.RawMessage(`{}`), in)
+	require.NoError(t, err)
+	for _, raw := range []string{
+		`{"offset":-1}`,
+		`{"offset":10000001}`,
+		`{"limit":0}`,
+		`{"limit":51}`,
+		`{"owner_id":2}`,
+		`{"conversation_id":"another-conversation"}`,
+		`{"url":"https://example.invalid/file.png"}`,
+	} {
+		_, err = ValidateTool("list_chat_attachments", json.RawMessage(raw), in)
+		require.Error(t, err, raw)
+	}
+	for _, query := range []string{"list_chat_attachments", "list_attachments", "附件清单"} { //nolint:gosmopolitan // Chinese discovery keywords are part of the supported tool contract.
+		state := NewAgentState(context.Background(), Connection{}, in)
+		assert.NotContains(t, state.Available, "list_chat_attachments", "list remains deferred")
+		raw, marshalErr := json.Marshal(map[string]any{
+			"query": query,
+			"limit": 1,
+		})
+		require.NoError(t, marshalErr)
+		_, err = state.discover(raw)
+		require.NoError(t, err)
+		assert.Contains(t, state.Available, "list_chat_attachments", query)
+		assert.NotContains(t, state.Available, "insert_chat_image")
+	}
+}

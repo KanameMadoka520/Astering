@@ -66,7 +66,7 @@ func effectiveToolModules(in RunInput) ToolModules {
 
 func sharedTool(name string) bool {
 	switch name {
-	case "find_tools", "ask_user", "web_search", "read_tool_result", "view_attachment", "delegate_tasks", "find_mcp_tools", "call_mcp_tool":
+	case "find_tools", "ask_user", "web_search", "read_tool_result", "view_attachment", "list_chat_attachments", "delegate_tasks", "find_mcp_tools", "call_mcp_tool":
 		return true
 	}
 	return false

@@ -23,6 +23,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -268,6 +269,149 @@ func TestTCYAISubagentsStopWithParent(t *testing.T) {
 		assert.Equal(t, "stopped", child.Status)
 	}
 }
+
+func TestTCYAIListChatAttachmentsScopeAndPages(t *testing.T) {
+	conversation, image, _ := chatAttachmentFixture(t)
+	current := legacyChatAttachment(t, 1, conversation.ID, "current.txt", []byte("current fixture"))
+	draft := legacyChatAttachment(t, 1, conversation.ID, "unsent.txt", []byte("unsent fixture"))
+	other, err := CreateConversation(1, "unrelated fixture")
+	require.NoError(t, err)
+	foreign := legacyChatAttachment(t, 1, other.ID, "foreign.txt", []byte("foreign fixture"))
+	record, err := readConversation(1, conversation.ID)
+	require.NoError(t, err)
+	record.Turns = []ChatTurn{
+		{
+			ID:          "old",
+			Status:      "completed",
+			Attachments: []ChatAttachment{image},
+		},
+		{
+			ID:          "current",
+			Status:      "running",
+			Attachments: []ChatAttachment{current},
+		},
+	}
+	record.DraftAttachments = []ChatAttachment{draft}
+	require.NoError(t, writeConversation(1, record))
+	state := NewAgentState(context.Background(), Connection{}, RunInput{
+		ServerAttachments: []ChatAttachment{current},
+		AttachmentIDs:     []string{draft.ID},
+	})
+	state.OwnerID, state.ConversationID = 1, conversation.ID
+	state.KnownAttachments = []ChatAttachment{image, current, image, draft, foreign}
+	type page struct {
+		Items []struct {
+			ID      string `json:"id"`
+			Missing bool   `json:"missing"`
+		} `json:"items"`
+		Total      int  `json:"total"`
+		NextOffset int  `json:"next_offset"`
+		HasMore    bool `json:"has_more"`
+	}
+	readPage := func(raw string) (string, page) {
+		t.Helper()
+		data, readErr := state.listChatAttachments(json.RawMessage(raw))
+		require.NoError(t, readErr)
+		var result page
+		require.NoError(t, json.Unmarshal([]byte(data), &result))
+		return data, result
+	}
+	data, first := readPage(`{"limit":1}`)
+	require.Len(t, first.Items, 1)
+	assert.Equal(t, current.ID, first.Items[0].ID)
+	assert.False(t, first.Items[0].Missing)
+	assert.Equal(t, 2, first.Total)
+	assert.True(t, first.HasMore)
+	assert.Equal(t, 1, first.NextOffset)
+	assert.NotContains(t, data, "current fixture")
+	for _, hidden := range []string{draft.ID, foreign.ID, "drive_file_id", "base64", "AttachmentOwner", "attachment_owner", "conversation_id", "owner_id", "token"} {
+		assert.NotContains(t, data, hidden)
+	}
+	_, second := readPage(`{"offset":1,"limit":1}`)
+	require.Len(t, second.Items, 1)
+	assert.Equal(t, image.ID, second.Items[0].ID)
+	assert.False(t, second.Items[0].Missing)
+	assert.False(t, second.HasMore)
+	_, empty := readPage(`{"offset":2}`)
+	assert.Empty(t, empty.Items)
+	assert.False(t, empty.HasMore)
+	path, err := attachmentPath(1, image.ID)
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(path))
+	_, missing := readPage(`{"offset":1,"limit":1}`)
+	require.Len(t, missing.Items, 1)
+	assert.True(t, missing.Items[0].Missing)
+	state.OwnerID = 2
+	_, err = state.listChatAttachments(json.RawMessage(`{}`))
+	require.ErrorIs(t, err, ErrConversationMissing)
+	state.OwnerID, state.ConversationID = 1, other.ID
+	state.KnownAttachments = []ChatAttachment{image, current}
+	_, unrelated := readPage(`{}`)
+	assert.Empty(t, unrelated.Items)
+	state.ConversationID = ""
+	_, err = state.listChatAttachments(json.RawMessage(`{}`))
+	require.ErrorIs(t, err, ErrConversationMissing)
+}
+
+func TestTCYAIListChatAttachmentsLongNamesRemainPaged(t *testing.T) {
+	conversation, _, _ := chatAttachmentFixture(t)
+	attachments := make([]ChatAttachment, 0, chatAttachmentPageLimit)
+	wanted := make([]string, 0, chatAttachmentPageLimit)
+	for i := 0; i < chatAttachmentPageLimit; i++ {
+		id := strconv.FormatInt(int64(i), 16)
+		id = strings.Repeat("0", 64-len(id)) + id
+		attachments = append(attachments, ChatAttachment{
+			ID:   id,
+			Name: strings.Repeat(`"<&`, 85),
+			MIME: "image/png",
+			Size: 100,
+		})
+		wanted = append(wanted, id)
+	}
+	record, err := readConversation(1, conversation.ID)
+	require.NoError(t, err)
+	record.Turns = []ChatTurn{{
+		ID:          "long-names",
+		Status:      "completed",
+		Attachments: attachments,
+	}}
+	require.NoError(t, writeConversation(1, record))
+	state := NewAgentState(context.Background(), Connection{}, RunInput{})
+	state.OwnerID, state.ConversationID = 1, conversation.ID
+	state.KnownAttachments = attachments
+	listed := []string{}
+	for offset := 0; offset < len(attachments); {
+		raw, marshalErr := json.Marshal(map[string]any{
+			"offset": offset,
+			"limit":  chatAttachmentPageLimit,
+		})
+		require.NoError(t, marshalErr)
+		data, listErr := state.listChatAttachments(raw)
+		require.NoError(t, listErr)
+		projected := modelToolResult("list_chat_attachments", raw, data, "bounded-audit-reference")
+		var page struct {
+			Items      []modelAttachment `json:"items"`
+			Total      int               `json:"total"`
+			NextOffset int               `json:"next_offset"`
+			HasMore    bool              `json:"has_more"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(projected), &page))
+		require.NotEmpty(t, page.Items, "each page must keep full item metadata and advance")
+		assert.Less(t, len(projected), 16000)
+		assert.NotContains(t, projected, `"preview"`)
+		assert.NotContains(t, projected, `"preview_is_partial"`)
+		assert.Equal(t, len(attachments), page.Total)
+		assert.Equal(t, offset+len(page.Items), page.NextOffset)
+		assert.Equal(t, page.NextOffset < len(attachments), page.HasMore)
+		for _, item := range page.Items {
+			assert.Equal(t, attachments[0].Name, item.Name, "JSON escaping must preserve the original filename")
+			listed = append(listed, item.ID)
+		}
+		offset = page.NextOffset
+	}
+	assert.Equal(t, wanted, listed, "shortened pages must preserve every item exactly once")
+}
+
 func TestTCYAIHistoricalImageReferencesRemainReadable(t *testing.T) {
 	conversation, attachment, _ := chatAttachmentFixture(t)
 	record, err := readConversation(1, conversation.ID)
@@ -284,6 +428,12 @@ func TestTCYAIHistoricalImageReferencesRemainReadable(t *testing.T) {
 	state := NewAgentState(context.Background(), c, RunInput{Message: "read that image again", Summary: summary})
 	state.OwnerID, state.ConversationID = 1, conversation.ID
 	state.KnownAttachments = sentAttachments(record.Conversation)
+	_, err = state.discover(json.RawMessage(`{"query":"list_chat_attachments"}`))
+	require.NoError(t, err)
+	assert.Contains(t, state.Available, "list_chat_attachments")
+	listed, _, err := state.executeAgentTool(context.Background(), c, nil, nil, "list_chat_attachments", json.RawMessage(`{}`), nil)
+	require.NoError(t, err)
+	assert.Contains(t, listed, attachment.ID)
 	_, err = state.viewAttachment(c, json.RawMessage(`{"attachment_id":"`+attachment.ID+`"}`))
 	require.NoError(t, err)
 	require.Len(t, state.QueuedAttachments, 1)

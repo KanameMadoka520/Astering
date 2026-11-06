@@ -6,14 +6,27 @@ import {outputSpeed} from '@/helpers/outputSpeed'
 const props = withDefaults(defineProps<{step?: ModelStep}>(), {step: undefined})
 const {t, n} = useI18n({useScope: 'global'})
 const speed = computed(() => outputSpeed(props.step))
+const label = computed(() => t(`outputSpeed.${speed.value.rate == null ? 'stream' : speed.value.mode}`))
+const rate = computed(() => speed.value.rate == null ? t('outputSpeed.unavailable') : t('outputSpeed.rate', {
+	rate: n(speed.value.rate, {
+		maximumFractionDigits: 1,
+		minimumFractionDigits: 1,
+	}),
+}))
 </script>
 
 <template>
-	<details class="output-speed">
-		<summary>
-			{{ t(`outputSpeed.${speed.rate == null ? 'stream' : speed.mode}`) }}:
-			<strong v-if="speed.rate != null">{{ t('outputSpeed.rate', {rate: n(speed.rate, {maximumFractionDigits: 1, minimumFractionDigits: 1})}) }}</strong>
-			<span v-else>{{ t('outputSpeed.unavailable') }}</span>
+	<details
+		class="output-speed"
+		:class="{'has-rate': speed.rate != null}"
+	>
+		<summary
+			:title="`${label}: ${rate}`"
+			:aria-label="`${label}: ${rate}`"
+		>
+			<span class="speed-label">{{ label }}:</span>
+			<strong v-if="speed.rate != null">{{ rate }}</strong>
+			<span v-else>{{ rate }}</span>
 		</summary>
 		<div class="speed-explanation">
 			<p v-if="speed.rate == null">
@@ -32,6 +45,7 @@ const speed = computed(() => outputSpeed(props.step))
 
 <style scoped lang="scss">
 .output-speed {
+	min-inline-size: 0;
 	color: var(--text-tertiary);
 	font-size: var(--text-xs);
 	font-variant-numeric: tabular-nums;
@@ -67,5 +81,20 @@ p {
 
 p + p {
 	margin-block-start: var(--space-1);
+}
+
+@media (width <= 768px) {
+	.output-speed {
+		font-size: var(--text-sm);
+	}
+
+	summary {
+		min-block-size: 2.75rem;
+		padding-block: .75rem;
+	}
+
+	.output-speed.has-rate .speed-label {
+		display: none;
+	}
 }
 </style>

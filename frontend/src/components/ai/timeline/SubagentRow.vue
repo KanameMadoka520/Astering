@@ -291,4 +291,10 @@ summary {
 .subagent-error > span {
 	white-space: pre-wrap;
 }
+
+@media (width <= 768px) {
+	summary {
+		min-block-size: 2.75rem;
+	}
+}
 </style>
