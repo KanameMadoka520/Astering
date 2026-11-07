@@ -21,6 +21,7 @@ import (
 
 	"github.com/KanameMadoka520/Astering/pkg/db"
 	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/auth"
 	"github.com/KanameMadoka520/Astering/pkg/user"
 
 	"github.com/labstack/echo/v5"
@@ -69,12 +70,16 @@ func HandleAuthorize(c *echo.Context) error {
 	}
 
 	// Get the authenticated user from the middleware
-	u, err := user.GetCurrentUser(c)
+	principal, err := auth.GetAuthFromClaims(c)
+	if err != nil {
+		return err
+	}
+	u, err := user.GetFromAuth(principal)
 	if err != nil {
 		return err
 	}
 
-	resp, err := Authorize(&req, u.ID)
+	resp, err := AuthorizeForUser(&req, u)
 	if err != nil {
 		return err
 	}
@@ -86,6 +91,11 @@ func HandleAuthorize(c *echo.Context) error {
 // authenticated user and creates a single-use authorization code, independent
 // of the HTTP layer. Callers own request binding and resolving the user.
 func Authorize(req *AuthorizeRequest, userID int64) (*AuthorizeResponse, error) {
+	return AuthorizeForUser(req, &user.User{ID: userID})
+}
+
+// AuthorizeForUser retains trusted browser credential metadata across issuance.
+func AuthorizeForUser(req *AuthorizeRequest, actor *user.User) (*AuthorizeResponse, error) {
 	// Validate response_type
 	if req.ResponseType != "code" {
 		return nil, echo.NewHTTPError(http.StatusBadRequest, "response_type must be 'code'")
@@ -104,13 +114,16 @@ func Authorize(req *AuthorizeRequest, userID int64) (*AuthorizeResponse, error) 
 	s := db.NewSession()
 	defer s.Close()
 
-	fullUser, err := user.GetUserByID(s, userID)
+	if err := models.ReserveCredentialTransaction(s); err != nil {
+		return nil, err
+	}
+	_, err := user.GetUserByID(s, actor.ID)
 	if err != nil {
 		_ = s.Rollback()
 		return nil, err
 	}
 
-	code, err := models.CreateOAuthCode(s, fullUser.ID, req.ClientID, req.RedirectURI, req.CodeChallenge, req.CodeChallengeMethod)
+	code, err := models.CreateOAuthCodeForAuth(s, actor, req.ClientID, req.RedirectURI, req.CodeChallenge, req.CodeChallengeMethod)
 	if err != nil {
 		_ = s.Rollback()
 		return nil, err

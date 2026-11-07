@@ -166,7 +166,7 @@ func oauthAuthorize(ctx context.Context, in *struct{ Body oauth2server.Authorize
 		return nil, translateDomainError(err)
 	}
 
-	resp, err := oauth2server.Authorize(&in.Body, u.ID)
+	resp, err := oauth2server.AuthorizeForUser(&in.Body, u)
 	if err != nil {
 		return nil, translateDomainError(err)
 	}

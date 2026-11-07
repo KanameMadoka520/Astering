@@ -43,6 +43,7 @@ async function onChange(event: Event) {
 	<label
 		class="kanban-move"
 		:class="{'is-busy': moving}"
+		@click.stop
 	>
 		<Icon icon="arrow-right-arrow-left" />
 		<select

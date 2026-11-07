@@ -102,7 +102,8 @@ type User struct {
 	IsAdmin bool `xorm:"not null default false" json:"-"`
 
 	// A trusted in-process execution scope; never persisted or accepted from JSON/JWT.
-	resourcePermissionsOnly bool `xorm:"-" json:"-"`
+	resourcePermissionsOnly bool            `xorm:"-" json:"-"`
+	credential              CredentialScope `xorm:"-" json:"-"`
 
 	AvatarProvider string `xorm:"varchar(255) null" json:"-"`
 	AvatarFileID   int64  `xorm:"null" json:"-"`

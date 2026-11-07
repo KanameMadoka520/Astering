@@ -122,7 +122,11 @@ describe('base store identity reset', () => {
 		store.setCurrentProject(project(42))
 
 		await vi.waitFor(() => expect(store.background).toBe('blob:new-background'))
-		expect(sdk.projectsBackgroundGet).toHaveBeenCalledWith({path: {project: 42}})
+		expect(sdk.projectsBackgroundGet).toHaveBeenCalledExactlyOnceWith({
+			path: {project: 42},
+			parseAs: 'blob',
+			signal: expect.any(AbortSignal),
+		})
 		expect(sdk.projectsRead).not.toHaveBeenCalled()
 
 		store.setCurrentProject(null)

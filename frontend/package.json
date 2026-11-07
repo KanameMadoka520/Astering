@@ -2,7 +2,7 @@
   "name": "astering-frontend",
   "description": "Astering — Aster的AI集成工业系统",
   "private": true,
-  "version": "2.7.1-aster.59",
+  "version": "2.7.1-aster.60",
   "license": "AGPL-3.0-or-later",
   "repository": {
     "type": "git",

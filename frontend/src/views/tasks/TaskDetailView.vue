@@ -1856,18 +1856,18 @@ async function deleteTask() {
 	if (!isCurrent()) return
 	success({message: t('task.detail.deleteSuccess')})
 	closeDeleteModal()
-	// Back to where the task was opened from (Home, Upcoming, a board behind the dialog), not always its project,
-	// so the browser's Back button does not lead to the deleted task's 404 page either.
-	if (isModal.value) {
-		emit('close')
-		return
+	// Replace this deleted task's history entry. Normal modal closing still uses its existing close handler;
+	// deletion must not leave a task that the browser's Back button can reopen behind a newly pushed board.
+	const destination = props.backdropView ?? router.options.history.state.back
+	if (typeof destination === 'string' && destination.startsWith('/') && !destination.startsWith('//')
+		&& !destination.includes('\\') && [...destination].every(character => character.charCodeAt(0) > 32)) {
+		const target = router.resolve(destination)
+		if (target.matched.length && !(target.name === 'task.detail' && Number(target.params.id) === id)) {
+			await router.replace(destination)
+			return
+		}
 	}
-	const back = router.options.history.state.back
-	if (typeof back === 'string' && !back.startsWith(`/tasks/${id}`)) {
-		router.back()
-		return
-	}
-	router.push({name: 'project.index', params: {projectId}})
+	await router.replace({name: 'project.index', params: {projectId}})
 }
 
 async function setTaskDone(id: number, done: boolean) {

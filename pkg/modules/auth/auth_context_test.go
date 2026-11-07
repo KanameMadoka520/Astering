@@ -39,5 +39,10 @@ func TestGetAuthFromClaimsUsesTheAPIUserFromContext(t *testing.T) {
 
 	a, err := GetAuthFromClaims(c)
 	require.NoError(t, err)
-	assert.Same(t, owner, a)
+	resolved, ok := a.(*user.User)
+	require.True(t, ok)
+	assert.Equal(t, owner.ID, resolved.ID)
+	assert.Equal(t, owner.Username, resolved.Username)
+	assert.EqualValues(t, 1, resolved.CredentialScope().APITokenID)
+	assert.Empty(t, owner.CredentialScope(), "the context principal must not be mutated when attaching trusted credential metadata")
 }

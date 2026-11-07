@@ -344,6 +344,7 @@
             "mcpUnsupported": "This MCP tool's schema or result exceeds the supported format or size. Its definition will not be silently truncated.",
             "mcpDestination": "The MCP server tried to send a request outside its configured destination. The request was blocked to protect its key.",
             "chatReviewChanged": "This review is no longer current. Reload the conversation and review the latest preview.",
+            "accountRunRevoked": "Your access credentials were revoked. Sign in again before retrying.",
             "agentTimeout": "This execution segment timed out. Completed operations are retained; a model-only timeout can resume with another segment.",
             "smtpPort": "SMTP port must be between 1 and 65535.",
             "smtpAuth": "Choose a supported SMTP authentication method.",

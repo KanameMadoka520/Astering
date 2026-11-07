@@ -141,6 +141,10 @@ func TestTCYAIAgentExecution(t *testing.T) {
 			}
 			return result.Turns[len(result.Turns)-1].Status != "running"
 		}, 5*time.Second, 10*time.Millisecond)
+		last := result.Turns[len(result.Turns)-1]
+		if last.Status == "failed" || last.Status == "stopped" {
+			t.Logf("agent execution status=%s stage=%s code=%s error=%s actions=%d", last.Status, last.Result.Stage, last.Result.ErrorCode, last.Result.Error, len(last.Result.Actions))
+		}
 		return result
 	}
 	start := func(tool string, args any, policy string, scope []int64, budget int) (string, tcyai.Conversation) {
@@ -279,6 +283,7 @@ func TestTCYAIAgentExecution(t *testing.T) {
 	}
 	for _, name := range []string{"relate_tasks", "unrelate_tasks"} {
 		_, conv = start(name, map[string]any{"id": one, "other_task_id": two, "relation_kind": "related"}, "smart", nil, 0)
+		require.Len(t, conv.Turns[0].Result.Actions, 2, "%s: status=%s result=%+v", name, conv.Turns[0].Status, conv.Turns[0].Result)
 		require.True(t, conv.Turns[0].Result.Actions[1].Success, conv.Turns[0].Result.Actions[1].Result)
 		var actual struct {
 			Related map[string][]json.RawMessage `json:"related_tasks"`

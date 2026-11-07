@@ -1,4 +1,4 @@
-import {mutationOptions, type QueryClient, type QueryKey} from '@tanstack/vue-query'
+import {mutationOptions, type MutationFunctionContext, type QueryClient, type QueryKey} from '@tanstack/vue-query'
 import {
 	assertClientRequestContext,
 	captureClientRequestContext,
@@ -19,10 +19,16 @@ export function contextMutationOptions<TData, TInput, TOptimistic = undefined>(o
 	successMessage?: (data: TData, input: TInput) => string | undefined
 	toastError?: (input: TInput) => boolean
 }, owner?: ClientRequestContext) {
+	// Query Core supplies one lifecycle context per execution, even when a hook's
+	// options and primitive inputs are reused concurrently. Keep the initial
+	// identity through offline pauses/retries instead of recapturing it on resume.
+	const executions = new WeakMap<MutationFunctionContext, ClientRequestContext>()
 	return mutationOptions({
-		onMutate: async (input: TInput, {client}) => {
+		onMutate: async (input: TInput, lifecycle) => {
+			const {client} = lifecycle
 			const request = owner ?? captureClientRequestContext()
 			assertClientRequestContext(request)
+			executions.set(lifecycle, request)
 			if (!options.optimistic) {
 				return {request, previous: [], optimistic: undefined as TOptimistic}
 			}
@@ -32,8 +38,11 @@ export function contextMutationOptions<TData, TInput, TOptimistic = undefined>(o
 			const previous = queryKeys.flatMap(queryKey => client.getQueriesData({queryKey}))
 			return {request, previous, optimistic: options.optimistic.update(input, client)}
 		},
-		mutationFn: async (input: TInput) => {
-			const request = owner ?? captureClientRequestContext()
+		mutationFn: async (input: TInput, lifecycle) => {
+			const request = executions.get(lifecycle) ?? owner
+			// Restored mutations without a known owner cannot safely infer which
+			// account originally submitted their input. Business drafts are not persisted.
+			if (!request) throw new DOMException('Client request owner unavailable', 'AbortError')
 			assertClientRequestContext(request)
 			const data = await options.mutationFn(input, {request})
 			assertClientRequestContext(request)

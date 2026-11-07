@@ -46,6 +46,47 @@ function optimistic(update = vi.fn()) {
 }
 
 describe('contextMutationOptions', () => {
+	it('does not resume an offline queued write under a different session without an explicit owner', async () => {
+		const mutationFn = vi.fn(async () => 'saved')
+		const mutation = client.getMutationCache().build(client, contextMutationOptions({mutationFn}))
+		onlineManager.setOnline(false)
+		const result = mutation.execute(1)
+		const rejected = expect(result).rejects.toMatchObject({name: 'AbortError'})
+		try {
+			await vi.waitFor(() => expect(mutation.state.isPaused).toBe(true))
+			session.epoch++
+			onlineManager.setOnline(true)
+			void mutation.continue().catch(() => {})
+			await rejected
+			expect(mutationFn).not.toHaveBeenCalled()
+		} finally {
+			onlineManager.setOnline(true)
+		}
+	})
+
+	it('keeps independent ownership for overlapping writes using the same options', async () => {
+		let release!: () => void
+		const blocked = new Promise<void>(resolve => { release = resolve })
+		const mutationFn = vi.fn(async (input: number) => input)
+		const options = contextMutationOptions({
+			mutationFn,
+			optimistic: {
+				queryKeys: () => [listKey],
+				update: () => undefined,
+			},
+		})
+		vi.spyOn(client, 'cancelQueries').mockImplementationOnce(async () => { await blocked })
+		const first = client.getMutationCache().build(client, options).execute(1)
+		const rejected = expect(first).rejects.toMatchObject({name: 'AbortError'})
+		await Promise.resolve()
+		session.epoch++
+		await expect(client.getMutationCache().build(client, options).execute(2)).resolves.toBe(2)
+		release()
+		await rejected
+		expect(mutationFn).toHaveBeenCalledTimes(1)
+		expect(mutationFn).toHaveBeenCalledWith(2, expect.anything())
+	})
+
 	it('toasts errors while the context is current', async () => {
 		const cause = new Error('denied')
 		await expect(execute({mutationFn: async () => { throw cause }})).rejects.toBe(cause)

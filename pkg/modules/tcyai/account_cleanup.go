@@ -29,12 +29,12 @@ import (
 	"time"
 
 	"github.com/KanameMadoka520/Astering/pkg/config"
-	"github.com/KanameMadoka520/Astering/pkg/db"
 	"github.com/KanameMadoka520/Astering/pkg/models"
 	"github.com/KanameMadoka520/Astering/pkg/user"
 )
 
 var ErrAccountDeleted = errors.New("AI account has been deleted")
+var ErrAccountInactive = errors.New("AI account is not active")
 
 type accountStoreKey struct {
 	root string
@@ -48,12 +48,16 @@ var accountWrite = models.WithAccountWrite
 var accountUserExists = readAccountUserExists
 
 func readAccountUserExists(uid int64) (bool, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	s := db.NewReadSession()
-	defer s.Close()
-	db.SetSessionContext(ctx, s)
-	return s.ID(uid).Exist(&user.User{})
+	identity, exists, err := readBackgroundCurrentAccount(uid)
+	if err != nil || !exists {
+		return exists, err
+	}
+	if identity.IsBot() || identity.Status != user.StatusActive {
+		// Exists remains true. Suspension must never trigger deletion cleanup or
+		// the permanent deleted-account fence; reactivation preserves all data.
+		return true, ErrAccountInactive
+	}
+	return true, nil
 }
 
 func requireActiveAccount(uid int64) error {
@@ -148,7 +152,36 @@ type accountCleanupBridge struct {
 	removeAll func(string) error
 }
 
-func init() { models.SetAccountCleanupBridge(accountCleanupBridge{}) }
+func init() {
+	models.SetAccountCleanupBridge(accountCleanupBridge{})
+	models.SetAccountRunRevoker(CancelAccountRuns)
+}
+
+// CancelAccountRuns stops all running/compacting conversations for one account.
+// It is called only after credential-revocation commit. Private files, messages
+// and ownership remain intact; late callbacks record a stopped result normally.
+func CancelAccountRuns(uid int64) {
+	conversations.Lock()
+	defer conversations.Unlock()
+	cancelAccountRunsLocked(uid)
+}
+
+func cancelAccountRunsLocked(uid int64) {
+	storeKey := accountKey(uid)
+	accountRunGenerations[storeKey]++
+	for _, cancel := range accountEphemeralRuns[storeKey] {
+		cancel()
+	}
+	for key, live := range conversations.live {
+		if key.uid != uid || live.storeRoot != storeKey.root {
+			continue
+		}
+		live.acceptingSteering = false
+		if live.cancel != nil {
+			live.cancel()
+		}
+	}
+}
 
 // CleanupDeletedUser runs only after the deleting DB transaction committed. The
 // missing users row is the durable deletion marker; surviving private paths are
@@ -158,9 +191,7 @@ func (bridge accountCleanupBridge) CleanupDeletedUser(uid int64) error {
 	if uid <= 0 {
 		return nil
 	}
-	s := db.NewReadSession()
-	exists, err := s.ID(uid).Exist(&user.User{})
-	_ = s.Close()
+	_, exists, err := readBackgroundCurrentAccount(uid)
 	if err != nil || exists {
 		return err
 	}
@@ -171,6 +202,7 @@ func (bridge accountCleanupBridge) CleanupDeletedUser(uid int64) error {
 	settingsLock.Lock()
 	conversations.Lock()
 	deletedAccounts.Store(key, struct{}{})
+	cancelAccountRunsLocked(uid)
 	for liveID, live := range conversations.live {
 		if liveID.uid != uid {
 			continue

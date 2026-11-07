@@ -782,6 +782,30 @@ func TestProject_Delete(t *testing.T) {
 	})
 }
 
+func TestProjectDeleteSharedAdminOnlyCascadesLockedSubtree(t *testing.T) {
+	db.LoadAndAssertFixtures(t)
+	share := &LinkSharing{ID: 3, ProjectID: 3, Permission: PermissionAdmin}
+
+	denied := db.NewSession()
+	err := (&Project{ID: 40}).Delete(denied, share)
+	require.True(t, IsErrGenericForbidden(err), "a parent link must not grant direct access to a child's operations")
+	require.NoError(t, denied.Rollback())
+	require.NoError(t, denied.Close())
+
+	s := db.NewSession()
+	defer s.Close()
+	require.NoError(t, lockProjectSubtreeForMutation(s, 3))
+	err = (&Project{ID: 1}).deleteLockedSubtree(s, share)
+	require.Error(t, err, "the internal cascade must reject a project outside the existing exclusive lock scope")
+	require.NoError(t, (&Project{ID: 3}).Delete(s, share))
+	require.NoError(t, s.Commit())
+
+	db.AssertMissing(t, "projects", map[string]interface{}{"id": 3})
+	db.AssertMissing(t, "projects", map[string]interface{}{"id": 40})
+	db.AssertMissing(t, "link_shares", map[string]interface{}{"id": 3})
+	db.AssertExists(t, "projects", map[string]interface{}{"id": 1}, false)
+}
+
 func TestProject_DeleteBackgroundFileIfExists(t *testing.T) {
 	t.Run("project with background", func(t *testing.T) {
 		db.LoadAndAssertFixtures(t)

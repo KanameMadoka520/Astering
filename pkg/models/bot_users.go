@@ -49,7 +49,7 @@ func (b *BotUser) Create(s *xorm.Session, a web.Auth) error {
 	if owner.IsBot() {
 		return &user.ErrBotNotOwned{UserID: owner.ID}
 	}
-	if err := currentProjectMutationUserExists(s, owner.ID); err != nil {
+	if err := LockCredentialIssue(s, owner); err != nil {
 		return err
 	}
 	b.ID = 0

@@ -505,6 +505,7 @@ function applyUserOptions(options: AssistantOptions, profile: string) {
 	applyOptions(options, profile)
 }
 function openPreferences() {
+	if (executionScopeLocked.value) return
 	preferencesOpen.value = true
 }
 function selectProfile(id: string) {
@@ -2016,6 +2017,7 @@ onBeforeUnmount(() => {
 					/>
 					<BaseButton
 						class="toolbar-button preferences-toggle"
+						:disabled="executionScopeLocked"
 						:title="t('mobileChat.permissions')"
 						:aria-label="t('mobileChat.permissions')"
 						@click="openPreferences"

@@ -253,7 +253,18 @@ test.describe('Project View Kanban', () => {
 
 		const sourceTask = page.locator('.kanban .bucket .tasks .task').filter({hasText: tasks[0].title}).first()
 		const doneBucket = page.locator('.kanban .bucket:nth-child(2) .tasks')
-		await sourceTask.dragTo(doneBucket)
+		const [moveResponse] = await Promise.all([
+			page.waitForResponse(response => response.request().method() === 'PUT'
+				&& response.url().endsWith(`/api/v2/projects/${projects[0].id}/views/10/buckets/${localBuckets[1].id}/tasks`)),
+			sourceTask.dragTo(doneBucket),
+		])
+		expect(moveResponse.status()).toBe(200)
+		expect(await moveResponse.json()).toMatchObject({
+			task_id: tasks[0].id,
+			project_view_id: 10,
+			bucket_id: localBuckets[0].id,
+			task: {id: tasks[0].id, done: false},
+		})
 
 		// After the drop, the backend's recurrence redirect must be honored in the UI:
 		// the card appears back in the first (default/backlog) bucket with no refresh.
@@ -399,24 +410,53 @@ test.describe('Project View Kanban', () => {
 		await expect(page.locator('.project-kanban .filter-container .base-button')).toBeVisible()
 	})
 
-	test('Should remove a task from the board when deleting it', async ({authenticatedPage: page}) => {
-		const {task, view} = await createSingleTaskInBucket(5)
-		await page.goto(`/projects/1/${view.id}`)
+	test('Should remove a task from the board when deleting it', async ({authenticatedPage: page, apiContext, userToken}) => {
+		const [project] = await ProjectFactory.create(1)
+		const [view] = await ProjectViewFactory.create(1, {
+			id: 1,
+			project_id: project.id,
+			view_kind: 3,
+			bucket_configuration_mode: 1,
+			default_bucket_id: 1,
+			done_bucket_id: 5,
+		})
+		const originalBuckets = await BucketFactory.create(5, {
+			project_view_id: view.id,
+			position: (i: number) => i * 100,
+		})
+		const [task] = await TaskFactory.create(1, {project_id: project.id})
+		await TaskBucketFactory.create(1, {task_id: task.id, bucket_id: originalBuckets[0].id, project_view_id: view.id})
+		const boardPath = `/projects/${project.id}/${view.id}?${new URLSearchParams({s: task.title})}#main-content`
+		// The separate "Add bucket" surface also has .bucket, but is not a stored board column.
+		const boardColumns = page.locator('.kanban .bucket[data-bucket-id]')
+		await page.goto(boardPath)
 
+		await expect(boardColumns).toHaveCount(5)
 		await expect(page.locator('.kanban .bucket .tasks .task').filter({hasText: task.title})).toBeVisible()
 		await page.locator('.kanban .bucket .tasks .task').filter({hasText: task.title}).click()
 		await expect(page.locator('.task-view .action-buttons .button').filter({hasText: 'Delete'})).toBeVisible()
 		await page.locator('.task-view .action-buttons .button').filter({hasText: 'Delete'}).click()
 		await expect(page.locator('dialog[open] .modal-content .modal-header')).toContainText('Delete this task')
+		const deleted = page.waitForResponse(response => response.request().method() === 'DELETE'
+			&& new URL(response.url()).pathname.endsWith(`/tasks/${task.id}`))
 		await page.locator('dialog[open] [data-cy="modalPrimary"]').click()
-
+		expect((await deleted).status()).toBe(204)
 		await expect(page.locator('.global-notification')).toContainText('Success')
-
+		await expect(page).toHaveURL(new URL(boardPath, page.url()).href)
+		await expect(page.locator('dialog.task-detail-view-modal[open]')).toHaveCount(0)
+		await expect(boardColumns).toHaveCount(5)
+		const card = page.locator('.kanban .bucket .tasks .task').filter({hasText: task.title})
+		await expect(card).toHaveCount(0)
+		expect((await apiContext.get(`tasks/${task.id}`, {headers: {Authorization: `Bearer ${userToken}`}})).status()).toBe(404)
+		await page.reload()
+		await expect(page).toHaveURL(new URL(boardPath, page.url()).href)
+		await expect(boardColumns).toHaveCount(5)
+		await expect(card).toHaveCount(0)
 		await page.goBack()
-		const bucketCount = await page.locator('.kanban .bucket').count()
-		for (let i = 0; i < bucketCount; i++) {
-			await expect(page.locator('.kanban .bucket').nth(i)).not.toContainText(task.title)
-		}
+		await expect(page).toHaveURL(new URL(boardPath, page.url()).href)
+		await expect(page.locator('dialog.task-detail-view-modal[open]')).toHaveCount(0)
+		await expect(boardColumns).toHaveCount(5)
+		await expect(card).toHaveCount(0)
 	})
 
 	test('Should show a task description icon if the task has a description', async ({authenticatedPage: page}) => {

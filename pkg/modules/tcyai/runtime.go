@@ -120,6 +120,9 @@ func failureCode(err error) string {
 
 // ExplainError adds a localized explanation while retaining the exact technical detail for debugging and model recovery.
 func ExplainError(ctx context.Context, err error) string {
+	if errors.Is(err, ErrAccountAccessRevoked) {
+		return tcylocale.Render(ctx, tcylocale.Error("accountRunRevoked"))
+	}
 	if key := mcpErrorKey(err); key != "" {
 		return tcylocale.Render(ctx, tcylocale.Error(key)) + "\n" + tcylocale.Render(ctx, err)
 	}

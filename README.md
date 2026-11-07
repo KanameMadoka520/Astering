@@ -13,7 +13,7 @@
 
 我们赋予 **Astering**「像星星闪烁、使之星光熠熠」的意象：一次行动、一段研究、一条值得记住的原则，逐渐连接成自己的星群。**Aster的AI集成工业系统**（Aster’s AI-integrated industrial system）是项目的副标题；工具与积累服务于更自由的创造。
 
-- 当前版本：`v2.7.1-aster.59`
+- 当前版本：`v2.7.1-aster.60`
 - 源码与问题反馈：[KanameMadoka520/Astering](https://github.com/KanameMadoka520/Astering)
 - 本机编译的发布产物：[GitHub Releases](https://github.com/KanameMadoka520/Astering/releases)
 - [品牌与升级兼容](docs/brand-migration.md) · [品牌素材](docs/brand-identity.md) · [详细功能与演进记录](docs/product-reference.md)
@@ -65,6 +65,8 @@ Astering 把不同用途保留在各自合适的空间里，关联真实任务�
 
 被单独授予用量权限的真人账户，可在 **设置 → 站点 → 站点用量** 查看账户状态、角色标记、项目／任务数量与归属存储。该只读能力不授予正文、会话或密钥访问权，也不修改上游许可管理功能。弱网加载浮层显示资源类别、等待阶段和耗时；SDK 文件传输在可测量时提供已收字节、接收速度及可信进度，详见[加载活动](docs/network-activity.md)。
 
+部署者还可通过 `ASTERING_SUPERADMIN_IDS` 显式指定超级管理员。在 **设置 → 站点 → 账户管理** 查看用量与登录凭据数量，停用／恢复普通账户、撤销其设备与 API 令牌，并查看操作审计。停用保留业务数据并停止后台助手；恢复登录不会恢复已经撤销的凭据。此授权不授予私人内容访问，也不自动继承 SMTP、只读用量或上游许可管理权限。
+
 ## 安装与运行
 
 提供源码包、Git bundle、Linux amd64 二进制、Docker 镜像包和 SHA256 校验文件。检查、测试与编译在维护者本机完成，再手工发布；本仓库不使用 GitHub Actions。
@@ -75,15 +77,15 @@ Astering 把不同用途保留在各自合适的空间里，关联真实任务�
 git clone https://github.com/KanameMadoka520/Astering.git
 cd Astering
 docker build -f Dockerfile.aster \
-  --build-arg RELEASE_VERSION=v2.7.1-aster.59 \
+  --build-arg RELEASE_VERSION=v2.7.1-aster.60 \
   --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
-  -t astering:v2.7.1-aster.59 .
+  -t astering:v2.7.1-aster.60 .
 ```
 
 或下载对应 Release，先检查 `sha256sum -c SHA256SUMS`，再导入镜像包：
 
 ```sh
-docker load -i astering-v2.7.1-aster.59.docker.tar.gz
+docker load -i astering-v2.7.1-aster.60.docker.tar.gz
 ```
 
 以下是**新安装**的最小 SQLite 示例；生产也可配置 PostgreSQL。现有部署不要用新建的空目录替换原数据卷。
@@ -99,7 +101,7 @@ docker run -d --name Astering --restart unless-stopped \
   -e ASTERING_SERVICE_SECRET=替换为随机且持久保存的长密钥 \
   -e ASTERING_SERVICE_ENABLEREGISTRATION=false \
   -e ASTERING_SERVICE_TIMEZONE=Asia/Shanghai \
-  astering:v2.7.1-aster.59
+  astering:v2.7.1-aster.60
 ```
 
 在反向代理提供 HTTPS，将 `PUBLICURL` 改为自己的实际域名。创建首个账户前可查看 CLI 参数：

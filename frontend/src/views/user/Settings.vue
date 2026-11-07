@@ -11,6 +11,7 @@
 import {computed} from 'vue'
 import {useQuery} from '@tanstack/vue-query'
 import {currentSiteUsageData, siteUsageAccessQuery} from '@/client/queries/siteUsage'
+import {siteAccountsAccessQuery} from '@/client/queries/siteAccounts'
 import {captureClientRequestContext} from '@/client/requestContext'
 import {mailSettingsAccessQuery} from '@/client/queries/mailSettings'
 import {useI18n} from 'vue-i18n'
@@ -26,9 +27,20 @@ useTitle(() => t('user.settings.title'))
 const mailAccess = useQuery(mailSettingsAccessQuery())
 const configStore = useConfigStore()
 const authStore = useAuthStore()
+const accessScope = computed(() => ({
+	identity: authStore.identityKey,
+	session: authStore.currentSessionId,
+	human: authStore.authUser,
+	context: captureClientRequestContext(),
+}))
 const usageAccess = useQuery(computed(() => ({
-	...siteUsageAccessQuery(captureClientRequestContext()),
-	enabled: authStore.authUser && Boolean(authStore.identityKey),
+	...siteUsageAccessQuery(accessScope.value.context),
+	enabled: accessScope.value.human && Boolean(accessScope.value.identity),
+})))
+
+const accountManagementAccess = useQuery(computed(() => ({
+	...siteAccountsAccessQuery(accessScope.value.context),
+	enabled: accessScope.value.human && Boolean(accessScope.value.identity),
 })))
 
 const migratorsEnabled = computed(() => configStore.migratorsEnabled)
@@ -165,6 +177,15 @@ const navigationItems = computed(() => {
 			routeName: 'user.settings.deletion',
 			group: data,
 			condition: configStore.user_deletion_enabled,
+		},
+		{
+			title: t('siteAccounts.title'),
+			icon: 'users',
+			routeName: 'user.settings.accounts',
+			group: site,
+			badge: t('user.settings.scope.siteBadge'),
+			condition: authStore.authUser && !accountManagementAccess.isFetching.value && !accountManagementAccess.isError.value
+				&& currentSiteUsageData(accountManagementAccess.data.value)?.can_manage_accounts === true,
 		},
 		{
 			title: t('siteUsage.title'),

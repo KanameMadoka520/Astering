@@ -43,6 +43,13 @@
 					@exit="exitFocus"
 					@loadMore="loadMoreEverywhere"
 				/>
+				<KanbanColumnNavigation
+					:board="boardRef"
+					:buckets="buckets"
+					:can-create="canWrite"
+					@select="unCollapseBucket"
+					@create="openNewBucket"
+				/>
 				<div
 					ref="boardRef"
 					:class="{ 'is-loading': showInitialLoading, 'is-dragging': drag || dragBucket }"
@@ -51,7 +58,7 @@
 				>
 					<BucketDraggable
 						v-bind="dragOptions"
-						:handle="grouped ? '.bucket-header' : undefined"
+						:handle="grouped || isTouchDevice ? '.bucket-header' : undefined"
 						:model-value="buckets"
 						group="buckets"
 						:disabled="!canWrite || newTaskInputFocused"
@@ -225,6 +232,8 @@
 								<TaskDraggable
 									v-bind="dragOptions"
 									:handle="taskDragHandle"
+									filter="input, textarea, select, button, .kanban-move"
+									:prevent-on-filter="false"
 									:delay="isTouchDevice ? 300 : 1000"
 									:model-value="grouped ? [] : bucket.tasks"
 									:group="{name: 'tasks', put: !grouped && shouldAcceptDrop(bucket) && !dragBucket}"
@@ -262,9 +271,10 @@
 											v-if="canCreateTasks"
 											class="bucket-footer"
 										>
-											<div
+											<form
 												v-if="showNewTaskInput === bucket.id"
-												class="field"
+												class="field kanban-quick-add"
+												@submit.prevent="addTaskToBucket(bucket.id)"
 											>
 												<div
 													class="control"
@@ -274,14 +284,13 @@
 														v-model="newTaskText"
 														v-focus.always
 														class="input"
-														:disabled="initialLoading || taskLoading || undefined"
+														:aria-disabled="initialLoading || taskLoading || undefined"
 														:placeholder="$t('project.kanban.addTaskPlaceholder')"
 														:aria-label="$t('project.kanban.addTask')"
 														type="text"
-														@focusout="toggleShowNewTaskInput(bucket.id)"
 														@focusin="() => newTaskInputFocused = true"
-														@keyup.enter="addTaskToBucket(bucket.id)"
-														@keyup.esc="toggleShowNewTaskInput(bucket.id)"
+														@focusout="() => newTaskInputFocused = false"
+														@keyup.esc="cancelNewTask"
 													>
 												</div>
 												<p
@@ -290,7 +299,22 @@
 												>
 													{{ $t('project.create.addTitleRequired') }}
 												</p>
-											</div>
+												<div class="kanban-quick-add__actions">
+													<XButton
+														type="submit"
+														:loading="taskLoading"
+														:shadow="false"
+													>
+														{{ $t('project.kanban.addTask') }}
+													</XButton>
+													<XButton
+														variant="tertiary"
+														@click="cancelNewTask"
+													>
+														{{ $t('misc.cancel') }}
+													</XButton>
+												</div>
+											</form>
 											<template v-else>
 												<XButton
 													class="is-fullwidth"
@@ -319,20 +343,32 @@
 											class="task-item"
 											:data-task-id="task.id"
 										>
-											<span
-												v-if="canWrite && isTouchDevice"
-												class="handle"
-												@click="openTask(task)"
-												@touchstart.passive="onHandleTouchStart"
-												@touchmove.passive="onHandleTouchMove"
-											/>
 											<KanbanCard
 												class="kanban-card"
 												:task="task"
 												:show-parent-tasks="showParentTasks"
 												:project-id="projectId"
 												@taskCompletedRecurring="handleRecurringTaskCompletion"
-											/>
+											>
+												<template
+													v-if="canWrite"
+													#actions
+												>
+													<span
+														v-if="isTouchDevice"
+														class="kanban-task-drag-handle"
+														aria-hidden="true"
+														:title="$t('project.kanban.dragTask')"
+														@click.stop.prevent
+													>
+														<Icon icon="grip-lines" />
+													</span>
+													<KanbanMoveSelect
+														:task="task"
+														:bucket-id="bucket.id"
+													/>
+												</template>
+											</KanbanCard>
 										</li>
 									</template>
 								</TaskDraggable>
@@ -344,27 +380,45 @@
 						v-if="canWrite && !initialLoading && buckets.length > 0"
 						class="bucket new-bucket"
 					>
-						<input
+						<form
 							v-if="showNewBucketInput"
-							v-model="newBucketTitle"
-							v-focus.always
-							:class="{'is-loading': showInitialLoading}"
-							:disabled="showInitialLoading || undefined"
-							class="input"
-							:placeholder="$t('project.kanban.addBucketPlaceholder')"
-							:aria-label="$t('project.kanban.addBucket')"
-							type="text"
-							@blur="() => showNewBucketInput = false"
-							@keyup.enter="createNewBucket"
-							@keyup.esc="($event.target as HTMLInputElement).blur()"
+							class="kanban-quick-add"
+							@submit.prevent="createNewBucket"
 						>
+							<input
+								v-model="newBucketTitle"
+								v-focus.always
+								:class="{'is-loading': showInitialLoading}"
+								:aria-disabled="newBucketLoading || undefined"
+								class="input"
+								:placeholder="$t('project.kanban.addBucketPlaceholder')"
+								:aria-label="$t('project.kanban.addBucket')"
+								type="text"
+								@keyup.esc="cancelNewBucket"
+							>
+							<div class="kanban-quick-add__actions">
+								<XButton
+									type="submit"
+									:loading="newBucketLoading"
+									:shadow="false"
+								>
+									{{ $t('project.kanban.addBucket') }}
+								</XButton>
+								<XButton
+									variant="tertiary"
+									@click="cancelNewBucket"
+								>
+									{{ $t('misc.cancel') }}
+								</XButton>
+							</div>
+						</form>
 						<XButton
 							v-else
 							:shadow="false"
 							class="is-transparent is-fullwidth"
 							variant="secondary"
 							icon="plus"
-							@click="() => showNewBucketInput = true"
+							@click="openNewBucket"
 						>
 							{{ $t('project.kanban.addBucket') }}
 						</XButton>
@@ -408,7 +462,6 @@ import {
 import {computed, nextTick, onActivated, onBeforeUnmount, ref, watch, toRef} from 'vue'
 import {useEventListener, useMediaQuery, useResizeObserver} from '@vueuse/core'
 import {useQuery, useQueryClient} from '@tanstack/vue-query'
-import {useRouter} from 'vue-router'
 import {useRouteQuery} from '@vueuse/router'
 import {useI18n} from 'vue-i18n'
 import {draggableFor} from '@/components/base/Draggable'
@@ -428,6 +481,9 @@ import KanbanCard from '@/components/tasks/partials/KanbanCard.vue'
 import KanbanColumnTree from '@/components/project/views/kanban/KanbanColumnTree.vue'
 import KanbanDisplaySwitch from '@/components/project/views/kanban/KanbanDisplaySwitch.vue'
 import KanbanFocusBar from '@/components/project/views/kanban/KanbanFocusBar.vue'
+import KanbanMoveSelect from '@/components/project/views/kanban/KanbanMoveSelect.vue'
+import KanbanColumnNavigation from '@/components/project/views/kanban/KanbanColumnNavigation.vue'
+import {scrollKanbanColumnIntoView} from '@/components/project/views/kanban/scrollKanbanColumnIntoView'
 import {useKanbanGrouping} from '@/components/project/views/kanban/useKanbanGrouping'
 import Dropdown from '@/components/misc/Dropdown.vue'
 import DropdownItem from '@/components/misc/DropdownItem.vue'
@@ -500,9 +556,11 @@ const bucketToDelete = ref<{project: number, view: number, bucket: number, reque
 const bucketTitleEditable = ref(false)
 
 const newTaskText = ref('')
+let newTaskDraft = 0
 const showNewTaskInput = ref<number | null>(null)
 
 const newBucketTitle = ref('')
+let newBucketDraft = 0
 const showNewBucketInput = ref(false)
 const newTaskError = ref<{ [id: number]: boolean }>({})
 const newTaskInputFocused = ref(false)
@@ -603,44 +661,16 @@ function canEditTask(task: Task) {
 	return typeof source?.max_permission === 'number' && source.max_permission > Permissions.READ
 }
 
-const isTouchDevice = ref(false)
-if (typeof window !== 'undefined') {
-	isTouchDevice.value = !window.matchMedia('(hover: hover) and (pointer: fine)').matches
-}
-const taskDragHandle = computed(() => isTouchDevice.value ? '.handle' : undefined)
-
-const router = useRouter()
-const touchStartY = ref(0)
-
-function openTask(task: TaskResponse) {
-	router.push({
-		name: 'task.detail',
-		params: {id: task.id},
-		state: {backdropView: router.currentRoute.value.fullPath},
-	})
-}
-
-function onHandleTouchStart(e: TouchEvent) {
-	touchStartY.value = e.touches[0].clientY
-}
-
-function onHandleTouchMove(e: TouchEvent) {
-	if (drag.value) return
-
-	const currentY = e.touches[0].clientY
-	const deltaY = touchStartY.value - currentY
-	const scrollContainer = (e.target as HTMLElement).closest('.tasks') as HTMLElement | null
-	if (scrollContainer) {
-		scrollContainer.scrollTop += deltaY
-		touchStartY.value = currentY
-	}
-}
+const precisePointer = useMediaQuery('(hover: hover) and (pointer: fine)')
+const isTouchDevice = computed(() => !precisePointer.value)
+const taskDragHandle = computed(() => isTouchDevice.value ? '.kanban-task-drag-handle' : undefined)
 
 const boardParams = computed(() => ({...params.value, filter_timezone: authStore.settings.timezone}))
 const board = useKanban(projectId, () => props.viewId, boardParams)
 const queryClient = useQueryClient()
 const buckets = board.buckets
 const createBucketMutation = useCreateBucketMutation()
+const newBucketLoading = createBucketMutation.isPending
 const deleteBucketMutation = useDeleteBucketMutation(t('project.kanban.deleteBucketSuccess'))
 const updateBucketMutation = useUpdateBucketMutation()
 const saveBucketTitleMutation = useUpdateBucketMutation(t('project.kanban.bucketTitleSavedSuccess'))
@@ -775,7 +805,7 @@ async function loadMoreEverywhere() {
 	}
 }
 
-// The explicit counterpart of a drag in Groups mode. It keeps the stored position, which Cards mode reorders.
+// The picker moves between columns without requiring a drag across off-screen lanes.
 async function moveTaskToColumn(task: TaskResponse, from: number, to: number) {
 	const target = getBucketById(to)
 	if (!canWrite.value || !target || from === to) return
@@ -789,15 +819,38 @@ async function moveTaskToColumn(task: TaskResponse, from: number, to: number) {
 	}
 	const project = projectId.value
 	const view = props.viewId
+	const request = captureClientRequestContext()
 	try {
 		const result = await moveMutation.mutateAsync({project, view, bucket: to, task})
-		const landed = getBucketById(result.bucket_id ?? to) ?? target
+		if (!isClientRequestContextCurrent(request)) return
+		const landed = project === projectId.value && view === props.viewId
+			? getBucketById(result.bucket_id ?? to) ?? target
+			: target
 		success({message: t('project.kanban.hierarchy.moved', {title: task.title, bucket: landed.title})})
 		if (project !== projectId.value || view !== props.viewId) return
+		const wasCollapsed = Boolean(collapsedBuckets.value[landed.id])
+		unCollapseBucket(landed)
 		await nextTick()
-		boardRef.value
-			?.querySelector<HTMLElement>(`[data-tree-task="${task.id}"][data-tree-bucket="${landed.id}"] .kanban-tree-row__title`)
-			?.focus()
+		if (project !== projectId.value || view !== props.viewId || !isClientRequestContextCurrent(request)) return
+		const column = boardRef.value
+			? scrollKanbanColumnIntoView(boardRef.value, landed.id, {onlyIfOutside: !wasCollapsed})
+			: null
+		const destination = boardRef.value?.querySelector<HTMLElement>(
+			grouped.value
+				? `[data-tree-task="${task.id}"][data-tree-bucket="${landed.id}"] .kanban-tree-row__title`
+				: `[data-bucket-id="${landed.id}"] .task[data-task-id="${task.id}"] .kanban-card__title-link`,
+		)
+		destination?.focus({preventScroll: true})
+		const scroller = destination?.closest<HTMLElement>('.tasks')
+		if (destination && scroller) {
+			const rect = destination.getBoundingClientRect()
+			const bounds = scroller.getBoundingClientRect()
+			const footer = column?.querySelector<HTMLElement>('.bucket-footer')
+			const bottom = Math.min(bounds.bottom, footer?.getBoundingClientRect().top ?? bounds.bottom)
+			// Only scroll vertically inside the lane; a second ancestor scroll could undo its horizontal snap.
+			if (rect.top < bounds.top) scroller.scrollTop += rect.top - bounds.top
+			else if (rect.bottom > bottom) scroller.scrollTop += Math.min(rect.bottom - bottom, rect.top - bounds.top)
+		}
 	} catch { /* The mutation reports the error. */ }
 }
 
@@ -859,30 +912,56 @@ function toggleShowNewTaskInput(bucketId: number) {
 	if (initialLoading.value || taskLoading.value) {
 		return
 	}
+	newTaskDraft++
 	showNewTaskInput.value = showNewTaskInput.value === bucketId 
 		? null
 		: bucketId
 	newTaskInputFocused.value = false
 }
 
+async function cancelNewTask() {
+	const bucket = showNewTaskInput.value
+	const project = projectId.value
+	const view = props.viewId
+	newTaskDraft++
+	showNewTaskInput.value = null
+	newTaskText.value = ''
+	newTaskInputFocused.value = false
+	await nextTick()
+	if (project === projectId.value && view === props.viewId && showNewTaskInput.value === null) {
+		boardRef.value?.querySelector<HTMLElement>(`[data-bucket-id="${bucket}"] .bucket-footer button`)?.focus()
+	}
+}
+
 async function addTaskToBucket(bucketId: number) {
-	if (newTaskText.value === '') {
+	if (initialLoading.value || taskLoading.value) return
+	if (!newTaskText.value.trim()) {
 		newTaskError.value[bucketId] = true
 		return
 	}
 	newTaskError.value[bucketId] = false
-
-	await createNewTask({
-		title: newTaskText.value,
-		bucket_id: bucketId,
-		project_id: projectIdWithFallback.value,
-	})
-	newTaskText.value = ''
+	const title = newTaskText.value
+	const draft = newTaskDraft
+	const project = projectId.value
+	const view = props.viewId
+	const request = captureClientRequestContext()
+	try {
+		await createNewTask({
+			title,
+			bucket_id: bucketId,
+			project_id: projectIdWithFallback.value,
+		})
+	} catch {
+		return
+	}
+	if (draft !== newTaskDraft || project !== projectId.value || view !== props.viewId ||
+		!isClientRequestContextCurrent(request)) return
+	if (newTaskText.value === title) newTaskText.value = ''
 	scrollTaskContainerToTop(bucketId)
-
 	const bucket = getBucketById(bucketId)
-	if (bucket && bucket.limit && bucket.count >= bucket.limit) {
-		toggleShowNewTaskInput(bucketId)
+	if (bucket && isBucketFull(bucket)) {
+		showNewTaskInput.value = null
+		newTaskInputFocused.value = false
 	}
 }
 
@@ -894,17 +973,41 @@ function scrollTaskContainerToTop(bucketId: number) {
 	bucketEl.scrollTop = 0
 }
 
+async function openNewBucket() {
+	const project = projectId.value
+	const view = props.viewId
+	newBucketDraft++
+	showNewBucketInput.value = true
+	await nextTick()
+	if (project !== projectId.value || view !== props.viewId) return
+	boardRef.value?.querySelector('.new-bucket')?.scrollIntoView({block: 'nearest', inline: 'end'})
+}
+
+function cancelNewBucket() {
+	newBucketDraft++
+	showNewBucketInput.value = false
+	newBucketTitle.value = ''
+}
+
 async function createNewBucket() {
-	if (newBucketTitle.value === '') {
+	if (newBucketLoading.value || !newBucketTitle.value.trim()) return
+	const title = newBucketTitle.value
+	const draft = newBucketDraft
+	const project = projectId.value
+	const view = props.viewId
+	const request = captureClientRequestContext()
+	try {
+		await createBucketMutation.mutateAsync({
+			project,
+			view,
+			bucket: {title},
+		})
+	} catch {
 		return
 	}
-
-	await createBucketMutation.mutateAsync({
-		project: projectId.value,
-		view: props.viewId,
-		bucket: {title: newBucketTitle.value},
-	})
-	newBucketTitle.value = ''
+	if (draft !== newBucketDraft || project !== projectId.value || view !== props.viewId ||
+		!isClientRequestContextCurrent(request)) return
+	if (newBucketTitle.value === title) newBucketTitle.value = ''
 }
 
 function deleteBucketModal(bucketId: number) {
@@ -1112,6 +1215,8 @@ async function setBucketLimit(bucketId: number, now: boolean = false) {
 
 // Confirmations and drafts belong to the board they were opened on, never to the next one.
 watch(() => [props.projectId, props.viewId], () => {
+	newTaskDraft++
+	newBucketDraft++
 	cancelBucketLimit()
 	limitDraft.value = undefined
 	showSetLimitInput.value = false
@@ -1311,14 +1416,18 @@ function unCollapseBucket(bucket: BucketResponse) {
 				padding-block-end: var(--space-2);
 			}
 
-			.handle {
-				position: absolute;
-				inset: 0;
-				z-index: 1;
-				opacity: 0;
+			.kanban-task-drag-handle {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				inline-size: 44px;
+				block-size: 44px;
+				border-radius: var(--radius-sm);
+				color: var(--text-tertiary);
 				touch-action: none;
 				-webkit-touch-callout: none;
 				user-select: none;
+				cursor: grab;
 			}
 		}
 
@@ -1410,6 +1519,11 @@ function unCollapseBucket(bucket: BucketResponse) {
 			white-space: nowrap;
 			cursor: pointer;
 
+			@media screen and (max-width: $tablet) {
+				white-space: normal;
+				overflow-wrap: anywhere;
+			}
+
 			&[contenteditable] {
 				cursor: text;
 				white-space: normal;
@@ -1471,6 +1585,11 @@ function unCollapseBucket(bucket: BucketResponse) {
 			&:hover {
 				background: var(--surface-hover);
 				color: var(--text-primary);
+			}
+
+			@media (pointer: coarse) {
+				min-inline-size: 44px;
+				min-block-size: 44px;
 			}
 		}
 	}
@@ -1538,6 +1657,13 @@ function unCollapseBucket(bucket: BucketResponse) {
 		font-size: var(--text-xs);
 		line-height: var(--leading-normal);
 	}
+}
+
+.kanban-quick-add__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	margin-block-start: var(--space-2);
 }
 
 .kanban .bucket .bucket-footer .button,

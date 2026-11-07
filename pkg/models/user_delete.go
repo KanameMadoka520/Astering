@@ -141,6 +141,10 @@ func getProjectsToDelete(s *xorm.Session, u *user.User) (projectsToDelete []*Pro
 // This action is irrevocable.
 // Public to allow deletion from the CLI.
 func DeleteUser(s *xorm.Session, u *user.User) (err error) {
+	return withProjectAccountMaintenance(s, u.ID, func() error { return deleteUser(s, u) })
+}
+
+func deleteUser(s *xorm.Session, u *user.User) (err error) {
 	if err = lockAccountProjectsForMutation(s, u.ID); err != nil {
 		return err
 	}

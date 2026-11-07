@@ -44,10 +44,11 @@ type snapshot struct {
 
 type snapshotCache struct {
 	sync.Mutex
-	value   *snapshot
-	key     string
-	expires time.Time
-	loading chan struct{}
+	value      *snapshot
+	key        string
+	expires    time.Time
+	loading    chan struct{}
+	generation uint64
 }
 
 var cachedSnapshot snapshotCache
@@ -71,11 +72,12 @@ func (c *snapshotCache) get(ctx context.Context, key string, load func(context.C
 			}
 		}
 		c.loading = make(chan struct{})
+		generation := c.generation
 		c.Unlock()
 
 		value, err := load(ctx)
 		c.Lock()
-		if err == nil {
+		if err == nil && generation == c.generation {
 			c.value = value
 			c.key = key
 			// Age starts before collection, not after a slow filesystem scan.
@@ -86,6 +88,16 @@ func (c *snapshotCache) get(ctx context.Context, key string, load func(context.C
 		c.Unlock()
 		return value, err
 	}
+}
+
+// Invalidate discards cached operational aggregates after an account mutation.
+// An in-flight older collection cannot repopulate the cache after this fence.
+func Invalidate() {
+	cachedSnapshot.Lock()
+	cachedSnapshot.value = nil
+	cachedSnapshot.expires = time.Time{}
+	cachedSnapshot.generation++
+	cachedSnapshot.Unlock()
 }
 
 func Read(ctx context.Context, query AccountUsageQuery) (*AccountUsageSnapshot, error) {

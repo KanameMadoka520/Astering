@@ -45,6 +45,9 @@ func conversationOut(ctx context.Context, value tcyai.Conversation, err error) (
 	return &conversationResponse{CacheControl: "no-store", Body: value}, nil
 }
 func conversationError(ctx context.Context, err error) error {
+	if errors.Is(err, tcyai.ErrAccountAccessRevoked) {
+		return huma.Error403Forbidden(tcyai.ExplainError(ctx, err))
+	}
 	if errors.Is(err, tcyai.ErrSteeringUnavailable) {
 		return huma.Error409Conflict(tcylocale.Render(ctx, tcylocale.Error("chatSteeringUnavailable")))
 	}
@@ -223,6 +226,10 @@ func RegisterTCYAIConversationRoutes(api huma.API) {
 		if err != nil {
 			return nil, err
 		}
+		ctx, err = aiRunAdmission(ctx, uid)
+		if err != nil {
+			return nil, err
+		}
 		value, err := tcyai.StartConversation(ctx, uid, in.ID, in.Body, connection, execution.execute, execution.prepare)
 		return conversationOut(ctx, value, err)
 	})
@@ -248,6 +255,10 @@ func RegisterTCYAIConversationRoutes(api huma.API) {
 		if err != nil {
 			return nil, err
 		}
+		ctx, err = aiRunAdmission(ctx, uid)
+		if err != nil {
+			return nil, err
+		}
 		value, err := tcyai.ReviewConversation(ctx, uid, in.ID, in.Body, connection, execution.execute, execution.prepare)
 		return conversationOut(ctx, value, err)
 	})
@@ -261,26 +272,7 @@ func RegisterTCYAIConversationRoutes(api huma.API) {
 		}
 		return &emptyBody{}, nil
 	})
-	Register(api, op("tcy-ai-conversations-compact", "POST", "/ai/conversations/{id}/compact", "Summarize older turns with the selected model; preserve all original messages and the latest four turns"), func(ctx context.Context, in *struct {
-		ID   string `path:"id" format:"uuid" doc:"Conversation owned by the signed-in human user."`
-		Body struct {
-			ConnectionID string `json:"connection_id" maxLength:"80" doc:"Saved text model connection. Empty uses the assigned assistant."`
-		}
-	}) (*conversationResponse, error) {
-		uid, err := aiUser(ctx)
-		if err != nil {
-			return nil, err
-		}
-		if _, err = tcyai.GetConversation(uid, in.ID); err != nil {
-			return nil, conversationError(ctx, err)
-		}
-		connection, err := conversationModel(uid, in.Body.ConnectionID)
-		if err != nil {
-			return nil, aiError(ctx, err)
-		}
-		value, err := tcyai.CompactConversation(ctx, uid, in.ID, connection)
-		return conversationOut(ctx, value, err)
-	})
+	registerAIConversationCompaction(api, op)
 	Register(api, op("tcy-ai-prompt", "GET", "/ai/prompt", "Inspect the effective system prompt and available tool definitions"), func(ctx context.Context, in *struct {
 		ProjectID    int64  `query:"project_id" minimum:"0" doc:"Optional project context."`
 		Mode         string `query:"mode" default:"read" enum:"read,write" doc:"read permits queries; write also allows task creation and updates."`
@@ -317,5 +309,32 @@ func RegisterTCYAIConversationRoutes(api huma.API) {
 		}
 		body.Body.ToolSchema = string(raw)
 		return body, nil
+	})
+}
+
+func registerAIConversationCompaction(api huma.API, op func(string, string, string, string) huma.Operation) {
+	Register(api, op("tcy-ai-conversations-compact", "POST", "/ai/conversations/{id}/compact", "Summarize older turns with the selected model; preserve all original messages and the latest four turns"), func(ctx context.Context, in *struct {
+		ID   string `path:"id" format:"uuid" doc:"Conversation owned by the signed-in human user."`
+		Body struct {
+			ConnectionID string `json:"connection_id" maxLength:"80" doc:"Saved text model connection. Empty uses the assigned assistant."`
+		}
+	}) (*conversationResponse, error) {
+		uid, err := aiUser(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if _, err = tcyai.GetConversation(uid, in.ID); err != nil {
+			return nil, conversationError(ctx, err)
+		}
+		connection, err := conversationModel(uid, in.Body.ConnectionID)
+		if err != nil {
+			return nil, aiError(ctx, err)
+		}
+		ctx, err = aiRunAdmission(ctx, uid)
+		if err != nil {
+			return nil, err
+		}
+		value, err := tcyai.CompactConversation(ctx, uid, in.ID, connection)
+		return conversationOut(ctx, value, err)
 	})
 }

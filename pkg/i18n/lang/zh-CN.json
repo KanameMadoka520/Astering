@@ -344,6 +344,7 @@
 			"mcpUnsupported": "这个 MCP 工具的参数定义或结果超出了支持的格式或大小，系统不会悄悄截断工具定义。",
 			"mcpDestination": "MCP 服务试图向配置地址以外的目标发送请求。为保护密钥，系统已拦截。",
 			"chatReviewChanged": "这份审核已失效，请重新读取会话并审核最新预览。",
+			"accountRunRevoked": "访问凭据已撤销，请重新登录后重试。",
 			"agentTimeout": "本段执行超时，已完成的操作会保留。如果仅是模型请求超时，可以追加一段预算后继续。",
 			"smtpPort": "SMTP 端口需在 1–65535 之间。",
 			"smtpAuth": "请选择支持的 SMTP 认证方式。",

@@ -19,6 +19,7 @@ package models
 import (
 	"time"
 
+	"github.com/KanameMadoka520/Astering/pkg/user"
 	"github.com/KanameMadoka520/Astering/pkg/utils"
 
 	"xorm.io/xorm"
@@ -26,15 +27,17 @@ import (
 
 // OAuthCode represents a short-lived OAuth 2.0 authorization code.
 type OAuthCode struct {
-	ID                  int64     `xorm:"autoincr not null unique pk" json:"id"`
-	UserID              int64     `xorm:"bigint not null" json:"-"`
-	Code                string    `xorm:"varchar(128) not null unique index" json:"-"`
-	ExpiresAt           time.Time `xorm:"not null" json:"-"`
-	ClientID            string    `xorm:"varchar(255) not null" json:"-"`
-	RedirectURI         string    `xorm:"text not null" json:"-"`
-	CodeChallenge       string    `xorm:"varchar(128) not null" json:"-"`
-	CodeChallengeMethod string    `xorm:"varchar(10) not null" json:"-"`
-	Created             time.Time `xorm:"created not null" json:"created"`
+	// Trusted issuance fence used only during a consumed-code exchange.
+	AuthorizationGeneration string    `xorm:"-" json:"-"`
+	ID                      int64     `xorm:"autoincr not null unique pk" json:"id"`
+	UserID                  int64     `xorm:"bigint not null" json:"-"`
+	Code                    string    `xorm:"varchar(128) not null unique index" json:"-"`
+	ExpiresAt               time.Time `xorm:"not null" json:"-"`
+	ClientID                string    `xorm:"varchar(255) not null" json:"-"`
+	RedirectURI             string    `xorm:"text not null" json:"-"`
+	CodeChallenge           string    `xorm:"varchar(128) not null" json:"-"`
+	CodeChallengeMethod     string    `xorm:"varchar(10) not null" json:"-"`
+	Created                 time.Time `xorm:"created not null" json:"created"`
 }
 
 func (*OAuthCode) TableName() string {
@@ -44,6 +47,16 @@ func (*OAuthCode) TableName() string {
 // CreateOAuthCode generates a cryptographically random authorization code,
 // stores it, and returns the code string.
 func CreateOAuthCode(s *xorm.Session, userID int64, clientID, redirectURI, codeChallenge, codeChallengeMethod string) (code string, err error) {
+	return CreateOAuthCodeForAuth(s, &user.User{ID: userID}, clientID, redirectURI, codeChallenge, codeChallengeMethod)
+}
+
+// CreateOAuthCodeForAuth preserves the real browser credential across the user
+// lock so an already-revoked request cannot create a new authorization code.
+func CreateOAuthCodeForAuth(s *xorm.Session, actor *user.User, clientID, redirectURI, codeChallenge, codeChallengeMethod string) (code string, err error) {
+	if err := LockCredentialIssue(s, actor); err != nil {
+		return "", err
+	}
+	userID := actor.ID
 	rawCode, err := utils.CryptoRandomString(64)
 	if err != nil {
 		return "", err
@@ -79,6 +92,11 @@ func GetAndDeleteOAuthCode(s *xorm.Session, code string) (*OAuthCode, error) {
 		return nil, &ErrOAuthCodeInvalid{}
 	}
 
+	oauthCode.AuthorizationGeneration, err = user.SessionAuthCacheKey(oauthCode.UserID, "oauth-code-exchange")
+	if err != nil {
+		return nil, err
+	}
+
 	// Delete immediately (single-use).
 	// Check affected rows to prevent a race where two concurrent requests
 	// both read the same code before either deletes it.
@@ -96,4 +114,17 @@ func GetAndDeleteOAuthCode(s *xorm.Session, code string) (*OAuthCode, error) {
 	}
 
 	return oauthCode, nil
+}
+
+// ValidateOAuthCodeExchange runs with the user lock held by the caller. A code
+// consumed before a later credential revocation must not mint a new session.
+func ValidateOAuthCodeExchange(code *OAuthCode) error {
+	generation, err := user.SessionAuthCacheKey(code.UserID, "oauth-code-exchange")
+	if err != nil {
+		return err
+	}
+	if code.AuthorizationGeneration == "" || generation != code.AuthorizationGeneration {
+		return &ErrOAuthCodeInvalid{}
+	}
+	return nil
 }

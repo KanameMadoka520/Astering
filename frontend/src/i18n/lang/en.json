@@ -1060,6 +1060,11 @@
       "empty": "No tasks to show here."
     },
     "kanban": {
+      "columnNavigation": "Board columns",
+      "previousColumn": "Previous column",
+      "nextColumn": "Next column",
+      "jumpToColumn": "Jump to column",
+      "dragTask": "Hold and drag to reorder; use the move control to change columns",
       "title": "Kanban",
       "limit": "Limit: {limit}",
       "doneBucket": "Done bucket",
@@ -5646,5 +5651,59 @@
     "allFields": "View all fields",
     "onlyChangedFields": "Only show changes",
     "unknownChangedFields": "Some changed fields cannot be displayed by this version of the app. Their values have not been guessed."
+  },
+  "siteAccounts": {
+    "title": "Account management",
+    "intro": "Manage access to Astering and review account usage without opening private content.",
+    "boundary": "Only explicitly configured super administrators can manage accounts here. Project sharing, personal Arona conversations, model settings and MCP connections remain separate for each account.",
+    "forbidden": "This page is available only to an explicitly configured super administrator. No account data is shown.",
+    "superadmin": "Super administrator",
+    "filters": "Filters",
+    "filtersActive": "Filters · active",
+    "credentials": "{sessions} login sessions · {tokens} API tokens · {bots} bot accounts",
+    "actions": {
+      "disable": "Disable account",
+      "enable": "Enable account",
+      "revoke": "Revoke access"
+    },
+    "confirmTitle": "Confirm: {action}",
+    "confirmUsername": "Type {username} to confirm this account.",
+    "usernameConfirmation": "Confirm account username",
+    "reason": "Reason for the audit log (optional, up to 250 characters)",
+    "effects": {
+      "disable": "Blocks new requests, revokes this account’s and its bots’ login sessions and API tokens, and stops its running Arona tasks. Projects, shared content and files are kept. Existing public share links remain governed by their own settings and must be revoked separately if needed. Existing copies already downloaded by the user cannot be recalled.",
+      "enable": "Allows this disabled account to sign in again. Previous login sessions and API tokens remain revoked; the user must sign in again and create new tokens if needed. Projects and files stay in place.",
+      "revoke": "Signs this account and its bots out of all devices, revokes their API tokens, and stops running Arona tasks. The account may sign in again unless disabled. Projects, permissions and files are kept. Existing public share links remain governed by their own settings and must be revoked separately if needed."
+    },
+    "completed": "{username}: {action} completed. {sessions} sessions and {tokens} API tokens revoked.",
+    "failed": "The operation was not confirmed. Check the connection and refresh the account list before trying again.",
+    "protection": {
+      "self": "Your current account is protected from management actions here.",
+      "superadmin": "Super administrator protected. Its management authority is configured on the server, separately from project permissions.",
+      "instance_admin": "Manage this instance administrator’s account status in its existing administration area. You can revoke its access credentials here.",
+      "bot": "Manage this bot through its owner account. Bot credentials are included when the owner’s access is revoked.",
+      "verification_required": "Email verification is still required. This page cannot bypass it; access can be revoked without activating the account.",
+      "locked": "This account is locked. This page cannot bypass that lock; access can still be revoked.",
+      "deletion_scheduled": "Account deletion is scheduled. Management operations are unavailable here; this does not undo the deletion request.",
+      "protected": "This account is protected from this operation."
+    },
+    "errors": {
+      "forbidden": "Your account no longer has management permission. Refresh this page.",
+      "notFound": "This account no longer exists. Refresh the list.",
+      "changed": "The account changed while this dialog was open. Close the dialog, refresh the list and check its current status.",
+      "reason": "Keep the reason within 250 characters.",
+      "protected": "This account is protected from this operation.",
+      "confirmation": "The username does not match the target account. Check the name and try again."
+    },
+    "audit": {
+      "title": "Management activity",
+      "help": "Records who changed account access, when, and why. No passwords, keys or private resource content are included.",
+      "failed": "Management activity could not be loaded. Previous records are hidden.",
+      "empty": "No account management operations have been recorded yet.",
+      "status_changed": "Account status changed",
+      "access_revoked": "Access revoked",
+      "revoked": "{sessions} sessions and {tokens} API tokens revoked",
+      "pagination": "Management activity pages"
+    }
   }
 }

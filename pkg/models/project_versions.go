@@ -72,18 +72,26 @@ func currentProjectReadPermission(s *xorm.Session, a web.Auth, projectID int64) 
 		return nil, 0, ErrGenericForbidden{}
 	}
 	users := []*user.User{}
-	err := sharedVersionRows(s, "users", builder.Eq{"id": u.ID}, "id", &users)
-	exists := len(users) > 0
-	freshUser := &user.User{}
-	if exists {
-		freshUser = users[0]
-	}
+	ownerIDs := builder.Select("bot_owner_id").From("users").Where(builder.Eq{"id": u.ID})
+	err := sharedVersionRows(s, "users", builder.Or(builder.Eq{"id": u.ID}, builder.In("id", ownerIDs)), "id", &users)
 	if err != nil {
 		return nil, 0, err
 	}
-	if !exists {
+	identities := map[int64]*user.User{}
+	for _, identity := range users {
+		identities[identity.ID] = identity
+	}
+	freshUser := identities[u.ID]
+	if freshUser == nil || (user.CheckUserCanAuthenticate(freshUser) != nil && !accountMaintenanceAllowsInactive(s, u, freshUser.ID)) {
 		return nil, 0, ErrGenericForbidden{}
 	}
+	if freshUser.IsBot() {
+		owner := identities[freshUser.BotOwnerID]
+		if owner == nil || owner.IsBot() || (user.CheckUserCanAuthenticate(owner) != nil && !accountMaintenanceAllowsInactive(s, u, owner.ID)) {
+			return nil, 0, ErrGenericForbidden{}
+		}
+	}
+	var exists bool
 	p := &Project{}
 	exists, err = routineCurrentRead(s).ID(projectID).Get(p)
 	if err != nil {

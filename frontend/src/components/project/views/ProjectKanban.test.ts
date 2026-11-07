@@ -258,7 +258,7 @@ describe('ProjectKanban', () => {
 		expect(cachedBoard()?.buckets[0].count).toBe(1)
 	})
 
-	it('re-enables the add task input once the create settles, without a board request', async () => {
+	it('keeps the add task input focusable during save, then clears only its submitted text without a board request', async () => {
 		const wrapper = await mountKanban({BucketDraggable: DRAGGABLE_STUB, TaskDraggable: DRAGGABLE_STUB})
 		let resolveCreate!: (value: unknown) => void
 		sdk.tasksCreate.mockImplementation(() => new Promise(resolve => { resolveCreate = resolve }))
@@ -266,16 +266,33 @@ describe('ProjectKanban', () => {
 		;(wrapper.vm as unknown as {toggleShowNewTaskInput: (id: number) => void}).toggleShowNewTaskInput(1)
 		await nextTick()
 		await wrapper.find('.bucket-footer input').setValue('New task')
-		await wrapper.find('.bucket-footer input').trigger('keyup.enter')
+		await wrapper.find('.bucket-footer form').trigger('submit')
 		await flushPromises()
-		expect(wrapper.find('.bucket-footer input').attributes('disabled')).toBeDefined()
+		expect(wrapper.find('.bucket-footer input').attributes('disabled')).toBeUndefined()
+		expect(wrapper.find('.bucket-footer input').attributes('aria-disabled')).toBe('true')
 
 		loadBoard.mockClear()
 		resolveCreate({data: {id: 12, title: 'New task', project_id: 1, bucket_id: 1}})
 		await flushPromises()
 
-		expect(wrapper.find('.bucket-footer input').attributes('disabled')).toBeUndefined()
+		expect(wrapper.find('.bucket-footer input').attributes('aria-disabled')).toBeUndefined()
+		expect((wrapper.find('.bucket-footer input').element as HTMLInputElement).value).toBe('')
 		expect(loadBoard).not.toHaveBeenCalled()
+	})
+
+	it('does not erase the next draft typed while the submitted task is being saved', async () => {
+		const wrapper = await mountKanban({BucketDraggable: DRAGGABLE_STUB, TaskDraggable: DRAGGABLE_STUB})
+		let resolveCreate!: (value: unknown) => void
+		sdk.tasksCreate.mockImplementation(() => new Promise(resolve => { resolveCreate = resolve }))
+		;(wrapper.vm as unknown as {toggleShowNewTaskInput: (id: number) => void}).toggleShowNewTaskInput(1)
+		await nextTick()
+		await wrapper.find('.bucket-footer input').setValue('Submitted task')
+		await wrapper.find('.bucket-footer form').trigger('submit')
+		await flushPromises()
+		await wrapper.find('.bucket-footer input').setValue('Next draft')
+		resolveCreate({data: {id: 12, title: 'Submitted task', project_id: 1, bucket_id: 1}})
+		await flushPromises()
+		expect((wrapper.find('.bucket-footer input').element as HTMLInputElement).value).toBe('Next draft')
 	})
 
 	it('closes the add task input when the created task fills the bucket limit', async () => {
@@ -286,7 +303,7 @@ describe('ProjectKanban', () => {
 		;(wrapper.vm as unknown as {toggleShowNewTaskInput: (id: number) => void}).toggleShowNewTaskInput(1)
 		await nextTick()
 		await wrapper.find('.bucket-footer input').setValue('New task')
-		await wrapper.find('.bucket-footer input').trigger('keyup.enter')
+		await wrapper.find('.bucket-footer form').trigger('submit')
 		await flushPromises()
 
 		expect(wrapper.find('.bucket-footer input').exists()).toBe(false)

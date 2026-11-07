@@ -22,6 +22,7 @@ import (
 	"github.com/KanameMadoka520/Astering/pkg/license"
 	"github.com/KanameMadoka520/Astering/pkg/log"
 	"github.com/KanameMadoka520/Astering/pkg/models"
+	"github.com/KanameMadoka520/Astering/pkg/modules/instanceusage"
 )
 
 // dependentTestingTables lists tables that reference a reset table by ID and
@@ -60,6 +61,7 @@ func ReplaceTableContents(table string, content []map[string]interface{}, trunca
 		return nil, err
 	}
 
+	instanceusage.Invalidate()
 	// Raw row inserts bypass CreateProject, which is what keeps the closure table in step.
 	if table == "projects" {
 		if err := rebuildProjectAncestors(); err != nil {
@@ -102,6 +104,7 @@ func TruncateAllTestingTables() error {
 		return err
 	}
 
+	instanceusage.Invalidate()
 	// Reload after truncate; otherwise features enabled by a prior test outlive
 	// the now-empty license_status table. A reload failure here is non-fatal —
 	// the truncate already succeeded — so it is logged and swallowed.

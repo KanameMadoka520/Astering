@@ -236,6 +236,9 @@ func HasAuthInContext(c *echo.Context) bool {
 func GetAuthFromClaims(c *echo.Context) (a web.Auth, err error) {
 	// The token middleware already loaded the owner; a lookup per call showed up as two extra transactions per request.
 	if u, ok := c.Get("api_user").(*user.User); ok {
+		if token, ok := c.Get("api_token").(*models.APIToken); ok {
+			return user.WithAPITokenCredential(u, token.ID), nil
+		}
 		return u, nil
 	}
 	// check if we have a token in context and use it if that's the case
@@ -247,7 +250,7 @@ func GetAuthFromClaims(c *echo.Context) (a web.Auth, err error) {
 		if err != nil {
 			return nil, err
 		}
-		return u, nil
+		return user.WithAPITokenCredential(u, apiToken.ID), nil
 	}
 
 	jwtinf, is := c.Get("user").(*jwt.Token)
@@ -266,7 +269,12 @@ func GetAuthFromClaims(c *echo.Context) (a web.Auth, err error) {
 		return models.GetLinkShareFromClaims(s, claims)
 	}
 	if typ == AuthTypeUser {
-		return user.GetUserFromClaims(claims)
+		u, err := user.GetUserFromClaims(claims)
+		if err != nil {
+			return nil, err
+		}
+		sid, _ := claims["sid"].(string)
+		return user.WithSessionCredential(u, sid), nil
 	}
 	return nil, echo.NewHTTPError(http.StatusBadRequest, "Invalid JWT token.")
 }
@@ -414,6 +422,9 @@ type RefreshResult struct {
 func RefreshSession(rawRefreshToken string) (*RefreshResult, error) {
 	s := db.NewSession()
 	defer s.Close()
+	if err := models.ReserveCredentialTransaction(s); err != nil {
+		return nil, err
+	}
 
 	session, err := models.GetSessionByRefreshToken(s, rawRefreshToken)
 	if err != nil {
@@ -424,6 +435,12 @@ func RefreshSession(rawRefreshToken string) (*RefreshResult, error) {
 		return nil, err
 	}
 
+	if err := models.LockCredentialIssue(s, &user.User{ID: session.UserID}); err != nil {
+		if user.IsErrUserCannotAuthenticate(err) {
+			return nil, discardRefreshSession(s, session.ID, err)
+		}
+		return nil, err
+	}
 	maxAge := time.Duration(config.ServiceJWTTTL.GetInt64()) * time.Second
 	if session.IsLongSession {
 		maxAge = time.Duration(config.ServiceJWTTTLLong.GetInt64()) * time.Second
@@ -456,14 +473,7 @@ func RefreshSession(rawRefreshToken string) (*RefreshResult, error) {
 	u, err := user.GetUserByIDForAuth(s, session.UserID)
 	if err != nil {
 		if user.IsErrUserCannotAuthenticate(err) {
-			if _, delErr := s.Where("id = ?", session.ID).Delete(&models.Session{}); delErr != nil {
-				_ = s.Rollback()
-				return nil, delErr
-			}
-			if commitErr := s.Commit(); commitErr != nil {
-				return nil, commitErr
-			}
-			return nil, err
+			return nil, discardRefreshSession(s, session.ID, err)
 		}
 		_ = s.Rollback()
 		return nil, err
@@ -486,6 +496,19 @@ func RefreshSession(rawRefreshToken string) (*RefreshResult, error) {
 		IsLongSession:   session.IsLongSession,
 		SessionID:       session.ID,
 	}, nil
+}
+
+// An account-status rejection still consumes this unusable refresh session.
+// Keep that cleanup inside the same user-lock transaction as the fresh check.
+func discardRefreshSession(s *xorm.Session, sessionID string, cause error) error {
+	if _, err := s.Where("id = ?", sessionID).Delete(&models.Session{}); err != nil {
+		_ = s.Rollback()
+		return err
+	}
+	if err := s.Commit(); err != nil {
+		return err
+	}
+	return cause
 }
 
 // IsUnusableRefreshToken reports whether the caller should clear the refresh

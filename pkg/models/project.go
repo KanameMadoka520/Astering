@@ -1143,7 +1143,7 @@ func RegisterUser(s *xorm.Session, u *user.User, options ...user.CreateUserOptio
 		return nil, err
 	}
 
-	if err := CreateNewProjectForUser(s, newUser); err != nil {
+	if err := withProjectAccountMaintenance(s, newUser.ID, func() error { return CreateNewProjectForUser(s, newUser) }); err != nil {
 		return nil, err
 	}
 
@@ -1563,6 +1563,21 @@ func (p *Project) Delete(s *xorm.Session, a web.Auth) (err error) {
 	if err := requireCurrentProjectPermission(s, a, p.ID, PermissionAdmin); err != nil {
 		return err
 	}
+	return p.deleteLockedSubtree(s, a)
+}
+
+// deleteLockedSubtree only cascades within the root subtree already locked and
+// authorized by Delete. A link share grants access to its root, not individual
+// descendants; re-authorizing after deleting the root's ACL would reject a
+// legitimate cascade. Never widen the project's lock scope during recursion.
+func (p *Project) deleteLockedSubtree(s *xorm.Session, a web.Auth) (err error) {
+	scope := projectVersionTransactionScope(s)
+	scope.mu.Lock()
+	locked := scope.exclusive[p.ID]
+	scope.mu.Unlock()
+	if !locked {
+		return versionError("project_mutation_scope_changed", "The project hierarchy changed while this operation was waiting. Reload it and retry.")
+	}
 
 	// The handler passes a stub without owner_id.
 	fullProject, err := GetProjectSimpleByID(s, p.ID)
@@ -1683,7 +1698,7 @@ func (p *Project) Delete(s *xorm.Session, a web.Auth) (err error) {
 	}
 
 	for _, child := range childProjects {
-		err = child.Delete(s, a)
+		err = child.deleteLockedSubtree(s, a)
 		if err != nil {
 			return
 		}

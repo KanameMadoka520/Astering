@@ -141,6 +141,12 @@ func exchangeAuthorizationCode(ctx context.Context, req *TokenRequest, deviceInf
 	s := db.NewSession()
 	defer s.Close()
 
+	if err := models.LockCredentialIssue(s, &user.User{ID: oauthCode.UserID}); err != nil {
+		return nil, err
+	}
+	if err := models.ValidateOAuthCodeExchange(oauthCode); err != nil {
+		return nil, err
+	}
 	// Create a session (reuses existing session infrastructure)
 	session, err := models.CreateSession(s, oauthCode.UserID, deviceInfo, ipAddress, false, nil)
 	if err != nil {

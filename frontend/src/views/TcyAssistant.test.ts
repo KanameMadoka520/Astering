@@ -306,7 +306,10 @@ describe('TcyAssistant composer', () => {
 			},
 			global: {
 				plugins: plugins(),
-				stubs,
+				stubs: {
+					Modal: defineComponent({template: '<div><slot /></div>'}),
+					...stubs,
+				},
 			},
 			attachTo,
 		})
@@ -330,6 +333,10 @@ describe('TcyAssistant composer', () => {
 	}
 	const loadErrors = (wrapper: ReturnType<typeof mountPanel>) => wrapper.findAllComponents(LoadError)
 		.map(error => error.props('message'))
+	async function openConfiguration(wrapper: ReturnType<typeof mountPanel>) {
+		wrapper.findComponent<typeof BaseButton>('.composer-config-trigger').vm.$emit('click', new MouseEvent('click'))
+		await nextTick()
+	}
 
 	beforeEach(async () => {
 		sessionStorage.clear()
@@ -359,6 +366,7 @@ describe('TcyAssistant composer', () => {
 		sdk.tcyAiPreferences.mockRejectedValue(new Error('offline'))
 		const wrapper = mountPanel('')
 		await flushPromises()
+		await openConfiguration(wrapper)
 
 		expect(wrapper.find('.profile-switch select').attributes('disabled')).toBeUndefined()
 		expect(wrapper.find('.preferences-toggle').attributes('disabled')).toBe('false')
@@ -383,6 +391,7 @@ describe('TcyAssistant composer', () => {
 		}))
 		const wrapper = mountPanel('c1')
 		await flushPromises()
+		await openConfiguration(wrapper)
 
 		expect(wrapper.findComponent(ToolModulePicker).props('disabled')).toBe(true)
 		expect(wrapper.findComponent(MCPSessionPicker).props('disabled')).toBe(true)
@@ -401,6 +410,7 @@ describe('TcyAssistant composer', () => {
 		seedConversation('c1')
 		const wrapper = mountPanel('c1')
 		await flushPromises()
+		await openConfiguration(wrapper)
 		wrapper.findComponent<typeof BaseButton>('.preferences-toggle').vm.$emit('click', new MouseEvent('click'))
 		await nextTick()
 		const panel = wrapper.findComponent(AssistantPreferences)

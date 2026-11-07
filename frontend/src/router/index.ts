@@ -126,6 +126,7 @@ const router = createRouter({
 			children: [
 				{path: '/user/settings/storage', name: 'user.settings.storage', component: () => import('@/views/user/settings/Storage.vue')},
 				{path: '/user/settings/showcase', name: 'user.settings.showcase', component: () => import('@/views/user/settings/TcyShowcase.vue')},
+				{path: '/user/settings/accounts', name: 'user.settings.accounts', component: () => import('@/views/user/settings/SiteAccounts.vue')},
 				{path: '/user/settings/usage', name: 'user.settings.usage', component: () => import('@/views/user/settings/SiteUsage.vue')},
 				{path: '/user/settings/mail-server', name: 'user.settings.mail-server', component: () => import('@/views/user/settings/MailServer.vue')},
 				{path: '/user/settings/push', name: 'user.settings.push', component: () => import('@/views/user/settings/Bark.vue')},

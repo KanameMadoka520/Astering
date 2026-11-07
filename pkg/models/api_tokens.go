@@ -129,6 +129,22 @@ func (t *APIToken) Create(s *xorm.Session, a web.Auth) (err error) {
 		return err
 	}
 
+	if err := ReserveCredentialTransaction(s); err != nil {
+		return err
+	}
+
+	targetID := t.OwnerID
+	if targetID == 0 {
+		targetID = caller.ID
+	}
+	if targetID != caller.ID {
+		if _, err := getOwnedBot(s, targetID, caller); err != nil {
+			return err
+		}
+	}
+	if err := LockCredentialIssue(s, caller, targetID); err != nil {
+		return err
+	}
 	t.ID = 0
 
 	token, err := utils.CryptoRandomBytes(20)

@@ -32,6 +32,7 @@ vi.mock('@/composables/useTitle', () => ({useTitle: vi.fn()}))
 const auth = reactive({
 	authUser: true,
 	identityKey: '1:1',
+	currentSessionId: 'session-A',
 })
 const cleanups: Array<() => void> = []
 const query: NonNullable<SystemUsageUsersData['query']> = {
@@ -139,6 +140,7 @@ beforeEach(() => {
 	requestContext.apiBaseUrl = '/api/v2'
 	auth.authUser = true
 	auth.identityKey = '1:1'
+	auth.currentSessionId = 'session-A'
 	sdk.systemUsageAccess.mockResolvedValue({data: {can_view_usage: true}})
 	sdk.systemUsageUsers.mockImplementation(async ({query: selected}) => ({data: snapshot('private-owner-A', selected.page)}))
 })
@@ -295,5 +297,21 @@ describe('site usage mounted query lifecycle', () => {
 		await flushPromises()
 		expect(view.find('.usage-account').text()).toContain('private-owner-B')
 		expect(view.text()).not.toContain('private-owner-A')
+	})
+
+	it('rechecks access on a replacement login for the same account without displaying previous rows', async () => {
+		const view = await mountPage()
+		await vi.waitFor(() => expect(view.find('.usage-account').text()).toContain('private-owner-A'))
+		const access = deferred<{data: {can_view_usage: boolean}}>()
+		sdk.systemUsageAccess.mockReturnValue(access.promise)
+		requestContext.sessionEpoch++
+		auth.currentSessionId = 'session-B'
+		await nextTick()
+		expect(view.find('.usage-account').exists()).toBe(false)
+		await vi.waitFor(() => expect(sdk.systemUsageAccess).toHaveBeenCalledTimes(2))
+		access.resolve({data: {can_view_usage: false}})
+		await flushPromises()
+		expect(view.find('.usage-account').exists()).toBe(false)
+		expect(view.find('[role="alert"]').text()).toContain('You do not have permission')
 	})
 })

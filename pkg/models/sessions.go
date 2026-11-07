@@ -96,6 +96,9 @@ type SessionOIDCData struct {
 // Returns the session with RefreshToken populated (cleartext, shown only once).
 // Pass oidc for OpenID Connect logins to persist the logout data; nil otherwise.
 func CreateSession(s *xorm.Session, userID int64, deviceInfo, ipAddress string, isLongSession bool, oidc *SessionOIDCData) (*Session, error) {
+	if err := LockCredentialIssue(s, &user.User{ID: userID}); err != nil {
+		return nil, err
+	}
 	rawToken, hash, err := generateHashedToken()
 	if err != nil {
 		return nil, err
@@ -229,11 +232,16 @@ func RotateRefreshToken(s *xorm.Session, session *Session) (newRawToken string, 
 
 // DeleteAllUserSessions removes all sessions for a user (e.g., on password change).
 func DeleteAllUserSessions(s *xorm.Session, userID int64) error {
-	_, err := s.Where("user_id = ?", userID).Delete(&Session{})
+	_, err := deleteAllUserSessions(s, userID)
+	return err
+}
+
+func deleteAllUserSessions(s *xorm.Session, userID int64) (int64, error) {
+	affected, err := s.Where("user_id = ?", userID).Delete(&Session{})
 	if err != nil {
-		return err
+		return 0, err
 	}
-	return revokeSessions(s, &SessionsRevokedEvent{UserID: userID})
+	return affected, revokeSessions(s, &SessionsRevokedEvent{UserID: userID})
 }
 
 func revokeSessions(s *xorm.Session, event *SessionsRevokedEvent) error {

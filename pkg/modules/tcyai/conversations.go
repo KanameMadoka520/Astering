@@ -618,6 +618,9 @@ func conversationHistory(record *conversationFile, c Connection) ([]Message, str
 func StartConversation(ctx context.Context, uid int64, id string, in RunInput, c Connection, execute Executor, preparers ...Preparer) (Conversation, error) {
 	conversations.Lock()
 	defer conversations.Unlock()
+	if err := checkAccountRunAdmissionLocked(ctx, uid); err != nil {
+		return Conversation{}, err
+	}
 	record, err := getConversationLocked(uid, id)
 	if err != nil {
 		return Conversation{}, err
@@ -833,6 +836,9 @@ func launchConversation(ctx context.Context, uid int64, record *conversationFile
 func ReviewConversation(ctx context.Context, uid int64, id string, in ReviewInput, c Connection, execute Executor, prepare Preparer) (Conversation, error) {
 	conversations.Lock()
 	defer conversations.Unlock()
+	if err := checkAccountRunAdmissionLocked(ctx, uid); err != nil {
+		return Conversation{}, err
+	}
 	if conversations.live[liveKey(uid, id)] != nil {
 		return Conversation{}, ErrConversationBusy
 	}
@@ -934,6 +940,9 @@ func StopConversation(uid int64, id string) error {
 func CompactConversation(ctx context.Context, uid int64, id string, c Connection) (Conversation, error) {
 	conversations.Lock()
 	defer conversations.Unlock()
+	if err := checkAccountRunAdmissionLocked(ctx, uid); err != nil {
+		return Conversation{}, err
+	}
 	if conversations.live[liveKey(uid, id)] != nil {
 		return Conversation{}, ErrConversationBusy
 	}

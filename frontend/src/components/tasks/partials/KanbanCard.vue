@@ -56,6 +56,13 @@
 						{{ formatDisplayDate(task.due_date) }}
 					</time>
 				</span>
+				<div
+					v-if="$slots.actions"
+					class="kanban-card__actions"
+					@click.stop
+				>
+					<slot name="actions" />
+				</div>
 			</div>
 			
 			<h3>
@@ -535,6 +542,17 @@ onBeforeUnmount(() => {
 // Sits next to the identifier; the due date keeps the end of the row.
 .kanban-card__routine {
 	margin-inline-end: auto;
+}
+
+.kanban-card__actions {
+	display: inline-flex;
+	align-items: center;
+	margin-inline-start: auto;
+	color: var(--text-secondary);
+
+	@media (pointer: coarse) {
+		--kanban-tree-target: 44px;
+	}
 }
 
 .kanban-card__done {

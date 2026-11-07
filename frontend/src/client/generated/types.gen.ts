@@ -41,6 +41,281 @@ export type ApiToken = {
     readonly token?: string;
 };
 
+export type AccountAccessRevoke = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Exact current target username.
+     */
+    confirm_username: string;
+    /**
+     * Optional short operational reason; do not enter secrets.
+     */
+    reason?: string;
+};
+
+export type AccountAdminEvent = {
+    /**
+     * status_changed or access_revoked.
+     */
+    readonly action?: string;
+    readonly actor_id?: number;
+    readonly actor_username?: string;
+    /**
+     * UTC operation timestamp.
+     */
+    readonly created?: string;
+    readonly id?: number;
+    readonly new_status?: number;
+    readonly old_status?: number;
+    /**
+     * Optional operational note; never include credentials or private content.
+     */
+    readonly reason?: string;
+    /**
+     * Deleted user and owned-bot API tokens.
+     */
+    readonly revoked_api_tokens?: number;
+    /**
+     * Deleted user and owned-bot login sessions.
+     */
+    readonly revoked_sessions?: number;
+    readonly target_id?: number;
+    readonly target_username?: string;
+};
+
+export type AccountManagementAccessBodyBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Explicit ASTERING_SUPERADMIN_IDS grant; never grants access to private business resources or licensed administration.
+     */
+    can_manage_accounts: boolean;
+    /**
+     * Currently authenticated active human account.
+     */
+    current_user_id: number;
+};
+
+export type AccountManagementResult = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Atomic operational journal entry.
+     */
+    event_id: number;
+    revoked_api_tokens: number;
+    revoked_sessions: number;
+    status: number;
+    user_id: number;
+};
+
+export type AccountManagementSnapshot = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Usage collection timestamp; management flags, statuses and credentials are reread per request.
+     */
+    as_of: string;
+    definitions: Array<string> | null;
+    items: Array<AccountManagementUser> | null;
+    overview: AccountUsageOverview;
+    page: number;
+    per_page: number;
+    total: number;
+    total_pages: number;
+};
+
+export type AccountManagementUser = {
+    /**
+     * Actual lengths of legacy SHA-256-named encrypted attachment files; excludes Drive originals already included in file_bytes.
+     */
+    ai_attachment_bytes: number;
+    /**
+     * Sum of independent AI encrypted conversation, legacy attachment and settings file lengths. A lower bound when ai_scan_complete is false.
+     */
+    ai_bytes: number;
+    /**
+     * Actual lengths of canonical encrypted conversation files, including encryption overhead.
+     */
+    ai_conversation_bytes: number;
+    /**
+     * Canonical UUID-named encrypted conversation files; includes archived conversations without decrypting them.
+     */
+    ai_conversations: number;
+    /**
+     * False means AI counts and bytes are incomplete or unavailable, never proof of zero usage.
+     */
+    ai_scan_complete: boolean;
+    /**
+     * Actual lengths of the account's encrypted model and MCP settings files. No settings are decrypted.
+     */
+    ai_settings_bytes: number;
+    /**
+     * Read-only hints: projects_owned_1000, projects_created_24h_100, projects_created_7d_500. No action is taken.
+     */
+    anomalies: Array<string> | null;
+    /**
+     * Current API token rows, including owned bots; no secrets are returned.
+     */
+    api_tokens: number;
+    /**
+     * Number of directly owned bot accounts.
+     */
+    bots: number;
+    /**
+     * Only active/disabled ordinary human accounts may be changed.
+     */
+    can_change_status: boolean;
+    /**
+     * Whether account and owned-bot sessions/tokens may be revoked.
+     */
+    can_revoke_access: boolean;
+    /**
+     * Entries in those spaces, including archived and trashed entries; excludes historical revisions.
+     */
+    compass_entries_owned: number;
+    /**
+     * Spaces attributed to their persisted owner_id, including team spaces; does not imply access.
+     */
+    compass_spaces_owned: number;
+    /**
+     * Account creation time, not last activity.
+     */
+    created: string;
+    /**
+     * Whether account deletion is scheduled; this route cannot change it.
+     */
+    deletion_scheduled: boolean;
+    /**
+     * Logical original bytes in personal Drive, including the recycle bin. Overlaps file_bytes; do not add them.
+     */
+    drive_file_bytes: number;
+    /**
+     * Distinct personal Drive originals, including the recycle bin. Overlaps files_uploaded; do not add the counts.
+     */
+    drive_files: number;
+    /**
+     * Recycle-bin subset of drive_file_bytes.
+     */
+    drive_trashed_bytes: number;
+    /**
+     * Recycle-bin subset of drive_files.
+     */
+    drive_trashed_files: number;
+    /**
+     * Sum of uploaded files.size once per file ID. Logical original bytes; excludes previews, database overhead and AI encrypted files.
+     */
+    file_bytes: number;
+    /**
+     * Distinct files rows uploaded by this account, including retained recycle-bin files and exports.
+     */
+    files_uploaded: number;
+    /**
+     * Account ID; no resource access is granted.
+     */
+    id: number;
+    /**
+     * Read-only account-kind flag.
+     */
+    is_bot: boolean;
+    /**
+     * Read-only stored instance-admin flag; does not grant licensed capabilities.
+     */
+    is_instance_admin: boolean;
+    /**
+     * Both operational mutations are forbidden for this viewer and target.
+     */
+    is_protected: boolean;
+    /**
+     * Explicitly listed deployment superadministrator, not an instance-admin or usage grant.
+     */
+    is_superadmin: boolean;
+    /**
+     * Whether this active human account is explicitly listed in ASTERING_USAGE_ADMIN_IDS at response time.
+     */
+    is_usage_admin: boolean;
+    /**
+     * Account display name.
+     */
+    name: string;
+    /**
+     * Archived subset of projects_owned.
+     */
+    projects_archived: number;
+    /**
+     * Currently owned projects created in the 24 hours before as_of; ownership transfers affect attribution.
+     */
+    projects_created_24h: number;
+    /**
+     * Currently owned projects created in the 7 days before as_of; ownership transfers affect attribution.
+     */
+    projects_created_7d: number;
+    /**
+     * Projects currently owned by this account, including archived projects; not the original creator count.
+     */
+    projects_owned: number;
+    /**
+     * self, superadmin, bot, instance_admin, deletion_scheduled, verification_required, locked, or empty.
+     */
+    protected_reason: string;
+    /**
+     * Current session rows for this account and its owned bots; not online-user count.
+     */
+    sessions: number;
+    /**
+     * 0 active, 1 awaiting email confirmation, 2 disabled, 3 locked.
+     */
+    status: number;
+    /**
+     * Non-deleted tasks whose persisted created_by_id is this account.
+     */
+    tasks_created: number;
+    /**
+     * Non-deleted tasks in currently owned projects, regardless of task creator or assignee.
+     */
+    tasks_owned: number;
+    /**
+     * file_bytes plus independent ai_bytes. Mixed logical original and encrypted file lengths, not filesystem allocated bytes or total server disk use; incomplete when AI scan is incomplete.
+     */
+    total_storage_bytes: number;
+    /**
+     * Account username; no email or identity-provider details are returned.
+     */
+    username: string;
+};
+
+export type AccountStatusChange = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Exact current target username, required to confirm identity.
+     */
+    confirm_username: string;
+    /**
+     * Status shown when opening confirmation; stale state returns 409.
+     */
+    expected_status: number;
+    /**
+     * Optional short operational reason; do not enter secrets.
+     */
+    reason?: string;
+    /**
+     * 0 active or 2 disabled. Email verification and security locks cannot be bypassed.
+     */
+    status: 0 | 2;
+};
+
 export type AccountUsageOverview = {
     /**
      * Accounts with status 0, including bots.
@@ -3049,6 +3324,18 @@ export type PaginatedApiToken = {
      */
     readonly $schema?: string;
     items?: Array<ApiToken> | null;
+    page?: number;
+    per_page?: number;
+    total?: number;
+    total_pages?: number;
+};
+
+export type PaginatedAccountAdminEvent = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    items?: Array<AccountAdminEvent> | null;
     page?: number;
     per_page?: number;
     total?: number;
@@ -7807,6 +8094,72 @@ export type ApiTokenWritable = {
     title?: string;
 };
 
+export type AccountAccessRevokeWritable = {
+    /**
+     * Exact current target username.
+     */
+    confirm_username: string;
+    /**
+     * Optional short operational reason; do not enter secrets.
+     */
+    reason?: string;
+};
+
+export type AccountManagementAccessBodyBodyWritable = {
+    /**
+     * Explicit ASTERING_SUPERADMIN_IDS grant; never grants access to private business resources or licensed administration.
+     */
+    can_manage_accounts: boolean;
+    /**
+     * Currently authenticated active human account.
+     */
+    current_user_id: number;
+};
+
+export type AccountManagementResultWritable = {
+    /**
+     * Atomic operational journal entry.
+     */
+    event_id: number;
+    revoked_api_tokens: number;
+    revoked_sessions: number;
+    status: number;
+    user_id: number;
+};
+
+export type AccountManagementSnapshotWritable = {
+    /**
+     * Usage collection timestamp; management flags, statuses and credentials are reread per request.
+     */
+    as_of: string;
+    definitions: Array<string> | null;
+    items: Array<AccountManagementUser> | null;
+    overview: AccountUsageOverview;
+    page: number;
+    per_page: number;
+    total: number;
+    total_pages: number;
+};
+
+export type AccountStatusChangeWritable = {
+    /**
+     * Exact current target username, required to confirm identity.
+     */
+    confirm_username: string;
+    /**
+     * Status shown when opening confirmation; stale state returns 409.
+     */
+    expected_status: number;
+    /**
+     * Optional short operational reason; do not enter secrets.
+     */
+    reason?: string;
+    /**
+     * 0 active or 2 disabled. Email verification and security locks cannot be bypassed.
+     */
+    status: 0 | 2;
+};
+
 export type AccountUsageSnapshotWritable = {
     /**
      * Snapshot collection start, UTC; cached for at most 30 seconds.
@@ -8963,6 +9316,14 @@ export type PageWritable = {
 
 export type PaginatedApiTokenWritable = {
     items?: Array<ApiTokenWritable> | null;
+    page?: number;
+    per_page?: number;
+    total?: number;
+    total_pages?: number;
+};
+
+export type PaginatedAccountAdminEventWritable = {
+    items?: Array<unknown> | null;
     page?: number;
     per_page?: number;
     total?: number;
@@ -17137,6 +17498,166 @@ export type SubscriptionsCreateResponses = {
 };
 
 export type SubscriptionsCreateResponse = SubscriptionsCreateResponses[keyof SubscriptionsCreateResponses];
+
+export type SystemAccountsListData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * 1-based page number.
+         */
+        page?: number;
+        /**
+         * Capped at 100 and the configured service.maxitemsperpage.
+         */
+        per_page?: number;
+        /**
+         * Case-insensitive username or display-name search; does not search emails or resource content.
+         */
+        q?: string;
+        status?: 'all' | 'active' | 'email_confirmation_required' | 'disabled' | 'account_locked';
+        /**
+         * Read-only flags; instance_admin does not imply license availability.
+         */
+        role?: 'all' | 'human' | 'bot' | 'instance_admin' | 'usage_admin';
+        /**
+         * Filter documented project-volume hints; never changes or limits accounts.
+         */
+        anomaly?: 'all' | 'flagged';
+        sort_by?: 'id' | 'username' | 'created' | 'projects_owned' | 'projects_created_24h' | 'projects_created_7d' | 'tasks_owned' | 'tasks_created' | 'file_bytes' | 'ai_bytes';
+        order_by?: 'asc' | 'desc';
+    };
+    url: '/system/accounts';
+};
+
+export type SystemAccountsListErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type SystemAccountsListError = SystemAccountsListErrors[keyof SystemAccountsListErrors];
+
+export type SystemAccountsListResponses = {
+    /**
+     * OK
+     */
+    200: AccountManagementSnapshot;
+};
+
+export type SystemAccountsListResponse = SystemAccountsListResponses[keyof SystemAccountsListResponses];
+
+export type SystemAccountsAccessData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/system/accounts/access';
+};
+
+export type SystemAccountsAccessErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type SystemAccountsAccessError = SystemAccountsAccessErrors[keyof SystemAccountsAccessErrors];
+
+export type SystemAccountsAccessResponses = {
+    /**
+     * OK
+     */
+    200: AccountManagementAccessBodyBody;
+};
+
+export type SystemAccountsAccessResponse = SystemAccountsAccessResponses[keyof SystemAccountsAccessResponses];
+
+export type SystemAccountsEventsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        page?: number;
+        per_page?: number;
+        /**
+         * Optional account ID; zero returns all account operations.
+         */
+        target_id?: number;
+    };
+    url: '/system/accounts/events';
+};
+
+export type SystemAccountsEventsErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type SystemAccountsEventsError = SystemAccountsEventsErrors[keyof SystemAccountsEventsErrors];
+
+export type SystemAccountsEventsResponses = {
+    /**
+     * OK
+     */
+    200: PaginatedAccountAdminEvent;
+};
+
+export type SystemAccountsEventsResponse = SystemAccountsEventsResponses[keyof SystemAccountsEventsResponses];
+
+export type SystemAccountsRevokeAccessData = {
+    body: AccountAccessRevokeWritable;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/system/accounts/{id}/revoke-access';
+};
+
+export type SystemAccountsRevokeAccessErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type SystemAccountsRevokeAccessError = SystemAccountsRevokeAccessErrors[keyof SystemAccountsRevokeAccessErrors];
+
+export type SystemAccountsRevokeAccessResponses = {
+    /**
+     * OK
+     */
+    200: AccountManagementResult;
+};
+
+export type SystemAccountsRevokeAccessResponse = SystemAccountsRevokeAccessResponses[keyof SystemAccountsRevokeAccessResponses];
+
+export type SystemAccountsStatusData = {
+    body: AccountStatusChangeWritable;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/system/accounts/{id}/status';
+};
+
+export type SystemAccountsStatusErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type SystemAccountsStatusError = SystemAccountsStatusErrors[keyof SystemAccountsStatusErrors];
+
+export type SystemAccountsStatusResponses = {
+    /**
+     * OK
+     */
+    200: AccountManagementResult;
+};
+
+export type SystemAccountsStatusResponse = SystemAccountsStatusResponses[keyof SystemAccountsStatusResponses];
 
 export type SystemMailSettingsData = {
     body?: never;

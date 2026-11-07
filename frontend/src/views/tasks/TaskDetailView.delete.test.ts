@@ -167,6 +167,47 @@ async function openConfirmation(backdropView?: string) {
 }
 
 describe('TaskDetailView deletion confirmation', () => {
+	it('replaces a deleted modal entry with its exact original backdrop including query and hash', async () => {
+		const destination = '/projects/1?filter=done%20%3D%20false#main-content'
+		const {vm} = await openConfirmation(destination)
+		const replace = vi.spyOn(router, 'replace')
+		await vm.deleteTask()
+		await flushPromises()
+
+		expect(sdk.tasksDelete).toHaveBeenCalledOnce()
+		expect(replace).toHaveBeenCalledExactlyOnceWith(destination)
+		expect(router.currentRoute.value).toMatchObject({
+			path: '/projects/1',
+			query: {filter: 'done = false'},
+			hash: '#main-content',
+		})
+		expect(wrapper!.emitted('close')).toBeUndefined()
+	})
+
+	it('replaces a full-page task with its safe preceding route instead of leaving a deleted entry', async () => {
+		const {vm} = await openConfirmation()
+		const state = vi.spyOn(router.options.history, 'state', 'get').mockReturnValue({back: '/elsewhere?source=tasks#main-content'})
+		const replace = vi.spyOn(router, 'replace')
+		await vm.deleteTask()
+		await flushPromises()
+
+		expect(replace).toHaveBeenCalledExactlyOnceWith('/elsewhere?source=tasks#main-content')
+		expect(router.currentRoute.value.fullPath).toBe('/elsewhere?source=tasks#main-content')
+		state.mockRestore()
+	})
+
+	it.each(['//elsewhere.example/tasks/2', '/\\elsewhere.example/tasks/2', '/tasks/1?retry=1#detail'])(
+		'replaces an unsafe or deleted-task backdrop %s with its project instead', async destination => {
+			const {vm} = await openConfirmation(destination)
+			const replace = vi.spyOn(router, 'replace')
+			await vm.deleteTask()
+			await flushPromises()
+
+			expect(replace).toHaveBeenCalledExactlyOnceWith({name: 'project.index', params: {projectId: 1}})
+			expect(router.currentRoute.value.fullPath).toBe('/projects/1')
+		},
+	)
+
 	it('rejects an old confirmation after the task route is reused', async () => {
 		const {vm, modal} = await openConfirmation()
 		await router.push('/tasks/2')

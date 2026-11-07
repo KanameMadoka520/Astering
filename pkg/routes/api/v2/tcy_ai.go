@@ -36,6 +36,7 @@ import (
 	"github.com/KanameMadoka520/Astering/pkg/modules/tcylocale"
 
 	"github.com/KanameMadoka520/Astering/pkg/modules/humabridge"
+	"github.com/KanameMadoka520/Astering/pkg/modules/instanceusage"
 	"github.com/KanameMadoka520/Astering/pkg/modules/tcyai"
 	"github.com/KanameMadoka520/Astering/pkg/user"
 	"github.com/danielgtaylor/huma/v2"
@@ -78,6 +79,13 @@ func aiUser(ctx context.Context) (int64, error) {
 	u, err := user.GetFromAuth(a)
 	if err != nil {
 		return 0, translateDomainError(err)
+	}
+	active, verifyErr := instanceusage.ActiveHuman(ctx, u.ID)
+	if verifyErr != nil {
+		return 0, huma.Error503ServiceUnavailable("account_verification_unavailable")
+	}
+	if !active {
+		return 0, huma.Error403Forbidden("account_inactive")
 	}
 	return u.ID, nil
 }
@@ -281,20 +289,27 @@ func runAI(ctx context.Context, api huma.API, uid int64, in tcyai.RunInput) (*si
 	aiRuns.entries[key] = aiRunCacheEntry{hash: hash, at: time.Now()}
 	aiRuns.Unlock()
 	result := tcyai.RunResult{Actions: []tcyai.Action{}}
+	cacheResult := false
 	defer func() {
 		aiRuns.Lock()
 		delete(aiRuns.busy, uid)
-		aiRuns.entries[key] = aiRunCacheEntry{hash: hash, result: result, ready: true, at: time.Now()}
+		if cacheResult {
+			aiRuns.entries[key] = aiRunCacheEntry{hash: hash, result: result, ready: true, at: time.Now()}
+		} else {
+			delete(aiRuns.entries, key)
+		}
 		aiRuns.Unlock()
 	}()
 	s, err := tcyai.Load(uid)
 	if err != nil {
 		result.Reply = tcylocale.Render(ctx, err)
+		cacheResult = true
 		return &singleBody[tcyai.RunResult]{Body: &result}, nil
 	}
 	c, err := s.Find(s.Assistant, "chat")
 	if err != nil {
 		result.Reply = tcylocale.Render(ctx, err)
+		cacheResult = true
 		return &singleBody[tcyai.RunResult]{Body: &result}, nil
 	}
 	ec := humabridge.EchoContextFrom(ctx)
@@ -305,9 +320,19 @@ func runAI(ctx context.Context, api huma.API, uid int64, in tcyai.RunInput) (*si
 	if executionErr != nil {
 		return nil, executionErr
 	}
-	state := tcyai.NewAgentState(ctx, c, in)
+	ctx, err = aiRunAdmission(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+	jobCtx, finish, err := tcyai.RegisterAccountRun(ctx, uid)
+	if err != nil {
+		return nil, conversationError(ctx, err)
+	}
+	defer finish()
+	state := tcyai.NewAgentState(jobCtx, c, in)
 	state.OwnerID = uid
-	result, err = tcyai.RunAgent(ctx, c, state, execution.execute, execution.prepare, nil)
+	cacheResult = true
+	result, err = tcyai.RunAgent(jobCtx, c, state, execution.execute, execution.prepare, nil)
 	if err != nil {
 		result.Reply = tcylocale.Text(ctx, "stopped", tcylocale.Render(ctx, err))
 	}

@@ -48,6 +48,7 @@ func SetupTests() {
 	}
 
 	err = db.InitTestFixtures(
+		"account_admin_events",
 		"files",
 		"drive_files",
 		"drive_chat_refs",

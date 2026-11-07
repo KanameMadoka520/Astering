@@ -17,7 +17,7 @@ import {
 	type UserStorageFilesData,
 	type UserStorageConversationsData,
 } from '@/client/generated'
-import {client as sdkClient} from '@/client/generated/client.gen'
+import {contextFetch} from '@/client/requestContextFetch'
 import {
 	assertClientRequestContext,
 	captureClientRequestContext,
@@ -61,15 +61,6 @@ export const storageKeys = {
 
 export function currentStorageData<T>(value: ScopedStorage<T> | undefined): T | undefined {
 	return value && isClientRequestContextCurrent(value.context) ? value.data : undefined
-}
-
-function contextFetch(context: ClientRequestContext): typeof fetch {
-	const send = sdkClient.getConfig().fetch ?? globalThis.fetch
-	return (input, init) => {
-		// SDK preparation and authentication interceptors can yield after the initial owner check.
-		assertClientRequestContext(context)
-		return send(input, init)
-	}
 }
 
 export function storageSummaryQuery(context = captureClientRequestContext()) {
