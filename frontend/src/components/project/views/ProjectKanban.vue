@@ -50,6 +50,11 @@
 					@select="unCollapseBucket"
 					@create="openNewBucket"
 				/>
+				<LoadError
+					v-if="board.isError.value"
+					:message="$t('project.tasksLoadError')"
+					:retry="retryBoard"
+				/>
 				<div
 					ref="boardRef"
 					:class="{ 'is-loading': showInitialLoading, 'is-dragging': drag || dragBucket }"
@@ -268,6 +273,27 @@
 									</template>
 									<template #footer>
 										<li
+											v-if="!grouped && bucketHasMore(bucket)"
+											class="kanban-load-more"
+										>
+											<span>{{ $t('project.kanban.hierarchy.loaded', {loaded: bucket.tasks.length, count: bucket.count}) }}</span>
+											<p
+												v-if="bucketLoadFailed(bucket.id)"
+												role="alert"
+											>
+												{{ $t('project.kanban.loadMoreFailed') }}
+											</p>
+											<XButton
+												variant="secondary"
+												:shadow="false"
+												:loading="loadingBucket === bucket.id"
+												:aria-disabled="bucketPageMutation.isPending.value || undefined"
+												@click="loadMoreInBucket(bucket.id)"
+											>
+												{{ bucketLoadFailed(bucket.id) ? $t('misc.retry') : $t('project.kanban.hierarchy.loadMore') }}
+											</XButton>
+										</li>
+										<li
 											v-if="canCreateTasks"
 											class="bucket-footer"
 										>
@@ -294,7 +320,7 @@
 													>
 												</div>
 												<p
-													v-if="newTaskError[bucket.id] && newTaskText === ''"
+													v-if="newTaskError[bucket.id] && !newTaskText.trim()"
 													class="help is-danger"
 												>
 													{{ $t('project.create.addTitleRequired') }}
@@ -396,6 +422,13 @@
 								type="text"
 								@keyup.esc="cancelNewBucket"
 							>
+							<p
+								v-if="newBucketError && !newBucketTitle.trim()"
+								class="help is-danger"
+								role="alert"
+							>
+								{{ $t('project.create.addTitleRequired') }}
+							</p>
 							<div class="kanban-quick-add__actions">
 								<XButton
 									type="submit"
@@ -464,6 +497,7 @@ import {useEventListener, useMediaQuery, useResizeObserver} from '@vueuse/core'
 import {useQuery, useQueryClient} from '@tanstack/vue-query'
 import {useRouteQuery} from '@vueuse/router'
 import {useI18n} from 'vue-i18n'
+import {klona} from 'klona/lite'
 import {draggableFor} from '@/components/base/Draggable'
 import type {SortableEvent} from 'sortablejs'
 
@@ -485,6 +519,7 @@ import KanbanMoveSelect from '@/components/project/views/kanban/KanbanMoveSelect
 import KanbanColumnNavigation from '@/components/project/views/kanban/KanbanColumnNavigation.vue'
 import {scrollKanbanColumnIntoView} from '@/components/project/views/kanban/scrollKanbanColumnIntoView'
 import {useKanbanGrouping} from '@/components/project/views/kanban/useKanbanGrouping'
+import LoadError from '@/components/misc/state/LoadError.vue'
 import Dropdown from '@/components/misc/Dropdown.vue'
 import DropdownItem from '@/components/misc/DropdownItem.vue'
 
@@ -560,6 +595,7 @@ let newTaskDraft = 0
 const showNewTaskInput = ref<number | null>(null)
 
 const newBucketTitle = ref('')
+const newBucketError = ref(false)
 let newBucketDraft = 0
 const showNewBucketInput = ref(false)
 const newTaskError = ref<{ [id: number]: boolean }>({})
@@ -724,6 +760,10 @@ function updateBucket(patch: BucketPatch, mutation = updateBucketMutation) {
 	})
 }
 const initialLoading = board.isLoading
+function retryBoard() {
+	if (board.isFetching.value) return
+	return board.refetch()
+}
 const projectIdWithFallback = computed<number>(() => project.value?.id || projectId.value)
 
 const taskLoading = computed(() => quickAddLoading.value || positionMutation.isPending.value)
@@ -758,48 +798,95 @@ function handleTaskContainerScroll(id: number, el: HTMLElement) {
 
 	// Mid-drag the copy in `buckets` is one task short, which would look like a missing page.
 	const bucket = board.data.value?.buckets.find(item => item.id === id)
-	if (bucketPageMutation.isPending.value || !bucket || !bucketHasMore(bucket)) return
-	bucketPageMutation.mutate({
-		project: projectId.value,
-		view: props.viewId,
-		params: boardParams.value,
-		bucket: id!,
-		page: (board.data.value?.pages[id!] ?? 1) + 1,
-	})
+	if (bucketPageMutation.isPending.value || bucketLoadFailed(id) || !bucket || !bucketHasMore(bucket)) return
+	void loadMoreInBucket(id)
 }
 
-function loadNextBucketPage(id: number) {
+type PagingBoard = {
+	project: number,
+	view: number,
+	params: TaskFilterParams,
+}
+
+function loadNextBucketPage(id: number, scope: PagingBoard = {
+	project: projectId.value,
+	view: props.viewId,
+	params: boardParams.value,
+}) {
 	const bucket = board.data.value?.buckets.find(item => item.id === id)
 	if (!bucket || !bucketHasMore(bucket)) return Promise.resolve()
 	return bucketPageMutation.mutateAsync({
-		project: projectId.value,
-		view: props.viewId,
-		params: boardParams.value,
+		...scope,
 		bucket: id,
 		page: (board.data.value?.pages[id] ?? 1) + 1,
 	})
 }
 
-// Groups can be collapsed below the scroll threshold, so paging there is also an explicit action.
-const loadingBucket = ref<number | null>(null)
+function isPagingBoardCurrent(input: PagingBoard | undefined) {
+	return input?.project === projectId.value && input.view === props.viewId &&
+		JSON.stringify(input.params) === JSON.stringify(boardParams.value)
+}
+const pagingCurrentBoard = computed(() => isPagingBoardCurrent(bucketPageMutation.variables.value))
+const loadingBucket = computed(() => bucketPageMutation.isPending.value && pagingCurrentBoard.value
+	? bucketPageMutation.variables.value?.bucket ?? null
+	: null)
+
+function bucketLoadFailed(id: number) {
+	return pagingCurrentBoard.value && bucketPageMutation.isError.value &&
+		bucketPageMutation.variables.value?.bucket === id
+}
+
 async function loadMoreInBucket(id: number) {
-	if (loadingBucket.value !== null) return
-	loadingBucket.value = id
+	if (bucketPageMutation.isPending.value || loadingEverywhere.value) return
+	const originalBoard = boardRef.value
+	const column = originalBoard?.querySelector<HTMLElement>(`[data-bucket-id="${id}"]`)
+	const trigger = column?.querySelector<HTMLElement>('.kanban-load-more button')
+	const request = captureClientRequestContext()
+	const scope: PagingBoard = {
+		project: projectId.value,
+		view: props.viewId,
+		params: klona(boardParams.value),
+	}
+	const previousIds = new Set(getBucketById(id)?.tasks.map(task => task.id))
+	let transferFocus = false
+	// Read focus before Vue removes the final-page button; removal moves focus to the document body.
+	const stopWatching = trigger === document.activeElement ? watch(() => getBucketById(id), bucket => {
+		transferFocus = !!bucket && !bucketHasMore(bucket) && document.activeElement === trigger
+	}, {flush: 'sync'}) : undefined
 	try {
-		await loadNextBucketPage(id)
-	} catch { /* The mutation reports the error. */ } finally {
-		loadingBucket.value = null
+		await loadNextBucketPage(id, scope)
+		await nextTick()
+		if (!transferFocus || trigger?.isConnected || originalBoard !== boardRef.value ||
+			!isClientRequestContextCurrent(request) || !isPagingBoardCurrent(scope) ||
+			(document.activeElement !== document.body && document.activeElement !== trigger)) return
+		const added = getBucketById(id)?.tasks.find(task => !previousIds.has(task.id))
+		const link = added && column?.querySelector<HTMLElement>(`[data-task-id="${added.id}"] .kanban-card__title-link`)
+		const target = link || bucketTitleRefs.get(id)
+		if (!target?.isConnected) return
+		if (!link) target.tabIndex = -1
+		target.focus({preventScroll: true})
+	} catch { /* The mutation reports the error; the column keeps an explicit retry. */ } finally {
+		stopWatching?.()
 	}
 }
 
 // One more page per column and click: a family can spread over every column, but the work stays bounded.
 const loadingEverywhere = ref(false)
 async function loadMoreEverywhere() {
-	if (loadingEverywhere.value) return
+	if (loadingEverywhere.value || bucketPageMutation.isPending.value) return
+	const request = captureClientRequestContext()
+	const scope: PagingBoard = {
+		project: projectId.value,
+		view: props.viewId,
+		params: klona(boardParams.value),
+	}
 	loadingEverywhere.value = true
 	try {
 		const ids = (board.data.value?.buckets ?? []).filter(bucketHasMore).map(bucket => bucket.id)
-		for (const id of ids) await loadNextBucketPage(id)
+		for (const id of ids) {
+			await loadNextBucketPage(id, scope)
+			if (!isClientRequestContextCurrent(request) || !isPagingBoardCurrent(scope)) return
+		}
 	} catch { /* The mutation reports the error. */ } finally {
 		loadingEverywhere.value = false
 	}
@@ -976,8 +1063,11 @@ function scrollTaskContainerToTop(bucketId: number) {
 async function openNewBucket() {
 	const project = projectId.value
 	const view = props.viewId
-	newBucketDraft++
-	showNewBucketInput.value = true
+	if (!showNewBucketInput.value) {
+		newBucketDraft++
+		newBucketError.value = false
+		showNewBucketInput.value = true
+	}
 	await nextTick()
 	if (project !== projectId.value || view !== props.viewId) return
 	boardRef.value?.querySelector('.new-bucket')?.scrollIntoView({block: 'nearest', inline: 'end'})
@@ -987,10 +1077,16 @@ function cancelNewBucket() {
 	newBucketDraft++
 	showNewBucketInput.value = false
 	newBucketTitle.value = ''
+	newBucketError.value = false
 }
 
 async function createNewBucket() {
-	if (newBucketLoading.value || !newBucketTitle.value.trim()) return
+	if (newBucketLoading.value) return
+	if (!newBucketTitle.value.trim()) {
+		newBucketError.value = true
+		return
+	}
+	newBucketError.value = false
 	const title = newBucketTitle.value
 	const draft = newBucketDraft
 	const project = projectId.value
@@ -1226,6 +1322,7 @@ watch(() => [props.projectId, props.viewId], () => {
 	showNewTaskInput.value = null
 	newTaskInputFocused.value = false
 	newBucketTitle.value = ''
+	newBucketError.value = false
 	showNewBucketInput.value = false
 })
 onBeforeUnmount(cancelBucketLimit)
@@ -1623,6 +1720,19 @@ function unCollapseBucket(bucket: BucketResponse) {
 
 	[dir='rtl'] & .bucket-expand__icon {
 		transform: scaleX(-1);
+	}
+
+	.kanban-load-more {
+		display: grid;
+		gap: var(--space-2);
+		padding: var(--space-2);
+		color: var(--text-secondary);
+		font-size: var(--text-sm);
+		line-height: var(--leading-normal);
+
+		.button {
+			min-block-size: 2.75rem;
+		}
 	}
 
 	.bucket-footer {

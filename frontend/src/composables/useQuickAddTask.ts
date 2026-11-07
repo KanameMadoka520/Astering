@@ -1,4 +1,4 @@
-import {computed} from 'vue'
+import {computed, ref} from 'vue'
 import {useRouter} from 'vue-router'
 import type {Task, Label} from '@/client/generated'
 import {
@@ -44,6 +44,12 @@ export function useQuickAddTask() {
 	const auth = useAuthStore()
 	const config = useConfigStore()
 	const router = useRouter()
+	const pendingOperations = ref(0)
+
+	function reportIncompleteDetails(details: string[]) {
+		if (!details.length) return
+		error({message: i18n.global.t('task.quickAdd.detailsIncomplete', {details: [...new Set(details)].join(', ')})})
+	}
 
 	async function findProjectId({project, projectId}: {project?: string | null, projectId: number}) {
 		if (project) {
@@ -53,8 +59,8 @@ export function useQuickAddTask() {
 			if (found?.id) return found.id
 		}
 		const routeProjectId = Number(router.currentRoute.value.params.projectId)
-		const id = routeProjectId > 0 ? routeProjectId : projectId
-		if (id <= 0) throw new Error('NO_PROJECT')
+		const id = projectId > 0 ? projectId : routeProjectId
+		if (!(id > 0)) throw new Error('NO_PROJECT')
 		return id
 	}
 
@@ -124,55 +130,91 @@ export function useQuickAddTask() {
 		context = captureClientRequestContext(),
 	) {
 		const {labels, skipped} = await ensureLabelsExist(parsedLabels, context)
-		await runWrites(labels, label => {
+		const saved = new Set<number>()
+		const incomplete: string[] = []
+		await runWrites(labels, async label => {
 			assertClientRequestContext(context)
-			return addLabel.mutateAsync({taskId: task.id!, label: {...label, id: label.id!}})
+			try {
+				await addLabel.mutateAsync({taskId: task.id!, label: {...label, id: label.id!}, notifyError: false})
+				saved.add(label.id!)
+			} catch {
+				assertClientRequestContext(context)
+				incomplete.push(`*${label.title}`)
+			}
 		}, config.concurrent_writes)
-		return {task: {...task, labels: [...(task.labels ?? []), ...labels]}, skipped}
+		const existing = task.labels ?? []
+		return {
+			task: {...task, labels: [...existing, ...labels.filter(label => saved.has(label.id!) && !existing.some(item => item.id === label.id))]},
+			skipped,
+			incomplete,
+		}
 	}
 
 	async function finishTask(task: Task, built: Awaited<ReturnType<typeof build>>, context: ClientRequestContext) {
 		assertClientRequestContext(context)
-		await runWrites(built.task.assignees ?? [], user => {
+		const assignees = [...(task.assignees ?? [])]
+		const incomplete: string[] = []
+		await runWrites(built.task.assignees ?? [], async user => {
 			assertClientRequestContext(context)
-			return addAssignee.mutateAsync({taskId: task.id!, user: {...user, id: user.id!}})
+			try {
+				await addAssignee.mutateAsync({taskId: task.id!, user: {...user, id: user.id!}, notifyError: false})
+				if (!assignees.some(item => item.id === user.id)) assignees.push(user)
+			} catch {
+				assertClientRequestContext(context)
+				incomplete.push(`@${user.username ?? user.name ?? user.id}`)
+			}
 		}, config.concurrent_writes)
-		return addLabelsToTask(
-			{task: {...task, assignees: built.task.assignees}, parsedLabels: built.parsedLabels},
+		const result = await addLabelsToTask(
+			{task: {...task, assignees}, parsedLabels: built.parsedLabels},
 			context,
 		)
+		return {...result, incomplete: [...incomplete, ...result.incomplete]}
 	}
 
 	async function createNewTask(input: Partial<Task>) {
-		const context = captureClientRequestContext()
-		const built = await build(input, context)
-		assertClientRequestContext(context)
-		const created = await create.mutateAsync({...built.task, project_id: built.task.project_id!})
-		const {task, skipped} = await finishTask(created, built, context)
-		reportSkippedLabels(skipped)
-		return task
+		pendingOperations.value++
+		try {
+			const context = captureClientRequestContext()
+			const built = await build(input, context)
+			assertClientRequestContext(context)
+			const created = await create.mutateAsync({...built.task, project_id: built.task.project_id!})
+			const {task, skipped, incomplete} = await finishTask(created, built, context)
+			assertClientRequestContext(context)
+			if (incomplete.length) reportIncompleteDetails([...incomplete, ...skipped.map(title => `*${title}`)])
+			else reportSkippedLabels(skipped)
+			return task
+		} finally {
+			pendingOperations.value--
+		}
 	}
 
-	async function createNewTasksBulk(entries: {title: string, project_id: number}[]) {
-		const context = captureClientRequestContext()
-		const built = await Promise.all(entries.map(entry => build(entry, context)))
-		assertClientRequestContext(context)
-		const result = await bulk.mutateAsync(built.map(item => item.task))
-		await runWrites(built.map((item, index) => ({item, index})), async ({item, index}) => {
-			const task = result.tasks[index]
-			if (!task) return
-			// `error` stays reserved for failed creates: the caller restores the typed title on it.
-			try {
-				result.tasks[index] = (await finishTask(task, item, context)).task
-			} catch {
-				assertClientRequestContext(context)
-			}
-		}, config.concurrent_writes)
-		return result
+	async function createNewTasksBulk(entries: {title: string, project_id: number}[], beforeCreate?: () => void) {
+		pendingOperations.value++
+		try {
+			const context = captureClientRequestContext()
+			const built = await Promise.all(entries.map(entry => build(entry, context)))
+			assertClientRequestContext(context)
+			beforeCreate?.()
+			const result = await bulk.mutateAsync(built.map(item => item.task))
+			const incomplete: string[] = []
+			await runWrites(built.map((item, index) => ({item, index})), async ({item, index}) => {
+				const task = result.tasks[index]
+				if (!task) return
+				// Only failed creates restore the typed title; failed additions must not duplicate a saved task.
+				const finished = await finishTask(task, item, context)
+				result.tasks[index] = finished.task
+				incomplete.push(...finished.incomplete)
+			}, config.concurrent_writes)
+			assertClientRequestContext(context)
+			reportIncompleteDetails(incomplete)
+			return result
+		} finally {
+			pendingOperations.value--
+		}
 	}
 
 	return {
-		isLoading: computed(() => [create, bulk, addAssignee, addLabel].some(mutation => mutation.isPending.value)),
+		isLoading: computed(() => pendingOperations.value > 0 || [create, bulk, addAssignee, addLabel, createLabel].some(mutation => mutation.isPending.value)),
 		createNewTask,
 		createNewTasksBulk,
 		findProjectId,

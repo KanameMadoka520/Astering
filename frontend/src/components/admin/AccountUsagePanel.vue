@@ -16,7 +16,7 @@ import XButton from '@/components/input/Button.vue'
 import {useAuthStore} from '@/stores/auth'
 
 const props = withDefaults(defineProps<{management?: boolean}>(), {management: false})
-const emit = defineEmits<{access: [allowed: boolean]}>()
+const emit = defineEmits<{access: [allowed: boolean], verifying: [pending: boolean]}>()
 defineSlots<{accountActions(props: {account: ManagedAccount}): unknown}>()
 type PanelAccess = {can_view_usage?: boolean, can_manage_accounts?: boolean}
 const {t, locale} = useI18n({useScope: 'global'})
@@ -43,6 +43,9 @@ const access = {
 	isError: computed(() => props.management ? managementAccess.isError.value : usageAccess.isError.value),
 	isPending: computed(() => props.management ? managementAccess.isPending.value : usageAccess.isPending.value),
 	isFetching: computed(() => props.management ? managementAccess.isFetching.value : usageAccess.isFetching.value),
+	isPaused: computed(() => props.management ? managementAccess.isPaused.value : usageAccess.isPaused.value),
+	isFetchedAfterMount: computed(() => props.management
+		? managementAccess.isFetchedAfterMount.value : usageAccess.isFetchedAfterMount.value),
 	refetch: () => props.management ? managementAccess.refetch() : usageAccess.refetch(),
 }
 const canFilter = computed(() => {
@@ -52,8 +55,10 @@ const canFilter = computed(() => {
 		? current && 'can_manage_accounts' in current && current.can_manage_accounts === true
 		: current && 'can_view_usage' in current && current.can_view_usage === true
 })
-const allowed = computed(() => canFilter.value === true && !access.isFetching.value)
+const allowed = computed(() => canFilter.value === true && (props.management
+	? access.isFetchedAfterMount.value : !access.isFetching.value))
 watch(allowed, value => emit('access', value), {immediate: true})
+watch(() => access.isFetching.value || access.isPaused.value, value => emit('verifying', value), {immediate: true})
 const page = ref(1)
 const search = ref('')
 const queryText = ref('')
@@ -98,7 +103,7 @@ const overview = computed(() => result.value?.overview)
 const accounts = computed(() => (result.value?.items ?? []) as ManagedAccount[])
 const showFilters = ref(false)
 const advancedFilters = computed(() => status.value !== 'all' || role.value !== 'all' || anomaly.value !== 'all')
-const busy = computed(() => access.isFetching.value || usage.isFetching.value)
+const busy = computed(() => access.isFetching.value || (allowed.value && usage.isFetching.value))
 const statuses = ['all', 'active', 'email_confirmation_required', 'disabled', 'account_locked'] as const
 const roles = ['all', 'human', 'bot', 'instance_admin', 'usage_admin'] as const
 const sorts = ['projects_owned', 'projects_created_24h', 'projects_created_7d', 'tasks_owned', 'tasks_created', 'file_bytes', 'ai_bytes', 'username', 'created', 'id'] as const
@@ -188,7 +193,8 @@ function changePage(delta: number) {
 			<label class="usage-advanced-filter"><span>{{ t('siteUsage.order') }}</span><select v-model="orderBy"><option value="desc">{{ t('siteUsage.desc') }}</option><option value="asc">{{ t('siteUsage.asc') }}</option></select></label>
 		</form>
 		<p
-			v-if="access.isPending.value || access.isFetching.value || (allowed && (usage.isPending.value || usage.isFetching.value))"
+			v-if="access.isPending.value || access.isFetching.value || (management && !access.isFetchedAfterMount.value && !access.isError.value)
+				|| (allowed && (usage.isPending.value || usage.isFetching.value))"
 			role="status"
 		>
 			{{ t('siteUsage.loading') }}

@@ -35,7 +35,7 @@
 			<p class="control">
 				<XButton
 					class="add-task-button"
-					:disabled="newTaskTitle === '' || showLoading || undefined"
+					:aria-disabled="!newTaskTitle.trim() || busy || Boolean(recovery)"
 					icon="plus"
 					:loading="busy"
 					:aria-label="$t('project.list.add')"
@@ -62,13 +62,73 @@
 				{{ errorMessage }}
 			</p>
 		</Expandable>
+		<section
+			v-if="recovery"
+			class="bulk-recovery"
+			:aria-label="$t('task.bulkRecovery.title')"
+			:aria-busy="busy"
+		>
+			<strong>{{ $t('task.bulkRecovery.title') }}</strong>
+			<p role="status">
+				{{ $t('task.bulkRecovery.summary', {created: recovery.entries.length - pendingEntries.length, pending: pendingEntries.length, relations: pendingRelations}) }}
+			</p>
+			<ul v-if="pendingEntries.length">
+				<li
+					v-for="entry in pendingEntries"
+					:key="recovery.entries.indexOf(entry)"
+				>
+					{{ entry.title }}
+				</li>
+			</ul>
+			<p>{{ $t('task.bulkRecovery.hint') }}</p>
+			<p
+				v-if="confirmDiscard"
+				class="bulk-recovery-confirm"
+				role="alert"
+			>
+				{{ $t('task.bulkRecovery.discardConfirm', {pending: pendingEntries.length, relations: pendingRelations}) }}
+			</p>
+			<div class="bulk-recovery-actions">
+				<XButton
+					class="bulk-recovery-retry"
+					:loading="busy"
+					:aria-disabled="busy"
+					@click="retryBatch"
+				>
+					{{ $t('task.bulkRecovery.retry') }}
+				</XButton>
+				<XButton
+					variant="secondary"
+					:shadow="false"
+					:aria-disabled="busy"
+					@click="toggleDiscard"
+				>
+					{{ $t(confirmDiscard ? 'misc.cancel' : 'task.bulkRecovery.discard') }}
+				</XButton>
+				<XButton
+					v-if="confirmDiscard"
+					class="bulk-recovery-discard"
+					danger
+					:aria-disabled="busy"
+					@click="discardBatch"
+				>
+					{{ $t('misc.confirm') }}
+				</XButton>
+			</div>
+		</section>
 	</div>
 </template>
 
 <script setup lang="ts">
-import {assertClientRequestContext, captureClientRequestContext} from '@/client/requestContext'
+import {
+	assertClientRequestContext,
+	captureClientRequestContext,
+	isClientRequestContextCurrent,
+	isRequestContextAbort,
+	type ClientRequestContext,
+} from '@/client/requestContext'
 import {useCreateTaskRelationMutation} from '@/client/queries/taskMutations'
-import {computed, ref, nextTick, onBeforeUnmount} from 'vue'
+import {computed, ref, shallowRef, watch, nextTick, onBeforeUnmount} from 'vue'
 import {useI18n} from 'vue-i18n'
 import {useElementHover} from '@vueuse/core'
 import {useRouter} from 'vue-router'
@@ -88,7 +148,6 @@ import {useConfigStore} from '@/stores/config'
 import {reportSkippedLabels, useQuickAddTask} from '@/composables/useQuickAddTask'
 
 import {useAutoHeightTextarea} from '@/composables/useAutoHeightTextarea'
-import {useDelayedLoading} from '@/composables/useDelayedLoading'
 
 const emit = defineEmits<{
 	tasksAdded: [tasks: ITask[]],
@@ -107,9 +166,46 @@ const {createNewTasksBulk, findProjectId, ensureLabelsExist, isLoading: loading}
 // time would create the task and its new labels twice.
 const submitting = ref(false)
 const busy = computed(() => loading.value || submitting.value)
-const showLoading = useDelayedLoading(busy)
 const createRelationMutation = useCreateTaskRelationMutation()
 const router = useRouter()
+
+type BatchEntry = {
+	title: string,
+	project_id: number,
+	parentIndex: number | null,
+	task?: ITask,
+	linked: boolean,
+}
+type CreationBatch = {
+	context: ClientRequestContext,
+	path: string,
+	generation: number,
+	entries: BatchEntry[],
+}
+const recovery = shallowRef<CreationBatch>()
+const confirmDiscard = ref(false)
+const pendingEntries = computed(() => recovery.value?.entries.filter(entry => !entry.task) ?? [])
+const pendingRelations = computed(() => recovery.value?.entries.filter(entry => !entry.linked).length ?? 0)
+let generation = 0
+let disposed = false
+function currentBatch(batch: CreationBatch) {
+	return !disposed && batch.generation === generation && batch.path === router.currentRoute.value.fullPath
+		&& isClientRequestContextCurrent(batch.context)
+}
+function assertBatch(batch: CreationBatch) {
+	assertClientRequestContext(batch.context)
+	if (!currentBatch(batch)) throw new DOMException('Task batch scope changed', 'AbortError')
+}
+watch([
+	() => router.currentRoute.value.fullPath,
+	() => authStore.identityKey,
+	() => authStore.currentSessionId,
+], () => {
+	generation++
+	recovery.value = undefined
+	confirmDiscard.value = false
+}, {flush: 'sync'})
+onBeforeUnmount(() => { disposed = true; generation++ })
 
 // enable only if we don't have a modal
 // onStartTyping(() => {
@@ -131,137 +227,167 @@ function resetEmptyTitleError() {
 }
 
 async function addTask() {
-	if (busy.value) {
-		return
-	}
-	if (newTaskTitle.value === '') {
+	if (busy.value || recovery.value) return
+	if (!newTaskTitle.value.trim()) {
 		errorMessage.value = t('project.create.addTitleRequired')
 		return
 	}
 	errorMessage.value = ''
 	submitting.value = true
-	try {
-		await createTasks()
-	} finally {
-		submitting.value = false
-	}
+	try { await createTasks() }
+	finally { submitting.value = false }
 }
 
-// A failed create puts the title back. Text typed in the meantime stays, after it on its own line.
 function restoreTitle(backup: string) {
 	newTaskTitle.value = newTaskTitle.value === '' ? backup : `${backup}\n${newTaskTitle.value}`
 }
 
+// The parser's parent titles are ambiguous for repeated names. Keep its parsing, and associate the same source
+// lines by indentation/index only, including the parser's adjustment for an initially indented pasted block.
+function parentIndexes(source: string, parsed: TaskWithParent[]) {
+	const lines = source.split(/[\r\n]+/).filter(line => line.replace(/\s/g, '').length > 0)
+	let offset = lines[0]?.match(/^(\t| )+/)?.[0].length ?? 0
+	const levels = lines.map(line => {
+		const leading = line.match(/^(\t| )+/)?.[0].length ?? 0
+		offset = Math.min(offset, leading)
+		return line.substring(offset).match(/^ */)?.[0].length ?? 0
+	})
+	const stack: number[] = []
+	return parsed.map((task, index) => {
+		while (stack.length && levels[stack[stack.length - 1]] >= levels[index]) stack.pop()
+		const parent = task.parent === null ? null : stack[stack.length - 1] ?? null
+		stack.push(index)
+		return parent
+	})
+}
+
 async function createTasks() {
-	const context = captureClientRequestContext()
-	const taskTitleBackup = newTaskTitle.value
-	// Keyed by the title the task had before quick add magic parsed it. A Map,
-	// because a user-entered `__proto__` would corrupt plain-object lookups.
-	const createdTasks = new Map<ITask['title'], ITask>()
-	const tasksToCreate = parseSubtasksViaIndention(newTaskTitle.value, authStore.settings.frontend_settings.quick_add_magic_mode)
-
-	// We ensure all labels exist prior to passing them down to the create task method
-	// In the store it will only ever see one task at a time so there's no way to reliably 
-	// check if a new label was created before (because everything happens async).
-	const allLabels = tasksToCreate.map(({title}) => getLabelsFromPrefix(title, authStore.settings.frontend_settings.quick_add_magic_mode) ?? [])
-	const requestedLabels = [...new Set(allLabels.flat())]
-	const {skipped} = await ensureLabelsExist(requestedLabels, context)
-	assertClientRequestContext(context)
-
-	// Skipped labels (e.g. link shares may not create them) don't block task creation; just tell the user.
-	reportSkippedLabels(skipped)
-
-	let currentProjectId = authStore.settings.default_project_id
-	if (typeof router.currentRoute.value.params.projectId !== 'undefined') {
-		currentProjectId = Number(router.currentRoute.value.params.projectId)
+	const backup = newTaskTitle.value
+	const batch: CreationBatch = {
+		context: captureClientRequestContext(),
+		path: router.currentRoute.value.fullPath,
+		generation,
+		entries: [],
 	}
-
+	// Clear only the submitted snapshot, so typing during label/member lookup starts an independent draft.
+	newTaskTitle.value = ''
 	try {
-		newTaskTitle.value = ''
-
-		const entries = await Promise.all(tasksToCreate
-			.filter(({title}) => title !== '')
-			.map(async ({title, project}) => ({
-				title,
-				project_id: (project !== null
-					? await findProjectId({project, projectId: 0})
-					: currentProjectId) || authStore.settings.default_project_id || 0,
-			})))
-
-		// Input like a lone bullet passes the empty check but parses to nothing.
-		if (entries.length === 0) {
-			restoreTitle(taskTitleBackup)
+		const mode = authStore.settings.frontend_settings.quick_add_magic_mode
+		const parsed = parseSubtasksViaIndention(backup, mode)
+		const parents = parentIndexes(backup, parsed)
+		const retained = parsed.map((task, index) => ({task, index})).filter(({task}) => task.title !== '')
+		if (!retained.length) {
+			restoreTitle(backup)
 			errorMessage.value = t('project.create.addTitleRequired')
 			return
 		}
-
-		// Separate from createdTasks: duplicate lines create two tasks but collapse
-		// into a single map entry.
-		const allCreated: ITask[] = []
-
-		assertClientRequestContext(context)
-		const bulk = await createNewTasksBulk(entries)
-		entries.forEach(({title}, index) => {
-			const task = bulk.tasks[index]
-			if (task === null) {
-				return
+		const labels = [...new Set(retained.flatMap(({task}) => getLabelsFromPrefix(task.title, mode) ?? []))]
+		const {skipped} = await ensureLabelsExist(labels, batch.context)
+		assertBatch(batch)
+		reportSkippedLabels(skipped)
+		const currentProject = Number(router.currentRoute.value.params.projectId) || authStore.settings.default_project_id
+		const retainedIndexes = new Map(retained.map(({index}, entryIndex) => [index, entryIndex]))
+		batch.entries = await Promise.all(retained.map(async ({task, index}) => {
+			const project = task.project !== null
+				? await findProjectId({project: task.project, projectId: 0})
+				: currentProject
+			assertBatch(batch)
+			const parent = parents[index]
+			const parentIndex = parent === null ? null : retainedIndexes.get(parent) ?? null
+			return {
+				title: task.title,
+				project_id: project || authStore.settings.default_project_id || 0,
+				parentIndex,
+				linked: parentIndex === null,
 			}
-			createdTasks.set(title, task)
-			allCreated.push(task)
-		})
-
-		const allParentTasks = tasksToCreate.filter(t => t.parent !== null).map(t => t.parent)
-		const createRelation = async (t: TaskWithParent) => {
-			const createdTask = createdTasks.get(t.title)
-			if (typeof createdTask === 'undefined') {
-				return
-			}
-
-			const isParent = allParentTasks.includes(t.title)
-			if (t.parent === null && !isParent) {
-				return
-			}
-
-			const createdParentTask = createdTasks.get(t.parent ?? '')
-			if (typeof createdTask === 'undefined' || typeof createdParentTask === 'undefined') {
-				return
-			}
-
-			assertClientRequestContext(context)
-			const rel = await createRelationMutation.mutateAsync({
-				taskId: createdTask.id!,
-				other_task_id: createdParentTask.id,
-				relation_kind: RELATION_KIND.PARENTTASK,
-			})
-
-			return rel
-		}
-
-		try {
-			await runWrites(tasksToCreate, createRelation, configStore.concurrent_writes)
-		} catch (e) {
-			// The tasks themselves exist by now — reporting and moving on beats
-			// restoring the input and letting the user duplicate all of them.
-			error(e)
-		}
-
-		assertClientRequestContext(context)
-		if (allCreated.length > 0) {
-			emit('tasksAdded', allCreated)
-		}
-
-		if (bulk.error !== null) {
-			restoreTitle(taskTitleBackup)
-			error(bulk.error)
-		}
-	} catch (e) {
-		restoreTitle(taskTitleBackup)
-		if (e instanceof Error && e.message === 'NO_PROJECT') {
-			errorMessage.value = t('project.create.addProjectRequired')
+		}))
+		await executeBatch(batch)
+	} catch (cause) {
+		if (isRequestContextAbort(cause) || !currentBatch(batch)) return
+		if (batch.entries.some(entry => entry.task)) {
+			recovery.value = {...batch, entries: [...batch.entries]}
+			error(cause)
 			return
 		}
-		throw e
+		restoreTitle(backup)
+		errorMessage.value = cause instanceof Error && cause.message === 'NO_PROJECT'
+			? t('project.create.addProjectRequired')
+			: t('task.bulkRecovery.prepareFailed')
 	}
+}
+
+async function executeBatch(batch: CreationBatch) {
+	assertBatch(batch)
+	const pending = batch.entries.filter(entry => !entry.task)
+	if (pending.length) {
+		const result = await createNewTasksBulk(pending.map(({title, project_id}) => ({title, project_id})), () => assertBatch(batch))
+		assertBatch(batch)
+		const added: ITask[] = []
+		pending.forEach((entry, index) => {
+			const task = result.tasks[index]
+			if (!task?.id) return
+			entry.task = task
+			added.push(task)
+		})
+		if (added.length) emit('tasksAdded', added)
+		if (result.error) error(result.error)
+	}
+	await runWrites(batch.entries, async entry => {
+		if (entry.linked || entry.parentIndex === null || !entry.task) return
+		const parent = batch.entries[entry.parentIndex]?.task
+		if (!parent) return
+		assertBatch(batch)
+		try {
+			await createRelationMutation.mutateAsync({
+				taskId: entry.task.id!,
+				other_task_id: parent.id!,
+				relation_kind: RELATION_KIND.PARENTTASK,
+			})
+			assertBatch(batch)
+			entry.linked = true
+		} catch (cause) {
+			assertBatch(batch)
+			// A lost acknowledgement can leave a valid relation on the server; its duplicate response confirms it.
+			if ((cause as {code?: number} | null)?.code === 4008) entry.linked = true
+		}
+	}, configStore.concurrent_writes)
+	assertBatch(batch)
+	if (batch.entries.some(entry => !entry.task || !entry.linked)) {
+		recovery.value = {...batch, entries: [...batch.entries]}
+	} else {
+		const restoreFocus = Boolean(document.activeElement?.closest('.bulk-recovery'))
+		recovery.value = undefined
+		confirmDiscard.value = false
+		if (restoreFocus) {
+			await nextTick()
+			if (currentBatch(batch) && document.activeElement === document.body) newTaskInput.value?.focus()
+		}
+	}
+}
+
+async function retryBatch() {
+	if (busy.value || !recovery.value) return
+	const batch = recovery.value
+	if (!currentBatch(batch)) {
+		recovery.value = undefined
+		return
+	}
+	confirmDiscard.value = false
+	submitting.value = true
+	try { await executeBatch(batch) }
+	catch (cause) {
+		if (!isRequestContextAbort(cause) && currentBatch(batch)) error(cause)
+	} finally { submitting.value = false }
+}
+function toggleDiscard() {
+	if (!busy.value) confirmDiscard.value = !confirmDiscard.value
+}
+async function discardBatch() {
+	if (busy.value || !confirmDiscard.value || !recovery.value) return
+	recovery.value = undefined
+	confirmDiscard.value = false
+	await nextTick()
+	newTaskInput.value?.focus()
 }
 
 function handleEnter(e: KeyboardEvent) {
@@ -311,6 +437,33 @@ defineExpose({
 	margin: var(--space-2) 0 0;
 	color: var(--accent-text);
 	font-size: var(--text-sm);
+}
+
+.bulk-recovery {
+	margin-block-start: var(--space-3);
+	padding: var(--space-3);
+	border: 1px solid var(--border-default);
+	border-radius: var(--radius-md);
+	background: var(--surface-raised);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	overflow-wrap: anywhere;
+
+	p {
+		margin-block: var(--space-2);
+	}
+
+	ul {
+		max-block-size: 10rem;
+		padding-inline-start: var(--space-4);
+		overflow: auto;
+	}
+}
+
+.bulk-recovery-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
 }
 
 .task-add .add-task__field {

@@ -1,6 +1,6 @@
-import {beforeEach, describe, expect, it, vi} from 'vitest'
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 import {defineComponent} from 'vue'
-import {mount} from '@vue/test-utils'
+import {flushPromises, mount} from '@vue/test-utils'
 import {createPinia} from 'pinia'
 import {QueryClient, VueQueryPlugin} from '@tanstack/vue-query'
 
@@ -27,27 +27,82 @@ vi.mock('vue-router', async importOriginal => ({
 
 import {error} from '@/message'
 import {useQuickAddTask} from './useQuickAddTask'
+import {queryClient as sharedQueryClient} from '@/client/queryClient'
+
+const cleanup: (() => void)[] = []
 
 function quickAdd() {
 	let actions!: ReturnType<typeof useQuickAddTask>
 	const queryClient = new QueryClient()
-	mount(defineComponent({
+	const wrapper = mount(defineComponent({
 		setup() {
 			actions = useQuickAddTask()
 			return () => null
 		},
 	}), {global: {plugins: [createPinia(), [VueQueryPlugin, {queryClient}]]}})
+	cleanup.push(() => { wrapper.unmount(); queryClient.clear() })
 	return actions
 }
 
 describe('useQuickAddTask', () => {
 	beforeEach(() => {
+		sharedQueryClient.clear()
 		vi.mocked(error).mockClear()
 		Object.values(sdk).forEach(mock => mock.mockReset())
 		sdk.labelsList.mockResolvedValue({data: {items: [], total_pages: 1}})
 		sdk.projectsUsersSearch.mockResolvedValue({data: {items: []}})
 		sdk.projectsList.mockResolvedValue({data: {items: [], total_pages: 1}})
 		sdk.taskAssigneesCreate.mockResolvedValue({data: {}})
+	})
+	afterEach(() => {
+		cleanup.splice(0).forEach(dispose => dispose())
+		sharedQueryClient.clear()
+	})
+
+	it('stays busy while resolving a member before any task mutation starts', async () => {
+		let resolve!: (value: unknown) => void
+		sdk.projectsUsersSearch.mockReturnValue(new Promise(done => { resolve = done }))
+		sdk.tasksCreate.mockResolvedValue({data: {id: 7, title: 'Review', project_id: 1}})
+		const actions = quickAdd()
+		const pending = actions.createNewTask({title: 'Review @jane', project_id: 1})
+		await flushPromises()
+		const creatingBeforeResolution = sdk.tasksCreate.mock.calls.length
+		const busyBeforeResolution = actions.isLoading.value
+		resolve({data: {items: [{id: 3, username: 'jane'}]}})
+		await pending
+		expect(creatingBeforeResolution).toBe(0)
+		expect(busyBeforeResolution).toBe(true)
+		expect(actions.isLoading.value).toBe(false)
+	})
+
+	it('returns a saved task and one clear notice when attaching its member fails', async () => {
+		sdk.projectsUsersSearch.mockResolvedValue({data: {items: [{id: 3, username: 'jane'}]}})
+		sdk.tasksCreate.mockResolvedValue({data: {id: 7, title: 'Review', project_id: 1}})
+		sdk.taskAssigneesCreate.mockRejectedValue({status: 500})
+		const actions = quickAdd()
+		await expect(actions.createNewTask({title: 'Review @jane', project_id: 1}))
+			.resolves.toMatchObject({id: 7, title: 'Review', assignees: []})
+		expect(sdk.tasksCreate).toHaveBeenCalledTimes(1)
+		expect(error).toHaveBeenCalledTimes(1)
+		expect(error).toHaveBeenCalledWith({message: expect.stringContaining('@jane')})
+		expect(actions.isLoading.value).toBe(false)
+	})
+
+	it('keeps successful labels and reports only unsaved additions after task creation', async () => {
+		sdk.labelsList.mockResolvedValue({data: {items: [
+			{id: 9, title: 'Urgent'},
+			{id: 10, title: 'Research'},
+		], total_pages: 1}})
+		sdk.tasksCreate.mockResolvedValue({data: {id: 7, title: 'Review', project_id: 1}})
+		sdk.taskLabelsCreate.mockImplementation(async ({body}: {body: {label_id: number}}) => {
+			if (body.label_id === 9) throw {status: 500}
+			return {data: {}}
+		})
+		const task = await quickAdd().createNewTask({title: 'Review *Urgent *Research', project_id: 1})
+		expect(task).toMatchObject({id: 7, title: 'Review', labels: [{id: 10, title: 'Research'}]})
+		expect(sdk.tasksCreate).toHaveBeenCalledTimes(1)
+		expect(error).toHaveBeenCalledTimes(1)
+		expect(error).toHaveBeenCalledWith({message: expect.stringContaining('*Urgent')})
 	})
 
 	it('strips a matched assignee from the created title', async () => {

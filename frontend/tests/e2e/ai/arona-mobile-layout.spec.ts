@@ -1,7 +1,8 @@
 import type {Page, TestInfo} from '@playwright/test'
 import {writeFile} from 'node:fs/promises'
+import {readFileSync} from 'node:fs'
 import {test, expect} from '../../support/fixtures'
-import {mobileArona, mobileChatUrl} from '../../support/mobileArona'
+import {MOBILE_CHAT_ID, mobileArona, mobileChatUrl} from '../../support/mobileArona'
 
 async function metrics(page: Page, embedded = false) {
 	return page.locator(embedded ? '.arona-panel .tcy-assistant' : '.tcy-assistant:not(.is-embedded)').evaluate(root => {
@@ -162,6 +163,55 @@ test.describe('mobile chat layout', () => {
 		await expect(input).toHaveValue('')
 		await expect(page.locator('.chat-markdown')).toHaveCount(2)
 	})
+
+	test('restores separate drafts through internal chat links and browser Back/Forward without remounting', async ({authenticatedPage: page}) => {
+		await page.setViewportSize({width: 390, height: 844})
+		const server = await mobileArona(page)
+		const secondID = '256abc6d-87dd-4f99-a043-c4ef9ecf61e1'
+		const first = server.conversation()
+		first.turns![0].result!.reply = `[Open second conversation](/ai?chat=${secondID})`
+		const second = structuredClone(first)
+		second.id = secondID
+		second.title = 'Second conversation with its own draft'
+		second.turns![0].result!.reply = `[Return to first conversation](/ai?chat=${MOBILE_CHAT_ID})`
+		await page.route(`**/api/v2/ai/conversations/${secondID}`, route => route.fulfill({json: second}))
+		await page.route(`**/api/v2/ai/conversations/${secondID}/events`, route => route.fulfill({
+			contentType: 'text/event-stream',
+			body: `event: activity\ndata: ${JSON.stringify({
+				turn: second.turns?.at(-1),
+				storage: second.storage,
+				compacting: false,
+				compactions: [],
+			})}\n\n`,
+		}))
+		await page.goto(mobileChatUrl())
+		const input = page.getByLabel('Your request', {exact: true})
+		await input.fill('First conversation keeps this unsent draft.')
+		const inputNode = await input.elementHandle()
+		await page.getByRole('link', {name: 'Open second conversation', exact: true}).click()
+		await expect(page).toHaveURL(new RegExp(`chat=${secondID}`))
+		await expect(input).toHaveValue('')
+		await input.fill('Second conversation has a different unsent draft.')
+		await page.getByRole('link', {name: 'Return to first conversation', exact: true}).click()
+		await expect(page).toHaveURL(new RegExp(`chat=${MOBILE_CHAT_ID}`))
+		await expect(input).toHaveValue('First conversation keeps this unsent draft.')
+		await page.goBack()
+		await expect(page).toHaveURL(new RegExp(`chat=${secondID}`))
+		await expect(input).toHaveValue('Second conversation has a different unsent draft.')
+		await page.goForward()
+		await expect(page).toHaveURL(new RegExp(`chat=${MOBILE_CHAT_ID}`))
+		await expect(input).toHaveValue('First conversation keeps this unsent draft.')
+		expect(await inputNode?.evaluate(node => node.isConnected && node === document.querySelector('.composer textarea'))).toBe(true)
+		const stored = await page.evaluate(ids => Object.fromEntries(Object.keys(sessionStorage)
+			.filter(key => key.startsWith('tcy-ai-draft:'))
+			.map(key => [JSON.parse(key.slice('tcy-ai-draft:'.length))[2], sessionStorage.getItem(key)])
+			.filter(([id]) => ids.includes(id))), [MOBILE_CHAT_ID, secondID])
+		expect(stored).toEqual({
+			[MOBILE_CHAT_ID]: 'First conversation keeps this unsent draft.',
+			[secondID]: 'Second conversation has a different unsent draft.',
+		})
+	})
+
 	test('confirms an arriving unread reply only after the configuration sheet exposes the transcript', async ({authenticatedPage: page}) => {
 		await page.setViewportSize({width: 390, height: 844})
 		const server = await mobileArona(page, {holdConversation: true})
@@ -179,6 +229,73 @@ test.describe('mobile chat layout', () => {
 		expect(server.requests.find(request => request.action === 'read')).toMatchObject({through_reply_id: 'mobile-completed-turn'})
 		expect(server.conversation().unread).toBe(false)
 	})
+
+	for (const covering of ['drive', 'rename', 'export', 'image'] as const) {
+		test(`keeps an arriving reply unread behind the ${covering} dialog`, async ({authenticatedPage: page}) => {
+			await page.setViewportSize({width: 390, height: 844})
+			const server = await mobileArona(page)
+			const conversation = server.conversation()
+			if (covering === 'image') {
+				conversation.turns![0].attachments = [{
+					id: 'preview-image',
+					name: 'preview-image.png',
+					mime: 'image/png',
+					size: 100,
+				}]
+				await page.route('**/api/v2/ai/conversations/*/attachments/preview-image', route => route.fulfill({
+					contentType: 'image/png',
+					body: readFileSync(new URL('../../fixtures/image-blue.png', import.meta.url)),
+				}))
+			}
+			let announce!: () => void
+			const incoming = new Promise<void>(done => { announce = done })
+			await page.route('**/api/v2/ai/conversations/*/events', async route => {
+				await incoming
+				const current = server.conversation()
+				await route.fulfill({
+					contentType: 'text/event-stream',
+					body: `event: activity\ndata: ${JSON.stringify({
+						turn: current.turns?.at(-1),
+						storage: current.storage,
+						unread: current.unread,
+						latest_reply_id: current.latest_reply_id,
+						compacting: false,
+						compactions: [],
+					})}\n\n`,
+				})
+			})
+			try {
+				await page.goto(mobileChatUrl())
+				await expect(page.locator('.chat-markdown')).toContainText('31 December 2026')
+				if (covering === 'drive') {
+					await page.getByRole('button', {name: 'Attach images or files (paste or drop also works)', exact: true}).click()
+					await page.getByRole('menuitem', {name: 'Choose from Drive', exact: true}).click()
+				} else if (covering === 'image') {
+					await page.getByRole('button', {name: 'Preview preview-image.png', exact: true}).click()
+				} else {
+					await page.locator('.conversation-toolbar .chat-menu-trigger').click()
+					await page.getByRole('menuitem', {
+						name: covering === 'rename' ? 'Rename conversation' : 'Export conversation',
+						exact: true,
+					}).click()
+				}
+				const dialog = page.getByRole('dialog').filter({visible: true})
+				await expect(dialog).toHaveCount(1)
+				conversation.unread = true
+				conversation.latest_reply_id = 'mobile-completed-turn'
+				announce()
+				// Intersection geometry stays unchanged under native dialogs; the reply still has not been viewed.
+				await page.waitForTimeout(1100)
+				expect(server.requests.filter(request => request.action === 'read')).toHaveLength(0)
+				await page.keyboard.press('Escape')
+				await expect(dialog).toHaveCount(0)
+				await expect.poll(() => server.requests.filter(request => request.action === 'read').length).toBe(1)
+				expect(server.conversation().unread).toBe(false)
+			} finally {
+				announce()
+			}
+		})
+	}
 
 	test('keeps the composer above a keyboard that changes only visualViewport, without remounting the draft', async ({authenticatedPage: page}, testInfo) => {
 		await page.setViewportSize({width: 390, height: 844})
@@ -390,9 +507,9 @@ for (const width of [390, 1440]) {
 			await expect(connection).toBeChecked()
 			await page.keyboard.press('Escape')
 			await expect(mcp).not.toBeVisible()
-			await configuration.locator('.preferences-toggle').click()
-			await expect(preferences.getByLabel(/^Working mode/)).toBeDisabled()
-			await expect(preferences.getByRole('button', {name: 'Use for upcoming messages', exact: true})).toBeDisabled()
+			await expect(configuration.locator('.preferences-toggle')).toBeDisabled()
+			await expect(preferences).not.toBeVisible()
+			await expect(configuration).toBeVisible()
 			expect(server.requests).toHaveLength(1)
 		})
 	})

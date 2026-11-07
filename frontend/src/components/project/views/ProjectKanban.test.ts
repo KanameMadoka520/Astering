@@ -5,11 +5,13 @@ import {nextTick} from 'vue'
 import draggable from 'zhyswan-vuedraggable'
 import {QueryClient, VueQueryPlugin} from '@tanstack/vue-query'
 import {removeToken, saveToken} from '@/helpers/auth'
+import {ApiError} from '@/client/problem'
 import {captureClientRequestContext, isClientRequestContextCurrent} from '@/client/requestContext'
 
 const sdk = vi.hoisted(() => ({
 	projectViewBucketsTasksList: vi.fn(),
 	projectViewTasksList: vi.fn(),
+	bucketsCreate: vi.fn(),
 	bucketsUpdate: vi.fn(),
 	bucketsDelete: vi.fn(),
 	tasksCreate: vi.fn(),
@@ -25,13 +27,14 @@ const buckets = [
 
 vi.mock('@/client/generated', () => sdk)
 vi.mock('@/message', () => ({error: vi.fn(), success: vi.fn()}))
+const projectState = vi.hoisted(() => ({permission: 2}))
 vi.mock('@/composables/useCurrentProject', () => ({
 	useCurrentProject: () => ({
 		currentProject: {
 			value: {
 				id: 1,
 				title: 'Test',
-				max_permission: 2,
+				max_permission: projectState.permission,
 				views: [{id: 10, view_kind: 'kanban', bucket_configuration_mode: 'manual'}],
 			},
 		},
@@ -89,12 +92,16 @@ vi.mock('vue-i18n', async importOriginal => ({
 }))
 
 import ProjectKanban from './ProjectKanban.vue'
+import LoadError from '@/components/misc/state/LoadError.vue'
 
 let queryClient: QueryClient
 
-async function mountKanban(stubs: Record<string, unknown> = {}, projectId = 1) {
-	queryClient = new QueryClient()
+async function mountKanban(stubs: Record<string, unknown> = {}, projectId = 1, attachTo?: HTMLElement) {
+	queryClient = new QueryClient({
+		defaultOptions: {queries: {retry: false}},
+	})
 	const wrapper = shallowMount(ProjectKanban, {
+		attachTo,
 		props: {
 			isLoadingProject: false,
 			projectId,
@@ -106,6 +113,7 @@ async function mountKanban(stubs: Record<string, unknown> = {}, projectId = 1) {
 			directives: {focus: () => {}, tooltip: () => {}, cy: () => {}},
 			stubs: {
 				ProjectWrapper: {template: '<div><slot name="default"/></div>'},
+				XButton: {template: '<button><slot /></button>'},
 				...stubs,
 			},
 		},
@@ -150,6 +158,8 @@ function cachedBoard() {
 
 describe('ProjectKanban', () => {
 	beforeEach(() => {
+		projectState.permission = 2
+		sdk.bucketsCreate.mockReset()
 		updateBucket.mockClear()
 		updateBucket.mockResolvedValue({data: {id: 2, position: 200}})
 		sdk.bucketsDelete.mockReset()
@@ -307,6 +317,231 @@ describe('ProjectKanban', () => {
 		await flushPromises()
 
 		expect(wrapper.find('.bucket-footer input').exists()).toBe(false)
+	})
+
+	it('clears a saved column draft even when navigation locates the same open form during the request', async () => {
+		let resolveCreate!: (value: unknown) => void
+		sdk.bucketsCreate.mockImplementation(() => new Promise(resolve => { resolveCreate = resolve }))
+		const wrapper = await mountKanban()
+		const vm = wrapper.vm as unknown as {openNewBucket: () => Promise<void>}
+		await vm.openNewBucket()
+		await wrapper.find('.new-bucket input').setValue('One new column')
+		await wrapper.find('.new-bucket form').trigger('submit')
+		await flushPromises()
+		await vm.openNewBucket()
+		await wrapper.find('.new-bucket form').trigger('submit')
+		expect(sdk.bucketsCreate).toHaveBeenCalledOnce()
+		resolveCreate({data: {id: 4, title: 'One new column', position: 400}})
+		await flushPromises()
+		expect((wrapper.find('.new-bucket input').element as HTMLInputElement).value).toBe('')
+		expect(cachedBoard()?.buckets).toHaveLength(4)
+	})
+
+	it('shows title validation for whitespace task and column drafts without creating either', async () => {
+		const wrapper = await mountKanban({BucketDraggable: DRAGGABLE_STUB, TaskDraggable: DRAGGABLE_STUB})
+		const vm = wrapper.vm as unknown as {
+			toggleShowNewTaskInput: (id: number) => void,
+			openNewBucket: () => Promise<void>,
+		}
+		vm.toggleShowNewTaskInput(1)
+		await nextTick()
+		await wrapper.find('.bucket-footer input').setValue('   ')
+		await wrapper.find('.bucket-footer form').trigger('submit')
+		expect(wrapper.find('.bucket-footer .help.is-danger').text()).toBe('project.create.addTitleRequired')
+		await vm.openNewBucket()
+		await wrapper.find('.new-bucket input').setValue('   ')
+		await wrapper.find('.new-bucket form').trigger('submit')
+		expect(wrapper.find('.new-bucket .help.is-danger').text()).toBe('project.create.addTitleRequired')
+		expect(sdk.tasksCreate).not.toHaveBeenCalled()
+		expect(sdk.bucketsCreate).not.toHaveBeenCalled()
+	})
+
+	it('offers an inline retry after the initial board request fails', async () => {
+		loadBoard.mockRejectedValueOnce(new Error('Network unavailable'))
+		const wrapper = await mountKanban()
+		const retry = wrapper.findComponent(LoadError)
+		expect(retry.exists()).toBe(true)
+		expect(retry.props('message')).toBe('project.tasksLoadError')
+		await retry.props('retry')!()
+		await flushPromises()
+		expect(wrapper.findComponent(LoadError).exists()).toBe(false)
+		expect(cachedBoard()?.buckets).toHaveLength(3)
+	})
+
+	it('keeps the loaded board and its draft when a background request fails, with an inline retry', async () => {
+		const wrapper = await mountKanban()
+		await (wrapper.vm as unknown as {openNewBucket: () => Promise<void>}).openNewBucket()
+		await wrapper.find('.new-bucket input').setValue('Unsaved column')
+		loadBoard.mockRejectedValueOnce(new Error('Network unavailable'))
+		await queryClient.refetchQueries()
+		await flushPromises()
+		expect(wrapper.findComponent(LoadError).exists()).toBe(true)
+		expect(cachedBoard()?.buckets).toHaveLength(3)
+		expect((wrapper.find('.new-bucket input').element as HTMLInputElement).value).toBe('Unsaved column')
+		await wrapper.findComponent(LoadError).props('retry')!()
+		await flushPromises()
+		expect(wrapper.findComponent(LoadError).exists()).toBe(false)
+	})
+
+	it.each([401, 403, 404])('hides previously loaded cards and an active drag snapshot after HTTP %s', async status => {
+		const wrapper = await mountKanban({BucketDraggable: DRAGGABLE_STUB, TaskDraggable: DRAGGABLE_STUB})
+		const vm = wrapper.vm as unknown as {updateTasks: (id: number, tasks: unknown[]) => void}
+		vm.updateTasks(1, [])
+		await nextTick()
+		expect(wrapper.findAll('.bucket[data-bucket-id]')).toHaveLength(3)
+		loadBoard.mockRejectedValueOnce(new ApiError({status, detail: 'Access no longer available'}))
+		await queryClient.refetchQueries()
+		await flushPromises()
+		expect(wrapper.findAll('.bucket[data-bucket-id]')).toHaveLength(0)
+		expect(wrapper.findComponent(LoadError).exists()).toBe(true)
+		await wrapper.findComponent(LoadError).props('retry')!()
+		await flushPromises()
+		expect(wrapper.findAll('.bucket[data-bucket-id]')).toHaveLength(3)
+		expect(wrapper.findAll('.task-item')).toHaveLength(1)
+	})
+
+	it.each([500, 503])('retains loaded cards during a temporary HTTP %s failure', async status => {
+		const wrapper = await mountKanban({BucketDraggable: DRAGGABLE_STUB, TaskDraggable: DRAGGABLE_STUB})
+		loadBoard.mockRejectedValueOnce(new ApiError({status, detail: 'Temporary server outage'}))
+		await queryClient.refetchQueries()
+		await flushPromises()
+		expect(wrapper.findAll('.bucket[data-bucket-id]')).toHaveLength(3)
+		expect(wrapper.findAll('.task-item')).toHaveLength(1)
+		expect(wrapper.findComponent(LoadError).exists()).toBe(true)
+	})
+
+	it('makes card pagination explicitly retryable without duplicating a pending page or discarding loaded tasks', async () => {
+		loadBoard.mockResolvedValue({data: {items: [{...buckets[0], count: 2}, buckets[1], buckets[2]]}})
+		let rejectPage!: (reason: Error) => void
+		loadBucketPage.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectPage = reject }))
+		const wrapper = await mountKanban({BucketDraggable: DRAGGABLE_STUB, TaskDraggable: DRAGGABLE_STUB})
+		const more = wrapper.find('.kanban-load-more button')
+		expect(more.exists()).toBe(true)
+		await more.trigger('click')
+		await flushPromises()
+		await more.trigger('click')
+		await (wrapper.vm as unknown as {loadMoreEverywhere: () => Promise<void>}).loadMoreEverywhere()
+		expect(loadBucketPage).toHaveBeenCalledOnce()
+		expect(loadBucketPage).toHaveBeenCalledWith(expect.objectContaining({
+			path: {project: 1, view: 10},
+			query: expect.objectContaining({page: 2, filter: 'bucket_id = 1'}),
+		}))
+		rejectPage(new Error('Network unavailable'))
+		await flushPromises()
+		expect(cachedBoard()?.buckets[0].tasks).toHaveLength(1)
+		expect(wrapper.find('.kanban-load-more').text()).toContain('project.kanban.loadMoreFailed')
+		;(wrapper.vm as unknown as {handleTaskContainerScroll: (id: number, el: HTMLElement) => void})
+			.handleTaskContainerScroll(1, document.createElement('div'))
+		await flushPromises()
+		expect(loadBucketPage).toHaveBeenCalledOnce()
+		loadBucketPage.mockResolvedValueOnce({data: {items: [{id: 12, title: 'Second card'}]}})
+		await wrapper.find('.kanban-load-more button').trigger('click')
+		await flushPromises()
+		expect(loadBucketPage).toHaveBeenCalledTimes(2)
+		expect(cachedBoard()?.buckets[0].tasks).toHaveLength(2)
+		expect(wrapper.find('.kanban-load-more').exists()).toBe(false)
+	})
+
+	it.each(['last page', 'another control', 'another board', 'another page remains'])(
+		'preserves keyboard focus after paging: %s', async scenario => {
+			loadBoard.mockResolvedValue({data: {items: [
+				{...buckets[0], count: scenario === 'another page remains' ? 3 : 2},
+				buckets[1],
+				buckets[2],
+			]}})
+			let resolvePage!: (value: unknown) => void
+			loadBucketPage.mockImplementationOnce(() => new Promise(resolve => { resolvePage = resolve }))
+			const host = document.createElement('div')
+			document.body.append(host)
+			const wrapper = await mountKanban({
+				BucketDraggable: DRAGGABLE_STUB,
+				TaskDraggable: DRAGGABLE_STUB,
+				KanbanCard: {
+					props: ['task'],
+					template: '<a class="kanban-card__title-link" href="#">{{ task.title }}</a>',
+				},
+			}, 1, host)
+			const elsewhere = document.createElement('button')
+			host.append(elsewhere)
+			try {
+				const more = wrapper.find<HTMLButtonElement>('.kanban-load-more button')
+				more.element.focus()
+				await more.trigger('click')
+				await flushPromises()
+				if (scenario === 'another board') await wrapper.setProps({projectId: 2})
+				if (scenario === 'another control' || scenario === 'another board') elsewhere.focus()
+				resolvePage({data: {items: [{id: 12, title: 'Newly loaded card'}]}})
+				await flushPromises()
+				if (scenario === 'last page') {
+					expect(wrapper.find('.kanban-load-more').exists()).toBe(false)
+					expect(document.activeElement).toBe(wrapper.find('[data-task-id="12"] a').element)
+				} else if (scenario === 'another page remains') {
+					expect(document.activeElement).toBe(more.element)
+				} else {
+					expect(document.activeElement).toBe(elsewhere)
+				}
+			} finally {
+				wrapper.unmount()
+				host.remove()
+			}
+		},
+	)
+
+	it.each(['project', 'view', 'filter'])('stops an all-column page batch after its original %s changes', async changed => {
+		loadBoard.mockResolvedValue({data: {items: [
+			{...buckets[0], count: 2},
+			{...buckets[1], count: 1},
+			buckets[2],
+		]}})
+		let resolvePage!: (value: unknown) => void
+		loadBucketPage.mockImplementationOnce(() => new Promise(resolve => { resolvePage = resolve }))
+		const wrapper = await mountKanban()
+		const vm = wrapper.vm as unknown as {
+			loadMoreEverywhere: () => Promise<void>,
+			params: {filter?: string},
+		}
+		const batch = vm.loadMoreEverywhere()
+		await flushPromises()
+		expect(loadBucketPage).toHaveBeenCalledOnce()
+		if (changed === 'filter') {
+			vm.params = {...vm.params, filter: 'done = false'}
+			await nextTick()
+		} else {
+			await wrapper.setProps(changed === 'project' ? {projectId: 2} : {viewId: 20})
+		}
+		await flushPromises()
+		resolvePage({data: {items: [{id: 12, title: 'Old board card'}]}})
+		await batch
+		await flushPromises()
+		expect(loadBucketPage).toHaveBeenCalledOnce()
+		expect(loadBucketPage).toHaveBeenCalledWith(expect.objectContaining({path: {project: 1, view: 10}}))
+		wrapper.unmount()
+	})
+
+	it('loads one further page for each incomplete column when the original board is unchanged', async () => {
+		loadBoard.mockResolvedValue({data: {items: [
+			{...buckets[0], count: 2},
+			{...buckets[1], count: 1},
+			buckets[2],
+		]}})
+		const wrapper = await mountKanban()
+		await (wrapper.vm as unknown as {loadMoreEverywhere: () => Promise<void>}).loadMoreEverywhere()
+		expect(loadBucketPage).toHaveBeenCalledTimes(2)
+		expect(loadBucketPage.mock.calls.map(([input]) => input.query.filter)).toEqual(['bucket_id = 1', 'bucket_id = 2'])
+		expect(loadBucketPage.mock.calls.every(([input]) => input.path.project === 1 && input.path.view === 10)).toBe(true)
+		wrapper.unmount()
+	})
+
+	it('lets read-only members explicitly load the next card page without showing creation controls', async () => {
+		projectState.permission = 0
+		loadBoard.mockResolvedValue({data: {items: [{...buckets[0], count: 2}, buckets[1], buckets[2]]}})
+		const wrapper = await mountKanban({BucketDraggable: DRAGGABLE_STUB, TaskDraggable: DRAGGABLE_STUB})
+		expect(wrapper.find('.bucket-footer').exists()).toBe(false)
+		expect(wrapper.find('.new-bucket').exists()).toBe(false)
+		expect(wrapper.find('.kanban-load-more').exists()).toBe(true)
+		await wrapper.find('.kanban-load-more button').trigger('click')
+		await flushPromises()
+		expect(loadBucketPage).toHaveBeenCalledOnce()
 	})
 
 	it('does nothing when the dropped bucket is gone', async () => {

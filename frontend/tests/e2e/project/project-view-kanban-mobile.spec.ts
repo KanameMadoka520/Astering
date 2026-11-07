@@ -204,3 +204,120 @@ test.describe('Read-only mobile project', () => {
 		await page.screenshot({path: testInfo.outputPath('board-mobile-readonly.png')})
 	})
 })
+
+
+test.describe('Mobile board request recovery', () => {
+	test.use({viewport: {width: 390, height: 844}, hasTouch: true})
+
+	test('retries failed reads and saves one column when an in-flight draft is located again', async ({authenticatedPage: page, apiContext, userToken}, testInfo) => {
+		test.setTimeout(90_000)
+		await seedBoard()
+		await page.emulateMedia({reducedMotion: 'reduce'})
+		let failBoard = true
+		await page.route(/\/api\/v2\/projects\/1\/views\/4\/buckets\/tasks(?:\?|$)/, route => failBoard
+			? route.fulfill({
+				status: 503,
+				contentType: 'application/json',
+				body: JSON.stringify({detail: 'Temporary test outage'}),
+			})
+			: route.continue())
+		await page.goto('/projects/1/4')
+		const boardError = page.locator('.kanban-view > .load-error')
+		await expect(boardError).toContainText('The tasks couldn\'t be loaded. This doesn\'t mean there are none.')
+		failBoard = false
+		await boardError.getByRole('button', {name: 'Retry', exact: true}).click()
+		await expect(lane(page, 1).locator('.task')).toHaveCount(25)
+		await expect(boardError).toHaveCount(0)
+
+		let failPage = true
+		await page.route(/\/api\/v2\/projects\/1\/views\/4\/tasks(?:\?|$)/, route => failPage
+			? route.fulfill({
+				status: 503,
+				contentType: 'application/json',
+				body: JSON.stringify({detail: 'Temporary page outage'}),
+			})
+			: route.continue())
+		await lane(page, 1).locator('.tasks').evaluate(el => { el.scrollTop = el.scrollHeight })
+		const more = lane(page, 1).locator('.kanban-load-more')
+		await expect(more.getByRole('alert')).toContainText('More tasks could not be loaded.')
+		await expect(lane(page, 1).locator('.task')).toHaveCount(25)
+		failPage = false
+		const retryPage = more.getByRole('button', {name: 'Retry', exact: true})
+		await retryPage.focus()
+		await retryPage.press('Enter')
+		await expect(lane(page, 1).locator('.task')).toHaveCount(31)
+		await expect(more).toHaveCount(0)
+		await expect(lane(page, 1).locator('.task[data-task-id="26"] .kanban-card__title-link')).toBeFocused()
+		await page.screenshot({path: testInfo.outputPath('board-mobile-read-recovered.png')})
+
+		const navigation = page.locator('.kanban-column-navigation')
+		await navigation.getByRole('button', {name: 'Create a bucket', exact: true}).click()
+		const draft = page.locator('.new-bucket input')
+		await draft.fill('   ')
+		await page.locator('.new-bucket form button[type="submit"]').click()
+		await expect(page.locator('.new-bucket [role="alert"]')).toHaveText('Please specify a title.')
+		await draft.fill('Saved once on a slow connection')
+		let releaseCreate!: () => void
+		const waitForRelease = new Promise<void>(resolve => { releaseCreate = resolve })
+		let createRequests = 0
+		await page.route(/\/api\/v2\/projects\/1\/views\/4\/buckets$/, async route => {
+			if (route.request().method() === 'POST') {
+				createRequests++
+				await waitForRelease
+			}
+			await route.continue()
+		})
+		try {
+			await page.locator('.new-bucket form button[type="submit"]').click()
+			await expect.poll(() => createRequests).toBe(1)
+			await navigation.getByRole('combobox', {name: 'Jump to column'}).selectOption('1')
+			await navigation.getByRole('button', {name: 'Create a bucket', exact: true}).click()
+			await expect(draft).toHaveValue('Saved once on a slow connection')
+			releaseCreate()
+			await expect(draft).toHaveValue('')
+			await expect(page.locator('.bucket-header h2', {hasText: 'Saved once on a slow connection'})).toHaveCount(1)
+			expect(createRequests).toBe(1)
+		} finally {
+			releaseCreate()
+		}
+		const response = await apiContext.get('/api/v2/projects/1/views/4/buckets', {
+			headers: {Authorization: `Bearer ${userToken}`},
+		})
+		expect(response.ok()).toBe(true)
+		const stored = await response.json()
+		expect(stored.items.filter((bucket: {title: string}) => bucket.title === 'Saved once on a slow connection')).toHaveLength(1)
+		await page.reload()
+		await expect(page.locator('.bucket-header h2', {hasText: 'Saved once on a slow connection'})).toHaveCount(1)
+	})
+
+	test('hides old private cards when a board refresh is denied and recovers only after a successful retry', async ({authenticatedPage: page}, testInfo) => {
+		await seedBoard()
+		await page.emulateMedia({reducedMotion: 'reduce'})
+		await page.goto('/projects/1/4')
+		await expect(lane(page, 1).locator('.task')).toHaveCount(25)
+		let denied = true
+		await page.route(/\/api\/v2\/projects\/1\/views\/4\/buckets\/tasks(?:\?|$)/, route => denied
+			? route.fulfill({
+				status: 403,
+				contentType: 'application/json',
+				body: JSON.stringify({detail: 'Access revoked during the test'}),
+			})
+			: route.continue())
+		await page.getByRole('combobox', {name: 'Jump to column'}).selectOption('6')
+		await lane(page, 6).getByRole('button', {name: 'Bucket options', exact: true}).click()
+		await lane(page, 6).getByRole('button', {name: 'Delete', exact: true}).click()
+		await page.locator('dialog[open] [data-cy="modalPrimary"]').click()
+		const error = page.locator('.kanban-view > .load-error')
+		await expect(error).toBeVisible()
+		await expect(page.locator('.kanban .bucket[data-bucket-id]')).toHaveCount(0)
+		await expect(page.locator('.kanban .task')).toHaveCount(0)
+		await page.screenshot({path: testInfo.outputPath('board-mobile-denied-private-cards-hidden.png')})
+		denied = false
+		await error.getByRole('button', {name: 'Retry', exact: true}).click()
+		await expect(page.locator('.kanban .bucket[data-bucket-id]')).toHaveCount(5)
+		await expect(lane(page, 1).locator('.task')).toHaveCount(25)
+		await expect(error).toHaveCount(0)
+		await page.reload()
+		await expect(lane(page, 6)).toHaveCount(0)
+	})
+})

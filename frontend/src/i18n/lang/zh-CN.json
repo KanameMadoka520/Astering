@@ -174,6 +174,7 @@
 		"endpoint": "实际搜索端点"
 	},
 	"chatFiles": {
+		"retryPreview": "重试图片预览",
 		"persona": "阿罗娜的说话风格",
 		"personaArona": "阿罗娜人设（默认）",
 		"personaNone": "普通助手语气",
@@ -1058,6 +1059,7 @@
 			"empty": "这里没有可显示的任务。"
 		},
 		"kanban": {
+			"loadMoreFailed": "更多任务加载失败，已加载的任务仍保留。请重试。",
 			"columnNavigation": "看板栏目导航",
 			"previousColumn": "上一栏目",
 			"nextColumn": "下一栏目",
@@ -1756,6 +1758,18 @@
 		"projectColor": "项目颜色"
 	},
 	"task": {
+		"bulkRecovery": {
+			"title": "本批次还有未完成项",
+			"summary": "已创建 {created} 项任务 · {pending} 项未创建 · {relations} 组关联待完成",
+				"hint": "重试只处理未完成项，不会重复创建已确认保存的任务。新输入的草稿会保留；请先处理本批次，再继续新增。",
+			"retry": "重试未完成项",
+			"discard": "放弃未完成项",
+			"discardConfirm": "还有 {pending} 项任务未创建、{relations} 组关联未完成。确定放弃这些未完成项？已经创建的任务会保留。",
+			"prepareFailed": "未能准备创建任务，输入已保留。请检查所选项目后重试。"
+		},
+		"quickAdd": {
+			"detailsIncomplete": "任务已创建，但部分负责人或标签未保存：{details}。无需再次新建，请在任务详情中检查并补充。"
+		},
 		"allDay": {
 			"title": "全天日程",
 			"edit": "编辑日程",
@@ -5653,6 +5667,7 @@
 		"unknownChangedFields": "此版本暂时无法展示部分变化字段，未推测其内容。"
 	},
 	"siteAccounts": {
+		"checkingAccess": "正在核对账户管理权限…",
 		"title": "账户管理",
 		"intro": "管理账户访问权限，查看使用情况，无需打开用户的私人内容。",
 		"boundary": "只有服务器明确指定的超级管理员能在这里管理账户。项目共享权限、阿罗娜会话、模型设置和 MCP 连接仍按各个账户独立隔离。",

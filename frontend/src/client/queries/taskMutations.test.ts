@@ -10,6 +10,7 @@ import {
 } from './kanban'
 import {
 	addTaskAssigneeMutationOptions,
+	addTaskLabelMutationOptions,
 	bulkCreateTasksMutationOptions,
 	createTaskMutationOptions,
 	deleteTaskMutationOptions,
@@ -20,6 +21,7 @@ import {
 	updateTaskPositionMutationOptions,
 } from './taskMutations'
 import type {Task, PaginatedTask} from '@/client/generated'
+import {error} from '@/message'
 
 const sdk = vi.hoisted(() => ({
 	bucketsList: vi.fn(),
@@ -27,6 +29,7 @@ const sdk = vi.hoisted(() => ({
 	projectTasksList: vi.fn(),
 	projectViewBucketsTasksList: vi.fn(),
 	taskAssigneesCreate: vi.fn(),
+	taskLabelsCreate: vi.fn(),
 	taskBucketUpdate: vi.fn(),
 	tasksBulkCreate: vi.fn(),
 	tasksCreate: vi.fn(),
@@ -104,6 +107,29 @@ async function seedDefaultBucketBoards() {
 
 describe('task mutations', () => {
 	beforeEach(() => vi.resetAllMocks())
+
+	for (const notifyError of [undefined, true, false]) {
+		it(`keeps normal assignee error reporting unless explicitly disabled (${notifyError})`, async () => {
+			const client = new QueryClient()
+			const cause = {status: 500}
+			sdk.taskAssigneesCreate.mockRejectedValue(cause)
+			await expect(client.getMutationCache().build(client, addTaskAssigneeMutationOptions())
+				.execute({taskId: 1, user: {id: 2}, notifyError})).rejects.toBe(cause)
+			expect(error).toHaveBeenCalledTimes(notifyError === false ? 0 : 1)
+			expect(sdk.taskAssigneesCreate).toHaveBeenCalledWith({path: {task: 1}, body: {user_id: 2}})
+			client.clear()
+		})
+		it(`keeps normal label error reporting unless explicitly disabled (${notifyError})`, async () => {
+			const client = new QueryClient()
+			const cause = {status: 500}
+			sdk.taskLabelsCreate.mockRejectedValue(cause)
+			await expect(client.getMutationCache().build(client, addTaskLabelMutationOptions())
+				.execute({taskId: 1, label: {id: 2}, notifyError})).rejects.toBe(cause)
+			expect(error).toHaveBeenCalledTimes(notifyError === false ? 0 : 1)
+			expect(sdk.taskLabelsCreate).toHaveBeenCalledWith({path: {task: 1}, body: {label_id: 2}})
+			client.clear()
+		})
+	}
 
 	it('sends only writable fields and reconciles loaded detail', async () => {
 		const client = new QueryClient()

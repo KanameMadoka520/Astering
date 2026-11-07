@@ -49,6 +49,16 @@ function chat(id = 'chat-1', reply = 'reply-1'): Conversation {
 	}
 }
 
+// happy-dom implements showModal() as show(), and does not recognize :modal.
+// Keep native open/close events while supplying the missing top-layer selector for this fixture only.
+function modalDialog() {
+	const dialog = document.createElement('dialog')
+	const matches = dialog.matches.bind(dialog)
+	vi.spyOn(dialog, 'matches').mockImplementation(selector => selector === ':modal' ? dialog.open : matches(selector))
+	document.body.append(dialog)
+	return dialog
+}
+
 describe('visible conversation result acknowledgement', () => {
 	let client: QueryClient
 	let wrappers: VueWrapper[]
@@ -174,6 +184,42 @@ describe('visible conversation result acknowledgement', () => {
 		expect(sdk.tcyAiConversationsMarkRead).not.toHaveBeenCalled()
 		await advance(1)
 		expect(sdk.tcyAiConversationsMarkRead).toHaveBeenCalledTimes(1)
+	})
+
+	it('keeps a reply unread behind a native image or export dialog, then waits again after closing', async () => {
+		const view = harness()
+		const dialog = modalDialog()
+		try {
+			await nextTick()
+			view.observer().report(view.sentinel.value)
+			await advance(400)
+			dialog.showModal()
+			await advance(1500)
+			expect(sdk.tcyAiConversationsMarkRead).not.toHaveBeenCalled()
+			dialog.close()
+			await advance(699)
+			expect(sdk.tcyAiConversationsMarkRead).not.toHaveBeenCalled()
+			await advance(1)
+			expect(sdk.tcyAiConversationsMarkRead).toHaveBeenCalledTimes(1)
+		} finally {
+			dialog.remove()
+		}
+	})
+
+	it('allows reading the floating assistant inside the task dialog that contains it', async () => {
+		const view = harness()
+		const dialog = modalDialog()
+		dialog.append(view.scrollRoot.value)
+		view.scrollRoot.value.append(view.sentinel.value)
+		try {
+			dialog.showModal()
+			await nextTick()
+			view.observer().report(view.sentinel.value)
+			await advance(700)
+			expect(sdk.tcyAiConversationsMarkRead).toHaveBeenCalledTimes(1)
+		} finally {
+			dialog.remove()
+		}
 	})
 
 	it('cancels a pending result version when a newer reply arrives in the same conversation', async () => {

@@ -1,4 +1,5 @@
 import type {Page} from '@playwright/test'
+import {readFileSync} from 'node:fs'
 import {test, expect} from '../../support/fixtures'
 import {apiRootUrl} from '../../support/apiUrl'
 
@@ -176,3 +177,44 @@ test('a Drive file is attached by reference through the keyboard menu', async ({
 	await page.reload()
 	await expect(draft.locator('.in-drive')).toBeVisible()
 })
+
+for (const width of [1440, 390]) {
+	test(`an image thumbnail recovers in place after a temporary failure at ${width}px`, async ({authenticatedPage: page, apiContext, userToken}) => {
+		const headers = authorization(userToken)
+		await visionModel(page)
+		const created = await apiContext.post(`${api}/ai/conversations`, {headers, data: {title: 'Preview recovery'}})
+		expect(created.ok()).toBe(true)
+		const {id} = await created.json()
+		const uploaded = await apiContext.post(`${api}/ai/conversations/${id}/attachments`, {headers, multipart: {
+			file: {name: 'recovered-image.png', mimeType: 'image/png', buffer: readFileSync(new URL('../../fixtures/image-blue.png', import.meta.url))},
+		}})
+		expect(uploaded.ok()).toBe(true)
+		const attachment = await uploaded.json()
+		let attempts = 0
+		await page.route(`**/api/v2/ai/conversations/${id}/attachments/${attachment.id}`, route => {
+			attempts++
+			return attempts === 1
+				? route.fulfill({status: 503, json: {message: 'Temporary preview outage'}})
+				: route.continue()
+		})
+		let downloads = 0
+		page.on('download', () => { downloads++ })
+		await page.setViewportSize({width, height: 900})
+		await page.goto(`/ai?chat=${id}`)
+		const card = page.locator('.draft-files .chat-file').filter({hasText: 'recovered-image.png'})
+		await expect(card.getByRole('alert')).toBeVisible()
+		const retry = card.getByRole('button', {name: 'Retry image preview', exact: true})
+		await retry.focus()
+		await page.keyboard.press('Enter')
+		await expect(card.locator('.image-button img')).toBeVisible()
+		await expect(card.locator('.image-button')).toBeFocused()
+		await expect(card.getByRole('alert')).toHaveCount(0)
+		expect(attempts).toBe(2)
+		expect(downloads).toBe(0)
+		const saved = await (await apiContext.get(`${api}/ai/conversations/${id}`, {headers})).json()
+		expect(saved.draft_attachments).toEqual([expect.objectContaining({id: attachment.id})])
+		await page.reload()
+		await expect(card.locator('.image-button img')).toBeVisible()
+		expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+	})
+}

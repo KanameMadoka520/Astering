@@ -37,6 +37,7 @@ const route = useRoute()
 const auth = useAuthStore()
 const owner = captureClientRequestContext()
 const allowed = ref(false)
+const verifyingAccess = ref(false)
 function currentOwner() {
 	// Session changes are reactive even when a replacement login has the same numeric account ID.
 	return auth.authUser && Boolean(auth.session) && isClientRequestContextCurrent(owner)
@@ -56,14 +57,25 @@ const events = useQuery(computed(() => ({
 })))
 const eventResult = computed(() => currentOwner() && allowed.value && !events.isFetching.value && !events.isError.value
 	? currentSiteUsageData(events.data.value) : undefined)
-const canSubmit = computed(() => currentOwner() && allowed.value && selection.value && confirmation.value === selection.value.account.username
+const eventPagination = ref<{
+	total: number,
+	total_pages: number,
+} | null>(null)
+watch(eventResult, result => {
+	if (result) eventPagination.value = {
+		total: result.total,
+		total_pages: result.total_pages,
+	}
+})
+const canSubmit = computed(() => currentOwner() && allowed.value && !verifyingAccess.value && selection.value
+	&& confirmation.value === selection.value.account.username
 	&& !action.isPending.value && reason.value.length <= 250)
 
 function protectedReason(account: ManagedAccount) {
 	return t(`siteAccounts.protection.${account.protected_reason || 'protected'}`)
 }
 function open(account: ManagedAccount, selected: AccountAction, event: MouseEvent) {
-	if (action.isPending.value || !allowed.value || !isClientRequestContextCurrent(owner)) return
+	if (action.isPending.value || verifyingAccess.value || !allowed.value || !isClientRequestContextCurrent(owner)) return
 	if (selected === 'revoke' ? !account.can_revoke_access : !account.can_change_status) return
 	returnFocus = event.currentTarget as HTMLElement
 	selection.value = {account: {...account}, action: selected}
@@ -125,18 +137,25 @@ function date(value?: string) {
 	return new Intl.DateTimeFormat(locale.value, {dateStyle: 'medium', timeStyle: 'short'}).format(new Date(value))
 }
 function changeEventPage(delta: number) {
-	if (!eventResult.value || events.isFetching.value) return
+	if (!eventPagination.value || events.isFetching.value || verifyingAccess.value) return
 	const target = eventPage.value + delta
-	if (target > 0 && target <= eventResult.value.total_pages) eventPage.value = target
+	if (target > 0 && target <= eventPagination.value.total_pages) eventPage.value = target
 }
-watch([() => auth.identityKey, () => auth.currentSessionId, () => route.fullPath], () => {
+function clearPrivatePresentation() {
+	returnFocus = null
 	selection.value = null
 	confirmation.value = ''
 	reason.value = ''
 	failure.value = ''
 	receipt.value = ''
 	showEvents.value = false
+	eventPagination.value = null
+	eventPage.value = 1
+}
+watch(allowed, value => {
+	if (!value) clearPrivatePresentation()
 }, {flush: 'sync'})
+watch([() => auth.identityKey, () => auth.currentSessionId, () => route.fullPath], clearPrivatePresentation, {flush: 'sync'})
 </script>
 
 <template>
@@ -144,6 +163,7 @@ watch([() => auth.identityKey, () => auth.currentSessionId, () => route.fullPath
 		<AccountUsagePanel
 			management
 			@access="allowed = $event"
+			@verifying="verifyingAccess = $event"
 		>
 			<template #accountActions="{account}">
 				<div
@@ -252,30 +272,31 @@ watch([() => auth.identityKey, () => auth.currentSessionId, () => route.fullPath
 							</p>
 						</li>
 					</ol>
-					<nav
-						v-if="eventResult.total_pages > 1"
-						class="account-event-pages"
-						:aria-label="t('siteAccounts.audit.pagination')"
-					>
-						<XButton
-							variant="secondary"
-							:shadow="false"
-							:disabled="eventPage <= 1"
-							@click="changeEventPage(-1)"
-						>
-							{{ t('siteUsage.previous') }}
-						</XButton>
-						<span>{{ t('siteUsage.page', {page: eventPage, total: eventResult.total_pages, count: eventResult.total}) }}</span>
-						<XButton
-							variant="secondary"
-							:shadow="false"
-							:disabled="eventPage >= eventResult.total_pages"
-							@click="changeEventPage(1)"
-						>
-							{{ t('siteUsage.next') }}
-						</XButton>
-					</nav>
 				</template>
+				<nav
+					v-if="eventPagination && eventPagination.total_pages > 1"
+					class="account-event-pages"
+					:aria-label="t('siteAccounts.audit.pagination')"
+					:aria-busy="events.isFetching.value"
+				>
+					<XButton
+						variant="secondary"
+						:shadow="false"
+						:aria-disabled="eventPage <= 1 || events.isFetching.value || verifyingAccess"
+						@click="changeEventPage(-1)"
+					>
+						{{ t('siteUsage.previous') }}
+					</XButton>
+					<span>{{ t('siteUsage.page', {page: eventPage, total: eventPagination.total_pages, count: eventPagination.total}) }}</span>
+					<XButton
+						variant="secondary"
+						:shadow="false"
+						:aria-disabled="eventPage >= eventPagination.total_pages || events.isFetching.value || verifyingAccess"
+						@click="changeEventPage(1)"
+					>
+						{{ t('siteUsage.next') }}
+					</XButton>
+				</nav>
 			</template>
 		</section>
 		<Modal
@@ -299,6 +320,12 @@ watch([() => auth.identityKey, () => auth.currentSessionId, () => route.fullPath
 				<p class="account-impact">
 					{{ t(`siteAccounts.effects.${selection.action}`) }}
 				</p>
+				<p
+					v-if="verifyingAccess"
+					role="status"
+				>
+					{{ t('siteAccounts.checkingAccess') }}
+				</p>
 				<label>
 					<span>{{ t('siteAccounts.confirmUsername', {username: selection.account.username}) }}</span>
 					<input
@@ -306,7 +333,7 @@ watch([() => auth.identityKey, () => auth.currentSessionId, () => route.fullPath
 						v-model="confirmation"
 						class="input"
 						autocomplete="off"
-						:disabled="action.isPending.value"
+						:readonly="action.isPending.value"
 						:aria-label="t('siteAccounts.usernameConfirmation')"
 						required
 					>
@@ -318,7 +345,7 @@ watch([() => auth.identityKey, () => auth.currentSessionId, () => route.fullPath
 						class="textarea"
 						maxlength="250"
 						rows="2"
-						:disabled="action.isPending.value"
+						:readonly="action.isPending.value"
 					/>
 				</label>
 				<Message
@@ -331,7 +358,7 @@ watch([() => auth.identityKey, () => auth.currentSessionId, () => route.fullPath
 					<XButton
 						variant="secondary"
 						:shadow="false"
-						:disabled="action.isPending.value"
+						:aria-disabled="action.isPending.value"
 						@click="close"
 					>
 						{{ t('misc.cancel') }}
@@ -340,7 +367,7 @@ watch([() => auth.identityKey, () => auth.currentSessionId, () => route.fullPath
 						type="submit"
 						:danger="selection.action !== 'enable'"
 						:shadow="false"
-						:disabled="!canSubmit"
+						:aria-disabled="!canSubmit"
 						:loading="action.isPending.value"
 					>
 						{{ t(`siteAccounts.actions.${selection.action}`) }}

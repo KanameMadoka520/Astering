@@ -105,12 +105,20 @@ const paused = computed(() => active.value?.turns?.at(-1)?.result?.pause)
 const chatID = computed(() => props.embedded
 	? props.conversationId
 	: typeof route.query.chat === 'string' ? route.query.chat : '')
-async function navigateConversation(id: string) {
-	if (props.embedded) {
-		emit('update:conversationId', id)
-		await nextTick()
-	} else {
-		await router.replace({name: 'tcy-ai', query: {...route.query, chat: id || undefined}})
+// Only creation transfers the blank composer's draft to its first server id. Links/back/forward restore that chat's own draft.
+let draftTransfer: {from: string, to: string} | undefined
+async function navigateConversation(id: string, carryDraft = false) {
+	const transfer = carryDraft ? {from: chatID.value, to: id} : undefined
+	if (transfer) draftTransfer = transfer
+	try {
+		if (props.embedded) {
+			emit('update:conversationId', id)
+			await nextTick()
+		} else {
+			await router.replace({name: 'tcy-ai', query: {...route.query, chat: id || undefined}})
+		}
+	} finally {
+		if (draftTransfer === transfer) draftTransfer = undefined
 	}
 }
 function stillHere(location?: string) {
@@ -186,6 +194,7 @@ const hasStatusChips = computed(() => contextTaskID.value > 0 || archived.value)
 const sidebarOpen = ref(false)
 const configurationOpen = ref(false)
 const detailsOpen = ref(false)
+const preferencesOpen = ref(false)
 const mobileLayout = useMediaQuery('(max-width: 768px)')
 const baseStore = useBaseStore()
 function openSiteNavigation() {
@@ -286,7 +295,7 @@ async function resolveConversation(): Promise<string | null> {
 	if (!stillHere(location) || !isClientRequestContextCurrent(requestContext)) return null
 	const id = created.id!
 	saveOptions(id, currentOptions.value, selectedProfile.value)
-	await navigateConversation(id)
+	await navigateConversation(id, true)
 	return id
 }
 // Oversized files are reported per file in the tray; only the message's file count stops a whole selection.
@@ -385,6 +394,10 @@ const readSentinel = ref<HTMLElement>()
 const threadReadable = computed(() => presenting.value
 	&& !configurationOpen.value
 	&& !detailsOpen.value
+	&& !preferencesOpen.value
+	&& !driveOpen.value
+	&& !exportOpen.value
+	&& !historyDialog.value
 	&& (!historyOverlay.value || !sidebarOpen.value)
 	&& (!mobileLayout.value || !baseStore.menuActive))
 useConversationRead({
@@ -426,13 +439,16 @@ const prompt = ref(readDraft(chatID.value))
 let draftRevision = 0
 watch(prompt, text => { draftRevision++; writeDraft(chatID.value, text) }, {flush: 'sync'})
 let switchingChat = false
-// Any other change of chat on this page (a chat created for this text by a first upload or send, a deleted chat,
-// the browser's back button) keeps the composer text, so its draft moves along. Leaving /ai clears the chat query
-// too, and keeps the draft where it is.
 watch(chatID, (id, previous) => {
 	if (switchingChat || !stillHere()) return
-	writeDraft(previous, '')
-	writeDraft(id, prompt.value)
+	// Only a newly created conversation inherits this input. Links and browser history restore their own draft.
+	if (draftTransfer?.from === previous && draftTransfer.to === id) {
+		writeDraft(previous, '')
+		writeDraft(id, prompt.value)
+	} else {
+		prompt.value = readDraft(id)
+		original.value = ''
+	}
 }, {flush: 'sync'})
 const mode = ref<'read' | 'write'>('read')
 const allowDelete = ref(false)
@@ -447,7 +463,6 @@ const tokenBudget = ref(0)
 const stopAtSegmentLimit = ref(false)
 const enableSubagents = ref(false)
 const preferences = useQuery(assistantPreferencesQuery())
-const preferencesOpen = ref(false)
 const selectedProfile = ref('ask')
 const initializedChat = ref<string | null>(null)
 const optionsReady = computed(() => initializedChat.value === chatID.value)
@@ -921,7 +936,7 @@ async function submit() {
 			if (pendingMessage.value) pendingMessage.value.chat = target
 			if (!stillHere(location)) return
 			saveOptions(target, currentOptions.value, selectedProfile.value)
-			await navigateConversation(target)
+			await navigateConversation(target, true)
 		}
 		await send.mutateAsync({id: target, body: request})
 		if (chatID.value === target && !prompt.value) original.value = ''

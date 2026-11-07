@@ -17,6 +17,19 @@ export function useConversationRead(options: {
 	let timer: ReturnType<typeof setTimeout> | undefined
 	let attempted = ''
 	let disposed = false
+	function blockedByModal() {
+		const sentinel = options.sentinel.value
+		if (!sentinel) return true
+		return [...document.querySelectorAll<HTMLDialogElement>('dialog[open]')].some(dialog => {
+			if (dialog.contains(sentinel)) return false
+			try {
+				return dialog.matches(':modal')
+			} catch {
+				// Older engines cannot distinguish show() from showModal(); keep unread rather than guess visibility.
+				return true
+			}
+		})
+	}
 	watch([options.sentinel, options.scrollRoot], ([sentinel, root]) => {
 		const generation = ++observation
 		observer?.disconnect()
@@ -32,7 +45,7 @@ export function useConversationRead(options: {
 		clearTimeout(timer)
 		const conversation = options.conversation.value
 		if (!options.presenting.value || !visible.value || !conversation?.id
-			|| !conversation.unread || !conversation.latest_reply_id) return
+			|| !conversation.unread || !conversation.latest_reply_id || blockedByModal()) return
 		const id = conversation.id
 		const replyId = conversation.latest_reply_id
 		const key = `${id}/${replyId}`
@@ -41,7 +54,7 @@ export function useConversationRead(options: {
 		timer = setTimeout(() => {
 			const current = options.conversation.value
 			if (disposed || !isClientRequestContextCurrent(owner) || !options.presenting.value || !visible.value
-				|| current?.id !== id || current.latest_reply_id !== replyId || !current.unread) return
+				|| current?.id !== id || current.latest_reply_id !== replyId || !current.unread || blockedByModal()) return
 			attempted = key
 			mark.mutate({id, replyId, owner})
 		}, 700)
@@ -61,11 +74,14 @@ export function useConversationRead(options: {
 		schedule()
 	}
 	window.addEventListener('online', online)
+	// Native image/export dialogs do not affect intersection geometry. Closing one starts a fresh visibility delay.
+	document.addEventListener('close', online, true)
 	onScopeDispose(() => {
 		disposed = true
 		observation++
 		clearTimeout(timer)
 		observer?.disconnect()
 		window.removeEventListener('online', online)
+		document.removeEventListener('close', online, true)
 	})
 }

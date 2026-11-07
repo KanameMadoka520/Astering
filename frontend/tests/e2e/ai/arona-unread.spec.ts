@@ -64,7 +64,7 @@ for (const width of [1440, 390]) {
 			finish()
 			const read = async () => (await apiContext.get(`/api/v2/ai/conversations/${id}`, {headers})).json()
 			await expect.poll(async () => (await read()).unread).toBe(true)
-			if (width < 768) await page.locator('.heading-start').getByRole('button', {name: 'Conversations', exact: true}).click()
+			if (width < 768) await page.locator('[data-mobile-history-toggle]').click()
 			const history = page.locator(`.history-panel [data-chat-id="${id}"]`)
 			await expect(history.locator('.history-badge.is-unread')).toHaveText('Unread')
 			// Repeated background reads and an open list do not acknowledge the reply.

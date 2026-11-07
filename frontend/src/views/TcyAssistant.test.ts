@@ -11,6 +11,7 @@ const sdk = vi.hoisted(() => ({
 	tcyAiConversationsRead: vi.fn<(options: {path: {id: string}}) => Promise<unknown>>(never),
 	tcyAiConversationsList: vi.fn(never),
 	tcyAiConversationsCreate: vi.fn(never),
+	tcyAiAttachmentsUpload: vi.fn(never),
 	tcyAiConversationsSend: vi.fn(never),
 	tcyAiConversationsSteer: vi.fn<(options: {path: {id: string}, body: SteerBody}) => Promise<unknown>>(never),
 	tcyAiConversationsStop: vi.fn(never),
@@ -513,6 +514,30 @@ describe('TcyAssistant composer', () => {
 		expect((composer(wrapper).element as HTMLTextAreaElement).value).toBe('')
 	})
 
+	it('restores each draft when a conversation link or browser history changes the route', async () => {
+		seedSettings()
+		seedPreferences()
+		seedConversation('c1')
+		seedConversation('c2')
+		await router.push('/ai?chat=c1')
+		const wrapper = mountPage()
+		await flushPromises()
+		await composer(wrapper).setValue('Draft for the first conversation')
+		await openFromHistory(wrapper, 'c2')
+		await composer(wrapper).setValue('Draft for the second conversation')
+
+		// Ordinary links in assistant messages use router.push, not the history-list handler.
+		await router.push('/ai?chat=c1')
+		await flushPromises()
+		expect((composer(wrapper).element as HTMLTextAreaElement).value).toBe('Draft for the first conversation')
+		router.back()
+		await flushPromises()
+		expect((composer(wrapper).element as HTMLTextAreaElement).value).toBe('Draft for the second conversation')
+		router.forward()
+		await flushPromises()
+		expect((composer(wrapper).element as HTMLTextAreaElement).value).toBe('Draft for the first conversation')
+	})
+
 	it('starts a new chat when the open conversation is gone', async () => {
 		seedSettings()
 		seedPreferences()
@@ -538,6 +563,31 @@ describe('TcyAssistant composer', () => {
 
 		expect(sdk.tcyAiConversationsCreate).toHaveBeenCalledTimes(1)
 		expect(wrapper.find('.running-elsewhere').exists()).toBe(false)
+	})
+
+	it('carries a new-chat draft into the id created by its first upload, without copying it to another chat', async () => {
+		seedSettings()
+		seedPreferences()
+		seedConversation('c2')
+		sdk.tcyAiConversationsCreate.mockImplementation(async () => ({data: {id: 'created', turns: []}}))
+		sdk.tcyAiAttachmentsUpload.mockImplementation(async () => ({data: {id: 'file'}}))
+		sdk.tcyAiConversationsRead.mockImplementation(async ({path}) => ({
+			data: client.getQueryData(conversationKeys.detail(path.id)) || {id: path.id, turns: []},
+		}))
+		const wrapper = mountPanel('')
+		await flushPromises()
+		await composer(wrapper).setValue('My upload belongs with this unsent request.')
+		const input = wrapper.get('.composer input[type="file"]').element as HTMLInputElement
+		Object.defineProperty(input, 'files', {value: [new File(['notes'], 'notes.txt', {type: 'text/plain'})], configurable: true})
+		await wrapper.get('.composer input[type="file"]').trigger('change')
+		await flushPromises()
+		expect(sdk.tcyAiConversationsCreate).toHaveBeenCalledTimes(1)
+		expect(sdk.tcyAiAttachmentsUpload).toHaveBeenCalledWith(expect.objectContaining({path: {id: 'created'}}))
+		expect((composer(wrapper).element as HTMLTextAreaElement).value).toBe('My upload belongs with this unsent request.')
+		await openFromHistory(wrapper, 'c2')
+		expect((composer(wrapper).element as HTMLTextAreaElement).value).toBe('')
+		await openFromHistory(wrapper, 'created')
+		expect((composer(wrapper).element as HTMLTextAreaElement).value).toBe('My upload belongs with this unsent request.')
 	})
 
 	it('names a dropped stream as reconnecting unless the conversation is polled', async () => {

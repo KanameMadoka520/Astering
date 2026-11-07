@@ -6,6 +6,37 @@ import {login} from '../../support/authenticateUser'
 import {updateUserSettings} from '../../support/updateUserSettings'
 import {apiRootUrl} from '../../support/apiUrl'
 import {TEST_PASSWORD} from '../../support/constants'
+import {Factory} from '../../support/factory'
+
+class AccountAdminEventFactory extends Factory {
+	static table = 'account_admin_events'
+}
+
+function deferred() {
+	let resolve!: () => void
+	const promise = new Promise<void>(release => { resolve = release })
+	return {
+		promise,
+		resolve,
+	}
+}
+
+async function seedAudit() {
+	await AccountAdminEventFactory.create(26, {
+		id: (i: number) => i,
+		actor_id: 1,
+		actor_username: 'Super administrator',
+		target_id: 2,
+		target_username: 'managed-member',
+		action: 'access_revoked',
+		old_status: 0,
+		new_status: 0,
+		revoked_sessions: 0,
+		revoked_api_tokens: 0,
+		reason: (i: number) => `Audit review ${i}`,
+		created: '2026-11-07T00:00:00Z',
+	})
+}
 
 const api = `${apiRootUrl(process.env.API_URL || 'http://localhost:3456')}/api/v2`
 // Isolated Mage process receives ASTERING_SUPERADMIN_IDS=1. No license or production grant is used.
@@ -90,7 +121,10 @@ for (const viewport of [{width: 1440, height: 1000, language: 'en'}, {width: 390
 		await dialog.getByRole('button', {name: labels.disable, exact: true}).click()
 		expect((await disabled).ok()).toBe(true)
 		await expect(dialog).toHaveCount(0)
-		await expect(row.getByRole('button', {name: labels.enable, exact: true})).toBeFocused()
+		await expect.poll(() => page.evaluate(() => {
+			const active = document.activeElement
+			return Boolean(active?.matches('.accounts-page .usage-search input, [data-managed-account="2"] button'))
+		})).toBe(true)
 		await page.reload()
 		await expect(row.getByRole('button', {name: labels.enable, exact: true})).toBeVisible()
 		const rejected = await apiContext.get(`${api}/user`, {headers: {Authorization: `Bearer ${oldToken}`}})
@@ -166,8 +200,195 @@ test('management errors keep confirmation for retry and a failed refresh hides p
 	fail = false
 	await dialog.getByRole('button', {name: 'Disable account', exact: true}).click()
 	await expect(dialog).toHaveCount(0)
-	await page.route('**/api/v2/system/accounts?**', route => route.fulfill({status: 403, json: {status: 403, detail: 'Forbidden'}}))
+	await page.route('**/api/v2/system/accounts?**', route => route.fulfill({status: 500, json: {status: 500, detail: 'Server unavailable'}}))
 	await page.getByRole('button', {name: 'Refresh snapshot', exact: true}).click()
 	await expect(page.getByRole('alert')).toContainText('has been hidden')
 	await expect(page.locator('.usage-account')).toHaveCount(0)
+})
+
+for (const scenario of [
+	{
+		width: 1440,
+		height: 1000,
+		language: 'en',
+		theme: 'dark',
+		disable: 'Disable account',
+		enable: 'Enable account',
+		confirm: 'Confirm account username',
+	},
+	{
+		width: 390,
+		height: 844,
+		language: 'zh-CN',
+		theme: 'starlight',
+		disable: '停用账户',
+		enable: '启用账户',
+		confirm: '确认账户用户名',
+	},
+]) {
+	test(`a confirmed account change stays usable during a stalled refresh at ${scenario.width}px`, async ({authenticatedPage: page, apiContext, userToken}, info) => {
+		await page.setViewportSize({width: scenario.width, height: scenario.height})
+		await updateUserSettings(apiContext, userToken, {
+			language: scenario.language,
+			frontend_settings: {color_schema: scenario.theme},
+		})
+		await UserFactory.create(1, {id: 2, username: 'managed-member'}, false)
+		await page.goto('/user/settings/accounts')
+		const row = page.locator('.usage-account').filter({hasText: 'managed-member'})
+		await row.getByRole('button', {name: scenario.disable, exact: true}).click()
+		const dialog = page.getByRole('dialog')
+		await dialog.getByRole('textbox', {name: scenario.confirm}).fill('managed-member')
+		await dialog.screenshot({path: info.outputPath(`account-confirm-${scenario.theme}-${scenario.width}.png`)})
+		const stalled = deferred()
+		const release = deferred()
+		await page.route('**/api/v2/system/accounts?**', async route => {
+			stalled.resolve()
+			await release.promise
+			await route.continue()
+		})
+		try {
+			const saved = page.waitForResponse(response => response.url().endsWith('/system/accounts/2/status')
+				&& response.request().method() === 'POST')
+			await dialog.getByRole('button', {name: scenario.disable, exact: true}).click()
+			expect((await saved).status()).toBe(200)
+			await stalled.promise
+			await expect(dialog).toHaveCount(0)
+			await expect(page.locator('.message.success')).toContainText(scenario.language === 'en' ? 'completed' : '已为')
+			await expect(page.locator('.usage-account')).toHaveCount(0)
+			await expect(page.locator('.usage-search input')).toBeFocused()
+			const stored = await apiContext.get(`${api}/system/accounts`, {headers: {Authorization: `Bearer ${userToken}`}})
+			expect(stored.status()).toBe(200)
+			expect((await stored.json()).items.find((account: {id: number}) => account.id === 2).status).toBe(2)
+			await page.screenshot({path: info.outputPath(`account-confirmed-refresh-pending-${scenario.width}.png`)})
+		} finally {
+			release.resolve()
+		}
+		await expect(row.getByRole('button', {name: scenario.enable, exact: true})).toBeVisible()
+		await page.reload()
+		await expect(row.getByRole('button', {name: scenario.enable, exact: true})).toBeVisible()
+	})
+}
+
+test('keyboard confirmation retains focus after a delayed rejection and a background permission recheck', async ({authenticatedPage: page}) => {
+	await UserFactory.create(1, {id: 2, username: 'managed-member'}, false)
+	await page.goto('/user/settings/accounts')
+	await page.locator('[data-managed-account="2"]').getByRole('button', {name: 'Disable account', exact: true}).click()
+	const dialog = page.getByRole('dialog')
+	const confirmation = dialog.getByRole('textbox', {name: 'Confirm account username'})
+	await confirmation.fill('managed-member')
+	const started = deferred()
+	const reject = deferred()
+	let posts = 0
+	await page.route('**/api/v2/system/accounts/2/status', async route => {
+		posts++
+		started.resolve()
+		await reject.promise
+		await route.fulfill({status: 409, json: {status: 409, detail: 'account_status_changed'}})
+	})
+	try {
+		await confirmation.press('Enter')
+		await started.promise
+		await expect(confirmation).toBeFocused()
+		await expect(confirmation).toHaveAttribute('readonly', '')
+		await expect(dialog.getByRole('button', {name: 'Disable account', exact: true})).toBeDisabled()
+		await confirmation.press('Enter')
+		await page.keyboard.press('Escape')
+		await expect(dialog).toHaveCount(1)
+		expect(posts).toBe(1)
+	} finally {
+		reject.resolve()
+	}
+	await expect(dialog.getByRole('alert')).toContainText('account changed')
+	await expect(confirmation).toBeFocused()
+	const reason = dialog.locator('textarea')
+	await reason.fill('Keep this reason and caret')
+	await reason.evaluate(element => element.setSelectionRange(2, 6))
+	const accessStarted = deferred()
+	const accessRelease = deferred()
+	await page.route('**/api/v2/system/accounts/access', async route => {
+		accessStarted.resolve()
+		await accessRelease.promise
+		await route.continue()
+	})
+	try {
+		await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+		await accessStarted.promise
+		await expect(dialog).toHaveCount(1)
+		await expect(reason).toBeFocused()
+		expect(await reason.evaluate(element => [element.selectionStart, element.selectionEnd])).toEqual([2, 6])
+		await expect(dialog.getByRole('button', {name: 'Disable account', exact: true})).toBeDisabled()
+	} finally {
+		accessRelease.resolve()
+	}
+	await expect(dialog.getByRole('button', {name: 'Disable account', exact: true})).toBeEnabled()
+	await expect(reason).toBeFocused()
+	await dialog.getByRole('button', {name: 'Cancel', exact: true}).click()
+})
+
+test('audit pagination keeps keyboard focus while its next page loads and at the last page', async ({authenticatedPage: page}) => {
+	await UserFactory.create(1, {id: 2, username: 'managed-member'}, false)
+	await seedAudit()
+	await page.goto('/user/settings/accounts')
+	await page.getByRole('button', {name: 'Management activity', exact: true}).click()
+	await expect(page.locator('.account-events li')).toHaveCount(25)
+	const next = page.locator('.account-event-pages').getByRole('button', {name: 'Next', exact: true})
+	const started = deferred()
+	const release = deferred()
+	await page.route('**/api/v2/system/accounts/events?**', async route => {
+		if (new URL(route.request().url()).searchParams.get('page') !== '2') return route.continue()
+		started.resolve()
+		await release.promise
+		await route.continue()
+	})
+	try {
+		await next.focus()
+		await next.press('Enter')
+		await started.promise
+		await expect(next).toBeFocused()
+		await expect(next).toBeDisabled()
+		await expect(page.locator('.account-events')).toHaveCount(0)
+	} finally {
+		release.resolve()
+	}
+	await expect(page.locator('.account-events li')).toHaveCount(1)
+	await expect(page.locator('.account-events')).toContainText('Audit review 1')
+	await expect(next).toBeFocused()
+	await expect(next).toHaveAttribute('aria-disabled', 'true')
+	await expect(next).not.toHaveAttribute('disabled')
+	await page.locator('.account-event-pages').getByRole('button', {name: 'Previous', exact: true}).press('Enter')
+	await expect(page.locator('.account-events li')).toHaveCount(25)
+})
+
+test('a list denial clears the open confirmation and previously loaded audit', async ({authenticatedPage: page}) => {
+	await page.clock.install()
+	await UserFactory.create(1, {id: 2, username: 'managed-member'}, false)
+	await seedAudit()
+	await page.goto('/user/settings/accounts')
+	await page.getByRole('button', {name: 'Management activity', exact: true}).click()
+	await expect(page.locator('.account-events li')).toHaveCount(25)
+	await page.locator('[data-managed-account="2"]').getByRole('button', {name: 'Disable account', exact: true}).click()
+	await expect(page.getByRole('dialog')).toHaveCount(1)
+	await page.route('**/api/v2/system/accounts?**', route => route.fulfill({status: 403, json: {status: 403, detail: 'Forbidden'}}))
+	await page.clock.fastForward(60_001)
+	await expect(page.getByRole('dialog')).toHaveCount(0)
+	await expect(page.locator('.usage-account, .account-audit, .message.success')).toHaveCount(0)
+	await expect(page.getByRole('alert')).toContainText('super administrator')
+})
+
+test('an audit denial clears prior success and account data without reviving it from cache', async ({authenticatedPage: page}) => {
+	await UserFactory.create(1, {id: 2, username: 'managed-member'}, false)
+	await seedAudit()
+	await page.goto('/user/settings/accounts')
+	await page.locator('[data-managed-account="2"]').getByRole('button', {name: 'Revoke access', exact: true}).click()
+	const dialog = page.getByRole('dialog')
+	await dialog.getByRole('textbox', {name: 'Confirm account username'}).fill('managed-member')
+	await dialog.getByRole('button', {name: 'Revoke access', exact: true}).click()
+	await expect(dialog).toHaveCount(0)
+	await expect(page.locator('.message.success')).toContainText('completed')
+	await page.getByRole('button', {name: 'Management activity', exact: true}).click()
+	await expect(page.locator('.account-events li')).toHaveCount(25)
+	await page.route('**/api/v2/system/accounts/events?**', route => route.fulfill({status: 403, json: {status: 403, detail: 'Forbidden'}}))
+	await page.locator('.account-event-pages').getByRole('button', {name: 'Next', exact: true}).click()
+	await expect(page.locator('.usage-account, .account-audit, .message.success')).toHaveCount(0)
+	await expect(page.getByRole('alert')).toContainText('super administrator')
 })

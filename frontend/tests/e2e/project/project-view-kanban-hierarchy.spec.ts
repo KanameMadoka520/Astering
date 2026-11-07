@@ -331,7 +331,10 @@ test.describe('Kanban groups on a phone', () => {
 		await useGroups(page)
 		const production = column(page, 'Production')
 		await expect(production.locator('.kanban-tree-context')).toContainText(longTitles[40])
-		await production.getByRole('button', {name: 'Load more'}).click()
+		await production.locator('.tasks').evaluate(element => {
+			element.scrollTop = element.scrollHeight
+		})
+		await row(page, 1, 40).scrollIntoViewIfNeeded()
 		await expect(row(page, 1, 40)).toBeVisible()
 		expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 

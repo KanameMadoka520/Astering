@@ -1,9 +1,14 @@
 <script setup lang="ts">
-import {computed, ref, watch, onBeforeUnmount} from 'vue'
+import {computed, nextTick, ref, watch, onBeforeUnmount} from 'vue'
 import {useQuery} from '@tanstack/vue-query'
 import {useI18n} from 'vue-i18n'
 import type {ChatAttachment} from '@/client/generated'
 import {chatAttachmentQuery, fetchChatAttachment} from '@/client/queries/chatAttachments'
+import {
+	captureClientRequestContext,
+	isClientRequestContextCurrent,
+	isRequestContextAbort,
+} from '@/client/requestContext'
 import {useNearViewport} from '@/composables/useNearViewport'
 import {saveChatBlob, chatBytes} from '../export/files'
 const props = defineProps<{conversationId: string, file: ChatAttachment, removable?: boolean, disabled?: boolean}>()
@@ -21,20 +26,67 @@ const blob = useQuery(computed(() => chatAttachmentQuery(
 	isImage.value && !props.file.missing && near.value,
 )))
 const inDrive = computed(() => Boolean(props.file.drive_file_id))
-const missing = computed(() => { const error = blob.error.value as {status?: number, response?: {status?: number}} | null; return props.file.missing || error?.status === 404 || error?.response?.status === 404 })
+const errorStatus = computed(() => {
+	const cause = blob.error.value as {
+		status?: number,
+		response?: {status?: number},
+	} | null
+	return cause?.status ?? cause?.response?.status
+})
+const missing = computed(() => props.file.missing || errorStatus.value === 404)
+const denied = computed(() => errorStatus.value === 401 || errorStatus.value === 403)
+const unavailable = computed(() => missing.value || denied.value)
 const url = ref('')
 const failed = ref(false)
 const saving = ref(false)
+const retrying = ref(false)
+const imageButton = ref<HTMLButtonElement>()
+const retryButton = ref<HTMLButtonElement>()
 const preview = ref<HTMLDialogElement>()
-watch(() => isImage.value && !missing.value && near.value ? blob.data.value : undefined, data => {
+let mounted = true
+// An explicit permission/missing response revokes old bytes too; transient errors may keep this account's cached preview.
+watch(() => isImage.value && !unavailable.value && near.value ? blob.data.value : undefined, data => {
 	if (url.value) URL.revokeObjectURL(url.value)
 	url.value = data ? URL.createObjectURL(data) : ''
 }, {immediate: true})
-onBeforeUnmount(() => { if (url.value) URL.revokeObjectURL(url.value) })
+watch(unavailable, blocked => { if (blocked) preview.value?.close() })
+onBeforeUnmount(() => {
+	mounted = false
+	if (url.value) URL.revokeObjectURL(url.value)
+})
 async function download() {
+	if (unavailable.value || saving.value || blob.isFetching.value) return
+	const owner = captureClientRequestContext()
+	const conversationId = props.conversationId
+	const fileId = props.file.id!
+	const name = props.file.name || 'attachment'
 	saving.value = true; failed.value = false
-	try { saveChatBlob(blob.data.value ?? await fetchChatAttachment(props.conversationId, props.file.id!), props.file.name || 'attachment') }
-	catch { failed.value = true } finally { saving.value = false }
+	try {
+		const data = blob.data.value ?? (isImage.value
+			? (await blob.refetch({throwOnError: true})).data
+			: await fetchChatAttachment(conversationId, fileId))
+		if (data && mounted && isClientRequestContextCurrent(owner)
+			&& props.conversationId === conversationId && props.file.id === fileId) saveChatBlob(data, name)
+	} catch (cause) {
+		if (!isRequestContextAbort(cause) && mounted && isClientRequestContextCurrent(owner)) failed.value = true
+	} finally { saving.value = false }
+}
+async function retryPreview() {
+	if (retrying.value || blob.isFetching.value || saving.value) return
+	const owner = captureClientRequestContext()
+	retrying.value = true
+	failed.value = false
+	try { await blob.refetch({throwOnError: true}) }
+	catch (cause) {
+		if (!isRequestContextAbort(cause) && mounted && isClientRequestContextCurrent(owner)) failed.value = true
+	}
+	finally {
+		const focused = document.activeElement === retryButton.value
+		retrying.value = false
+		await nextTick()
+		if (focused && mounted && isClientRequestContextCurrent(owner)
+			&& document.activeElement === document.body) imageButton.value?.focus()
+	}
 }
 </script>
 
@@ -46,6 +98,7 @@ async function download() {
 	>
 		<button
 			v-if="url"
+			ref="imageButton"
 			type="button"
 			class="image-button"
 			:aria-label="t('chatFiles.preview', {name: file.name})"
@@ -71,13 +124,17 @@ async function download() {
 				v-if="missing"
 				class="file-error"
 			>{{ t('chatFiles.missing') }}</span>
+			<span
+				v-else-if="denied"
+				class="file-error"
+			>{{ t('sharing.accessDenied') }}</span>
 			<button
 				v-else
 				type="button"
-				:disabled="saving"
+				:aria-disabled="saving || blob.isFetching.value"
 				@click="download"
 			>
-				{{ saving ? t('chatFiles.loading') : t('chatFiles.download') }}
+				{{ saving || blob.isFetching.value ? t('chatFiles.loading') : t('chatFiles.download') }}
 			</button>
 			<button
 				v-if="removable"
@@ -89,9 +146,19 @@ async function download() {
 				{{ t('tcymc.text.remove') }}
 			</button>
 			<span
-				v-if="failed || (blob.isError.value && !missing)"
+				v-if="(failed || blob.isError.value) && !unavailable"
 				role="alert"
 			>{{ t('chatFiles.loadFailed') }}</span>
+			<button
+				v-if="isImage && !missing && (retrying || failed || blob.isError.value)"
+				ref="retryButton"
+				type="button"
+				:aria-disabled="blob.isFetching.value || saving"
+				:aria-label="t('chatFiles.retryPreview')"
+				@click="retryPreview"
+			>
+				{{ blob.isFetching.value ? t('chatFiles.loading') : t('chatFiles.retryPreview') }}
+			</button>
 		</figcaption>
 		<!-- Escape belongs to this dialog alone; the floating panel around it minimizes on Escape. -->
 		<dialog
@@ -183,7 +250,8 @@ figcaption {
 			@include focus-ring;
 		}
 
-		&:disabled {
+		&:disabled,
+		&[aria-disabled="true"] {
 			opacity: .5;
 			cursor: not-allowed;
 		}

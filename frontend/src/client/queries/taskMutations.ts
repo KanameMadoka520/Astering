@@ -334,9 +334,10 @@ export function markTaskReadMutationOptions() {
 	})
 }
 
-type AssigneeInput = {taskId: number, user: User & Required<Pick<User, 'id'>>}
+type AssigneeInput = {taskId: number, user: User & Required<Pick<User, 'id'>>, notifyError?: boolean}
 export function addTaskAssigneeMutationOptions() {
 	return contextMutationOptions({
+		toastError: input => input.notifyError !== false,
 		mutationFn: async ({taskId, user}: AssigneeInput) =>
 			(await taskAssigneesCreate({path: {task: taskId}, body: {user_id: user.id}})).data,
 		onSuccess: (_data, {taskId, user}, client) => mapTaskEverywhere(client, taskId, task => ({
@@ -359,9 +360,10 @@ export function removeTaskAssigneeMutationOptions() {
 	})
 }
 
-type LabelInput = {taskId: number, label: Label & Required<Pick<Label, 'id'>>}
+type LabelInput = {taskId: number, label: Label & Required<Pick<Label, 'id'>>, notifyError?: boolean}
 export function addTaskLabelMutationOptions() {
 	return contextMutationOptions({
+		toastError: input => input.notifyError !== false,
 		mutationFn: async ({taskId, label}: LabelInput) =>
 			(await taskLabelsCreate({path: {task: taskId}, body: {label_id: label.id}})).data,
 		onSuccess: (_data, {taskId, label}, client) => mapTaskEverywhere(client, taskId, task => ({
