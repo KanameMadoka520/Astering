@@ -45,7 +45,15 @@ func TestTCYAIResultProjectionLargeJSON(t *testing.T) {
 	assert.Less(t, len(projected), 1000)
 	assert.Contains(t, projected, `"id":42`)
 	assert.NotContains(t, projected, "long body")
-	state := &AgentState{Result: RunResult{Actions: []Action{{ResultRef: "receipt", Result: string(raw)}}}}
+	state := &AgentState{Result: RunResult{Actions: []Action{
+		{
+			Tool:      "list_tasks",
+			Arguments: `{}`,
+			Success:   true,
+			ResultRef: "receipt",
+			Result:    string(raw),
+		},
+	}}}
 	page, err := state.readToolResult(json.RawMessage(`{"result_ref":"receipt","offset":64000,"max_chars":100}`))
 	require.NoError(t, err)
 	assert.Contains(t, page, `"next_offset":64100`)
@@ -510,7 +518,26 @@ func TestTCYAISubagentResultsRemainReadable(t *testing.T) {
 	config.FilesBasePath.Set(t.TempDir())
 	config.ServiceSecret.Set("subagent-result-test-secret")
 	t.Cleanup(func() { config.FilesBasePath.Set(oldPath); config.ServiceSecret.Set(oldSecret) })
-	result := RunResult{Subagents: []SubagentTask{{ID: "worker", Status: "completed", Actions: []Action{{ResultRef: "worker-receipt", Result: strings.Repeat("detail", 2000), Arguments: `{"id":42}`}}}}}
+	raw, err := json.Marshal(map[string]any{
+		"id":          42,
+		"description": strings.Repeat("detail", 2000),
+	})
+	require.NoError(t, err)
+	result := RunResult{Subagents: []SubagentTask{
+		{
+			ID:     "worker",
+			Status: "completed",
+			Actions: []Action{
+				{
+					Tool:      "get_task",
+					Success:   true,
+					ResultRef: "worker-receipt",
+					Result:    string(raw),
+					Arguments: `{"id":42}`,
+				},
+			},
+		},
+	}}
 	state := &AgentState{Result: result}
 	page, err := state.readToolResult(json.RawMessage(`{"result_ref":"worker-receipt","offset":100,"max_chars":20}`))
 	require.NoError(t, err)

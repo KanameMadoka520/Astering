@@ -95,11 +95,19 @@ func asterNoteError(status int, message string) error {
 	}
 }
 
+func requireAsterNoteOperation(a web.Auth, tool string, noteID int64) error {
+	if actor, ok := a.(*user.User); ok && actor.HasPersonalNotesAgentAccess() && !actor.PersonalNotesAgentAllows(tool, noteID) {
+		return asterNoteError(http.StatusForbidden, "note_human_session_required")
+	}
+	return nil
+}
+
 // RequireAsterNotesHuman is shared by HTTP and live-ASR persistence. Mutable
 // writes additionally lock/recheck the original credential before taking a note lock.
 func RequireAsterNotesHuman(s *xorm.Session, a web.Auth, write bool) (*user.User, error) {
 	actor, ok := a.(*user.User)
-	if !ok || actor == nil || actor.ID <= 0 || actor.IsBot() || actor.HasResourceOnlyPermissions() || actor.CredentialScope().APITokenID > 0 {
+	if !ok || actor == nil || actor.ID <= 0 || actor.IsBot() ||
+		(actor.HasResourceOnlyPermissions() && !actor.HasPersonalNotesAgentAccess()) || actor.CredentialScope().APITokenID > 0 {
 		return nil, asterNoteError(http.StatusForbidden, "note_human_session_required")
 	}
 	if write {
@@ -115,7 +123,28 @@ func RequireAsterNotesHuman(s *xorm.Session, a web.Auth, write bool) (*user.User
 	if !found || current.IsBot() || current.Status != user.StatusActive {
 		return nil, asterNoteError(http.StatusForbidden, "note_human_session_required")
 	}
+	if actor.HasPersonalNotesAgentAccess() && !write {
+		session, err := GetSessionByID(s, actor.CredentialScope().SessionID)
+		if err != nil {
+			return nil, err
+		}
+		if session.UserID != actor.ID || time.Since(session.LastActive) > sessionMaximumAge(session) {
+			return nil, asterNoteError(http.StatusForbidden, "note_human_session_required")
+		}
+	}
 	return actor, nil
+}
+
+// ReadAsterNoteForToolMutation obtains the exact agent target under the same
+// credential/note lock order as Update/Delete. The returned full article is only
+// for partial-field merging and a digest; it must not enter a tool result.
+func ReadAsterNoteForToolMutation(s *xorm.Session, a web.Auth, noteID int64) (*AsterNote, error) {
+	actor, ok := a.(*user.User)
+	if !ok || !actor.HasPersonalNotesAgentAccess() ||
+		(!actor.PersonalNotesAgentAllows("update_note", noteID) && !actor.PersonalNotesAgentAllows("delete_note", noteID)) {
+		return nil, asterNoteError(http.StatusForbidden, "note_human_session_required")
+	}
+	return loadOwnedAsterNote(s, a, noteID, true, true)
 }
 
 func loadOwnedAsterNote(s *xorm.Session, a web.Auth, id int64, write, includeContent bool) (*AsterNote, error) {
@@ -145,10 +174,16 @@ func loadOwnedAsterNote(s *xorm.Session, a web.Auth, id int64, write, includeCon
 }
 
 func (n *AsterNote) CanCreate(s *xorm.Session, a web.Auth) (bool, error) {
+	if err := requireAsterNoteOperation(a, "create_note", 0); err != nil {
+		return false, err
+	}
 	_, err := RequireAsterNotesHuman(s, a, false)
 	return err == nil, err
 }
 func (n *AsterNote) CanRead(s *xorm.Session, a web.Auth) (bool, int, error) {
+	if err := requireAsterNoteOperation(a, "get_note", n.ID); err != nil {
+		return false, 0, err
+	}
 	_, err := loadOwnedAsterNote(s, a, n.ID, false, false)
 	if err != nil {
 		return false, 0, err
@@ -156,11 +191,18 @@ func (n *AsterNote) CanRead(s *xorm.Session, a web.Auth) (bool, int, error) {
 	return true, int(PermissionAdmin), nil
 }
 func (n *AsterNote) CanUpdate(s *xorm.Session, a web.Auth) (bool, error) {
+	if err := requireAsterNoteOperation(a, "update_note", n.ID); err != nil {
+		return false, err
+	}
 	_, err := loadOwnedAsterNote(s, a, n.ID, false, false)
 	return err == nil, err
 }
 func (n *AsterNote) CanDelete(s *xorm.Session, a web.Auth) (bool, error) {
-	return n.CanUpdate(s, a)
+	if err := requireAsterNoteOperation(a, "delete_note", n.ID); err != nil {
+		return false, err
+	}
+	_, err := loadOwnedAsterNote(s, a, n.ID, false, false)
+	return err == nil, err
 }
 
 func (n *AsterNote) normalize() error {
@@ -207,6 +249,9 @@ func asterNoteExcerpt(content string) string {
 }
 
 func (n *AsterNote) Create(s *xorm.Session, a web.Auth) error {
+	if err := requireAsterNoteOperation(a, "create_note", 0); err != nil {
+		return err
+	}
 	actor, err := RequireAsterNotesHuman(s, a, true)
 	if err != nil {
 		return err
@@ -227,6 +272,9 @@ func (n *AsterNote) Create(s *xorm.Session, a web.Auth) error {
 }
 
 func (n *AsterNote) ReadOne(s *xorm.Session, a web.Auth) error {
+	if err := requireAsterNoteOperation(a, "get_note", n.ID); err != nil {
+		return err
+	}
 	row, err := loadOwnedAsterNote(s, a, n.ID, false, true)
 	if err != nil {
 		return err
@@ -236,6 +284,9 @@ func (n *AsterNote) ReadOne(s *xorm.Session, a web.Auth) error {
 }
 
 func (n *AsterNote) Update(s *xorm.Session, a web.Auth) error {
+	if err := requireAsterNoteOperation(a, "update_note", n.ID); err != nil {
+		return err
+	}
 	current, err := loadOwnedAsterNote(s, a, n.ID, true, true)
 	if err != nil {
 		return err
@@ -271,9 +322,16 @@ func (n *AsterNote) Update(s *xorm.Session, a web.Auth) error {
 }
 
 func (n *AsterNote) Delete(s *xorm.Session, a web.Auth) error {
+	if err := requireAsterNoteOperation(a, "delete_note", n.ID); err != nil {
+		return err
+	}
 	current, err := loadOwnedAsterNote(s, a, n.ID, true, false)
 	if err != nil {
 		return err
+	}
+	actor, _ := a.(*user.User)
+	if (actor.HasPersonalNotesAgentAccess() && n.ExpectedRevision < 1) || (n.ExpectedRevision > 0 && n.ExpectedRevision != current.Revision) {
+		return asterNoteError(http.StatusConflict, "note_revision_conflict")
 	}
 	if _, err := s.Where("note_id = ?", current.ID).Delete(&AsterNoteSegment{}); err != nil {
 		return err
@@ -297,6 +355,9 @@ func asterNotePage(page, perPage int) (int, int) {
 }
 
 func (n *AsterNote) ReadAll(s *xorm.Session, a web.Auth, search string, page, perPage int) (any, int, int64, error) {
+	if err := requireAsterNoteOperation(a, "list_notes", 0); err != nil {
+		return nil, 0, 0, err
+	}
 	actor, err := RequireAsterNotesHuman(s, a, false)
 	if err != nil {
 		return nil, 0, 0, err
@@ -336,6 +397,9 @@ func validateAsterNoteSegment(segment *AsterNoteSegment) error {
 // AppendAsterNoteSegment must be called in a short write transaction. A caller
 // emits the final segment only after Commit; audio is never retained here.
 func AppendAsterNoteSegment(s *xorm.Session, a web.Auth, noteID int64, segment *AsterNoteSegment) error {
+	if actor, ok := a.(*user.User); ok && actor.HasPersonalNotesAgentAccess() {
+		return asterNoteError(http.StatusForbidden, "note_human_session_required")
+	}
 	if segment == nil {
 		return asterNoteError(http.StatusUnprocessableEntity, "note_invalid_segment")
 	}
@@ -383,6 +447,9 @@ type AsterNoteTranscriptState struct {
 // ReadAsterNoteTranscriptState allows committed live events to update counters
 // without re-reading or retransmitting a potentially large editable article.
 func ReadAsterNoteTranscriptState(s *xorm.Session, a web.Auth, noteID int64) (*AsterNoteTranscriptState, error) {
+	if err := requireAsterNoteOperation(a, "live_transcript_state", noteID); err != nil {
+		return nil, err
+	}
 	note, err := loadOwnedAsterNote(s, a, noteID, false, false)
 	if err != nil {
 		return nil, err
@@ -403,6 +470,9 @@ type AsterNoteSegmentPage struct {
 }
 
 func ListAsterNoteSegments(s *xorm.Session, a web.Auth, noteID, afterID int64, perPage int, latest bool) (*AsterNoteSegmentPage, error) {
+	if err := requireAsterNoteOperation(a, "list_note_segments", noteID); err != nil {
+		return nil, err
+	}
 	if _, err := loadOwnedAsterNote(s, a, noteID, false, false); err != nil {
 		return nil, err
 	}
@@ -441,9 +511,32 @@ func ListAsterNoteSegments(s *xorm.Session, a web.Auth, noteID, afterID int64, p
 	return page, nil
 }
 
+// ReadAsterNoteSegment supports bounded text pagination in the agent while
+// preserving the same owner and exact read-only grant as the segment list.
+func ReadAsterNoteSegment(s *xorm.Session, a web.Auth, noteID, segmentID int64) (*AsterNoteSegment, error) {
+	if err := requireAsterNoteOperation(a, "list_note_segments", noteID); err != nil {
+		return nil, err
+	}
+	if _, err := loadOwnedAsterNote(s, a, noteID, false, false); err != nil {
+		return nil, err
+	}
+	row := &AsterNoteSegment{}
+	found, err := s.Where("note_id = ? AND id = ?", noteID, segmentID).Get(row)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, asterNoteError(http.StatusNotFound, "note_segment_not_found")
+	}
+	return row, nil
+}
+
 // AsterNoteRecordingOffset allows a new live session to continue the note's
 // timeline without reading transcript text or assuming wall-clock continuity.
 func AsterNoteRecordingOffset(s *xorm.Session, a web.Auth, noteID int64) (int64, error) {
+	if err := requireAsterNoteOperation(a, "live_recording_offset", noteID); err != nil {
+		return 0, err
+	}
 	if _, err := loadOwnedAsterNote(s, a, noteID, false, false); err != nil {
 		return 0, err
 	}

@@ -24,6 +24,7 @@ vi.mock('vue-i18n', async original => ({
 
 import {noteKeys, receiveNoteTranscript} from '@/client/queries/notes'
 import {captureClientRequestContext} from '@/client/requestContext'
+import {takeAronaDraftHandoff} from '@/helpers/aronaDraftHandoff'
 import XButton from '@/components/input/Button.vue'
 import NoteTranscripts from './NoteTranscripts.vue'
 
@@ -118,5 +119,10 @@ describe('live transcript selection', () => {
 		await flushPromises()
 		expect(navigation.push).toHaveBeenCalledTimes(1)
 		expect(navigation.push).toHaveBeenCalledWith({name: 'tcy-ai', query: {notesDraft: expect.any(String)}})
+		const handoff = takeAronaDraftHandoff(navigation.push.mock.calls[0][0].query.notesDraft)
+		expect(handoff).toContain('[notes.arona.sourceLink](/notes/3)')
+		expect(handoff).toContain('Keep this source')
+		expect(handoff).not.toContain('Final 2')
+		expect(takeAronaDraftHandoff(navigation.push.mock.calls[0][0].query.notesDraft)).toBe('')
 	})
 })

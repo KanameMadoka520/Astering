@@ -148,6 +148,9 @@ func (e *aiExecution) prepareDirectTool(ctx context.Context, name string, raw js
 	if tcyai.IsChatImageTool(name) {
 		return e.prepareChatImage(ctx, name, raw)
 	}
+	if tcyai.IsNoteTool(name) {
+		return e.prepareNotes(ctx, name, raw)
+	}
 	if tcyai.IsCompassTool(name) {
 		return e.prepareCompass(ctx, name, raw)
 	}
@@ -164,7 +167,7 @@ func (e *aiExecution) prepareDirectTool(ctx context.Context, name string, raw js
 }
 
 func isAIDirectTool(name string) bool {
-	return tcyai.IsCompassTool(name) || tcyai.IsChatImageTool(name) || tcyai.IsBucketTool(name) || tcyai.IsTaskOrderTool(name) || tcyai.IsProjectVersionTool(name)
+	return tcyai.IsCompassTool(name) || tcyai.IsNoteTool(name) || tcyai.IsChatImageTool(name) || tcyai.IsBucketTool(name) || tcyai.IsTaskOrderTool(name) || tcyai.IsProjectVersionTool(name)
 }
 
 func (e *aiExecution) prepare(ctx context.Context, name string, raw json.RawMessage) (tcyai.Operation, error) {
@@ -278,6 +281,12 @@ func marshalAI(value any) (string, error) { raw, err := json.Marshal(value); ret
 func (e *aiExecution) execute(ctx context.Context, name string, raw json.RawMessage) (string, error) {
 	if _, err := tcyai.ValidateTool(name, raw, e.input); err != nil {
 		return "", err
+	}
+	if tcyai.IsNoteTool(name) {
+		if _, err := serveAITool(ctx, e.api, e.caller, "validate_session", "/user", http.MethodGet, nil, nil); err != nil {
+			return "", err
+		}
+		return e.executeNotes(ctx, name, raw)
 	}
 	if tcyai.IsProjectVersionTool(name) {
 		if _, err := serveAITool(ctx, e.api, e.caller, "validate_session", "/user", http.MethodGet, nil, nil); err != nil {

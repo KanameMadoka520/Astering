@@ -2686,7 +2686,7 @@
 			"the_provider_returned_no_models_enter_a_model": "服务商没有返回模型；请手动填写模型名称。",
 			"not_enabled": "未启用",
 			"projects_not_added_here_stay_private_by_default": "未添加的项目完全不公开。默认只显示“忙碌”，公开项目名也使用别名。页面和 JSON 使用相同的公开范围。",
-			"allow_task_deletion_for_this_request": "本次允许删除任务",
+			"allow_task_deletion_for_this_request": "本次允许删除任务或个人笔记",
 			"json_endpoint_for_bots": "机器人 JSON 接口 ↗",
 			"view_public_page": "查看公开页面 ↗",
 			"view_original_transcript_or_text": "查看识别 / 整理前原文",
@@ -3234,6 +3234,12 @@
 		},
 		"tools": {
 			"list_project_history": "回顾项目历程",
+			"list_notes": "列出个人笔记",
+			"get_note": "读取个人笔记",
+			"list_note_segments": "读取笔记原始转录",
+			"create_note": "创建个人笔记",
+			"update_note": "修改个人笔记文章",
+			"delete_note": "永久删除个人笔记及转录",
 			"list_compass_spaces": "列出星图空间",
 			"get_compass_space": "读取星图空间",
 			"list_compass_entries": "查找星图记录",
@@ -3293,6 +3299,19 @@
 			"get_project_version_preview": "预览项目恢复",
 			"save_project_version": "保存项目版本",
 			"restore_project_version": "恢复项目保存点"
+		},
+		"noteReview": {
+			"note": "个人笔记",
+			"expectedRevision": "本次依据的版本",
+			"title": "标题",
+			"pinned": "置顶",
+			"content": "替换后的文章正文（预览）",
+			"appendContent": "追加到文章末尾（预览）",
+			"segments": "将删除的原始转录段数",
+			"truncated": "预览已截短；完整内容可展开下方实际参数查看。",
+			"hint": "此操作只修改你自己的笔记文章，原始转录保持不变。每次写入都需要你确认；正在编辑的未保存稿会保留。",
+			"deleteHint": "请核对笔记编号、版本及转录段数。删除后，文章和整份原始转录都会永久移除。",
+			"deleteWarning": "将永久删除这篇笔记及全部原始转录，不进入回收站，无法撤销。"
 		},
 		"compassReview": {
 			"space": "目标空间",
@@ -4976,7 +4995,7 @@
       "permissions": "连接操作权限",
       "allowWrite": "允许修改外部数据",
       "allowDelete": "允许外部删除及影响未知的操作",
-      "permissionsHelp": "外部修改仍需本轮写入模式和逐次审核。外部删除由此连接的删除开关控制，与“本次允许删除任务”单独设置。限制只写入特定 Astering 项目时，也会阻止外部修改，因为无法核实外部资源归属哪个项目。",
+      "permissionsHelp": "外部修改仍需本轮写入模式和逐次审核。外部删除由此连接的删除开关控制，与“本次允许删除任务或个人笔记”单独设置。限制只写入特定 Astering 项目时，也会阻止外部修改，因为无法核实外部资源归属哪个项目。",
       "toolPermissions": "工具目录与只读信任",
       "readTrustHelp": "勾选表示你信任此工具只读取数据。远端服务提供的只读或删除标记仅供参考，不会自动授予权限；已知 Wallos 工具另按内置规则识别。",
       "trustTool": "信任 {name} 为只读工具",
@@ -5105,6 +5124,8 @@
 		"project_tasks": "项目与任务",
 		"project_tasksHelp": "项目、任务、日历、看板、周期打卡、评论及附件。",
 		"compass": "星图",
+		"notes": "个人笔记",
+		"notesHelp": "仅你自己的笔记文章和原始转录。默认关闭；只读可查询，读写可创建、修改或经额外允许后删除，每次写入均需审核。",
 		"compassHelp": "空间、原则、行动纲领、札记及修订记录。默认关闭；每次写入均须审核。",
 		"off": "关闭",
 		"read": "只读",
@@ -5722,6 +5743,12 @@
 		}
 	},
 	"notes": {
+		"deletedDraft": {
+			"formatHelp": "支持 Markdown · 可复制或导出这份只读草稿。",
+			"status": "笔记已删除 · 仅保留本页草稿",
+			"help": "笔记已删除。这份未保存草稿只留在当前标签页供复制或导出，不能再保存到原笔记；关闭页面后将丢失。录音已停止，原笔记不会被重新创建。",
+			"close": "关闭这份草稿"
+		},
 		"title": "笔记",
 		"recordingIndicator": "正在录音 · 查看",
 		"subtitle": "记录想法，保留原话，让灵感逐渐成形。",
@@ -5828,7 +5855,9 @@
 			"plan": "规划项目或任务",
 			"organizePrompt": "请将下面的原始转录整理成清晰、忠实于原话的 Markdown 笔记，区分事实、决定、待确认问题和下一步行动。不要编造缺失信息。请先在对话里给我草稿审阅，不要修改任何项目或任务。",
 			"planPrompt": "请根据下面的转录提出项目或任务规划，整理目标、步骤、依赖关系及原文明示的日期；关键信息不足时先询问。请先展示方案供我审阅，在我明确要求之前不要创建或修改任何内容。",
-			"sourceLabel": "来源笔记：{title}",
+			"sourceLink": "打开来源笔记",
+			"toolsHelp": "只整理选中文字，无需开启笔记工具。若要读取或保存回这篇笔记，请到阿罗娜“工具 → 个人笔记”选择只读或读写；默认关闭，不会自动开启。",
+			"sourceLabel": "来源笔记 #{id}：{title}",
 			"source": "选中的原文",
 			"emptySource": "请先填写要交给阿罗娜的原文，再打开聊天草稿。当前没有发送任何内容。",
 			"continue": "打开聊天草稿",

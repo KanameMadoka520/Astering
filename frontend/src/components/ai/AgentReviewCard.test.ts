@@ -575,3 +575,40 @@ describe('Compass write review', () => {
 		})
 	})
 })
+
+describe('personal Notes review', () => {
+	it('shows the exact note and CAS revision without inventing a blank old article', () => {
+		const wrapper = shallowMount(AgentReviewCard, {props: {busy: false, turn: reviewTurn({
+			tool: 'update_note',
+			before: JSON.stringify([{id: 3, title: 'Before', revision: 4, content_bytes: 400, segment_count: 2}]),
+			arguments: JSON.stringify({id: 3, expected_revision: 4, append_content: '\n\nNew conclusion', pinned: true}),
+		})}, global: {stubs}})
+		const fields = wrapper.get('.review-note').text()
+		expect(fields).toContain('agent.noteReview.note#3')
+		expect(fields).toContain('agent.noteReview.expectedRevision4')
+		expect(wrapper.get('.review-note').findAll('dt').map(field => field.text())).toContain('agent.noteReview.appendContent')
+		expect(wrapper.get('.review-note').findAll('dd').map(field => field.text())).toContain('New conclusion')
+		expect(wrapper.find('table').exists()).toBe(false)
+		expect(wrapper.text()).toContain('agent.noteReview.hint')
+	})
+	it('warns that deletion also permanently removes the raw transcript and preserves approval identity', async () => {
+		const wrapper = shallowMount(AgentReviewCard, {props: {busy: false, turn: reviewTurn({
+			tool: 'delete_note', before: JSON.stringify([{id: 3, title: 'Recording', segment_count: 17}]),
+			arguments: JSON.stringify({id: 3, expected_revision: 4}),
+		})}, global: {stubs}})
+		expect(wrapper.classes()).toContain('is-destructive')
+		expect(wrapper.get('.review-note').text()).toContain('agent.noteReview.segments17')
+		expect(wrapper.get('.destructive-warning').text()).toContain('agent.noteReview.deleteWarning')
+		await wrapper.findAll('button').find(button => button.text() === 'agent.approve')!.trigger('click')
+		expect(wrapper.emitted('review')?.[0]?.[0]).toMatchObject({operation_id: 'operation-bucket', decision: 'approve'})
+	})
+	it('does not present an external tool with the same name as native note access', () => {
+		const wrapper = shallowMount(AgentReviewCard, {props: {busy: false, turn: reviewTurn({
+			tool: 'update_note', arguments: '{"id":3,"expected_revision":2}',
+			external: {server_id: 'outside', tool: 'update_note'},
+		})}, global: {stubs}})
+		expect(wrapper.find('.review-note').exists()).toBe(false)
+		expect(wrapper.text()).toContain('tcy.mcp.externalReview')
+		expect(wrapper.text()).not.toContain('agent.noteReview.hint')
+	})
+})

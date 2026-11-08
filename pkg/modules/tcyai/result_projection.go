@@ -32,7 +32,7 @@ func modelToolResult(name string, raw json.RawMessage, data, ref string) string 
 	}
 	// Discovery already bounds its catalog selection. Cutting its structured
 	// contracts would tell the model a tool is loaded without usable parameters.
-	needsPreview := name != "find_tools" && name != "find_mcp_tools" && utf8.RuneCountInString(projected) > 16000
+	needsPreview := name != "find_tools" && name != "find_mcp_tools" && !IsNoteTool(name) && utf8.RuneCountInString(projected) > 16000
 	decode := json.Unmarshal
 	if isMCPAgentTool(name) {
 		decode = mcpDecodeJSON

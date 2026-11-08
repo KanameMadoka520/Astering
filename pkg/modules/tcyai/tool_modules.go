@@ -19,12 +19,14 @@ package tcyai
 import (
 	"encoding/json"
 	"slices"
+	"sync"
 )
 
 // ToolModules restricts this run; it never grants account or resource permissions.
 type ToolModules struct {
 	ProjectTasks string `json:"project_tasks,omitempty" enum:"off,read,write" doc:"Project and task tools. Omission preserves legacy access under the global mode."`
 	Compass      string `json:"compass,omitempty" enum:"off,read,write" doc:"Private star-chart spaces and entries. Omission disables these tools."`
+	Notes        string `json:"notes,omitempty" enum:"off,read,write" doc:"Personal editable notes and read-only final transcripts. Omission disables these tools; all writes require human review."`
 }
 
 func normalizedToolModules(modules ToolModules) ToolModules {
@@ -41,6 +43,7 @@ func normalizedToolModules(modules ToolModules) ToolModules {
 	return ToolModules{
 		ProjectTasks: normalize(modules.ProjectTasks, "write"),
 		Compass:      normalize(modules.Compass, "off"),
+		Notes:        normalize(modules.Notes, "off"),
 	}
 }
 
@@ -48,7 +51,7 @@ func validToolModules(modules ToolModules) bool {
 	valid := func(value string) bool {
 		return value == "" || value == "off" || value == "read" || value == "write"
 	}
-	return valid(modules.ProjectTasks) && valid(modules.Compass)
+	return valid(modules.ProjectTasks) && valid(modules.Compass) && valid(modules.Notes)
 }
 
 func effectiveToolModules(in RunInput) ToolModules {
@@ -59,6 +62,9 @@ func effectiveToolModules(in RunInput) ToolModules {
 		}
 		if modules.Compass == "write" {
 			modules.Compass = "read"
+		}
+		if modules.Notes == "write" {
+			modules.Notes = "read"
 		}
 	}
 	return modules
@@ -80,6 +86,9 @@ func moduleAllowsTool(in RunInput, name string, readResult bool) bool {
 	mode := modules.ProjectTasks
 	if IsCompassTool(name) {
 		mode = modules.Compass
+	}
+	if IsNoteTool(name) {
+		mode = modules.Notes
 	}
 	return mode != "off" && (readResult || !IsWriteTool(name) || mode == "write")
 }
@@ -108,7 +117,7 @@ func coreTools(in RunInput) []map[string]any {
 }
 
 func moduleResultReadable(in RunInput, action Action, resolve func(string) (Action, bool), visited map[string]bool) bool {
-	if !moduleAllowsTool(in, action.Tool, true) {
+	if !knownHistoryTool(action.Tool) || !moduleAllowsTool(in, action.Tool, true) {
 		return false
 	}
 	if action.Tool == "read_tool_result" {
@@ -139,10 +148,10 @@ func moduleResultReadable(in RunInput, action Action, resolve func(string) (Acti
 			if definition.Name == "" && definition.Function.Name == "" {
 				return false
 			}
-			if definition.Name != "" && !moduleAllowsTool(in, definition.Name, true) {
+			if definition.Name != "" && (!knownHistoryTool(definition.Name) || !moduleAllowsTool(in, definition.Name, true)) {
 				return false
 			}
-			if definition.Function.Name != "" && !moduleAllowsTool(in, definition.Function.Name, true) {
+			if definition.Function.Name != "" && (!knownHistoryTool(definition.Function.Name) || !moduleAllowsTool(in, definition.Function.Name, true)) {
 				return false
 			}
 		}
@@ -175,4 +184,21 @@ func moduleResultReadable(in RunInput, action Action, resolve func(string) (Acti
 		}
 	}
 	return true
+}
+
+// Cache names only: schemas stay freshly built, while module access is evaluated
+// separately for every historical action against the current turn's permissions.
+var catalogHistoryTool = sync.OnceValue(func() func(string) bool {
+	names := map[string]struct{}{}
+	for _, definition := range AllTools("write", true) {
+		names[toolName(definition)] = struct{}{}
+	}
+	return func(name string) bool {
+		_, exists := names[name]
+		return exists
+	}
+})
+
+func knownHistoryTool(name string) bool {
+	return sharedTool(name) || catalogHistoryTool()(name)
 }

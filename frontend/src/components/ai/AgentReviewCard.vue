@@ -26,6 +26,32 @@ const COMPASS_WRITES = new Set([
 	'restore_compass_revision',
 ])
 const compassTool = computed(() => !external.value && COMPASS_WRITES.has(pending.value?.tool ?? ''))
+const noteTool = computed(() => !external.value && ['create_note', 'update_note', 'delete_note'].includes(pending.value?.tool ?? ''))
+const noteFields = computed(() => {
+	if (!noteTool.value) return []
+	try {
+		const proposed = JSON.parse(pending.value?.arguments ?? '{}')
+		if (!proposed || typeof proposed !== 'object' || Array.isArray(proposed)) return []
+		const fields: {key: string, value: string}[] = []
+		if (proposed.id !== undefined) fields.push({key: 'note', value: `#${proposed.id}`})
+		if (proposed.expected_revision !== undefined) fields.push({key: 'expectedRevision', value: String(proposed.expected_revision)})
+		if (typeof proposed.title === 'string') fields.push({key: 'title', value: proposed.title})
+		if (typeof proposed.pinned === 'boolean') fields.push({key: 'pinned', value: t(proposed.pinned ? 'calendar.yes' : 'calendar.no')})
+		if (typeof proposed.content === 'string') fields.push({key: 'content', value: proposed.content.slice(0, 1200)
+			+ (proposed.content.length > 1200 ? `\n${t('agent.noteReview.truncated')}` : '')})
+		if (typeof proposed.append_content === 'string') fields.push({key: 'appendContent', value: proposed.append_content.slice(0, 1200)
+			+ (proposed.append_content.length > 1200 ? `\n${t('agent.noteReview.truncated')}` : '')})
+		if (pending.value?.tool === 'delete_note') {
+			const snapshot = JSON.parse(pending.value.before ?? 'null')
+			const before = Array.isArray(snapshot) ? snapshot[0] : snapshot
+			if (before && typeof before === 'object') {
+				if (typeof before.title === 'string') fields.push({key: 'title', value: before.title})
+				if (typeof before.segment_count === 'number') fields.push({key: 'segments', value: String(before.segment_count)})
+			}
+		}
+		return fields
+	} catch { return [] }
+})
 const compassFields = computed(() => {
 	if (!compassTool.value) return []
 	try {
@@ -55,21 +81,23 @@ const imageTool = computed(() => !external.value && [
 	'remove_task_description_image',
 ].includes(pending.value?.tool ?? ''))
 const reviewHint = computed(() => external.value ? t('tcy.mcp.externalReview')
-	: compassTool.value ? t(pending.value?.tool === 'restore_compass_revision'
-		? 'agent.compassReview.restoreHint' : 'agent.compassReview.hint')
-		: imageTool.value ? t(pending.value?.tool === 'remove_task_description_image'
-			? 'tcy.chatImages.removeHint' : pending.value?.tool === 'update_task_description_image'
-				? 'tcy.chatImages.updateHint' : 'tcy.chatImages.shareHint')
-			: pending.value?.tool === 'set_task_routine_progress'
-				? t('agent.routineReview.absoluteProgress')
-				: pending.value?.tool === 'set_task_repeat_bucket' ? t('agent.repeatPolicy.futureOnly') : '')
+	: noteTool.value ? t(pending.value?.tool === 'delete_note' ? 'agent.noteReview.deleteHint' : 'agent.noteReview.hint')
+		: compassTool.value ? t(pending.value?.tool === 'restore_compass_revision'
+			? 'agent.compassReview.restoreHint' : 'agent.compassReview.hint')
+			: imageTool.value ? t(pending.value?.tool === 'remove_task_description_image'
+				? 'tcy.chatImages.removeHint' : pending.value?.tool === 'update_task_description_image'
+					? 'tcy.chatImages.updateHint' : 'tcy.chatImages.shareHint')
+				: pending.value?.tool === 'set_task_routine_progress'
+					? t('agent.routineReview.absoluteProgress')
+					: pending.value?.tool === 'set_task_repeat_bucket' ? t('agent.repeatPolicy.futureOnly') : '')
 const destructive = computed(() => external.value?.destructive === true
 	|| DESTRUCTIVE_TOOLS.has(pending.value?.tool ?? ''))
 // Deleting a bucket removes the bucket only; the generic wording would suggest its tasks go too.
 const destructiveWarning = computed(() => external.value ? t('tcy.mcp.destructiveWarning')
-	: pending.value?.tool === 'delete_bucket'
-		? t('agent.bucketImpact.deleteWarning')
-		: t('agent.destructiveWarning'))
+	: pending.value?.tool === 'delete_note' ? t('agent.noteReview.deleteWarning')
+		: pending.value?.tool === 'delete_bucket'
+			? t('agent.bucketImpact.deleteWarning')
+			: t('agent.destructiveWarning'))
 // Bucket tools put their effect (task destinations, default and done bucket changes) in pending.after.
 const BUCKET_WRITE_TOOLS = new Set([
 	'create_bucket',
@@ -180,7 +208,7 @@ const rows = computed(() => {
 	// The impact preview describes bucket changes; the field table would list locators instead.
 	// Compass preparation intentionally stores a slim snapshot, not a full entry body.
 	// Never compare an entry's proposed title/content to its parent space or pretend absent fields are empty.
-	if (bucketImpact.value || external.value || orderTool.value || compassTool.value || projectVersionTool.value) return []
+	if (bucketImpact.value || external.value || orderTool.value || compassTool.value || noteTool.value || projectVersionTool.value) return []
 	try {
 		const before = JSON.parse(pending.value?.before ?? 'null')
 		const proposed = JSON.parse(pending.value?.arguments ?? '{}')
@@ -273,6 +301,18 @@ function decide(decision: ReviewInput['decision']) {
 					:key="field.key"
 				>
 					<dt>{{ t(`agent.compassReview.${field.key}`) }}</dt>
+					<dd>{{ field.value }}</dd>
+				</template>
+			</dl>
+			<dl
+				v-if="noteFields.length"
+				class="review-external review-note"
+			>
+				<template
+					v-for="field in noteFields"
+					:key="field.key"
+				>
+					<dt>{{ t(`agent.noteReview.${field.key}`) }}</dt>
 					<dd>{{ field.value }}</dd>
 				</template>
 			</dl>
@@ -410,6 +450,12 @@ function decide(decision: ReviewInput['decision']) {
 	overflow-wrap: anywhere;
 
 	dd { margin: 0; }
+}
+
+.review-note {
+	grid-template-columns: minmax(0, 0.45fr) minmax(0, 1fr);
+
+	dd { white-space: pre-wrap; }
 }
 
 .agent-review {

@@ -119,7 +119,7 @@ func TestTCYAIToolModulesDiscoveryAndHistory(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, result, `"tools":[]`)
 	assert.NotContains(t, state.Available, "update_task")
-	assert.Contains(t, state.Messages[state.HistoryStart].Content, `"effective_tool_modules":{"project_tasks":"off","compass":"off"}`)
+	assert.Contains(t, state.Messages[state.HistoryStart].Content, `"effective_tool_modules":{"project_tasks":"off","compass":"off","notes":"off"}`)
 }
 
 func TestTCYAIToolModulesHistoricalResults(t *testing.T) {
@@ -179,13 +179,13 @@ func TestTCYAIToolModulesConfigurationAndRetry(t *testing.T) {
 	options := runOptions(in)
 	encoded, err := json.Marshal(options)
 	require.NoError(t, err)
-	assert.Contains(t, string(encoded), `"tool_modules":{"project_tasks":"off","compass":"write"}`)
+	assert.Contains(t, string(encoded), `"tool_modules":{"project_tasks":"off","compass":"write","notes":"off"}`)
 	restored, err := json.Marshal(retryInput(ChatTurn{Result: RunResult{Configuration: options}}))
 	require.NoError(t, err)
-	assert.Contains(t, string(restored), `"tool_modules":{"project_tasks":"off","compass":"write"}`)
+	assert.Contains(t, string(restored), `"tool_modules":{"project_tasks":"off","compass":"write","notes":"off"}`)
 	defaults, err := json.Marshal(runOptions(RunInput{Mode: "write"}))
 	require.NoError(t, err)
-	assert.Contains(t, string(defaults), `"tool_modules":{"project_tasks":"write","compass":"off"}`)
+	assert.Contains(t, string(defaults), `"tool_modules":{"project_tasks":"write","compass":"off","notes":"off"}`)
 }
 
 func TestTCYAIToolModulesResultReferenceChains(t *testing.T) {
@@ -382,7 +382,7 @@ func TestTCYAIToolModulesSubagentsInheritReadScope(t *testing.T) {
 		foundScope := false
 		for _, message := range body.Messages {
 			if message.Role == "user" && len(message.Content) > 0 {
-				if strings.Contains(message.Content, `"effective_tool_modules":{"project_tasks":"off","compass":"read"}`) {
+				if strings.Contains(message.Content, `"effective_tool_modules":{"project_tasks":"off","compass":"read","notes":"off"}`) {
 					foundScope = true
 				}
 			}

@@ -1,8 +1,8 @@
-export const toolModuleIDs = ['project_tasks', 'compass'] as const
+export const toolModuleIDs = ['project_tasks', 'compass', 'notes'] as const
 export type ToolModuleID = typeof toolModuleIDs[number]
 export type ToolModuleAccess = 'off' | 'read' | 'write'
 export type ToolModules = Record<ToolModuleID, ToolModuleAccess>
-export const defaultToolModules = (): ToolModules => ({project_tasks: 'write', compass: 'off'})
+export const defaultToolModules = (): ToolModules => ({project_tasks: 'write', compass: 'off', notes: 'off'})
 export function normalizeToolModules(value?: Partial<ToolModules> | null): ToolModules {
 	return Object.fromEntries(toolModuleIDs.map(id => {
 		const access = value?.[id]

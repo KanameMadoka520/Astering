@@ -217,13 +217,17 @@ func asterNotesUpdate(ctx context.Context, in *struct {
 }
 
 func asterNotesDelete(ctx context.Context, in *struct {
-	ID int64 `path:"id" minimum:"1"`
+	ID               int64 `path:"id" minimum:"1"`
+	ExpectedRevision int64 `query:"expected_revision" minimum:"0" doc:"Optional editorial version guard. A positive stale revision returns 409; omitted preserves normal owner deletion."`
 }) (*asterNoteEmptyResponse, error) {
 	a, err := asterNotesAuth(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if err := handler.DoDelete(ctx, &models.AsterNote{ID: in.ID}, a); err != nil {
+	if err := handler.DoDelete(ctx, &models.AsterNote{
+		ID:               in.ID,
+		ExpectedRevision: in.ExpectedRevision,
+	}, a); err != nil {
 		return nil, translateDomainError(err)
 	}
 	return &asterNoteEmptyResponse{CacheControl: "no-store"}, nil

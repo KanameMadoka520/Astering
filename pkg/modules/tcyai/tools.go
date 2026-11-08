@@ -188,6 +188,7 @@ func AllTools(mode string, allowDelete bool) []map[string]any {
 	result = append(result, ProjectVersionTools(mode)...)
 	result = append(result, mcpAgentTools()...)
 	result = append(result, CompassToolDefinitions(mode)...)
+	result = append(result, NoteToolDefinitions(mode, allowDelete)...)
 	if mode != "write" {
 		return result
 	}
@@ -233,7 +234,7 @@ func NeedsReview(name string, in RunInput) bool {
 	if !IsWriteTool(name) {
 		return false
 	}
-	if IsCompassTool(name) || name == "restore_project_version" {
+	if IsCompassTool(name) || IsNoteTool(name) || name == "restore_project_version" {
 		return true
 	}
 	if in.Approval == "review" || bucketAlwaysReviewed(name) {
@@ -312,6 +313,9 @@ func ValidateTool(name string, raw json.RawMessage, in RunInput) (json.RawMessag
 	}
 	if (name == "update_task" || name == "update_project") && len(instance) < 2 {
 		return nil, fmt.Errorf("INVALID_ARGUMENTS: include a field to change")
+	}
+	if err = validateNoteToolArguments(name, instance); err != nil {
+		return nil, err
 	}
 	return json.Marshal(instance)
 }

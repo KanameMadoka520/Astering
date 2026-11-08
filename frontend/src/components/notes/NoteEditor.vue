@@ -20,6 +20,7 @@ import {formatDateShort} from '@/helpers/time/formatDate'
 const props = defineProps<{
 	note: Note
 	reload: () => Promise<Note | undefined>
+	deleted?: boolean
 }>()
 const {t} = useI18n({useScope: 'global'})
 const ids = useId()
@@ -46,6 +47,7 @@ const writing = computed<Readonly<NoteText>>(() => ({
 }))
 const dirty = computed(() => !sameNoteText(writing.value, baseline.value))
 const status = computed(() => {
+	if (props.deleted) return t('notes.deletedDraft.status')
 	if (conflict.value) return t('notes.save.conflict')
 	if (failure.value) return t('notes.save.failed')
 	if (update.isPending.value) return t('notes.save.saving')
@@ -60,11 +62,18 @@ function current() {
 }
 function schedule() {
 	clearTimeout(timer)
-	if (!current() || !dirty.value || failure.value || conflict.value || update.isPending.value) return
+	if (!current() || props.deleted || !dirty.value || failure.value || conflict.value || update.isPending.value) return
 	timer = setTimeout(() => { void save() }, 1200)
 }
 watch(writing, schedule, {deep: true})
 watch(update.isPending, pending => { if (!pending) schedule() })
+watch(() => props.deleted, deleted => {
+	if (!deleted) return
+	clearTimeout(timer)
+	comparing.value = false
+	conflict.value = false
+	failure.value = ''
+}, {flush: 'sync'})
 
 function adopt(note: Note) {
 	baseline.value = note
@@ -87,7 +96,7 @@ watch(() => props.note, note => {
 
 async function save() {
 	clearTimeout(timer)
-	if (!current() || update.isPending.value || conflict.value || !dirty.value) return
+	if (!current() || props.deleted || update.isPending.value || conflict.value || !dirty.value) return
 	if (!title.value.trim()) {
 		failure.value = t('notes.titleRequired')
 		return
@@ -112,11 +121,11 @@ async function save() {
 			id: props.note.id,
 			expected_revision: baseline.value.revision,
 		})
-		if (!current()) return
+		if (!current() || props.deleted) return
 		if (sameNoteText(writing.value, draft)) adopt(saved)
 		else baseline.value = saved
 	} catch (cause) {
-		if (!current() || isRequestContextAbort(cause)) return
+		if (!current() || props.deleted || isRequestContextAbort(cause)) return
 		if (cause instanceof ApiError && cause.status === 409) conflict.value = true
 		else failure.value = t('notes.save.error')
 	} finally {
@@ -125,23 +134,23 @@ async function save() {
 }
 
 async function compare() {
-	if (loadingLatest.value || !current()) return
+	if (props.deleted || loadingLatest.value || !current()) return
 	loadingLatest.value = true
 	try {
 		const note = await props.reload()
-		if (current() && note) {
+		if (current() && !props.deleted && note) {
 			latest.value = note
 			comparing.value = true
 		}
 	} catch (cause) {
-		if (current() && !isRequestContextAbort(cause)) failure.value = t('notes.save.latestFailed')
+		if (current() && !props.deleted && !isRequestContextAbort(cause)) failure.value = t('notes.save.latestFailed')
 	} finally {
 		if (current()) loadingLatest.value = false
 	}
 }
 
 function keepDraft() {
-	if (!latest.value || !current()) return
+	if (props.deleted || !latest.value || !current()) return
 	baseline.value = latest.value
 	conflict.value = false
 	comparing.value = false
@@ -149,7 +158,7 @@ function keepDraft() {
 	failure.value = t('notes.save.rebased')
 }
 function useServerVersion() {
-	if (!latest.value || !current()) return
+	if (props.deleted || !latest.value || !current()) return
 	adopt(latest.value)
 	comparing.value = false
 }
@@ -185,13 +194,13 @@ function shortcut(event: KeyboardEvent) {
 	}
 }
 async function appendTranscript(text: string) {
-	if (!current() || !text.trim()) return
+	if (!current() || props.deleted || !text.trim()) return
 	preview.value = false
 	content.value = [content.value.trimEnd(), text].filter(Boolean).join('\n\n')
 	await nextTick()
 	bodyField.value?.focus()
 }
-defineExpose({mayLeave, appendTranscript, acknowledgeDelete: () => { acknowledgedLeave = true }})
+defineExpose({mayLeave, appendTranscript, hasUnsavedDraft: () => dirty.value, acknowledgeDelete: () => { acknowledgedLeave = true }})
 </script>
 
 <template>
@@ -208,7 +217,10 @@ defineExpose({mayLeave, appendTranscript, acknowledgeDelete: () => { acknowledge
 				<Icon :icon="failure || conflict ? 'exclamation-circle' : dirty ? 'pen' : 'check'" />
 				{{ status }}
 			</span>
-			<div class="note-editor__actions">
+			<div
+				v-if="!deleted"
+				class="note-editor__actions"
+			>
 				<XButton
 					variant="tertiary"
 					:shadow="false"
@@ -235,6 +247,13 @@ defineExpose({mayLeave, appendTranscript, acknowledgeDelete: () => { acknowledge
 				</XButton>
 			</div>
 		</div>
+		<p
+			v-if="deleted"
+			class="note-editor__notice"
+			role="alert"
+		>
+			{{ t('notes.deletedDraft.help') }}
+		</p>
 		<div
 			v-if="conflict"
 			class="note-editor__notice"
@@ -264,6 +283,7 @@ defineExpose({mayLeave, appendTranscript, acknowledgeDelete: () => { acknowledge
 		<input
 			:id="`${ids}-title`"
 			v-model="title"
+			:readonly="deleted"
 			class="note-editor__title"
 			:placeholder="t('notes.titlePlaceholder')"
 			autocomplete="off"
@@ -293,14 +313,15 @@ defineExpose({mayLeave, appendTranscript, acknowledgeDelete: () => { acknowledge
 				:id="`${ids}-body`"
 				ref="bodyField"
 				v-model="content"
+				:readonly="deleted"
 				class="note-editor__body"
 				:placeholder="t('notes.articlePlaceholder')"
 				spellcheck="true"
 			/>
 		</template>
 		<footer class="note-editor__footer">
-			<span>{{ t('notes.markdownHelp') }}</span>
-			<span v-if="baseline.updated">{{ t('notes.updatedAt', {date: formatDateShort(baseline.updated)}) }}</span>
+			<span>{{ t(deleted ? 'notes.deletedDraft.formatHelp' : 'notes.markdownHelp') }}</span>
+			<span v-if="baseline.updated && !deleted">{{ t('notes.updatedAt', {date: formatDateShort(baseline.updated)}) }}</span>
 			<div class="note-editor__exports">
 				<button
 					type="button"

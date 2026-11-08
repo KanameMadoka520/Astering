@@ -426,6 +426,7 @@ describe('TcyAssistant composer', () => {
 			tool_modules: {
 				project_tasks: 'off',
 				compass: 'write',
+				notes: 'off',
 			} as const,
 		}
 		panel.vm.$emit('apply', next, '')

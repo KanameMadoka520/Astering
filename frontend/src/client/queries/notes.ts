@@ -360,14 +360,19 @@ export function deleteNoteMutationOptions(): MutationOptions<void, Error, number
 			mutationFn: async (id: number) => { await notesDelete({path: {id}}) },
 			toastError: () => false,
 			onSuccess: (_data, id, client) => {
-				client.setQueryData<Note | null>(noteKeys.detail(id), current => current ? null : current)
-				removeFromPages<NoteSummary>(client, noteKeys.lists, item => item.id === id)
-				client.removeQueries({queryKey: noteKeys.segments(id)})
+				markNoteDeleted(client, id)
 			},
 			onSettled: async (_id, client) => { invalidateNoteLists(client) },
 		}),
 		networkMode: 'always' as const,
 	}
+}
+
+/** A tombstone prevents an older in-flight read from reviving a deleted article. */
+export function markNoteDeleted(client: QueryClient, id: number) {
+	client.setQueryData<Note | null>(noteKeys.detail(id), current => current ? null : current)
+	removeFromPages<NoteSummary>(client, noteKeys.lists, item => item.id === id)
+	client.removeQueries({queryKey: noteKeys.segments(id)})
 }
 
 export function useCreateNote() { return useMutation(createNoteMutationOptions()) }

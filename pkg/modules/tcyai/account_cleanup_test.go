@@ -239,7 +239,7 @@ func TestTCYAIAccountCleanupCancelsJobsAndRejectsLateWriters(t *testing.T) {
 			close(upload.release)
 			require.ErrorIs(t, <-uploadResult, ErrAccountDeleted)
 			err = <-saveResult
-			require.True(t, err == nil || errors.Is(err, ErrAccountDeleted))
+			require.True(t, err == nil || errors.Is(err, ErrAccountDeleted), "concurrent settings result: %T: %v", err, err)
 			awaitAccountSignal(t, cancelled)
 			awaitAccountSignal(t, live.done)
 			awaitAccountSignal(t, live.watchDone)

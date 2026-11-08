@@ -3,6 +3,15 @@ import {updateUserSettings} from '../../support/updateUserSettings'
 import {UserFactory} from '../../factories/user'
 import {login} from '../../support/authenticateUser'
 
+test.beforeEach(async ({apiContext, userToken}) => {
+	// Account templates are file-backed outside SQL fixtures; start the handoff test with the real default.
+	const headers = {Authorization: `Bearer ${userToken}`}
+	const current = await apiContext.get('/api/v2/ai/preferences', {headers})
+	expect(current.ok()).toBe(true)
+	const saved = await apiContext.post('/api/v2/ai/preferences', {headers, data: {revision: (await current.json()).revision ?? 0, default_profile: 'ask', profiles: []}})
+	expect(saved.ok()).toBe(true)
+})
+
 for (const viewport of [
 	{width: 1440, height: 1000, language: 'en'},
 	{width: 390, height: 844, language: 'zh-CN'},
@@ -65,11 +74,17 @@ for (const viewport of [
 		await page.screenshot({path: info.outputPath(`notes-transcript-handoff-${viewport.width}.png`), animations: 'disabled'})
 		let sends = 0
 		page.on('request', request => {
-			if (/\/conversations\/[^/]+\/send$/.test(new URL(request.url()).pathname)) sends++
+			if (request.method() === 'POST' && /\/conversations\/[^/]+\/messages$/.test(new URL(request.url()).pathname)) sends++
 		})
 		await dialog.getByRole('button', {name: labels.open, exact: true}).click()
 		await expect(page).toHaveURL(/\/ai\?notesDraft=/)
 		await expect.poll(() => page.locator('textarea[data-tour="ai-prompt"]').inputValue()).toContain(rawText)
+		await expect.poll(() => page.locator('textarea[data-tour="ai-prompt"]').inputValue()).toContain(`/notes/${created.id}`)
+		await expect.poll(() => page.locator('textarea[data-tour="ai-prompt"]').inputValue()).toContain(`#${created.id}`)
+		await page.locator('.configuration-toggle:visible').click()
+		await page.getByRole('button', {name: zh ? '工具能力范围' : 'Tool capabilities', exact: true}).click()
+		await expect(page.locator('.tool-module-picker').getByRole('combobox', {name: zh ? '个人笔记' : 'Personal notes', exact: true})).toHaveValue('off')
+		await page.keyboard.press('Escape')
 		expect(sends).toBe(0)
 		const reread = await apiContext.get(`/api/v2/notes/${created.id}`, {headers: {Authorization: `Bearer ${userToken}`}})
 		const unchanged = await reread.json()

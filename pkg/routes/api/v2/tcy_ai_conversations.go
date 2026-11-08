@@ -279,6 +279,7 @@ func RegisterTCYAIConversationRoutes(api huma.API) {
 		AllowDelete  bool   `query:"allow_delete" doc:"Expose the deletion tool only when write mode is selected."`
 		ProjectTasks string `query:"project_tasks" default:"write" enum:"off,read,write" doc:"Selected project and task tool capability; global mode remains the write ceiling."`
 		Compass      string `query:"compass" default:"off" enum:"off,read,write" doc:"Selected Compass capability; off by default."`
+		Notes        string `query:"notes" default:"off" enum:"off,read,write" doc:"Selected personal notes capability; off by default; writes always require review."`
 	}) (*struct {
 		CacheControl string `header:"Cache-Control"`
 		Body         struct {
@@ -301,7 +302,17 @@ func RegisterTCYAIConversationRoutes(api huma.API) {
 		if err != nil {
 			return nil, aiError(ctx, err)
 		}
-		input := tcyai.RunInput{Persona: settings.Persona, ProjectID: in.ProjectID, Mode: in.Mode, AllowDelete: in.AllowDelete, ToolModules: tcyai.ToolModules{ProjectTasks: in.ProjectTasks, Compass: in.Compass}}
+		input := tcyai.RunInput{
+			Persona:     settings.Persona,
+			ProjectID:   in.ProjectID,
+			Mode:        in.Mode,
+			AllowDelete: in.AllowDelete,
+			ToolModules: tcyai.ToolModules{
+				ProjectTasks: in.ProjectTasks,
+				Compass:      in.Compass,
+				Notes:        in.Notes,
+			},
+		}
 		body.Body.SystemPrompt = tcyai.SystemPrompt(ctx, input)
 		raw, err := json.MarshalIndent(tcyai.ScopedTools(input), "", "  ")
 		if err != nil {

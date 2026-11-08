@@ -62,6 +62,43 @@ describe('note editor saves and drafts', () => {
 		vi.useRealTimers()
 	})
 
+	it('keeps a deleted note’s unsaved text available for export without allowing saves, edits or reloads', async () => {
+		const wrapper = editor()
+		await wrapper.get('textarea').setValue('My only unsaved copy')
+		expect(wrapper.get('.note-editor__footer').text()).toContain('notes.markdownHelp')
+		expect(wrapper.vm.hasUnsavedDraft()).toBe(true)
+		await wrapper.setProps({deleted: true})
+		await vi.advanceTimersByTimeAsync(2400)
+		await wrapper.trigger('keydown', {key: 's', ctrlKey: true})
+		expect(sdk.notesUpdate).not.toHaveBeenCalled()
+		expect(wrapper.get('textarea').element.value).toBe('My only unsaved copy')
+		expect(wrapper.get('textarea').attributes('readonly')).toBeDefined()
+		expect(wrapper.get('.note-editor__title').attributes('readonly')).toBeDefined()
+		expect(wrapper.find('.note-editor__actions').exists()).toBe(false)
+		expect(wrapper.get('[role="alert"]').text()).toBe('notes.deletedDraft.help')
+		expect(wrapper.get('.note-editor__exports').findAll('button')).toHaveLength(2)
+		expect(wrapper.get('.note-editor__footer').text()).toContain('notes.deletedDraft.formatHelp')
+		expect(wrapper.get('.note-editor__footer').text()).not.toContain('notes.markdownHelp')
+		await wrapper.vm.appendTranscript('Do not resurrect this note')
+		expect(wrapper.get('textarea').element.value).toBe('My only unsaved copy')
+	})
+
+	it('does not reopen a deleted draft’s comparison after an earlier reload finishes', async () => {
+		const pending = deferred<ReturnType<typeof normalizeNote>>()
+		const wrapper = editor(true)
+		await wrapper.get('textarea').setValue('The last local copy')
+		await wrapper.setProps({note: {...original, revision: 2}, reload: () => pending.promise})
+		await wrapper.get('[role="alert"] .button').trigger('click')
+		await wrapper.setProps({deleted: true})
+		pending.resolve({...original, content: 'A stale read before deletion', revision: 2})
+		await flushPromises()
+		expect(document.querySelector('dialog[open]')).toBeNull()
+		expect(wrapper.get('textarea').element.value).toBe('The last local copy')
+		expect(wrapper.get('.note-editor__status').text()).toBe('notes.deletedDraft.status')
+		await vi.advanceTimersByTimeAsync(2400)
+		expect(sdk.notesUpdate).not.toHaveBeenCalled()
+	})
+
 	it.each([
 		'content',
 		'title',

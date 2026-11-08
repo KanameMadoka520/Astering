@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed, nextTick, onBeforeUnmount, ref, watch} from 'vue'
+import {computed, nextTick, onBeforeUnmount, ref, shallowRef, watch} from 'vue'
 import {refDebounced, useMediaQuery} from '@vueuse/core'
 import {useRoute, useRouter} from 'vue-router'
 import {useI18n} from 'vue-i18n'
@@ -42,6 +42,8 @@ watch([library.data, library.isPlaceholderData], () => {
 const detail = useNote(noteId)
 const note = detail.note
 const editor = ref<InstanceType<typeof NoteEditor>>()
+const editorNote = shallowRef<Note>()
+const deletedDraft = ref(false)
 const create = useCreateNote()
 const remove = useDeleteNote()
 const createError = ref(false)
@@ -61,6 +63,8 @@ const sessionKey = computed(() => {
 	return JSON.stringify([context.apiBaseUrl, auth.info?.id, context.identity?.type, context.authSessionEpoch])
 })
 watch(sessionKey, () => {
+	editorNote.value = undefined
+	deletedDraft.value = false
 	search.value = ''
 	pinnedOnly.value = false
 	page.value = 1
@@ -70,6 +74,20 @@ watch(sessionKey, () => {
 	recordingNoteId.value = undefined
 }, {flush: 'sync'})
 watch(noteId, () => { detailTab.value = 'article'; appendNotice.value = false; recordingNoteId.value = undefined })
+watch(note, value => {
+	if (value) {
+		editorNote.value = value
+		deletedDraft.value = false
+	} else if (value === null && editorNote.value?.id === noteId.value && editor.value?.hasUnsavedDraft()) {
+		// Keep only this tab's unsaved draft after an acknowledged native deletion, never after an access error.
+		deletedDraft.value = true
+		detailTab.value = 'article'
+		recordingNoteId.value = undefined
+	} else {
+		editorNote.value = undefined
+		deletedDraft.value = false
+	}
+}, {immediate: true, flush: 'sync'})
 useTitle(() => note.value?.title || t('notes.title'))
 
 async function createNote() {
@@ -150,6 +168,12 @@ async function showRecording() {
 	detailTab.value = 'transcript'
 	await nextTick()
 	transcriptTab.value?.focus()
+}
+async function closeDeletedDraft() {
+	if (!deletedDraft.value || (editor.value && !editor.value.mayLeave())) return
+	editorNote.value = undefined
+	deletedDraft.value = false
+	await router.replace({name: 'notes'})
 }
 </script>
 
@@ -331,8 +355,19 @@ async function showRecording() {
 					>
 						{{ t('notes.loading') }}
 					</p>
-					<template v-if="note">
-						<div class="notes-workspace__tabs">
+					<template v-if="editorNote">
+						<XButton
+							v-if="deletedDraft"
+							variant="tertiary"
+							:shadow="false"
+							@click="closeDeletedDraft"
+						>
+							{{ t('notes.deletedDraft.close') }}
+						</XButton>
+						<div
+							v-if="!deletedDraft"
+							class="notes-workspace__tabs"
+						>
 							<div
 								v-if="compact"
 								role="tablist"
@@ -361,18 +396,18 @@ async function showRecording() {
 									aria-controls="note-transcript-panel"
 									@click="detailTab = 'transcript'"
 								>
-									{{ t('notes.transcript.title') }} <span>{{ note.segment_count }}</span>
+									{{ t('notes.transcript.title') }} <span>{{ editorNote.segment_count }}</span>
 								</button>
 							</div>
 							<button
-								v-if="recordingNoteId === note.id"
+								v-if="recordingNoteId === editorNote.id"
 								type="button"
 								class="notes-workspace__recording"
 								@click="showRecording"
 							>
 								<Icon icon="microphone" /> {{ t('notes.recordingIndicator') }}
 							</button>
-							<span class="notes-workspace__size">{{ getHumanSize(note.content_bytes + note.transcript_bytes) }}</span>
+							<span class="notes-workspace__size">{{ getHumanSize(editorNote.content_bytes + editorNote.transcript_bytes) }}</span>
 						</div>
 						<p
 							v-if="appendNotice"
@@ -385,17 +420,19 @@ async function showRecording() {
 							id="note-article-panel"
 							class="notes-workspace__article"
 							:class="{'is-mobile-hidden': detailTab !== 'article'}"
-							:role="compact ? 'tabpanel' : undefined"
-							:aria-labelledby="compact ? 'note-article-tab' : undefined"
+							:role="compact && !deletedDraft ? 'tabpanel' : undefined"
+							:aria-labelledby="compact && !deletedDraft ? 'note-article-tab' : undefined"
 						>
 							<NoteEditor
-								:key="`${sessionKey}:${note.id}`"
+								:key="`${sessionKey}:${editorNote.id}`"
 								ref="editor"
-								:note="note"
+								:note="editorNote"
+								:deleted="deletedDraft"
 								:reload="reloadNote"
 							/>
 						</div>
 						<div
+							v-if="!deletedDraft"
 							id="note-transcript-panel"
 							class="notes-workspace__transcript"
 							:class="{'is-mobile-hidden': detailTab !== 'transcript'}"
@@ -403,11 +440,11 @@ async function showRecording() {
 							:aria-labelledby="compact ? 'note-transcript-tab' : undefined"
 						>
 							<NoteTranscripts
-								:key="`${sessionKey}:${note.id}`"
-								:note-id="note.id"
-								:note-title="note.title"
+								:key="`${sessionKey}:${editorNote.id}`"
+								:note-id="editorNote.id"
+								:note-title="editorNote.title"
 								@append="appendTranscript"
-								@recording="setRecording(note.id, $event)"
+								@recording="setRecording(editorNote.id, $event)"
 							/>
 						</div>
 					</template>

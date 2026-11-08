@@ -61,6 +61,7 @@ import {applyServerTaskChanges, reconcileServerBoards, type ServerTaskChange} fr
 import {normalizeTask, taskKeys, type TaskResponse} from './tasks'
 import {invalidateCalendarTasks} from './calendar'
 import {parseCompassReceipt, refreshCompassReceipts, type CompassReceiptChange} from './compassReceipts'
+import {parseNoteReceipt, refreshNoteReceipts, type NoteReceiptChange} from './noteReceipts'
 import {applyServerTaskOrder, parseTaskOrderResult, type TaskOrderResult} from './taskOrder'
 import {defaultToolModules, type ToolModules} from '@/helpers/assistantProfiles'
 import {
@@ -152,6 +153,7 @@ export function promptQuery(projectId: number, mode: 'read' | 'write', allowDele
 			allow_delete: allowDelete,
 			project_tasks: modules.project_tasks,
 			compass: modules.compass,
+			notes: modules.notes,
 		}, signal})).data,
 		enabled,
 	})
@@ -317,6 +319,7 @@ type AgentCacheOperation =
 
 export type AgentRefreshPlan = {
 	compass: CompassReceiptChange[]
+	notes: NoteReceiptChange[]
 	orders: TaskOrderResult[]
 	versionSaves: number[]
 	versionRestores: Parameters<typeof applyProjectVersionRestoreResult>[1][]
@@ -539,6 +542,7 @@ export function takeAgentReceipts(client: QueryClient, conversation?: Conversati
 function emptyPlan(): AgentRefreshPlan {
 	return {
 		compass: [],
+		notes: [],
 		orders: [],
 		versionSaves: [],
 		versionRestores: [],
@@ -615,6 +619,13 @@ export function planAgentRefresh(receipts: readonly AgentReceipt[]): AgentRefres
 			case 'call_mcp_tool':
 				// Remote tool arguments/results are not Vikunja entities, even when their names or IDs match.
 				break
+			case 'create_note':
+			case 'update_note':
+			case 'delete_note': {
+				const change = parseNoteReceipt(tool, args, result)
+				if (change) plan.notes.push(change)
+				break
+			}
 			case 'insert_chat_image':
 			case 'update_task_description_image':
 			case 'remove_task_description_image':
@@ -786,7 +797,7 @@ export function planAgentRefresh(receipts: readonly AgentReceipt[]): AgentRefres
 			}
 			default: {
 				// Future Compass tools must never interpret their IDs as tasks or projects.
-				if (tool.includes('_compass_')) break
+				if (tool.includes('_compass_') || /_notes?(?:_|$)/.test(tool)) break
 				// Unknown write: the named records and stale lists only, never a refetch of everything.
 				const task = id ?? positiveId(args.task_id)
 				const project = positiveId(args.project_id) ?? id
@@ -1033,6 +1044,7 @@ async function settleAgentChanges(client: QueryClient, plan: AgentRefreshPlan) {
 	const lists = changes.length ? false : plan.taskLists
 	await Promise.all([
 		refreshCompassReceipts(client, plan.compass),
+		refreshNoteReceipts(client, plan.notes),
 		...plan.versionSaves.map(project => client.invalidateQueries({queryKey: projectVersionKeys.project(project)})),
 		...plan.versionRestores.map(restore => applyProjectVersionRestoreResult(client, restore)),
 		...plan.orders.map(order => applyServerTaskOrder(client, order)),

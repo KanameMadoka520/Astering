@@ -165,7 +165,8 @@ async function sendToArona() {
 	navigationError.value = false
 	const text = [
 		instructions.value,
-		t('notes.arona.sourceLabel', {title: props.noteTitle}),
+		t('notes.arona.sourceLabel', {title: props.noteTitle, id: props.noteId}),
+		`[${t('notes.arona.sourceLink')}](/notes/${props.noteId})`,
 		handoff.value,
 	].join('\n\n')
 	try {
@@ -381,6 +382,7 @@ async function sendToArona() {
 			</template>
 			<template #text>
 				<p>{{ t('notes.arona.help') }}</p>
+				<p>{{ t('notes.arona.toolsHelp') }}</p>
 				<label :for="`${ids}-preset`">{{ t('notes.arona.preset') }}</label>
 				<select
 					:id="`${ids}-preset`"

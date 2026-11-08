@@ -1,5 +1,11 @@
 // Tools whose labels live under agent.tools.<name>.
 const AGENT_TOOLS = [
+	'list_notes',
+	'get_note',
+	'list_note_segments',
+	'create_note',
+	'update_note',
+	'delete_note',
 	'list_compass_spaces',
 	'get_compass_space',
 	'list_compass_entries',
@@ -63,7 +69,7 @@ const AGENT_TOOLS = [
 ] as const
 
 // Deleting is irreversible; everything else Arona writes can be edited back.
-export const DESTRUCTIVE_TOOLS: ReadonlySet<string> = new Set(['delete_task', 'delete_bucket'])
+export const DESTRUCTIVE_TOOLS: ReadonlySet<string> = new Set(['delete_task', 'delete_bucket', 'delete_note'])
 
 export function toolLabels(t: (key: string) => string): Record<string, string> {
 	return {

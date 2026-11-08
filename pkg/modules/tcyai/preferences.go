@@ -24,7 +24,7 @@ import (
 
 // Profiles contain execution preferences, never messages, credentials or permissions grants.
 type AssistantOptions struct {
-	ToolModules        ToolModules `json:"tool_modules,omitempty" doc:"Selected local module access for future runs; global mode remains the write ceiling. Legacy omitted compass stays disabled."`
+	ToolModules        ToolModules `json:"tool_modules,omitempty" doc:"Selected local module access for future runs; global mode remains the write ceiling. Omitted compass and notes stay disabled."`
 	MCPServerIDs       []string    `json:"mcp_server_ids" maxItems:"20" doc:"Explicit external MCP connections selected for a turn; empty selects none. This never overrides saved connection policy."`
 	StopAtSegmentLimit bool        `json:"stop_at_segment_limit,omitempty" doc:"Pause at segment limits instead of automatically continuing. Explicit token budgets always pause."`
 	EnableSubagents    bool        `json:"enable_subagents,omitempty" doc:"Experimental parallel read-only workers with isolated context; writes stay with the parent."`
@@ -32,7 +32,7 @@ type AssistantOptions struct {
 	ConnectionID       string      `json:"connection_id" maxLength:"80" doc:"Empty follows the configured assistant connection."`
 	ProjectID          int64       `json:"project_id" minimum:"0" doc:"Context project only, not a permission boundary."`
 	Mode               string      `json:"mode" enum:"read,write" doc:"Read only or execute writes within existing account permissions."`
-	AllowDelete        bool        `json:"allow_delete" doc:"Enable task deletion; destructive actions still require review."`
+	AllowDelete        bool        `json:"allow_delete" doc:"Enable task and personal-note deletion; personal-note writes always require human review."`
 	Approval           string      `json:"approval" enum:"smart,review,auto" doc:"Review policy; destructive and notification operations always require review."`
 	WriteProjectIDs    []int64     `json:"write_project_ids" maxItems:"50" doc:"Optional additional write restriction, never a permission grant."`
 	MaxRounds          int         `json:"max_rounds" minimum:"1" maximum:"40" doc:"Model requests per execution segment."`

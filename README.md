@@ -13,7 +13,7 @@
 
 我们赋予 **Astering**「像星星闪烁、使之星光熠熠」的意象：一次行动、一段研究、一条值得记住的原则，逐渐连接成自己的星群。**Aster的AI集成工业系统**（Aster’s AI-integrated industrial system）是项目的副标题；工具与积累服务于更自由的创造。
 
-- 当前版本：`v2.7.1-aster.62`
+- 当前版本：`v2.7.1-aster.63`
 - 源码与问题反馈：[KanameMadoka520/Astering](https://github.com/KanameMadoka520/Astering)
 - 本机编译的发布产物：[GitHub Releases](https://github.com/KanameMadoka520/Astering/releases)
 - [品牌与升级兼容](docs/brand-migration.md) · [品牌素材](docs/brand-identity.md) · [详细功能与演进记录](docs/product-reference.md)
@@ -78,15 +78,15 @@ Astering 把不同用途保留在各自合适的空间里，关联真实任务�
 git clone https://github.com/KanameMadoka520/Astering.git
 cd Astering
 docker build -f Dockerfile.aster \
-  --build-arg RELEASE_VERSION=v2.7.1-aster.62 \
+  --build-arg RELEASE_VERSION=v2.7.1-aster.63 \
   --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
-  -t astering:v2.7.1-aster.62 .
+  -t astering:v2.7.1-aster.63 .
 ```
 
 或下载对应 Release，先检查 `sha256sum -c SHA256SUMS`，再导入镜像包：
 
 ```sh
-docker load -i astering-v2.7.1-aster.62.docker.tar.gz
+docker load -i astering-v2.7.1-aster.63.docker.tar.gz
 ```
 
 以下是**新安装**的最小 SQLite 示例；生产也可配置 PostgreSQL。现有部署不要用新建的空目录替换原数据卷。
@@ -102,7 +102,7 @@ docker run -d --name Astering --restart unless-stopped \
   -e ASTERING_SERVICE_SECRET=替换为随机且持久保存的长密钥 \
   -e ASTERING_SERVICE_ENABLEREGISTRATION=false \
   -e ASTERING_SERVICE_TIMEZONE=Asia/Shanghai \
-  astering:v2.7.1-aster.62
+  astering:v2.7.1-aster.63
 ```
 
 在反向代理提供 HTTPS，将 `PUBLICURL` 改为自己的实际域名。创建首个账户前可查看 CLI 参数：
@@ -116,6 +116,8 @@ docker exec -it Astering /app/astering/astering user create --help
 项目菜单中的「项目历史版本」用于保存服务器上已提交的项目内容、任务、看板布局与附件引用；它与完成／归档历程分开。未改变的历史实体按内容去重，媒体原件不复制；只记录明确保存的保存点，不能找回上线前或未保存的编辑。恢复要求当前项目管理员并使用最新差异预览，阿罗娜也始终需要人工审核。详细范围、存储口径及保留边界见[项目内容历史](docs/project-versions.md)。
 
 ## 从旧版本升级
+
+`aster.63` 将个人笔记接入阿罗娜的可选工具模块，默认关闭，可设只读或读写，按需发现并审核写入。支持分页读取、创建、编辑及受独立许可与版本校验保护的删除；从转录带入聊天的草稿不会自动开启权限。使用方式见[工具模块范围](docs/agent-tool-modules.md)。
 
 `aster.62` 新增独立的个人笔记与长时间实时语音记录。当前实时采音支持 DashScope ASR 和 Qwen ASR Realtime，复用个人 AI 设置中的语音连接；其他协议继续使用原有的录完再识别。持续录音自动轮换识别连接，内存缓冲有界，不积累音频文件。笔记正文与原始转录各自保存，支持冲突比较、选段整理、Markdown／文本导出。后台录音与屏幕常亮是按浏览器能力尽力提供的选项，不能保证手机锁屏后继续采音。使用方式、账户隔离与协议边界见[实时语音笔记](docs/voice-notes.md)。
 

@@ -650,7 +650,7 @@ export type ApplicationSnapshot = {
 
 export type AssistantOptions = {
     /**
-     * Enable task deletion; destructive actions still require review.
+     * Enable task and personal-note deletion; personal-note writes always require human review.
      */
     allow_delete?: boolean;
     /**
@@ -702,7 +702,7 @@ export type AssistantOptions = {
      */
     token_budget?: number;
     /**
-     * Selected local module access for future runs; global mode remains the write ceiling. Legacy omitted compass stays disabled.
+     * Selected local module access for future runs; global mode remains the write ceiling. Omitted compass and notes stay disabled.
      */
     tool_modules?: ToolModules;
     /**
@@ -5126,7 +5126,7 @@ export type RunInput = {
      */
     readonly $schema?: string;
     /**
-     * Allow task deletion for this request, only in write mode.
+     * Allow task and personal-note deletion for this request, only in write mode; note deletion always needs human review.
      */
     allow_delete?: boolean;
     /**
@@ -5198,7 +5198,7 @@ export type RunInput = {
      */
     token_budget?: number;
     /**
-     * Per-turn local module access. Missing project_tasks preserves legacy global mode; missing compass disables star-chart access. Each module remains capped by mode and account permissions.
+     * Per-turn local module access. Missing project_tasks preserves legacy global mode; missing compass or notes disables that module. Each module remains capped by mode and account permissions.
      */
     tool_modules?: ToolModules;
     /**
@@ -7542,6 +7542,10 @@ export type ToolModules = {
      * Private star-chart spaces and entries. Omission disables these tools.
      */
     compass?: 'off' | 'read' | 'write';
+    /**
+     * Personal editable notes and read-only final transcripts. Omission disables these tools; all writes require human review.
+     */
+    notes?: 'off' | 'read' | 'write';
     /**
      * Project and task tools. Omission preserves legacy access under the global mode.
      */
@@ -10372,7 +10376,7 @@ export type ReviewInputWritable = {
 
 export type RunInputWritable = {
     /**
-     * Allow task deletion for this request, only in write mode.
+     * Allow task and personal-note deletion for this request, only in write mode; note deletion always needs human review.
      */
     allow_delete?: boolean;
     /**
@@ -10444,7 +10448,7 @@ export type RunInputWritable = {
      */
     token_budget?: number;
     /**
-     * Per-turn local module access. Missing project_tasks preserves legacy global mode; missing compass disables star-chart access. Each module remains capped by mode and account permissions.
+     * Per-turn local module access. Missing project_tasks preserves legacy global mode; missing compass or notes disables that module. Each module remains capped by mode and account permissions.
      */
     tool_modules?: ToolModules;
     /**
@@ -12916,6 +12920,10 @@ export type TcyAiPromptData = {
          * Selected Compass capability; off by default.
          */
         compass?: 'off' | 'read' | 'write';
+        /**
+         * Selected personal notes capability; off by default; writes always require review.
+         */
+        notes?: 'off' | 'read' | 'write';
     };
     url: '/ai/prompt';
 };
@@ -15169,7 +15177,12 @@ export type NotesDeleteData = {
     path: {
         id: number;
     };
-    query?: never;
+    query?: {
+        /**
+         * Optional editorial version guard. A positive stale revision returns 409; omitted preserves normal owner deletion.
+         */
+        expected_revision?: number;
+    };
     url: '/notes/{id}';
 };
 

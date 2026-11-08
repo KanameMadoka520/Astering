@@ -2829,7 +2829,7 @@
       "the_provider_returned_no_models_enter_a_model": "The provider returned no models. Enter a model name manually.",
       "not_enabled": "Not enabled",
       "projects_not_added_here_stay_private_by_default": "Projects not added here stay private. By default, tasks show as busy and projects use public names. The page and JSON expose the same selected content.",
-      "allow_task_deletion_for_this_request": "Allow task deletion for this request",
+      "allow_task_deletion_for_this_request": "Allow task or personal note deletion for this request",
       "json_endpoint_for_bots": "JSON endpoint for bots ↗",
       "view_public_page": "View public page ↗",
       "view_original_transcript_or_text": "View original transcript or text",
@@ -3234,6 +3234,12 @@
     },
     "tools": {
       "list_project_history": "Review project history",
+      "list_notes": "List personal notes",
+      "get_note": "Read a personal note",
+      "list_note_segments": "Read note transcript segments",
+      "create_note": "Create a personal note",
+      "update_note": "Update a personal note article",
+      "delete_note": "Permanently delete a note and transcript",
       "list_compass_spaces": "List Compass spaces",
       "get_compass_space": "Read Compass space",
       "list_compass_entries": "Find Compass entries",
@@ -3293,6 +3299,19 @@
       "get_project_version_preview": "Preview project restore",
       "save_project_version": "Save project checkpoint",
       "restore_project_version": "Restore project checkpoint"
+    },
+    "noteReview": {
+      "note": "Personal note",
+      "expectedRevision": "Expected revision",
+      "title": "Title",
+      "pinned": "Pinned",
+      "content": "Replacement article (preview)",
+      "appendContent": "Append to article (preview)",
+      "segments": "Raw transcript segments to delete",
+      "truncated": "Preview shortened. Expand the exact arguments below for the complete text.",
+      "hint": "This changes your own note article and keeps its raw transcript. Every write needs your approval; unsaved text in an open editor is kept.",
+      "deleteHint": "Check the note ID, revision and transcript count. Deleting removes the article and its complete raw transcript permanently.",
+      "deleteWarning": "This permanently deletes this note and every raw transcript segment. There is no recycle bin or undo."
     },
     "compassReview": {
       "space": "Target space",
@@ -4976,7 +4995,7 @@
       "permissions": "Connection permissions",
       "allowWrite": "Allow external changes",
       "allowDelete": "Allow external deletions and unknown effects",
-      "permissionsHelp": "External changes require write mode and an individual review. External deletions use this connection’s deletion permission, separately from the task-deletion checkbox. Restricting writes to specific Astering projects blocks external changes because their project ownership cannot be verified.",
+      "permissionsHelp": "External changes require write mode and an individual review. External deletions use this connection’s deletion permission, separately from the task or personal-note deletion checkbox. Restricting writes to specific Astering projects blocks external changes because their project ownership cannot be verified.",
       "toolPermissions": "Tool directory and read-only trust",
       "readTrustHelp": "Selecting a tool means you trust it to only read data. A remote service’s read-only or destructive hint is only a hint and does not grant permissions. Known Wallos tools use built-in classification.",
       "trustTool": "Trust {name} as read-only",
@@ -5105,6 +5124,8 @@
     "project_tasks": "Projects and tasks",
     "project_tasksHelp": "Projects, tasks, calendar, boards, routines, comments and attachments.",
     "compass": "Compass",
+    "notes": "Personal notes",
+    "notesHelp": "Your own note articles and raw transcripts only. Off by default. Read access allows queries; write access allows reviewed creation and changes, plus deletion when separately allowed. Every write needs approval.",
     "compassHelp": "Spaces, principles, action plans, notes and revision history. Off by default; each write requires review.",
     "off": "Off",
     "read": "Read only",
@@ -5722,6 +5743,12 @@
     }
   },
   "notes": {
+    "deletedDraft": {
+      "formatHelp": "Markdown supported · Copy or export this read-only draft.",
+      "status": "Note deleted · draft kept in this tab",
+      "help": "The note was deleted. This unsaved draft remains only in this tab for copying or export. It cannot be saved to the deleted note and will be lost when you close this page. Recording has stopped; the note will not be recreated.",
+      "close": "Close this draft"
+    },
     "title": "Notes",
     "recordingIndicator": "Recording · View",
     "subtitle": "Capture your thoughts. Keep the original words, shape the ideas.",
@@ -5828,7 +5855,9 @@
       "plan": "Plan a project or tasks",
       "organizePrompt": "Please organize the following raw transcript into a clear, faithful Markdown note. Keep facts, decisions, questions and next steps distinct. Do not invent missing details. Return the draft here for me to review; do not modify any project or task.",
       "planPrompt": "Please turn the following transcript into a proposed project or task plan. Identify goals, steps, dependencies and any dates explicitly stated; ask about missing essentials. First show the plan for review. Do not create or modify anything until I explicitly ask.",
-      "sourceLabel": "Source note: {title}",
+      "sourceLink": "Open source note",
+      "toolsHelp": "Organizing the selected text needs no note tools. To read or save this note, choose read or write access under Arona → Tools → Personal notes. It stays off until you enable it.",
+      "sourceLabel": "Source note #{id}: {title}",
       "source": "Selected source text",
       "emptySource": "Add some source text before opening a chat draft. Nothing has been sent.",
       "continue": "Open chat draft",

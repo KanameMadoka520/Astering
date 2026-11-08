@@ -55,3 +55,37 @@ func RestrictToResourcePermissions(a web.Auth) web.Auth {
 func (u *User) HasResourceOnlyPermissions() bool {
 	return u != nil && u.resourcePermissionsOnly
 }
+
+// WithPersonalNotesAgentAccess authorizes only the dedicated in-process notes
+// executor. The principal stays resource-restricted and keeps its original
+// human session; JSON, JWT claims and HTTP headers cannot create this marker.
+func WithPersonalNotesAgentAccess(a web.Auth, tool string, noteID int64) web.Auth {
+	u, ok := a.(*User)
+	if !ok || u == nil || !u.HasResourceOnlyPermissions() || u.IsBot() || u.credential.SessionID == "" || u.credential.APITokenID != 0 {
+		return a
+	}
+	switch tool {
+	case "list_notes", "create_note":
+		if noteID != 0 {
+			return a
+		}
+	case "get_note", "list_note_segments", "update_note", "delete_note":
+		if noteID <= 0 {
+			return a
+		}
+	default:
+		return a
+	}
+	scoped := *u
+	scoped.personalNotesTool = tool
+	scoped.personalNotesTarget = noteID
+	return &scoped
+}
+
+func (u *User) HasPersonalNotesAgentAccess() bool {
+	return u != nil && u.personalNotesTool != "" && u.HasResourceOnlyPermissions() && u.credential.SessionID != "" && u.credential.APITokenID == 0 && !u.IsBot()
+}
+
+func (u *User) PersonalNotesAgentAllows(tool string, noteID int64) bool {
+	return u.HasPersonalNotesAgentAccess() && u.personalNotesTool == tool && u.personalNotesTarget == noteID
+}

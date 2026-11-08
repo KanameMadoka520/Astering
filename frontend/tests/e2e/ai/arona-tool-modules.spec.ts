@@ -17,37 +17,46 @@ test.beforeEach(async ({apiContext, userToken}) => {
 })
 
 for (const scenario of [
-	{width: 1440, language: 'en', title: 'Tool capabilities', projects: 'Projects and tasks', compass: 'Compass', preferences: 'Scenarios & preferences', template: 'Save a personal template', save: 'Save as new template', makeDefault: 'Make my default', apply: 'Use for upcoming messages'},
-	{width: 390, language: 'zh-CN', title: '工具能力范围', projects: '项目与任务', compass: '星图', preferences: '场景与偏好', template: '保存为个人模板', save: '保存为新模板', makeDefault: '设为我的默认', apply: '用于接下来的对话'},
+	{width: 1440, language: 'en', title: 'Tool capabilities', projects: 'Projects and tasks', compass: 'Compass', notes: 'Personal notes', preferences: 'Scenarios & preferences', template: 'Save a personal template', save: 'Save as new template', makeDefault: 'Make my default', apply: 'Use for upcoming messages'},
+	{width: 390, language: 'zh-CN', title: '工具能力范围', projects: '项目与任务', compass: '星图', notes: '个人笔记', preferences: '场景与偏好', template: '保存为个人模板', save: '保存为新模板', makeDefault: '设为我的默认', apply: '用于接下来的对话'},
 ]) {
 	test(`tool module controls ${scenario.width}px ${scenario.language} isolate Compass and persist explicit capabilities`, async ({authenticatedPage: page, apiContext, userToken}, testInfo) => {
 		await page.setViewportSize({width: scenario.width, height: 850})
 		await updateUserSettings(apiContext, userToken, {language: scenario.language})
 		await page.goto('/ai')
+		await page.locator('.configuration-toggle:visible').click()
+		const configuration = page.getByRole('dialog', {name: scenario.language === 'en' ? 'Chat configuration' : '对话配置', exact: true})
 		const open = page.getByRole('button', {name: scenario.title, exact: true})
 		await open.click()
 		const picker = page.locator('.tool-module-picker')
 		const projects = picker.getByRole('combobox', {name: scenario.projects, exact: true})
 		const compass = picker.getByRole('combobox', {name: scenario.compass, exact: true})
+		const notes = picker.getByRole('combobox', {name: scenario.notes, exact: true})
 		await expect(projects).toHaveValue('read')
 		await expect(compass).toHaveValue('off')
+		await expect(notes).toHaveValue('off')
 		await compass.selectOption('write')
 		await expect(projects).toHaveValue('read')
 		await expect(compass).toHaveValue('write')
 		await projects.selectOption('off')
 		await expect(projects).toHaveValue('off')
+		await notes.selectOption('read')
+		await expect(notes).toHaveValue('read')
+		await expect(projects).toHaveValue('off')
+		await expect(compass).toHaveValue('write')
 		await page.screenshot({path: testInfo.outputPath('tool-module-picker.png')})
 		expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 		await page.keyboard.press('Escape')
 		await expect(picker).not.toBeVisible()
 		await expect(open).toBeFocused()
 
-		await page.getByRole('button', {name: scenario.preferences, exact: true}).click()
+		await configuration.getByRole('button', {name: scenario.language === 'en' ? 'Permissions and execution' : '权限与运行设置', exact: true}).click()
 		const panel = page.getByRole('dialog', {name: scenario.preferences})
 		const capabilitySection = panel.getByRole('region', {name: scenario.title})
 		await expect(capabilitySection.getByRole('combobox', {name: scenario.projects, exact: true})).toHaveValue('off')
 		await expect(capabilitySection.getByRole('combobox', {name: scenario.compass, exact: true})).toHaveValue('write')
-		await panel.getByLabel(scenario.template, {exact: true}).fill('Only Compass')
+		await expect(capabilitySection.getByRole('combobox', {name: scenario.notes, exact: true})).toHaveValue('read')
+		await panel.getByLabel(scenario.template, {exact: true}).fill('Compass writes and note reading')
 		await panel.getByRole('button', {name: scenario.save, exact: true}).click()
 		await panel.getByRole('button', {name: scenario.makeDefault, exact: true}).click()
 		await panel.getByRole('button', {name: scenario.apply, exact: true}).click()
@@ -55,15 +64,17 @@ for (const scenario of [
 		const response = await apiContext.get(`${api}/ai/preferences`, {headers: {Authorization: `Bearer ${userToken}`}})
 		expect(response.ok()).toBe(true)
 		const saved = await response.json()
-		expect(saved.profiles.find((profile: {name: string}) => profile.name === 'Only Compass').options).toMatchObject({
-			mode: 'write', tool_modules: {project_tasks: 'off', compass: 'write'},
+		expect(saved.profiles.find((profile: {name: string}) => profile.name === 'Compass writes and note reading').options).toMatchObject({
+			mode: 'write', tool_modules: {project_tasks: 'off', compass: 'write', notes: 'read'},
 		})
 		// Read the account template from the server, without relying on the tab's saved draft options.
 		await page.evaluate(() => sessionStorage.clear())
 		await page.reload()
+		await page.locator('.configuration-toggle:visible').click()
 		await open.click()
 		await expect(projects).toHaveValue('off')
 		await expect(compass).toHaveValue('write')
+		await expect(notes).toHaveValue('read')
 		await page.keyboard.press('Escape')
 	})
 }
