@@ -355,7 +355,10 @@
 			"smtpCredentials": "启用 SMTP 认证需要填写用户名和密码。",
 			"smtpForbidden": "只有站点配置管理员可以管理发信配置。",
 			"smtpConflict": "配置已在其他页面更改，请刷新后重新修改再保存。",
-			"smtpSave": "无法持久保存发信配置，原配置仍然有效。"
+			"smtpSave": "无法持久保存发信配置，原配置仍然有效。",
+			"speechLiveUnsupported": "当前连接不支持实时麦克风转写，请使用 DashScope ASR 或 Qwen ASR Realtime。",
+			"speechLiveFrame": "实时音频帧无效：需要 PCM16、偶数字节，每帧最多 32 KiB。",
+			"speechLiveLimit": "本次语音连接达到安全边界，请完成收尾后重新连接以继续录音。"
 		},
 		"stopped": "执行已停止：%s。已完成的操作见下方记录。",
 		"cleanupFailed": "文字整理失败，已保留识别原文：%s",

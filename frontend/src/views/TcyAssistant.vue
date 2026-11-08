@@ -55,6 +55,7 @@ import {useBaseStore} from '@/stores/base'
 import {useProjects} from '@/composables/useProjects'
 import {provideAronaPresenting, usePresentedSnapshot} from '@/composables/useAronaPresentation'
 import {useTitle} from '@/composables/useTitle'
+import {appendAronaDraft, takeAronaDraftHandoff} from '@/helpers/aronaDraftHandoff'
 import type {ChatAttachment, ChatTurn, ReviewInput, ConversationSummary} from '@/client/generated'
 import {openDiagnostics, openCompactDiagnostic} from '@/helpers/diagnostics'
 import {captureClientRequestContext, isClientRequestContextCurrent, isRequestContextAbort} from '@/client/requestContext'
@@ -438,6 +439,12 @@ const prompt = ref(readDraft(chatID.value))
 // Synchronous, so text is filed under the conversation it was typed in even when the chat changes right after.
 let draftRevision = 0
 watch(prompt, text => { draftRevision++; writeDraft(chatID.value, text) }, {flush: 'sync'})
+function receiveNotesDraft(id: unknown) {
+	if (props.embedded || route.name !== 'tcy-ai') return
+	prompt.value = appendAronaDraft(prompt.value, takeAronaDraftHandoff(id))
+}
+receiveNotesDraft(route.query.notesDraft)
+watch(() => route.query.notesDraft, receiveNotesDraft)
 let switchingChat = false
 watch(chatID, (id, previous) => {
 	if (switchingChat || !stillHere()) return

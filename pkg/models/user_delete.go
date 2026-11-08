@@ -148,6 +148,9 @@ func deleteUser(s *xorm.Session, u *user.User) (err error) {
 	if err = lockAccountProjectsForMutation(s, u.ID); err != nil {
 		return err
 	}
+	if err = DeleteAsterNotesForAccount(s, u.ID); err != nil {
+		return err
+	}
 	if err = deleteCompassSpaces(s, builder.Eq{"owner_id": u.ID, "team_id": 0}); err != nil {
 		return err
 	}

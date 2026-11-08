@@ -13,7 +13,7 @@
 
 我们赋予 **Astering**「像星星闪烁、使之星光熠熠」的意象：一次行动、一段研究、一条值得记住的原则，逐渐连接成自己的星群。**Aster的AI集成工业系统**（Aster’s AI-integrated industrial system）是项目的副标题；工具与积累服务于更自由的创造。
 
-- 当前版本：`v2.7.1-aster.61`
+- 当前版本：`v2.7.1-aster.62`
 - 源码与问题反馈：[KanameMadoka520/Astering](https://github.com/KanameMadoka520/Astering)
 - 本机编译的发布产物：[GitHub Releases](https://github.com/KanameMadoka520/Astering/releases)
 - [品牌与升级兼容](docs/brand-migration.md) · [品牌素材](docs/brand-identity.md) · [详细功能与演进记录](docs/product-reference.md)
@@ -31,6 +31,7 @@ Astering 把不同用途保留在各自合适的空间里，关联真实任务�
 | 推进项目 | 项目的列表、看板、表格与甘特图 | 任务、栏目、关系、附件和公告；共享范围沿用项目权限。 |
 | 安排时间 | 独立日历 | 月、周、日与议程查看真实任务日期；精确时段、独立截止与全天自然日分别表达，不猜测午夜等于全天。 |
 | 形成习惯 | 周期任务 | 同一任务保留按日、周、月的进度历史，可设换日时间、额度与单位，不为漏掉的周期自动补打卡。 |
+| 留住随口说的想法 | 笔记 → 原始转录 | 实时语音逐段保存文字，原始音频不留存；选段加入可编辑文章，或交给阿罗娜整理和规划任务。 |
 | 回看过去 | 项目回顾 | 按真实日期汇总项目时间线，另看完成与归档记录；没有日期的数据不会被编成工作时段。 |
 | 比较与恢复内容 | 项目内容历史 | 建立命名保存点，先预览差异再恢复；自动保存恢复前状态，保留后来的评论、打卡事实和当前成员权限。 |
 | 留住原则与想法 | 星图 | 空间、图文条目、主题和修订，支持归档与回收站；内容不自动灌入每次模型请求。 |
@@ -77,15 +78,15 @@ Astering 把不同用途保留在各自合适的空间里，关联真实任务�
 git clone https://github.com/KanameMadoka520/Astering.git
 cd Astering
 docker build -f Dockerfile.aster \
-  --build-arg RELEASE_VERSION=v2.7.1-aster.61 \
+  --build-arg RELEASE_VERSION=v2.7.1-aster.62 \
   --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
-  -t astering:v2.7.1-aster.61 .
+  -t astering:v2.7.1-aster.62 .
 ```
 
 或下载对应 Release，先检查 `sha256sum -c SHA256SUMS`，再导入镜像包：
 
 ```sh
-docker load -i astering-v2.7.1-aster.61.docker.tar.gz
+docker load -i astering-v2.7.1-aster.62.docker.tar.gz
 ```
 
 以下是**新安装**的最小 SQLite 示例；生产也可配置 PostgreSQL。现有部署不要用新建的空目录替换原数据卷。
@@ -101,7 +102,7 @@ docker run -d --name Astering --restart unless-stopped \
   -e ASTERING_SERVICE_SECRET=替换为随机且持久保存的长密钥 \
   -e ASTERING_SERVICE_ENABLEREGISTRATION=false \
   -e ASTERING_SERVICE_TIMEZONE=Asia/Shanghai \
-  astering:v2.7.1-aster.61
+  astering:v2.7.1-aster.62
 ```
 
 在反向代理提供 HTTPS，将 `PUBLICURL` 改为自己的实际域名。创建首个账户前可查看 CLI 参数：
@@ -115,6 +116,8 @@ docker exec -it Astering /app/astering/astering user create --help
 项目菜单中的「项目历史版本」用于保存服务器上已提交的项目内容、任务、看板布局与附件引用；它与完成／归档历程分开。未改变的历史实体按内容去重，媒体原件不复制；只记录明确保存的保存点，不能找回上线前或未保存的编辑。恢复要求当前项目管理员并使用最新差异预览，阿罗娜也始终需要人工审核。详细范围、存储口径及保留边界见[项目内容历史](docs/project-versions.md)。
 
 ## 从旧版本升级
+
+`aster.62` 新增独立的个人笔记与长时间实时语音记录。当前实时采音支持 DashScope ASR 和 Qwen ASR Realtime，复用个人 AI 设置中的语音连接；其他协议继续使用原有的录完再识别。持续录音自动轮换识别连接，内存缓冲有界，不积累音频文件。笔记正文与原始转录各自保存，支持冲突比较、选段整理、Markdown／文本导出。后台录音与屏幕常亮是按浏览器能力尽力提供的选项，不能保证手机锁屏后继续采音。使用方式、账户隔离与协议边界见[实时语音笔记](docs/voice-notes.md)。
 
 本次品牌更名不要求重建账户、数据库或文件库。新变量前缀为 `ASTERING_*`，旧 `VIKUNJA_*` 继续兼容；不要同时填入互相冲突的配置。
 
@@ -135,6 +138,7 @@ docker exec -it Astering /app/astering/astering user create --help
 | 周期任务 | [公告与日常基础](docs/project-announcements-routines.md)、[周期与额度扩展](docs/speech-and-routines-v41.md) |
 | 星图与图文记录 | [使用设计](docs/compass.md)、[数据与权限](docs/compass-data.md) |
 | 语音与多模态 | [语音输入交互](docs/voice-input-v43.md)、[协议适配](docs/speech-and-routines-v41.md)、[阿罗娜集成](docs/arona-integration.md) |
+| 笔记与长时间录音 | [实时语音笔记](docs/voice-notes.md) |
 | 模型与工具执行 | [运行时](docs/arona-runtime-design.md)、[工具发现恢复](docs/agent-tool-loading.md)、[模块范围](docs/agent-tool-modules.md) |
 | 缓存与弱网 | [浏览器缓存](docs/browser-cache.md)、[弱网设计与验证](docs/weak-network-v49.md) |
 | 外观主题 | [星辰主题与显示边界](docs/starlight-theme.md) |

@@ -25,7 +25,7 @@ import UpcomingTasks from '@/views/tasks/ShowTasks.vue'
 
 import NotFoundComponent from '@/views/404.vue'
 
-// Compass is personal writing: link shares never reach it, even by a typed URL.
+// Personal writing is unavailable to link shares, including a manually typed URL.
 function compassGuard() {
 	if (useAuthStore().authLinkShare) {
 		return {name: 'not-found'}
@@ -62,6 +62,20 @@ const router = createRouter({
 			},
 		},
 		{path: '/ai', name: 'tcy-ai', component: () => import('@/views/TcyAssistant.vue')},
+		{
+			path: '/notes',
+			name: 'notes',
+			component: () => import('@/views/Notes.vue'),
+			meta: {title: 'notes.title'},
+			beforeEnter: compassGuard,
+		},
+		{
+			path: '/notes/:noteId(\\d+)',
+			name: 'notes.detail',
+			component: () => import('@/views/Notes.vue'),
+			meta: {title: 'notes.title'},
+			beforeEnter: compassGuard,
+		},
 		{
 			path: '/',
 			name: 'home',

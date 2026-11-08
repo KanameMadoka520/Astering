@@ -745,6 +745,127 @@ export type AssistantProfile = {
     options?: AssistantOptions;
 };
 
+export type AsterNote = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Editable Markdown, at most 8 MiB UTF-8. Omitted from lists; raw transcript segments are independent.
+     */
+    content?: string;
+    /**
+     * UTF-8 Markdown bytes; not allocated database disk space.
+     */
+    readonly content_bytes?: number;
+    /**
+     * Original note creation time.
+     */
+    readonly created?: string;
+    /**
+     * Server-derived preview of the editable text, at most 180 Unicode characters.
+     */
+    readonly excerpt?: string;
+    /**
+     * Required on editorial update; stale or missing values return 409.
+     */
+    expected_revision?: number;
+    /**
+     * Server-assigned personal note identifier.
+     */
+    readonly id?: number;
+    /**
+     * Pinned notes appear before other notes.
+     */
+    pinned?: boolean;
+    /**
+     * Editorial revision. Transcript appends do not change this value.
+     */
+    readonly revision?: number;
+    /**
+     * Number of immutable final transcript segments.
+     */
+    readonly segment_count?: number;
+    /**
+     * Personal note title, up to 250 Unicode characters.
+     */
+    title?: string;
+    /**
+     * UTF-8 bytes of independently retained transcript text; no audio is stored.
+     */
+    readonly transcript_bytes?: number;
+    /**
+     * Last editorial save or transcript append.
+     */
+    readonly updated?: string;
+};
+
+export type AsterNoteSegment = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Client-generated UUID. Reusing it with identical text and times returns the original segment.
+     */
+    client_id?: string;
+    /**
+     * Server timestamp of the first durable append.
+     */
+    readonly created?: string;
+    /**
+     * End offset in milliseconds; must be greater than or equal to start_ms.
+     */
+    end_ms?: number;
+    /**
+     * Server-assigned cursor; segments are returned in ascending ID order.
+     */
+    readonly id?: number;
+    /**
+     * Containing note, always taken from the request path.
+     */
+    readonly note_id?: number;
+    /**
+     * Start offset in the recording timeline, in milliseconds; not a wall-clock timestamp.
+     */
+    start_ms?: number;
+    /**
+     * Immutable final transcript text, at most 64 KiB UTF-8.
+     */
+    text?: string;
+    /**
+     * True when the provider lacked precise timestamps and recording offsets were estimated.
+     */
+    timing_estimated?: boolean;
+};
+
+export type AsterNoteSegmentPage = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * True when latest=true selected the newest bounded page instead of a forward cursor. This mode always has_more=false.
+     */
+    from_end?: boolean;
+    /**
+     * Whether another forward page existed when this page was read.
+     */
+    has_more?: boolean;
+    /**
+     * Immutable final segments in ascending ID order.
+     */
+    items?: Array<AsterNoteSegment> | null;
+    /**
+     * Last returned ID; send it as after_id. Preserves the input cursor for an empty forward page.
+     */
+    next_cursor?: number;
+    /**
+     * All currently persisted segments in this note, not just after the cursor.
+     */
+    total?: number;
+};
+
 export type AttachmentUploadError = {
     /**
      * Astering numeric error code, when the failure carries one.
@@ -2757,6 +2878,16 @@ export type ListedModel = {
     name?: string;
 };
 
+export type LiveNoteConnection = {
+    default: boolean;
+    endpoint: string;
+    id: string;
+    model: string;
+    name: string;
+    protocol: string;
+    sample_rate: number;
+};
+
 export type LocalAuthInfo = {
     enabled?: boolean;
     registration_enabled?: boolean;
@@ -3348,6 +3479,18 @@ export type PaginatedAdminUser = {
      */
     readonly $schema?: string;
     items?: Array<AdminUser> | null;
+    page?: number;
+    per_page?: number;
+    total?: number;
+    total_pages?: number;
+};
+
+export type PaginatedAsterNote = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    items?: Array<AsterNote> | null;
     page?: number;
     per_page?: number;
     total?: number;
@@ -5916,6 +6059,22 @@ export type StorageSummary = {
      */
     independent_attachment_bytes: number;
     /**
+     * Logical UTF-8 Markdown bytes, excluded from file-based total_bytes; not allocated database space.
+     */
+    note_content_bytes: number;
+    /**
+     * Personal editable notes; independent from chat records and Drive originals.
+     */
+    note_count: number;
+    /**
+     * Title, Markdown and transcript UTF-8 bytes. Independent logical database accounting; excluded from total_bytes. Deleting it does not promise immediate disk reclamation.
+     */
+    note_text_bytes: number;
+    /**
+     * Logical UTF-8 final transcript bytes; original audio is not stored.
+     */
+    note_transcript_bytes: number;
+    /**
      * Database original lengths, once per file ID including recycle-bin originals.
      */
     original_file_bytes: number;
@@ -8273,6 +8432,71 @@ export type AssistantPreferencesWritable = {
     revision?: number;
 };
 
+export type AsterNoteWritable = {
+    /**
+     * Editable Markdown, at most 8 MiB UTF-8. Omitted from lists; raw transcript segments are independent.
+     */
+    content?: string;
+    /**
+     * Required on editorial update; stale or missing values return 409.
+     */
+    expected_revision?: number;
+    /**
+     * Pinned notes appear before other notes.
+     */
+    pinned?: boolean;
+    /**
+     * Personal note title, up to 250 Unicode characters.
+     */
+    title?: string;
+};
+
+export type AsterNoteSegmentWritable = {
+    /**
+     * Client-generated UUID. Reusing it with identical text and times returns the original segment.
+     */
+    client_id?: string;
+    /**
+     * End offset in milliseconds; must be greater than or equal to start_ms.
+     */
+    end_ms?: number;
+    /**
+     * Start offset in the recording timeline, in milliseconds; not a wall-clock timestamp.
+     */
+    start_ms?: number;
+    /**
+     * Immutable final transcript text, at most 64 KiB UTF-8.
+     */
+    text?: string;
+    /**
+     * True when the provider lacked precise timestamps and recording offsets were estimated.
+     */
+    timing_estimated?: boolean;
+};
+
+export type AsterNoteSegmentPageWritable = {
+    /**
+     * True when latest=true selected the newest bounded page instead of a forward cursor. This mode always has_more=false.
+     */
+    from_end?: boolean;
+    /**
+     * Whether another forward page existed when this page was read.
+     */
+    has_more?: boolean;
+    /**
+     * Immutable final segments in ascending ID order.
+     */
+    items?: Array<AsterNoteSegmentWritable> | null;
+    /**
+     * Last returned ID; send it as after_id. Preserves the input cursor for an empty forward page.
+     */
+    next_cursor?: number;
+    /**
+     * All currently persisted segments in this note, not just after the cursor.
+     */
+    total?: number;
+};
+
 export type AttachmentUploadResultWritable = {
     /**
      * Per-file failures. A file that fails here does not fail the whole request; the others still upload.
@@ -9332,6 +9556,14 @@ export type PaginatedAccountAdminEventWritable = {
 
 export type PaginatedAdminUserWritable = {
     items?: Array<AdminUserWritable> | null;
+    page?: number;
+    per_page?: number;
+    total?: number;
+    total_pages?: number;
+};
+
+export type PaginatedAsterNoteWritable = {
+    items?: Array<AsterNoteWritable> | null;
     page?: number;
     per_page?: number;
     total?: number;
@@ -10553,6 +10785,22 @@ export type StorageSummaryWritable = {
      * Legacy encrypted attachments counted once per stored content ID. New Drive attachments are already included in original_file_bytes.
      */
     independent_attachment_bytes: number;
+    /**
+     * Logical UTF-8 Markdown bytes, excluded from file-based total_bytes; not allocated database space.
+     */
+    note_content_bytes: number;
+    /**
+     * Personal editable notes; independent from chat records and Drive originals.
+     */
+    note_count: number;
+    /**
+     * Title, Markdown and transcript UTF-8 bytes. Independent logical database accounting; excluded from total_bytes. Deleting it does not promise immediate disk reclamation.
+     */
+    note_text_bytes: number;
+    /**
+     * Logical UTF-8 final transcript bytes; original audio is not stored.
+     */
+    note_transcript_bytes: number;
     /**
      * Database original lengths, once per file ID including recycle-bin originals.
      */
@@ -14823,6 +15071,246 @@ export type MigrationWekanStatusResponses = {
 };
 
 export type MigrationWekanStatusResponse = MigrationWekanStatusResponses[keyof MigrationWekanStatusResponses];
+
+export type NotesListData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * 1-based page number.
+         */
+        page?: number;
+        /**
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
+         */
+        per_page?: number;
+        /**
+         * Search query; filters the list to items matching this string.
+         */
+        q?: string;
+        /**
+         * Optional pin filter. Omit to return pinned and unpinned notes.
+         */
+        pinned?: 'true' | 'false';
+    };
+    url: '/notes';
+};
+
+export type NotesListErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type NotesListError = NotesListErrors[keyof NotesListErrors];
+
+export type NotesListResponses = {
+    /**
+     * OK
+     */
+    200: PaginatedAsterNote;
+};
+
+export type NotesListResponse = NotesListResponses[keyof NotesListResponses];
+
+export type NotesCreateData = {
+    body: AsterNoteWritable;
+    path?: never;
+    query?: never;
+    url: '/notes';
+};
+
+export type NotesCreateErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type NotesCreateError = NotesCreateErrors[keyof NotesCreateErrors];
+
+export type NotesCreateResponses = {
+    /**
+     * Created
+     */
+    201: AsterNote;
+};
+
+export type NotesCreateResponse = NotesCreateResponses[keyof NotesCreateResponses];
+
+export type NotesLiveConnectionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/notes/live-connections';
+};
+
+export type NotesLiveConnectionsErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type NotesLiveConnectionsError = NotesLiveConnectionsErrors[keyof NotesLiveConnectionsErrors];
+
+export type NotesLiveConnectionsResponses = {
+    /**
+     * OK
+     */
+    200: Array<LiveNoteConnection> | null;
+};
+
+export type NotesLiveConnectionsResponse = NotesLiveConnectionsResponses[keyof NotesLiveConnectionsResponses];
+
+export type NotesDeleteData = {
+    body?: never;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/notes/{id}';
+};
+
+export type NotesDeleteErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type NotesDeleteError = NotesDeleteErrors[keyof NotesDeleteErrors];
+
+export type NotesDeleteResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type NotesDeleteResponse = NotesDeleteResponses[keyof NotesDeleteResponses];
+
+export type NotesReadData = {
+    body?: never;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/notes/{id}';
+};
+
+export type NotesReadErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type NotesReadError = NotesReadErrors[keyof NotesReadErrors];
+
+export type NotesReadResponses = {
+    /**
+     * OK
+     */
+    200: AsterNote;
+};
+
+export type NotesReadResponse = NotesReadResponses[keyof NotesReadResponses];
+
+export type NotesUpdateData = {
+    body: AsterNoteWritable;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/notes/{id}';
+};
+
+export type NotesUpdateErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type NotesUpdateError = NotesUpdateErrors[keyof NotesUpdateErrors];
+
+export type NotesUpdateResponses = {
+    /**
+     * OK
+     */
+    200: AsterNote;
+};
+
+export type NotesUpdateResponse = NotesUpdateResponses[keyof NotesUpdateResponses];
+
+export type NoteSegmentsListData = {
+    body?: never;
+    path: {
+        id: number;
+    };
+    query?: {
+        /**
+         * Exclusive forward cursor from next_cursor, initially 0.
+         */
+        after_id?: number;
+        /**
+         * At most 100 final segments per page.
+         */
+        per_page?: number;
+        /**
+         * Read the newest bounded page directly, ordered ascending. Cannot be combined with after_id greater than zero.
+         */
+        latest?: boolean;
+    };
+    url: '/notes/{id}/segments';
+};
+
+export type NoteSegmentsListErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type NoteSegmentsListError = NoteSegmentsListErrors[keyof NoteSegmentsListErrors];
+
+export type NoteSegmentsListResponses = {
+    /**
+     * OK
+     */
+    200: AsterNoteSegmentPage;
+};
+
+export type NoteSegmentsListResponse = NoteSegmentsListResponses[keyof NoteSegmentsListResponses];
+
+export type NoteSegmentsAppendData = {
+    body: AsterNoteSegmentWritable;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/notes/{id}/segments';
+};
+
+export type NoteSegmentsAppendErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type NoteSegmentsAppendError = NoteSegmentsAppendErrors[keyof NoteSegmentsAppendErrors];
+
+export type NoteSegmentsAppendResponses = {
+    /**
+     * Created
+     */
+    201: AsterNoteSegment;
+};
+
+export type NoteSegmentsAppendResponse = NoteSegmentsAppendResponses[keyof NoteSegmentsAppendResponses];
 
 export type NotificationsDeleteAllData = {
     body?: never;

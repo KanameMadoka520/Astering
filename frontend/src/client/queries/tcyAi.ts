@@ -151,7 +151,10 @@ export function useSaveAISettings() {
 			await client.cancelQueries({queryKey: settingsKey})
 			return normalizeAISettings((await tcyAiSaveSettings({body})).data)
 		},
-		onSuccess: data => { client.setQueryData(settingsKey, data) },
+		onSuccess: data => {
+			client.setQueryData(settingsKey, data)
+			void client.invalidateQueries({queryKey: ['notes', 'live-connections']})
+		},
 		// The form reports each save on the card or section it saved, so a toast would say it twice.
 		toastError: () => false,
 	}))

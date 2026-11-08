@@ -27,6 +27,7 @@ import (
 
 	"github.com/KanameMadoka520/Astering/pkg/db"
 	"github.com/KanameMadoka520/Astering/pkg/files"
+	"github.com/KanameMadoka520/Astering/pkg/models"
 	"github.com/KanameMadoka520/Astering/pkg/modules/instanceusage"
 	"github.com/KanameMadoka520/Astering/pkg/modules/tcyai"
 	"github.com/KanameMadoka520/Astering/pkg/user"
@@ -289,13 +290,23 @@ func ReadSummary(ctx context.Context, uid int64) (*StorageSummary, error) {
 			"trash_retains_original_bytes",
 			"previews_are_regenerable_and_may_return",
 			"database_backups_and_server_files_excluded",
+			"note_text_bytes_are_separate_logical_utf8_not_file_total_or_reclaimable_disk",
 			"shared_resource_ownership_is_not_content_access",
 		},
 	}
 	s := db.NewReadSession()
 	db.SetSessionContext(ctx, s)
+	notes, err := models.AsterNotesStorage(s, uid)
+	if err != nil {
+		_ = s.Close()
+		return nil, err
+	}
+	result.NoteCount = notes.Count
+	result.NoteContentBytes = notes.ContentBytes
+	result.NoteTranscriptBytes = notes.TranscriptBytes
+	result.NoteTextBytes = notes.TextBytes
 	rows := []fileRecord{}
-	err := ownedFiles(s, uid).Select(fileColumns).OrderBy("files.id ASC").Limit(100001).Find(&rows)
+	err = ownedFiles(s, uid).Select(fileColumns).OrderBy("files.id ASC").Limit(100001).Find(&rows)
 	_ = s.Close()
 	if err != nil {
 		return nil, err

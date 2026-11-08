@@ -355,7 +355,10 @@
             "smtpCredentials": "SMTP authentication requires a username and password.",
             "smtpForbidden": "Only site-settings administrators can manage SMTP.",
             "smtpConflict": "Settings changed in another session. Reload before saving again.",
-            "smtpSave": "Could not persist mail settings. The previous configuration is unchanged."
+            "smtpSave": "Could not persist mail settings. The previous configuration is unchanged.",
+            "speechLiveUnsupported": "This connection does not support live microphone transcription. Use DashScope ASR or Qwen ASR Realtime.",
+            "speechLiveFrame": "Invalid live audio frame: use even-length PCM16 frames of at most 32 KiB.",
+            "speechLiveLimit": "The live connection reached its safety limit. Finish this stream and reconnect to continue recording."
         },
         "stopped": "Execution stopped: %s. Check the operation log for changes already made.",
         "cleanupFailed": "Text cleanup failed. The original transcript was kept: %s",

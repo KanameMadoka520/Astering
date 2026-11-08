@@ -358,7 +358,18 @@ func CheckUserTokenSession(claims *UserTokenClaims) error {
 }
 
 func checkUserTokenSessionInDB(claims *UserTokenClaims) error {
+	return CheckUserTokenSessionContext(context.Background(), claims)
+}
+
+// CheckUserTokenSessionContext rechecks the current session and identity directly
+// in the database. It bypasses the contextless key-value cache so long-lived
+// connections can cancel credential checks using their own bounded context.
+func CheckUserTokenSessionContext(ctx context.Context, claims *UserTokenClaims) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	s := db.NewReadSession()
+	db.SetSessionContext(ctx, s)
 	defer s.Close()
 
 	session, err := models.GetSessionByID(s, claims.SessionID)

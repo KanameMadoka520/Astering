@@ -369,6 +369,27 @@ function resultLabel(item: CleanupResult) { return t(`storage.statuses.${item.st
 			@filter="suggestion"
 		/>
 		<section
+			v-if="summary"
+			class="storage-notes"
+			aria-labelledby="storage-notes-heading"
+		>
+			<header class="storage-notes__header">
+				<h2 id="storage-notes-heading">
+					{{ t('notes.storage.title') }}
+				</h2>
+				<RouterLink :to="{name: 'notes'}">
+					{{ t('notes.storage.open') }}
+				</RouterLink>
+			</header>
+			<dl class="storage-notes__metrics">
+				<div><dt>{{ t('notes.storage.count') }}</dt><dd>{{ number(summary.note_count ?? 0) }}</dd></div>
+				<div><dt>{{ t('notes.storage.article') }}</dt><dd>{{ bytes(summary.note_content_bytes ?? 0) }}</dd></div>
+				<div><dt>{{ t('notes.storage.transcript') }}</dt><dd>{{ bytes(summary.note_transcript_bytes ?? 0) }}</dd></div>
+				<div><dt>{{ t('notes.storage.total') }}</dt><dd>{{ bytes(summary.note_text_bytes ?? 0) }}</dd></div>
+			</dl>
+			<p>{{ t('notes.storage.help') }}</p>
+		</section>
+		<section
 			class="storage-inventory"
 			:aria-labelledby="'storage-inventory-heading'"
 		>
@@ -920,6 +941,46 @@ function resultLabel(item: CleanupResult) { return t(`storage.statuses.${item.st
 </template>
 
 <style scoped lang="scss">
+.storage-notes {
+	margin-block: var(--space-5);
+	padding: var(--space-4);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-lg);
+	background: var(--surface-raised);
+}
+.storage-notes__header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+}
+.storage-notes__header h2 {
+	margin: 0;
+	font-size: var(--text-lg);
+	font-weight: var(--weight-semibold);
+}
+.storage-notes__header a {
+	display: inline-flex;
+	min-block-size: 44px;
+	align-items: center;
+}
+.storage-notes__metrics {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+	gap: var(--space-4);
+	margin-block: var(--space-3);
+}
+.storage-notes__metrics dt, .storage-notes > p {
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	line-height: 1.7;
+}
+.storage-notes__metrics dd {
+	margin: var(--space-1) 0 0;
+	font-size: var(--text-lg);
+	font-weight: var(--weight-semibold);
+}
 .storage-page {
 	min-inline-size: 0;
 	padding-block-end: 5rem;

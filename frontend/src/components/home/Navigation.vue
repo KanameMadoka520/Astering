@@ -114,6 +114,12 @@
 					aria-labelledby="nav-group-records"
 				>
 					<li>
+						<RouterLink :to="{name: 'notes'}">
+							<span class="menu-item-icon icon"><Icon icon="book-open" /></span>
+							<span class="menu-item-label">{{ t('notes.title') }}</span>
+						</RouterLink>
+					</li>
+					<li>
 						<RouterLink
 							data-tour="nav-compass"
 							:to="{name: 'compass.index'}"

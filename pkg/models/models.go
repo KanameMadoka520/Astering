@@ -89,6 +89,8 @@ func GetTables() []interface{} {
 		&TaskUnreadStatus{},
 		&Session{},
 		&AccountAdminEvent{},
+		&AsterNote{},
+		&AsterNoteSegment{},
 		&OAuthCode{},
 		&TimeEntry{},
 		&UserInviteLink{},

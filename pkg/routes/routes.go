@@ -340,7 +340,8 @@ var unauthenticatedAPIPaths = map[string]bool{
 
 	// WebSocket upgrade (a raw echo route — OpenAPI can't model WebSockets);
 	// it authenticates via its first message, so the upgrade needs no JWT.
-	"/api/v2/ws": true,
+	"/api/v2/ws":         true,
+	"/api/v2/notes/live": true,
 }
 
 // collectRoutesForAPITokens collects all routes for API token permission checking.
@@ -356,7 +357,7 @@ func collectRoutesForAPITokens(e *echo.Echo) {
 
 		// Saved AI credentials and conversations belong to human sessions only.
 		// Keep these custom state routes out of API-token scope discovery.
-		if strings.HasPrefix(route.Path, "/api/v2/ai/") {
+		if strings.HasPrefix(route.Path, "/api/v2/ai/") || route.Path == "/api/v2/notes" || strings.HasPrefix(route.Path, "/api/v2/notes/") {
 			continue
 		}
 
@@ -493,6 +494,7 @@ func registerAPIRoutesV2(e *echo.Echo, a *echo.Group, noAuthRateLimit, refreshRa
 	// from the group's JWT middleware. Health and the Atom feed are Huma ops and
 	// self-register via init()/RegisterAll.
 	a.GET("/ws", ws.UpgradeHandler, noAuthRateLimit)
+	a.GET("/notes/live", apiv2.LiveNoteSpeech, noAuthRateLimit)
 
 	// Resources self-register via init(); RegisterAll runs them all + AutoPatch.
 	apiv2.RegisterAll(api)
