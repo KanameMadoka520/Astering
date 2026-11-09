@@ -32,6 +32,29 @@ public final class OutboxCipherTest {
         envelope[envelope.length - 1] ^= 1;
         assertThrows(GeneralSecurityException.class, () -> OutboxCipher.decrypt(key, 7, ID, envelope));
     }
+    @Test public void serverScopePreventsSameUserAndUuidFromReadingAnotherServerText() throws Exception {
+        SecretKey key = key();
+        byte[] clear = "Private offline note".getBytes(StandardCharsets.UTF_8);
+        byte[] scoped = OutboxCipher.encrypt(key, "https://one.example", 7, ID, clear);
+        assertArrayEquals(clear, OutboxCipher.decrypt(key, "https://one.example", 7, ID, scoped));
+        assertThrows(GeneralSecurityException.class,
+            () -> OutboxCipher.decrypt(key, "https://two.example", 7, ID, scoped));
+        assertThrows(GeneralSecurityException.class,
+            () -> OutboxCipher.decrypt(key, "https://one.example:8443", 7, ID, scoped));
+        assertThrows(GeneralSecurityException.class, () -> OutboxCipher.decrypt(key, 7, ID, scoped));
+        byte[] old = OutboxCipher.encrypt(key, 7, ID, clear);
+        assertThrows(GeneralSecurityException.class,
+            () -> OutboxCipher.decrypt(key, "https://one.example", 7, ID, old));
+        assertArrayEquals(clear, OutboxCipher.decrypt(key, 7, ID, old));
+    }
+
+    @Test public void nonCanonicalOrMissingServerCannotEncryptScopedText() throws Exception {
+        SecretKey key = key();
+        for (String origin : Arrays.asList(null, "", "http://one.example", "one.example", "https://one.example/", "https://one.example:443")) {
+            assertThrows(IllegalArgumentException.class, () -> OutboxCipher.encrypt(key, origin, 7, ID, new byte[]{1}));
+        }
+    }
+
     @Test public void envelopesAreVersionedAndBoundedBeforeDecryption() throws Exception {
         SecretKey key = key();
         assertThrows(GeneralSecurityException.class, () -> OutboxCipher.encrypt(key, 7, ID, new byte[65537]));

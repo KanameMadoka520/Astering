@@ -127,6 +127,28 @@ describe('Android authentication through the real message bridge', () => {
 		expect(commands.filter(command => command.action === 'session').pop()?.token).toBe(renewed)
 	})
 
+	it.each(['https://notes.example', 'https://notes.example:8443'])('coordinates refresh and background token events on selected server %s', async origin => {
+		Object.defineProperty(window, 'location', {
+			configurable: true,
+			value: new URL(origin),
+		})
+		window.API_URL = origin
+		port = {postMessage: port.postMessage}
+		window.AsteringNative = port
+		const initial = token({expiresIn: 60})
+		const renewed = token()
+		auth.saveToken(initial, true)
+		const refresh = auth.refreshToken(true)
+		respond(refreshCommand(), {token: renewed})
+		await refresh
+		expect(auth.getToken()).toBe(renewed)
+		const background = token({expiresIn: 7200})
+		emit({event: 'token', token: background})
+		expect(auth.getToken()).toBe(background)
+		expect(localStorage.getItem('token')).toBe(background)
+		expect(webRefresh).not.toHaveBeenCalled()
+	})
+
 	it('adopts a native background renewal in memory and notifies existing page observers', () => {
 		const renewed = token()
 		auth.saveToken(token({expiresIn: 60}), true)
@@ -208,6 +230,8 @@ describe('Android authentication through the real message bridge', () => {
 
 		expect(auth.getToken()).toBe(initial)
 		expect(localStorage.getItem('token')).toBe(initial)
+		auth.removeToken()
+		expect(commands.at(-1)?.action).toBe('clearSession')
 	})
 
 	it('retains a newer native broadcast when an older same-session request response arrives afterwards', async () => {
@@ -257,7 +281,7 @@ describe('Android authentication through the real message bridge', () => {
 		expect(auth.getToken()).toBe(current)
 	})
 
-	it('uses the normal refresh transport when the page is outside the exact trusted origin', async () => {
+	it('uses the normal refresh transport when the configured API belongs to another origin', async () => {
 		Object.defineProperty(window, 'location', {
 			configurable: true,
 			value: new URL('https://task.tcymc.space.attacker.example'),

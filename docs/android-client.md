@@ -1,8 +1,30 @@
 # Astering Android 客户端
 
-Android 客户端基于 Vikunja 改造而来的 Astering 网站，提供系统 WebView 界面、个人笔记原生麦克风服务与可选设备本地识别。应用只打开 `https://task.tcymc.space`；登录及页面首次加载仍需要网络和本站账户。已经打开的笔记可使用内置模型在断网时继续识别，文字加密暂存后补传；这不表示整个网站已经支持断网冷启动。页面来自线上 SPA，因此网页界面更新不需要重新安装 APK；原生权限、服务、识别模型和桥接代码变更仍需安装新版 APK。
+Android 客户端基于 Vikunja 改造而来的 Astering 网站，提供系统 WebView 界面、个人笔记原生麦克风服务与可选设备本地识别。首次启动先显示原生服务器配置页，**地址输入框为空，没有预设站点或连接回退地址**。用户手动填写并确认自己的 Astering HTTPS 根地址后，应用才加载该站点；升级预设地址的旧版也会先要求填写。登录及页面首次加载仍需要网络和所选站点的账户。已经打开的笔记可使用内置模型在断网时继续识别，文字加密暂存后补传；这不表示整个网站已经支持断网冷启动。页面来自线上 SPA，因此网页界面更新不需要重新安装 APK；原生权限、服务、识别模型和桥接代码变更仍需安装新版 APK。
 
 最新客户端内置约 229 MiB 的 SenseVoiceSmall int8 权重、词表及 VAD，支持近年的 ARM64 安卓手机。实际 APK 还包括原生运行库。模型不会在打开页面时重新下载；详细来源、许可、校验值、体积、加密文字与实测边界见[本地语音识别](offline-asr.md)。
+
+## 服务器选择与发布
+
+APK **只发布到 [GitHub Release](https://github.com/KanameMadoka520/Astering/releases)**，业务网站不托管安装包，也不提供 APK 下载代理。不能为了下载方便恢复旧的站点 `/downloads/` 安装包。旧版 `.64`、`.65` 的预设站点 APK 已撤回，服务端及源码产物继续保留。
+
+服务器设置接受 HTTPS 根地址；不要填写登录页、API 路径、用户名密码、查询参数或片段。地址规范化后显示将要连接的服务器，再由用户确认。应用不会扫描局域网、自动发现站点或在填写之前连接维护者的服务器。外链仍交系统浏览器。
+
+更换服务器是明确的原生操作：撤销旧会话、停止旧录音与同步，清理旧 WebView 登录状态和网页存储后重新加载。待同步文字以服务器和账户共同隔离；另一服务器恰好使用相同的用户 ID 或 SID，也不能读取或上传原服务器的文字。更换站点不会删除服务器上的笔记。
+
+旧版只按账户保存的待同步文字不自动归属新服务器，也不直接丢弃。只有用户手动选择原服务器、服务器验证当前账户身份，并在独立恢复提示中确认后，才能迁移旧版待同步文字；未确认时原件保留，不上传到任意新地址。原域名仅用于核验旧格式迁移目的地，不作为服务器默认值。
+
+## 客户端更新
+
+原生顶部提供「检查更新」，首次打开及回到前台时还会做有间隔的自动检查（每 12 小时至多一次；手动检查不受这个间隔限制）。检查独立访问 Astering 官方 GitHub Release，不发送所选站点的 Cookie、访问令牌或服务器配置。仅考虑正式、非草稿发布中的确切 Android APK；没有安卓包的服务端发布不会提示升级，已安装版本及更低版本也不会触发。
+
+发现新版后显示版本与真实包体积。点击「下载更新」直接从 GitHub 取包，显示百分比、已接收字节与平均速度；可以取消，失败可重新检查重试，不会触碰服务器数据。下载期间保持应用打开；本版不提供被系统杀进程后自动续传的承诺。完整下载后检查 GitHub 提供的 SHA-256、包大小、应用 ID、递增版本以及与当前安装一致的签名，再通过仅开放更新缓存目录的 FileProvider 交给系统安装器。不会静默安装、不接受网站下发的更新 URL，也不把网页导出下载与 APK 更新混为一谈。
+
+发布安卓新版时，递增 `versionCode`，并保持其与正式标签 `v主版本-aster.序号` 的末尾序号相同；`versionName` 为去掉 `v` 的标签。将签名 APK 命名为 `astering-标签-android.apk` 上传到本仓库正式 Release，核对 GitHub 资产的 `digest`、字节数和本机 SHA256。客户端只接受这一命名、确切仓库下载地址与有效 SHA256；不把名称近似的文件当成更新。单独 Android 发布使用 `--latest=false`，避免把服务端的更新提示指向只有 APK 的发布。自动检查有上限地读取最多三页、每页 100 条正式发布元数据，不遍历无限历史或持续轮询。
+
+Android 首次安装更新需要用户在系统中允许 Astering「安装未知应用」；设置回来后重新点击「检查更新」→「安装新版」继续。安装会重启应用，请先保存草稿并结束录音。未完成文件在取消或失败后删除，更新缓存只保留短期安装所需文件；完整包在页面重建后可按最新 Release 元数据重新验证并复用。网络失败使用 5 分钟自动检查退避，不会直接跳过 12 小时。
+
+协议依据：[GitHub Release API](https://docs.github.com/en/rest/releases/releases)、[Android 安装来源权限](https://developer.android.com/reference/android/content/pm/PackageManager#canRequestPackageInstalls())、[FileProvider 的临时读取授权](https://developer.android.com/reference/androidx/core/content/FileProvider)。
 
 ## 使用与隐私
 
@@ -19,11 +41,11 @@ Android 客户端基于 Vikunja 改造而来的 Astering 网站，提供系统 W
 
 强制停止、系统资源回收、电话或其他音频占用、麦克风隐私开关和厂商电池限制仍可能结束录音。已保存文字保留在服务器；应用不会事后重建未采集或未提交的声音。
 
-本版专注本站页面、已有本站账号登录及实时笔记，不替代系统浏览器的全部能力。尚未实现原生下载管理、Blob／PDF 导出保存和外站 OAuth 浏览器回跳；需要这些功能时在系统浏览器中登录本站操作。文件选择上传已有系统选择器支持，与下载能力分开。
+本版专注所选站点页面、已有站点账号登录及实时笔记，不替代系统浏览器的全部能力。尚未实现原生下载管理、Blob／PDF 导出保存和外站 OAuth 浏览器回跳；需要这些功能时在系统浏览器中登录本站操作。文件选择上传已有系统选择器支持，与下载能力分开。
 
 ## 安全边界
 
-原生桥使用 AndroidX WebKit `WebViewCompat.addWebMessageListener`，仅允许精确 HTTPS 来源 `https://task.tcymc.space`，并再次检查主 frame 和当前页面来源。没有 `addJavascriptInterface`、通配来源、任意服务器设置或任意原生执行入口。旧版 System WebView 不支持该 API 时不降级暴露不安全桥。
+原生桥使用 AndroidX WebKit `WebViewCompat.addWebMessageListener`，仅允许用户已确认的精确 HTTPS 来源，并再次检查主 frame 和当前页面来源；前端还要求 API 是当前页面同源的标准 `/api/v2`，不能将另一 API 目的地的令牌交给原生端。没有 `addJavascriptInterface`、通配来源或任意原生执行入口。旧版 System WebView 不支持该 API 时不降级暴露不安全桥。
 
 外站链接交给系统浏览器；文件访问、混合内容和明文 HTTP 被禁用。系统文件选择器只向网页交回具有读取授权的 `content://` 文档，原生端不提供任意路径读取。SSL 错误始终拒绝，HTTP 刷新和 WebSocket 不跟随重定向。
 
@@ -79,7 +101,7 @@ Release 通过四个私有环境变量配置外部签名文件：`ASTERING_ANDRO
 ./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
 ```
 
-产物默认在 `android/app/build/outputs/apk/release/app-release.apk`。保留相同 application ID `space.tcymc.astering` 和正式签名证书才能覆盖升级；卸载会清除本机 WebView 登录状态，但不会删除服务器笔记。安装时由用户明确允许相应来源安装 APK；应用自身不申请安装其他应用权限。
+产物默认在 `android/app/build/outputs/apk/release/app-release.apk`。保留相同 application ID `space.tcymc.astering` 和正式签名证书才能覆盖升级；卸载会清除本机 WebView 登录状态，但不会删除服务器笔记。安装时由用户明确允许相应来源安装 APK；应用仅为用户明确确认的、同应用同签名升级申请系统安装权限，不提供安装其他应用的入口。
 
 ## 验证记录与限制
 

@@ -1,3 +1,5 @@
+import {getApiBaseUrl} from '@/helpers/apiUrl'
+
 type NativeBridge = {
 	postMessage: (message: string) => void,
 	onmessage?: (event: {data: string}) => void,
@@ -63,26 +65,54 @@ declare global {
 	}
 }
 
-const APP_ORIGIN = 'https://task.tcymc.space'
 const listeners = new Set<(event: NativeAndroidEvent) => void>()
 const pending = new Map<string, {
 	resolve: (value: unknown) => void,
 	reject: (reason: Error) => void,
 	timer: ReturnType<typeof setTimeout>,
+	origin: string,
+	apiBaseUrl: string | null,
 }>()
 let attached: NativeBridge | undefined
 
-export function isNativeAndroid(): boolean {
-	return window.location.origin === APP_ORIGIN && typeof window.AsteringNative?.postMessage === 'function'
+function hasNativeBridge(): boolean {
+	try {
+		const page = new URL(window.location.href)
+		return page.protocol === 'https:' && page.origin === window.location.origin &&
+			!page.username && !page.password && typeof window.AsteringNative?.postMessage === 'function'
+	} catch {
+		return false
+	}
 }
 
-function bridge(): NativeBridge {
-	if (!isNativeAndroid()) throw new Error('native_unavailable')
+function nativeApiBaseUrl(): string | null {
+	if (!hasNativeBridge()) return null
+	try {
+		const configured = getApiBaseUrl()
+		const rootRelative = configured.startsWith('/') && !configured.startsWith('//')
+		if (!rootRelative && !/^https:\/\//i.test(configured)) return null
+		const api = new URL(configured, window.location.origin).href
+		return api === `${window.location.origin}/api/v2` ? api : null
+	} catch {
+		return null
+	}
+}
+
+export function isNativeAndroid(): boolean {
+	// Android injects this bridge only into the explicitly selected HTTPS origin.
+	// A page configured to use another API cannot give that API's tokens to native.
+	return nativeApiBaseUrl() !== null
+}
+
+function bridge(clearSession = false): NativeBridge {
+	if (!hasNativeBridge() || (!clearSession && !isNativeAndroid())) throw new Error('native_unavailable')
 	const target = window.AsteringNative!
 	if (attached !== target) {
 		attached = target
+		const origin = window.location.origin
 		target.onmessage = ({data}) => {
-			if (typeof data !== 'string' || data.length > 256 * 1024) return
+			if (window.AsteringNative !== target || window.location.origin !== origin ||
+				typeof data !== 'string' || data.length > 256 * 1024) return
 			let message: Record<string, unknown>
 			try {
 				message = JSON.parse(data)
@@ -95,10 +125,16 @@ function bridge(): NativeBridge {
 				if (!request) return
 				pending.delete(message.id)
 				clearTimeout(request.timer)
+				if (window.location.origin !== request.origin ||
+					(request.apiBaseUrl !== null && nativeApiBaseUrl() !== request.apiBaseUrl)) {
+					request.reject(new Error('native_context_changed'))
+					return
+				}
 				if (message.ok === true) request.resolve(message.result)
 				else request.reject(new Error(typeof message.error === 'string' ? message.error : 'native_error'))
 				return
 			}
+			if (!isNativeAndroid()) return
 			if (!['recording', 'token', 'openNote', 'offline'].includes(String(message.event))) return
 			for (const listener of listeners) {
 				try {
@@ -123,6 +159,11 @@ export function requestNativeAndroid<T>(
 	data: Record<string, unknown> = {},
 	timeoutMS = 20_000,
 ): Promise<T> {
+	const apiBaseUrl = nativeApiBaseUrl()
+	const clearSession = action === 'clearSession'
+	if (!hasNativeBridge() || (!clearSession && apiBaseUrl === null)) {
+		return Promise.reject(new Error('native_unavailable'))
+	}
 	if (pending.size >= 32) return Promise.reject(new Error('native_busy'))
 	return new Promise<T>((resolve, reject) => {
 		const id = crypto.randomUUID()
@@ -134,9 +175,11 @@ export function requestNativeAndroid<T>(
 			resolve: value => resolve(value as T),
 			reject,
 			timer,
+			origin: window.location.origin,
+			apiBaseUrl: clearSession ? null : apiBaseUrl,
 		})
 		try {
-			bridge().postMessage(JSON.stringify({...data, id, action}))
+			bridge(clearSession).postMessage(JSON.stringify(clearSession ? {id, action} : {...data, id, action}))
 		} catch (cause) {
 			clearTimeout(timer)
 			pending.delete(id)
@@ -146,6 +189,7 @@ export function requestNativeAndroid<T>(
 }
 
 export function nativeAndroidSession(token: string | null): void {
-	if (!isNativeAndroid()) return
+	// Revocation must still stop the old recorder after the configured API changed.
+	if (!hasNativeBridge() || (token !== null && !isNativeAndroid())) return
 	void requestNativeAndroid(token ? 'session' : 'clearSession', token ? {token} : {}).catch(() => {})
 }

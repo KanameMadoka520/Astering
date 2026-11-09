@@ -18,12 +18,13 @@ public final class SessionSecurityTest {
     }
 
     @Test public void bridgeOriginRejectsLookalikesUserInfoOtherPortsAndSchemes() {
-        assertTrue(SitePolicy.isTrusted("https://task.tcymc.space"));
-        assertTrue(SitePolicy.isTrusted("https://task.tcymc.space:443/notes/1"));
+        SitePolicy site = SitePolicy.parseServer("https://task.tcymc.space");
+        assertTrue(site.isTrusted("https://task.tcymc.space"));
+        assertTrue(site.isTrusted("https://task.tcymc.space:443/notes/1"));
         for (String origin : List.of("http://task.tcymc.space", "https://task.tcymc.space.attacker.test",
             "https://attacker.test@task.tcymc.space", "https://task.tcymc.space:444", "file:///notes",
             "javascript:alert(1)", "https://task.tcymc.space\\@attacker.test", "https://task.tcymc.space.")) {
-            assertFalse(origin, SitePolicy.isTrusted(origin));
+            assertFalse(origin, site.isTrusted(origin));
         }
     }
 
@@ -92,14 +93,35 @@ public final class SessionSecurityTest {
         assertFalse(second.matches(sessions.ticket(), 7));
     }
 
+    @Test public void serverSwitchFencesSameUserAndSidEvenAfterReturningToOriginalOrigin() {
+        SessionFence sessions = new SessionFence();
+        sessions.bindServer("https://one.example");
+        sessions.set(token(7, SID_A, 100));
+        SessionFence.Ticket original = sessions.ticket();
+        sessions.markVerified(original);
+        RecordingLease recording = new RecordingLease(original, 1, "before-server-switch");
+        sessions.bindServer("https://two.example");
+        sessions.set(token(7, SID_A, 200));
+        assertFalse(sessions.current(original));
+        assertFalse(sessions.verified(sessions.ticket()));
+        assertFalse(recording.matches(sessions.ticket(), 1));
+        SessionFence.Ticket second = sessions.ticket();
+        sessions.bindServer("https://one.example");
+        sessions.set(token(7, SID_A, 300));
+        assertFalse(sessions.current(original));
+        assertFalse(sessions.current(second));
+        assertEquals("https://one.example", sessions.ticket().origin);
+        assertFalse(sessions.verified(sessions.ticket()));
+    }
+
     @Test public void refreshCookiesOnlyAcceptBothHttpOnlyHostOnlySecureEndpointPathsWithSameValue() {
         String a = "vikunja_refresh_token=fixture-A; Path=/api/v1/user/token/refresh; Secure; HttpOnly; SameSite=Lax";
         String b = a.replace("/v1/", "/v2/");
-        assertEquals(2, NativeSession.refreshCookies(List.of(a, b)).size());
-        assertEquals(0, NativeSession.refreshCookies(List.of(a, b.replace("fixture-A", "fixture-B"))).size());
-        assertEquals(1, NativeSession.refreshCookies(List.of(a, b.replace("; Secure", ""))).size());
-        assertEquals(1, NativeSession.refreshCookies(List.of(a, b + "; Domain=task.tcymc.space")).size());
-        assertEquals(0, NativeSession.refreshCookies(List.of(a.replace("/api/v1/user/token/refresh", "/"))).size());
+        assertEquals(2, NativeSession.refreshCookies("https://task.tcymc.space", List.of(a, b)).size());
+        assertEquals(0, NativeSession.refreshCookies("https://task.tcymc.space", List.of(a, b.replace("fixture-A", "fixture-B"))).size());
+        assertEquals(1, NativeSession.refreshCookies("https://task.tcymc.space", List.of(a, b.replace("; Secure", ""))).size());
+        assertEquals(1, NativeSession.refreshCookies("https://task.tcymc.space", List.of(a, b + "; Domain=task.tcymc.space")).size());
+        assertEquals(0, NativeSession.refreshCookies("https://task.tcymc.space", List.of(a.replace("/api/v1/user/token/refresh", "/"))).size());
         assertEquals("fixture-A", SitePolicy.cookieValue("other=value; vikunja_refresh_token=fixture-A"));
     }
 }

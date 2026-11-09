@@ -34,11 +34,14 @@ final class NativeSession {
         .callTimeout(20, TimeUnit.SECONDS)
         .build();
     private String boundCookie = "";
+    private int cookieWrites;
+    private final List<Runnable> cookieIdle = new ArrayList<>();
     private volatile Call refreshCall;
     private final java.util.concurrent.atomic.AtomicBoolean verifying = new java.util.concurrent.atomic.AtomicBoolean();
 
     NativeSession(AsteringApplication app) {
         this.app = app;
+        fence.bindServer(app.site == null ? "" : app.site.origin);
     }
 
     SessionFence.Ticket ticket() {
@@ -46,15 +49,16 @@ final class NativeSession {
     }
 
     boolean current(SessionFence.Ticket ticket) {
-        return fence.current(ticket);
+        return fence.current(ticket) && app.site != null && app.site.origin.equals(ticket.origin);
     }
 
     boolean verified(SessionFence.Ticket ticket) {
-        return fence.verified(ticket);
+        return current(ticket) && fence.verified(ticket);
     }
 
     void accept(String token) {
         requireMain();
+        if (app.site == null) throw new IllegalArgumentException("server_required");
         boolean changed = fence.set(token);
         if (changed) {
             Call call = refreshCall;
@@ -64,6 +68,29 @@ final class NativeSession {
             if (app.offline != null) app.offline.changed();
         }
         ensureVerified();
+    }
+
+    void bindServer(SitePolicy site) {
+        requireMain();
+        clear();
+        fence.bindServer(site == null ? "" : site.origin);
+    }
+
+    /** Cookie operations already handed to WebView cannot be canceled; cleanup waits for their callbacks. */
+    void afterCookieWrites(Runnable ready, Runnable failed) {
+        requireMain();
+        if (cookieWrites == 0) { ready.run(); return; }
+        cookieIdle.add(ready);
+        main.postDelayed(() -> { if (cookieIdle.remove(ready)) failed.run(); }, 10000);
+    }
+
+    private void cookieWriteFinished() {
+        requireMain();
+        cookieWrites--;
+        if (cookieWrites != 0) return;
+        List<Runnable> waiting = new ArrayList<>(cookieIdle);
+        cookieIdle.clear();
+        for (Runnable ready : waiting) ready.run();
     }
 
     void ensureVerified() {
@@ -98,32 +125,36 @@ final class NativeSession {
         try {
             refreshes.execute(() -> {
             SessionFence.Ticket current = ticket();
-            if (!fence.current(requested) || current == null) {
-                finish(callback, null, "session_changed");
+            if (!current(requested) || current == null) {
+                finish(callback, requested, null, "session_changed");
                 return;
             }
             if (!current.token.equals(requestingToken)
                 || !force && current.owner.expires - System.currentTimeMillis() / 1000L > 9 * 60) {
-                finish(callback, current.token, null);
+                finish(callback, requested, current.token, null);
                 return;
             }
             try {
                 String before = onMain(() -> {
-                    if (!fence.current(current)) return "";
+                    if (!current(current)) return "";
                     String actual = cookie();
                     return actual.equals(boundCookie) ? actual : "";
                 });
                 if (before.isEmpty()) throw new SessionException("session_changed");
+                SitePolicy site = SitePolicy.parseServer(current.origin);
+                if (site == null) throw new SessionException("session_changed");
                 Request request = new Request.Builder()
-                    .url(SitePolicy.REFRESH_URL)
+                    .url(site.refreshURL())
                     .header("Cookie", SitePolicy.REFRESH_COOKIE + "=" + before)
-                    .header("Origin", SitePolicy.ORIGIN)
+                    .header("Origin", current.origin)
                     .header("Accept", "application/json")
                     .header("Cache-Control", "no-store")
                     .post(RequestBody.create(new byte[0], null))
                     .build();
                 Call call = http.newCall(request);
                 refreshCall = call;
+                if (!current(requested)) { call.cancel(); if (refreshCall == call) refreshCall = null;
+                    finish(callback, requested, null, "session_changed"); return; }
                 try (Response response = call.execute()) {
                     if (response.code() == 401 || response.code() == 403) throw new SessionException("authentication");
                     if (response.code() == 429) throw new SessionException("rate_limited");
@@ -136,35 +167,37 @@ final class NativeSession {
                     String token = new JSONObject(new String(bytes, java.nio.charset.StandardCharsets.UTF_8)).getString("token");
                     SessionIdentity next = SessionIdentity.parse(token);
                     if (!current.owner.sameOwner(next)) throw new SessionException("session_changed");
-                    List<String> cookies = refreshCookies(response.headers("Set-Cookie"));
+                    List<String> cookies = refreshCookies(current.origin, response.headers("Set-Cookie"));
                     if (cookies.size() != 2) throw new IOException("refresh_cookie_missing");
                     applyRefresh(current, before, token, cookies);
                     SessionFence.Ticket latest = ticket();
-                    finish(callback, latest == null ? null : latest.token, latest == null ? "session_changed" : null);
+                    finish(callback, requested, latest == null ? null : latest.token, latest == null ? "session_changed" : null);
                 } finally {
                     if (refreshCall == call) refreshCall = null;
                 }
             } catch (SessionException error) {
                 main.post(() -> {
-                    if (fence.current(requested)
+                    if (current(requested)
                         && (error.code.equals("authentication") || error.code.equals("session_changed"))) clear();
                     callback.complete(null, error.code);
                 });
             } catch (Exception ignored) {
-                finish(callback, null, "network");
+                finish(callback, requested, null, "network");
             }
             });
         } catch (java.util.concurrent.RejectedExecutionException busy) {
-            finish(callback, null, "rate_limited");
+            finish(callback, requested, null, "rate_limited");
         }
     }
 
     private void applyRefresh(SessionFence.Ticket ticket, String before, String token, List<String> headers)
         throws Exception {
+        SitePolicy site = SitePolicy.parseServer(ticket.origin);
+        if (site == null) throw new SessionException("session_changed");
         CountDownLatch done = new CountDownLatch(1);
         AtomicReference<String> error = new AtomicReference<>();
         main.post(() -> {
-            if (!fence.current(ticket) || !before.equals(cookie()) || !before.equals(boundCookie)) {
+            if (!current(ticket) || !before.equals(cookie()) || !before.equals(boundCookie)) {
                 error.set("session_changed");
                 done.countDown();
                 return;
@@ -172,44 +205,44 @@ final class NativeSession {
             // Enqueue both paths in this one main-thread turn, before logout or another login can interleave.
             java.util.concurrent.atomic.AtomicInteger remaining = new java.util.concurrent.atomic.AtomicInteger(headers.size());
             for (String header : headers) {
-                CookieManager.getInstance().setCookie(SitePolicy.REFRESH_URL, header, success -> {
-                    if (!success) error.set("refresh_cookie_failed");
-                    if (remaining.decrementAndGet() != 0) return;
-                    if (!fence.current(ticket)) {
-                        error.set("session_changed");
-                        String appliedCookie = SitePolicy.cookieValue(headers.get(0));
-                        if (cookie().equals(appliedCookie)) {
-                            for (String path : new String[]{"/api/v1/user/token/refresh", "/api/v2/user/token/refresh"}) {
-                                CookieManager.getInstance().setCookie(SitePolicy.REFRESH_URL,
-                                    SitePolicy.REFRESH_COOKIE + "=; Path=" + path + "; Max-Age=0; Secure; HttpOnly", null);
-                            }
+                cookieWrites++;
+                java.util.concurrent.atomic.AtomicBoolean delivered = new java.util.concurrent.atomic.AtomicBoolean();
+                android.webkit.ValueCallback<Boolean> saved = success -> {
+                    if (!delivered.compareAndSet(false, true)) return;
+                    try {
+                        if (!success) error.set("refresh_cookie_failed");
+                        if (remaining.decrementAndGet() != 0) return;
+                        if (!current(ticket)) error.set("session_changed");
+                        if (error.get() == null) {
+                            boundCookie = cookie();
+                            fence.set(token);
+                            fence.markVerified(fence.ticket());
+                            app.emitToken(fence.ticket(), fence.ticket().token);
+                            if (app.offline != null) app.offline.authenticated();
                         }
-                    }
-                    if (error.get() == null) {
-                        boundCookie = cookie();
-                        fence.set(token);
-                        fence.markVerified(fence.ticket());
-                        app.emitToken(fence.ticket().token);
-                        if (app.offline != null) app.offline.authenticated();
-                    }
-                    done.countDown();
-                });
+                        done.countDown();
+                    } finally { cookieWriteFinished(); }
+                };
+                try { CookieManager.getInstance().setCookie(site.refreshURL(), header, saved); }
+                catch (RuntimeException rejected) { saved.onReceiveValue(false); }
             }
         });
         if (!done.await(8, TimeUnit.SECONDS)) throw new IOException("refresh_cookie_timeout");
         if (error.get() != null) throw new SessionException(error.get());
     }
 
-    static List<String> refreshCookies(List<String> headers) {
+    static List<String> refreshCookies(String origin, List<String> headers) {
         List<String> out = new ArrayList<>();
         boolean v1 = false;
         boolean v2 = false;
         String value = "";
-        HttpUrl url = HttpUrl.get(SitePolicy.REFRESH_URL);
+        SitePolicy site = SitePolicy.parseServer(origin);
+        if (site == null) return out;
+        HttpUrl url = HttpUrl.get(site.refreshURL());
         for (String header : headers) {
             Cookie c = Cookie.parse(url, header);
             if (c == null || !c.name().equals(SitePolicy.REFRESH_COOKIE) || !c.hostOnly()
-                || !c.secure() || !c.httpOnly() || !c.domain().equals("task.tcymc.space") || c.value().isEmpty()
+                || !c.secure() || !c.httpOnly() || !c.domain().equals(url.host()) || c.value().isEmpty()
                 || c.expiresAt() <= System.currentTimeMillis()) continue;
             if (!value.isEmpty() && !value.equals(c.value())) return new ArrayList<>();
             if (c.path().equals("/api/v1/user/token/refresh") && !v1) {
@@ -227,7 +260,8 @@ final class NativeSession {
 
     private String cookie() {
         requireMain();
-        return SitePolicy.cookieValue(CookieManager.getInstance().getCookie(SitePolicy.REFRESH_URL));
+        SitePolicy site = app.site;
+        return site == null ? "" : SitePolicy.cookieValue(CookieManager.getInstance().getCookie(site.refreshURL()));
     }
 
     private <T> T onMain(java.util.concurrent.Callable<T> work) throws Exception {
@@ -248,10 +282,10 @@ final class NativeSession {
         return value.get();
     }
 
-    private void finish(Callback callback, String token, String error) {
+    private void finish(Callback callback, SessionFence.Ticket expected, String token, String error) {
         main.post(() -> {
             SessionFence.Ticket now = ticket();
-            if (token != null && (now == null || !now.owner.sameOwner(SessionIdentity.parse(token)))) {
+            if (!current(expected) || token != null && (now == null || !now.owner.sameOwner(SessionIdentity.parse(token)))) {
                 callback.complete(null, "session_changed");
             } else callback.complete(token, error);
         });

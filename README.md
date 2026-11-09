@@ -13,7 +13,7 @@
 
 我们赋予 **Astering**「像星星闪烁、使之星光熠熠」的意象：一次行动、一段研究、一条值得记住的原则，逐渐连接成自己的星群。**Aster的AI集成工业系统**（Aster’s AI-integrated industrial system）是项目的副标题；工具与积累服务于更自由的创造。
 
-- 当前版本：`v2.7.1-aster.65`
+- 服务端版本：`v2.7.1-aster.65`；Android 客户端：`2.7.1-aster.66`
 - 源码与问题反馈：[KanameMadoka520/Astering](https://github.com/KanameMadoka520/Astering)
 - 本机编译的发布产物：[GitHub Releases](https://github.com/KanameMadoka520/Astering/releases)
 - [品牌与升级兼容](docs/brand-migration.md) · [品牌素材](docs/brand-identity.md) · [详细功能与演进记录](docs/product-reference.md)
@@ -76,7 +76,11 @@ Astering 把不同用途保留在各自合适的空间里，关联真实任务�
 
 提供签名的安卓 APK、源码包、Git bundle、Linux amd64 二进制、Docker 镜像包和 SHA256 校验文件。检查、测试与编译在维护者本机完成，再手工发布；本仓库不使用 GitHub Actions。
 
-安卓手机可从对应 [Release](https://github.com/KanameMadoka520/Astering/releases) 下载 APK，支持 Android 8.0 及以上的 ARM64 设备。客户端连接本站，登录自己的账户；页面功能随网站发布更新，原生能力升级则重新安装新版 APK。实时语音使用原生麦克风前台服务，可选择离开页面后继续录音，并从系统通知停止；不会自动开机录音，也不在设备保存原始音频。手机省电策略仍可能中断服务。新版 APK 打包 SenseVoiceSmall int8，本地模型、词表与 VAD 合计约 229 MiB；已验证登录后可断网识别，待同步文字按账户加密保存并联网重试，原始录音不落盘。首次完全断网启动仍受页面加载与身份验证限制。模型来源、许可证及可复现实测见[本地语音识别](docs/offline-asr.md)，安装、签名校验、权限与具体限制见[安卓客户端](docs/android-client.md)。
+安卓 APK **仅在 [GitHub Release](https://github.com/KanameMadoka520/Astering/releases) 发布，不在业务网站托管**，支持 Android 8.0 及以上的 ARM64 设备。首次启动的服务器地址为空，请手动填写自己的 Astering HTTPS 地址，再登录该站点的账户；升级旧版也需要确认服务器，应用不预设维护者的站点。
+
+原生「检查更新」检测正式 GitHub Release 中的安卓包，直接下载、显示进度并校验同签名后交由系统确认安装。页面功能随所连接网站发布更新，原生能力升级则重新安装新版 APK。
+
+实时语音使用原生麦克风前台服务，可选择离开页面后继续录音，并从系统通知停止；不会自动开机录音，也不在设备保存原始音频。手机省电策略仍可能中断服务。新版 APK 打包 SenseVoiceSmall int8，本地模型、词表与 VAD 合计约 229 MiB；已验证登录后可断网识别，待同步文字按账户加密保存并联网重试，原始录音不落盘。首次完全断网启动仍受页面加载与身份验证限制。模型来源、许可证及可复现实测见[本地语音识别](docs/offline-asr.md)，安装、签名校验、权限与具体限制见[安卓客户端](docs/android-client.md)。
 
 从源码构建：
 

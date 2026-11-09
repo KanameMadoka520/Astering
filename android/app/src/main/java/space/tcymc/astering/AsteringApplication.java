@@ -8,6 +8,9 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 public final class AsteringApplication extends Application {
+    volatile SitePolicy site;
+    ServerSettings servers;
+    ServerChange serverChange;
     NativeSession session;
     OfflineTranscripts offline;
     private WeakReference<MainActivity> activity = new WeakReference<>(null);
@@ -20,6 +23,8 @@ public final class AsteringApplication extends Application {
 
     @Override public void onCreate() {
         super.onCreate();
+        servers = new ServerSettings(this);
+        site = servers.selected();
         session = new NativeSession(this);
         offline = new OfflineTranscripts(this);
         android.net.ConnectivityManager connectivity = getSystemService(android.net.ConnectivityManager.class);
@@ -28,6 +33,35 @@ public final class AsteringApplication extends Application {
                 main.post(() -> { session.ensureVerified(); offline.kick(true); });
             }
         });
+    }
+
+    void selectServer(SitePolicy selected) {
+        session.bindServer(null);
+        site = selected;
+        session.bindServer(selected);
+    }
+
+    static final class ServerChange {
+        final SitePolicy selected;
+        ServerChange(SitePolicy selected) { this.selected = selected; }
+    }
+
+    ServerChange beginServerChange(SitePolicy selected) {
+        if (serverChange != null) throw new IllegalStateException("server_switching");
+        ServerChange change = new ServerChange(selected);
+        serverChange = change;
+        selectServer(null);
+        return change;
+    }
+
+    void completeServerChange(ServerChange expected, boolean cleaned) {
+        if (serverChange != expected) return;
+        boolean saved = cleaned && servers.save(expected.selected);
+        if (saved) selectServer(expected.selected);
+        serverChange = null;
+        MainActivity current = activity.get();
+        if (current != null) current.serverChangeFinished(saved ? 0
+            : cleaned ? R.string.server_save_failed : R.string.server_cleanup_failed);
     }
 
     void attach(MainActivity value) {
@@ -51,10 +85,11 @@ public final class AsteringApplication extends Application {
         if (current != null) current.emit(event);
     }
 
-    void emitToken(String token) {
+    void emitToken(SessionFence.Ticket owner, String token) {
         main.post(() -> {
+            if (!session.current(owner)) return;
             MainActivity current = activity.get();
-            if (current != null) current.emit(object("event", "token", "token", token));
+            if (current != null) current.emit(object("event", "token", "token", token, "server_origin", owner.origin));
         });
     }
 
@@ -62,6 +97,8 @@ public final class AsteringApplication extends Application {
         main.post(() -> {
             SessionFence.Ticket ticket = session.ticket();
             if (recorder != null && recorder != source || !recordingGeneration.equals(snapshot.optString("generation")) || ticket == null
+                || !snapshot.optString("server_origin").equals(ticket.origin)
+                || snapshot.optLong("session_epoch", -1) != ticket.epoch
                 || snapshot.optLong("user_id") != ticket.owner.userID
                 || !snapshot.optString("sid").equals(ticket.owner.sid)) return;
             lastSnapshot = snapshot;
@@ -84,10 +121,13 @@ public final class AsteringApplication extends Application {
     JSONObject snapshot() {
         SessionFence.Ticket ticket = session.ticket();
         if (ticket == null) return object("state", "idle", "sequence", sequence.get(), "note_id", 0);
-        if (lastSnapshot.optLong("user_id") == ticket.owner.userID
+        if (lastSnapshot.optString("server_origin").equals(ticket.origin)
+            && lastSnapshot.optLong("session_epoch", -1) == ticket.epoch
+            && lastSnapshot.optLong("user_id") == ticket.owner.userID
             && lastSnapshot.optString("sid").equals(ticket.owner.sid)) return lastSnapshot;
         return object("state", "idle", "user_id", ticket.owner.userID, "sid", ticket.owner.sid,
-            "note_id", 0, "sequence", sequence.get(), "allow_background", false);
+            "note_id", 0, "sequence", sequence.get(), "allow_background", false,
+            "server_origin", ticket.origin, "session_epoch", ticket.epoch);
     }
 
     boolean canStartRecording() {
@@ -104,7 +144,8 @@ public final class AsteringApplication extends Application {
         if (owner == null) return;
         lastSnapshot = object("state", error.isEmpty() ? "idle" : "paused", "error", error,
             "user_id", owner.owner.userID, "sid", owner.owner.sid,
-            "note_id", noteID, "sequence", sequence.incrementAndGet(), "allow_background", false);
+            "note_id", noteID, "sequence", sequence.incrementAndGet(), "allow_background", false,
+            "server_origin", owner.origin, "session_epoch", owner.epoch);
         MainActivity current = activity.get();
         if (current != null) current.emit(object("event", "recording", "snapshot", lastSnapshot));
     }

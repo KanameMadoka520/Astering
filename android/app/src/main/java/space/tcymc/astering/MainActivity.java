@@ -21,13 +21,19 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
+import android.webkit.WebStorage;
+import android.webkit.WebViewDatabase;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
+import android.widget.EditText;
+import android.widget.PopupMenu;
+import android.widget.ScrollView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import androidx.webkit.JavaScriptReplyProxy;
 import androidx.webkit.WebViewCompat;
+import androidx.webkit.WebStorageCompat;
 import androidx.webkit.WebViewFeature;
 import java.util.Arrays;
 import java.util.Collections;
@@ -35,11 +41,23 @@ import java.util.UUID;
 import org.json.JSONObject;
 
 public final class MainActivity extends Activity {
-    private static final int MICROPHONE_REQUEST = 41;
-    private static final int NOTIFICATION_REQUEST = 42;
-    private static final int FILE_REQUEST = 43;
+    private static final java.util.concurrent.atomic.AtomicInteger REQUEST_CODES = new java.util.concurrent.atomic.AtomicInteger(1024);
+    private int microphoneRequest = -1;
+    private int notificationRequest = -1;
+    private int fileRequest = -1;
+    private long fileDocument;
+    private SitePolicy fileSite;
+    private WebView fileWeb;
     private AsteringApplication app;
     private WebView web;
+    private SitePolicy webSite;
+    private LinearLayout root;
+    private AndroidUpdater updater;
+    private boolean switchingServer;
+    private AlertDialog serverDialog;
+    private AlertDialog confirmDialog;
+    private AlertDialog legacyDialog;
+    private String legacyOffered = "";
     private LinearLayout errorPanel;
     private JavaScriptReplyProxy replyProxy;
     private long document;
@@ -53,13 +71,15 @@ public final class MainActivity extends Activity {
     private long pendingOpenNote;
     private long pendingOpenUser;
     private String pendingOpenSid = "";
+    private String pendingOpenOrigin = "";
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         app = (AsteringApplication) getApplication();
         app.attach(this);
         rememberOpenNote(getIntent());
-        LinearLayout root = new LinearLayout(this);
+        updater = new AndroidUpdater(this);
+        root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.rgb(248, 250, 252));
         root.setOnApplyWindowInsetsListener((view, insets) -> {
@@ -74,8 +94,190 @@ public final class MainActivity extends Activity {
             }
             return insets;
         });
+        setContentView(root);
+        if (Build.VERSION.SDK_INT >= 33) {
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                () -> {
+                    if (web != null && !rendererGone && web.canGoBack()) web.goBack();
+                    else finish();
+                });
+        }
+        if (app.serverChange != null) { switchingServer = true; showServerProgress(); }
+        else if (app.site == null) showServerForm();
+        else showSelectedServer();
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    /** This form intentionally does not use old cookies, URL history or the legacy migration origin. */
+    private void showServerForm() {
+        root.removeAllViews();
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(dp(24), dp(32), dp(24), dp(24));
+        TextView title = new TextView(this);
+        title.setText(R.string.server_title);
+        title.setTextSize(24);
+        title.setTextColor(Color.rgb(15, 23, 42));
+        form.addView(title);
+        TextView help = new TextView(this);
+        help.setText(R.string.server_help);
+        help.setPadding(0, dp(16), 0, dp(12));
+        form.addView(help);
+        EditText input = serverInput("");
+        form.addView(input, new LinearLayout.LayoutParams(-1, -2));
+        Button connect = new Button(this);
+        connect.setText(R.string.server_connect);
+        connect.setOnClickListener(v -> confirmServer(input));
+        form.addView(connect);
+        Button updates = new Button(this);
+        updates.setText(R.string.update_check);
+        updates.setOnClickListener(v -> updater.check(true));
+        form.addView(updates);
+        scroll.addView(form);
+        root.addView(scroll, new LinearLayout.LayoutParams(-1, -1));
+    }
+
+    private EditText serverInput(String value) {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
+        input.setHint(R.string.server_hint);
+        input.setContentDescription(getString(R.string.server_address));
+        input.setText(value);
+        input.setSelectAllOnFocus(true);
+        return input;
+    }
+
+    private void editServer() {
+        if (switchingServer || app.serverChange != null || serverDialog != null) return;
+        EditText input = serverInput(app.site == null ? "" : app.site.origin);
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(dp(24), dp(8), dp(24), 0);
+        TextView warning = new TextView(this);
+        warning.setText(R.string.server_change_warning);
+        form.addView(warning);
+        form.addView(input);
+        serverDialog = new AlertDialog.Builder(this)
+            .setTitle(R.string.server_change)
+            .setView(form)
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.server_connect, null)
+            .create();
+        serverDialog.setOnDismissListener(dialog -> serverDialog = null);
+        serverDialog.show();
+        serverDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> confirmServer(input));
+    }
+
+    private void confirmServer(EditText input) {
+        if (confirmDialog != null || app.serverChange != null) return;
+        SitePolicy selected = SitePolicy.parseServer(input.getText().toString());
+        if (selected == null) {
+            input.setError(getString(R.string.server_invalid));
+            return;
+        }
+        confirmDialog = new AlertDialog.Builder(this)
+            .setTitle(R.string.server_confirm_title)
+            .setMessage(getString(R.string.server_confirm_message, selected.origin))
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.server_connect, (dialog, which) -> changeServer(selected))
+            .create();
+        AlertDialog confirmation = confirmDialog;
+        confirmation.setOnDismissListener(dialog -> { if (confirmDialog == confirmation) confirmDialog = null; });
+        confirmation.show();
+    }
+
+    private void changeServer(SitePolicy selected) {
+        if (switchingServer || app.serverChange != null || isDestroyed()) return;
+        // A crash during cleanup must return to a blank native choice screen on the next launch.
+        if (!app.servers.save(null)) {
+            new AlertDialog.Builder(this).setMessage(R.string.server_save_failed)
+                .setPositiveButton(android.R.string.ok, null).show();
+            return;
+        }
+        switchingServer = true;
+        document++;
+        replyProxy = null;
+        cancelPending("session_changed");
+        cancelPageRequests();
+        if (serverDialog != null) serverDialog.dismiss();
+        if (confirmDialog != null) confirmDialog.dismiss();
+        if (legacyDialog != null) legacyDialog.dismiss();
+        pendingOpenNote = 0;
+        pendingOpenOrigin = "";
+        legacyOffered = "";
+        AsteringApplication.ServerChange transition = app.beginServerChange(selected);
+        setScreenAwake(false);
+        destroyWeb(true);
+        showServerProgress();
+        Runnable finishCleanup = () -> runOnUiThread(() -> {
+            if (app.serverChange != transition) return;
+            CookieManager.getInstance().flush();
+            app.completeServerChange(transition, true);
+        });
+        app.session.afterCookieWrites(() -> {
+            if (app.serverChange != transition) return;
+            WebViewDatabase.getInstance(getApplicationContext()).clearHttpAuthUsernamePassword();
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.DELETE_BROWSING_DATA)) {
+                WebStorageCompat.deleteBrowsingData(WebStorage.getInstance(), finishCleanup);
+            } else {
+                // Cookies are host-scoped, not port-scoped: clear all before a different origin can load.
+                WebStorage.getInstance().deleteAllData();
+                CookieManager.getInstance().removeAllCookies(removed -> finishCleanup.run());
+            }
+        }, () -> app.completeServerChange(transition, false));
+    }
+
+    private void showServerProgress() {
+        root.removeAllViews();
+        TextView progress = new TextView(this);
+        progress.setPadding(dp(24), dp(32), dp(24), dp(24));
+        progress.setText(R.string.server_switching);
+        root.addView(progress);
+    }
+
+    void serverChangeFinished(int errorResource) {
+        switchingServer = false;
+        if (isDestroyed() || isFinishing()) return;
+        if (app.site == null) showServerForm();
+        else showSelectedServer();
+        if (errorResource != 0) new AlertDialog.Builder(this).setMessage(errorResource)
+            .setPositiveButton(android.R.string.ok, null).show();
+    }
+
+    private void showSelectedServer() {
+        SitePolicy selected = app.site;
+        if (selected == null) { showServerForm(); return; }
+        root.removeAllViews();
+        rendererGone = false;
+        LinearLayout bar = new LinearLayout(this);
+        bar.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        bar.setPadding(dp(12), 0, dp(4), 0);
+        TextView address = new TextView(this);
+        address.setText(selected.origin.substring("https://".length()));
+        address.setSingleLine(true);
+        address.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+        address.setTextSize(12);
+        address.setContentDescription(getString(R.string.server_current, selected.origin));
+        bar.addView(address, new LinearLayout.LayoutParams(0, -2, 1));
+        Button settings = new Button(this);
+        settings.setText(R.string.server_settings);
+        settings.setMinHeight(dp(40));
+        settings.setOnClickListener(view -> {
+            PopupMenu menu = new PopupMenu(this, settings);
+            menu.getMenu().add(R.string.server_change).setOnMenuItemClickListener(item -> { editServer(); return true; });
+            menu.getMenu().add(R.string.update_check).setOnMenuItemClickListener(item -> { updater.check(true); return true; });
+            menu.getMenu().add(R.string.legacy_recover).setOnMenuItemClickListener(item -> { checkLegacy(true); return true; });
+            menu.show();
+        });
+        bar.addView(settings, new LinearLayout.LayoutParams(-2, dp(40)));
+        root.addView(bar);
         errorPanel = new LinearLayout(this);
-        errorPanel.setPadding(32, 32, 32, 32);
+        errorPanel.setPadding(dp(20), dp(20), dp(20), dp(20));
         errorPanel.setOrientation(LinearLayout.VERTICAL);
         TextView errorText = new TextView(this);
         errorText.setText(R.string.load_failed);
@@ -84,35 +286,64 @@ public final class MainActivity extends Activity {
         Button retry = new Button(this);
         retry.setText(R.string.retry);
         retry.setOnClickListener(v -> {
-            if (rendererGone) recreate();
-            else web.loadUrl(SitePolicy.ORIGIN);
+            if (rendererGone || web == null) { destroyWeb(false); showSelectedServer(); }
+            else if (app.site == webSite) web.loadUrl(webSite.origin);
         });
         errorPanel.addView(retry);
         errorPanel.setVisibility(View.GONE);
         root.addView(errorPanel);
         web = new WebView(this);
+        webSite = selected;
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
             TextView compatibility = new TextView(this);
             compatibility.setText(R.string.bridge_unavailable);
-            compatibility.setPadding(16, 12, 16, 12);
+            compatibility.setPadding(dp(12), dp(8), dp(12), dp(8));
             root.addView(compatibility);
         }
         root.addView(web, new LinearLayout.LayoutParams(-1, 0, 1));
-        setContentView(root);
         configureWebView();
-        if (Build.VERSION.SDK_INT >= 33) {
-            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,
-                () -> {
-                    if (!rendererGone && web.canGoBack()) web.goBack();
-                    else finish();
-                });
+        web.loadUrl(noteURL(getIntent()));
+    }
+
+    private boolean trusted(String url) {
+        return !switchingServer && webSite != null && app.site == webSite && webSite.isTrusted(url);
+    }
+
+    private static int nextRequestCode() {
+        int code = REQUEST_CODES.getAndIncrement();
+        if (code > 65535) throw new IllegalStateException("request_limit");
+        return code;
+    }
+
+    private void cancelPageRequests() {
+        microphoneRequest = -1;
+        notificationRequest = -1;
+        fileRequest = -1;
+        fileSite = null;
+        fileWeb = null;
+        if (browserPermission != null) { browserPermission.deny(); browserPermission = null; }
+        if (fileCallback != null) { fileCallback.onReceiveValue(null); fileCallback = null; }
+    }
+
+    private void destroyWeb(boolean clearCache) {
+        if (web != null) {
+            WebView previous = web;
+            web = null;
+            if (!rendererGone) {
+                previous.stopLoading();
+                if (clearCache) previous.clearCache(true);
+                if (previous.getParent() instanceof android.view.ViewGroup parent) parent.removeView(previous);
+                previous.destroy();
+            }
         }
-        String initial = noteURL(getIntent());
-        web.loadUrl(initial);
+        webSite = null;
+        rendererGone = false;
     }
 
     @android.annotation.SuppressLint("SetJavaScriptEnabled")
     private void configureWebView() {
+        final WebView configuredWeb = web;
+        final SitePolicy selected = webSite;
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
         WebSettings settings = web.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -126,10 +357,10 @@ public final class MainActivity extends Activity {
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, false);
         if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
-            WebViewCompat.addWebMessageListener(web, "AsteringNative", Collections.singleton(SitePolicy.ORIGIN),
+            WebViewCompat.addWebMessageListener(web, "AsteringNative", Collections.singleton(selected.origin),
                 (view, message, sourceOrigin, isMainFrame, proxy) -> {
-                    if (!isMainFrame || !SitePolicy.isTrusted(sourceOrigin.toString())
-                        || !SitePolicy.isTrusted(view.getUrl())) return;
+                    if (view != web || web != configuredWeb || app.site != selected || !isMainFrame || !trusted(sourceOrigin.toString())
+                        || !trusted(view.getUrl())) return;
                     String raw = message.getData();
                     if (raw == null || raw.length() > 32768) return;
                     replyProxy = proxy;
@@ -138,37 +369,42 @@ public final class MainActivity extends Activity {
         }
         web.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                if (!request.isForMainFrame()) return !SitePolicy.isTrusted(request.getUrl().toString());
+                if (view != web || web != configuredWeb || app.site != selected) return true;
+                if (!request.isForMainFrame()) return !trusted(request.getUrl().toString());
                 String url = request.getUrl().toString();
-                if (SitePolicy.isTrusted(url)) return false;
+                if (trusted(url)) return false;
                 openExternal(url);
                 return true;
             }
 
             @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                if (view != web || web != configuredWeb || app.site != selected) return;
                 document++;
                 replyProxy = null;
                 cancelPending("cancelled");
+                cancelPageRequests();
                 errorPanel.setVisibility(View.GONE);
-                if (!SitePolicy.isTrusted(url)) {
+                if (!trusted(url)) {
                     view.stopLoading();
                     showLoadError();
                 }
             }
 
             @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-                if (request.isForMainFrame()) showLoadError();
+                if (view == web && request.isForMainFrame()) showLoadError();
             }
 
             @Override public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
                 handler.cancel();
-                showLoadError();
+                if (view == web) showLoadError();
             }
 
             @Override public boolean onRenderProcessGone(WebView view, android.webkit.RenderProcessGoneDetail detail) {
+                if (view != web) { view.destroy(); return true; }
                 rendererGone = true;
                 replyProxy = null;
                 cancelPending("cancelled");
+                cancelPageRequests();
                 if (app.recorder != null) app.recorder.activityHidden();
                 ((android.view.ViewGroup) view.getParent()).removeView(view);
                 view.destroy();
@@ -179,8 +415,8 @@ public final class MainActivity extends Activity {
         web.setWebChromeClient(new WebChromeClient() {
             @Override public void onPermissionRequest(PermissionRequest request) {
                 runOnUiThread(() -> {
-                    if (!visible || !resumed || !SitePolicy.isTrusted(request.getOrigin().toString())
-                        || !SitePolicy.isTrusted(web.getUrl()) || pendingStart != null || app.recorder != null
+                    if (web != configuredWeb || app.site != selected || !visible || !resumed || !trusted(request.getOrigin().toString())
+                        || !trusted(web.getUrl()) || pendingStart != null || app.recorder != null
                         || !Arrays.equals(request.getResources(), new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE})) {
                         request.deny();
                         return;
@@ -190,7 +426,8 @@ public final class MainActivity extends Activity {
                     if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                         grantBrowserAudio();
                     } else {
-                        requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, MICROPHONE_REQUEST);
+                        microphoneRequest = nextRequestCode();
+                        requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, microphoneRequest);
                     }
                 });
             }
@@ -201,16 +438,21 @@ public final class MainActivity extends Activity {
 
             @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback,
                 FileChooserParams parameters) {
-                if (!visible || !SitePolicy.isTrusted(view.getUrl())) return false;
+                if (view != web || web != configuredWeb || app.site != selected || !visible || !trusted(view.getUrl())) return false;
                 if (fileCallback != null) fileCallback.onReceiveValue(null);
                 fileCallback = callback;
+                fileDocument = document;
+                fileSite = selected;
+                fileWeb = configuredWeb;
                 Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
                 intent.addCategory(Intent.CATEGORY_OPENABLE);
                 intent.setType("*/*");
                 intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, parameters.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE);
                 try {
-                    startActivityForResult(intent, FILE_REQUEST);
-                } catch (ActivityNotFoundException ignored) {
+                    fileRequest = nextRequestCode();
+                    startActivityForResult(intent, fileRequest);
+                } catch (ActivityNotFoundException | IllegalStateException ignored) {
+                    fileRequest = -1;
                     fileCallback = null;
                     callback.onReceiveValue(null);
                 }
@@ -218,13 +460,15 @@ public final class MainActivity extends Activity {
             }
 
             @Override public boolean onCreateWindow(WebView view, boolean dialog, boolean gesture, android.os.Message result) {
-                if (!gesture) return false;
+                if (!gesture || view != web || web != configuredWeb || app.site != selected) return false;
                 WebView child = new WebView(MainActivity.this);
                 child.setWebViewClient(new WebViewClient() {
                     @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest request) {
                         String url = request.getUrl().toString();
-                        if (SitePolicy.isTrusted(url)) web.loadUrl(url);
-                        else openExternal(url);
+                        if (web == configuredWeb && app.site == selected) {
+                            if (trusted(url)) web.loadUrl(url);
+                            else openExternal(url);
+                        }
                         child.destroy();
                         return true;
                     }
@@ -258,6 +502,7 @@ public final class MainActivity extends Activity {
                 }
                 case "clearSession":
                     cancelPending("session_changed");
+                    cancelPageRequests();
                     app.session.clear();
                     reply(proxy, page, id, AsteringApplication.object(), null);
                     break;
@@ -370,12 +615,14 @@ public final class MainActivity extends Activity {
             return;
         }
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, MICROPHONE_REQUEST);
+            microphoneRequest = nextRequestCode();
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, microphoneRequest);
             return;
         }
         if (Build.VERSION.SDK_INT >= 33
             && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_REQUEST);
+            notificationRequest = nextRequestCode();
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, notificationRequest);
             return;
         }
         pendingStart = null;
@@ -384,6 +631,7 @@ public final class MainActivity extends Activity {
         String generation = UUID.randomUUID().toString();
         intent.putExtra("generation", generation);
         intent.putExtra("epoch", request.owner.epoch);
+        intent.putExtra("server_origin", request.owner.origin);
         intent.putExtra("user_id", request.owner.owner.userID);
         intent.putExtra("sid", request.owner.owner.sid);
         intent.putExtra("note_id", request.noteID);
@@ -402,6 +650,7 @@ public final class MainActivity extends Activity {
             reply(request.proxy, request.page, request.id,
                 AsteringApplication.object("state", "connecting", "user_id", request.owner.owner.userID,
                     "sid", request.owner.owner.sid, "note_id", request.noteID, "allow_background", request.background,
+                    "server_origin", request.owner.origin, "session_epoch", request.owner.epoch, "engine", request.engine,
                     "sequence", app.snapshot().optLong("sequence")), null);
         } catch (RuntimeException ignored) {
             app.approvedRecording = null;
@@ -422,15 +671,17 @@ public final class MainActivity extends Activity {
     @Override public void onRequestPermissionsResult(int code, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(code, permissions, results);
         boolean granted = results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED;
-        if (code == MICROPHONE_REQUEST && browserPermission != null) {
-            if (granted) grantBrowserAudio();
-            else {
-                browserPermission.deny();
-                browserPermission = null;
-            }
-        } else if (code == MICROPHONE_REQUEST || code == NOTIFICATION_REQUEST) {
+        if (code == microphoneRequest) {
+            microphoneRequest = -1;
+            if (browserPermission != null) {
+                if (granted) grantBrowserAudio();
+                else { browserPermission.deny(); browserPermission = null; }
+            } else if (granted) continueStart();
+            else cancelPending("permission");
+        } else if (code == notificationRequest) {
+            notificationRequest = -1;
             if (granted) continueStart();
-            else cancelPending(code == NOTIFICATION_REQUEST ? "notification_permission" : "permission");
+            else cancelPending("notification_permission");
         }
     }
 
@@ -438,17 +689,19 @@ public final class MainActivity extends Activity {
         PermissionRequest pending = browserPermission;
         browserPermission = null;
         if (pending == null) return;
-        if (visible && SitePolicy.isTrusted(web.getUrl()) && app.recorder == null) {
+        if (visible && web != null && trusted(web.getUrl()) && app.recorder == null) {
             pending.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
         } else pending.deny();
     }
 
     @Override protected void onActivityResult(int code, int result, Intent data) {
         super.onActivityResult(code, result, data);
-        if (code != FILE_REQUEST || fileCallback == null) return;
+        if (code != fileRequest || fileCallback == null) return;
+        fileRequest = -1;
         ValueCallback<Uri[]> pending = fileCallback;
         fileCallback = null;
-        if (result != RESULT_OK || data == null || !SitePolicy.isTrusted(web.getUrl())) {
+        if (result != RESULT_OK || data == null || web == null || web != fileWeb || webSite != fileSite
+            || document != fileDocument || !trusted(web.getUrl())) {
             pending.onReceiveValue(null);
             return;
         }
@@ -466,9 +719,73 @@ public final class MainActivity extends Activity {
         } else pending.onReceiveValue(readableDocument(data.getData()) ? new Uri[]{data.getData()} : null);
     }
 
+    private void checkLegacy(boolean explicit) {
+        SessionFence.Ticket owner = app.session.ticket();
+        if (switchingServer || !resumed || isDestroyed()) return;
+        if (owner == null || !app.session.verified(owner) || !SitePolicy.LEGACY_OUTBOX_ORIGIN.equals(owner.origin)) {
+            if (explicit) new AlertDialog.Builder(this).setMessage(R.string.legacy_unavailable)
+                .setPositiveButton(android.R.string.ok, null).show();
+            return;
+        }
+        app.offline.status((status, error) -> {
+            if (!app.session.current(owner) || isDestroyed() || !resumed) return;
+            if (error != null || status == null) {
+                if (explicit) new AlertDialog.Builder(this).setMessage(R.string.legacy_failed)
+                    .setPositiveButton(android.R.string.ok, null).show();
+                return;
+            }
+            offerLegacy(owner, status, explicit);
+        });
+    }
+
+    private void offerLegacy(SessionFence.Ticket owner, JSONObject status, boolean explicit) {
+        if (owner == null || !app.session.verified(owner) || !owner.origin.equals(status.optString("server_origin"))
+            || switchingServer || !resumed || isDestroyed() || legacyDialog != null || serverDialog != null || startDialog != null) return;
+        int count = status.optInt("legacy_pending_count");
+        if (count == 0) {
+            if (explicit) new AlertDialog.Builder(this).setMessage(R.string.legacy_empty)
+                .setPositiveButton(android.R.string.ok, null).show();
+            return;
+        }
+        if (app.recorder != null) {
+            if (explicit) new AlertDialog.Builder(this).setMessage(R.string.legacy_stop_first)
+                .setPositiveButton(android.R.string.ok, null).show();
+            return;
+        }
+        String key = owner.origin + "/" + owner.owner.userID + "/" + owner.epoch;
+        if (!explicit && key.equals(legacyOffered)) return;
+        legacyOffered = key;
+        legacyDialog = new AlertDialog.Builder(this)
+            .setTitle(R.string.legacy_recover)
+            .setMessage(getString(R.string.legacy_message, count, owner.origin))
+            .setNegativeButton(R.string.legacy_later, null)
+            .setPositiveButton(R.string.legacy_confirm, (dialog, which) -> {
+                if (!app.session.current(owner) || !app.session.verified(owner)) return;
+                AlertDialog progress = new AlertDialog.Builder(this).setMessage(R.string.legacy_working)
+                    .setCancelable(false).create();
+                legacyDialog = progress;
+                progress.show();
+                app.offline.migrateLegacy(owner, (result, error) -> {
+                    progress.dismiss();
+                    if (legacyDialog == progress) legacyDialog = null;
+                    if (!app.session.current(owner) || isDestroyed()) return;
+                    new AlertDialog.Builder(this).setMessage(error == null ? R.string.legacy_done : R.string.legacy_failed)
+                        .setPositiveButton(android.R.string.ok, null).show();
+                });
+            })
+            .create();
+        AlertDialog offered = legacyDialog;
+        offered.setOnDismissListener(dialog -> { if (legacyDialog == offered) legacyDialog = null; });
+        offered.show();
+    }
+
     void emit(JSONObject event) {
-        if (rendererGone || replyProxy == null || !WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
-            || !SitePolicy.isTrusted(web.getUrl())) return;
+        if (event.optString("event").equals("offline")) {
+            JSONObject status = event.optJSONObject("status");
+            if (status != null) offerLegacy(app.session.ticket(), status, false);
+        }
+        if (web == null || rendererGone || replyProxy == null || !WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
+            || !trusted(web.getUrl())) return;
         try {
             replyProxy.postMessage(event.toString());
         } catch (RuntimeException ignored) {
@@ -477,8 +794,8 @@ public final class MainActivity extends Activity {
     }
 
     private void reply(JavaScriptReplyProxy proxy, long page, String id, JSONObject result, String error) {
-        if (rendererGone || page != document || isDestroyed()
-            || !WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) || !SitePolicy.isTrusted(web.getUrl())) return;
+        if (web == null || rendererGone || page != document || isDestroyed()
+            || !WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) || !trusted(web.getUrl())) return;
         try {
             proxy.postMessage(error == null
                 ? AsteringApplication.object("id", id, "ok", true, "result", result).toString()
@@ -489,7 +806,7 @@ public final class MainActivity extends Activity {
     }
 
     private void showLoadError() {
-        errorPanel.setVisibility(View.VISIBLE);
+        if (errorPanel != null) errorPanel.setVisibility(View.VISIBLE);
     }
 
     private void openExternal(String url) {
@@ -505,8 +822,9 @@ public final class MainActivity extends Activity {
         long note = intent.getLongExtra("note_id", 0);
         SessionFence.Ticket owner = app.session.ticket();
         boolean same = owner != null && owner.owner.userID == intent.getLongExtra("user_id", 0)
-            && owner.owner.sid.equals(intent.getStringExtra("sid"));
-        return SitePolicy.ORIGIN + (note > 0 && same ? "/notes/" + note : "");
+            && owner.owner.sid.equals(intent.getStringExtra("sid"))
+            && owner.origin.equals(intent.getStringExtra("server_origin"));
+        return app.site.origin + (note > 0 && same ? "/notes/" + note : "");
     }
 
     @Override protected void onNewIntent(Intent intent) {
@@ -520,17 +838,20 @@ public final class MainActivity extends Activity {
         pendingOpenNote = intent.getLongExtra("note_id", 0);
         pendingOpenUser = intent.getLongExtra("user_id", 0);
         pendingOpenSid = intent.getStringExtra("sid");
+        pendingOpenOrigin = intent.getStringExtra("server_origin");
     }
 
     private void consumeOpenNote() {
         SessionFence.Ticket owner = app.session.ticket();
         if (owner == null || replyProxy == null || pendingOpenNote <= 0) return;
-        if (owner.owner.userID == pendingOpenUser && owner.owner.sid.equals(pendingOpenSid)) {
+        if (owner.owner.userID == pendingOpenUser && owner.owner.sid.equals(pendingOpenSid)
+            && owner.origin.equals(pendingOpenOrigin)) {
             emit(AsteringApplication.object("event", "openNote", "note_id", pendingOpenNote,
-                "user_id", owner.owner.userID, "sid", owner.owner.sid));
+                "user_id", owner.owner.userID, "sid", owner.owner.sid, "server_origin", owner.origin));
         }
         pendingOpenNote = 0;
         pendingOpenSid = "";
+        pendingOpenOrigin = "";
     }
 
     boolean isVisible() {
@@ -538,7 +859,7 @@ public final class MainActivity extends Activity {
     }
 
     boolean isRecordingStartAllowed() {
-        return visible && resumed;
+        return visible && resumed && web != null && trusted(web.getUrl());
     }
 
     private boolean readableDocument(Uri uri) {
@@ -557,7 +878,9 @@ public final class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         resumed = true;
-        if (!rendererGone) web.onResume();
+        if (web != null && !rendererGone) web.onResume();
+        updater.check(false);
+        checkLegacy(false);
         JSONObject snapshot = app.snapshot();
         setScreenAwake(snapshot.optBoolean("keep_awake") && AsteringApplication.active(snapshot.optString("state")));
         emit(AsteringApplication.object("event", "recording", "snapshot", snapshot));
@@ -581,7 +904,7 @@ public final class MainActivity extends Activity {
             browserPermission = null;
         }
         if (!isChangingConfigurations() && app.recorder != null) app.recorder.activityHidden();
-        if (!rendererGone) web.onPause();
+        if (web != null && !rendererGone) web.onPause();
         setScreenAwake(false);
         super.onStop();
     }
@@ -593,7 +916,7 @@ public final class MainActivity extends Activity {
 
     @Override public boolean onKeyUp(int keyCode, android.view.KeyEvent event) {
         if (Build.VERSION.SDK_INT < 33 && keyCode == android.view.KeyEvent.KEYCODE_BACK
-            && !event.isCanceled() && !rendererGone && web.canGoBack()) {
+            && !event.isCanceled() && web != null && !rendererGone && web.canGoBack()) {
             web.goBack();
             return true;
         }
@@ -602,10 +925,14 @@ public final class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         cancelPending("cancelled");
-        if (fileCallback != null) fileCallback.onReceiveValue(null);
+        cancelPageRequests();
+        if (serverDialog != null) serverDialog.dismiss();
+        if (confirmDialog != null) confirmDialog.dismiss();
+        if (legacyDialog != null) legacyDialog.dismiss();
+        updater.close();
         app.detach(this);
         replyProxy = null;
-        if (!rendererGone) web.destroy();
+        destroyWeb(false);
         super.onDestroy();
     }
 

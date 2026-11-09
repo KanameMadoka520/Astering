@@ -15,7 +15,7 @@ final class RecordingLease {
     }
 
     boolean matches(SessionFence.Ticket current, long note) {
-        return current != null && note == noteID && owner.epoch == current.epoch && owner.owner.sameOwner(current.owner);
+        return current != null && note == noteID && owner.epoch == current.epoch && owner.origin.equals(current.origin) && owner.owner.sameOwner(current.owner);
     }
 
     boolean notificationMatches(String expectedGeneration, long note) {

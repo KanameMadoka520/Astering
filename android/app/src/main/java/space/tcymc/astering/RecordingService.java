@@ -136,6 +136,7 @@ public final class RecordingService extends Service {
         if (!app.canStartRecording() || approved == null || !approved.matches(owner, intent.getLongExtra("note_id", 0))
             || !approved.notificationMatches(intent.getStringExtra("generation"), intent.getLongExtra("note_id", 0))
             || owner == null || owner.epoch != intent.getLongExtra("epoch", -1)
+            || !owner.origin.equals(intent.getStringExtra("server_origin"))
             || owner.owner.userID != intent.getLongExtra("user_id", -1)
             || !owner.owner.sid.equals(intent.getStringExtra("sid"))) {
             if (approved != null && approved.matches(owner, intent.getLongExtra("note_id", 0))
@@ -234,7 +235,7 @@ public final class RecordingService extends Service {
         wireSent = 0;
         long currentWire = ++wire;
         SessionFence.Ticket current = app.session.ticket();
-        if (current == null || !current.owner.sameOwner(owner.owner)) {
+        if (current == null || !app.session.current(owner)) {
             fail("authentication");
             return;
         }
@@ -246,8 +247,8 @@ public final class RecordingService extends Service {
                 return;
             }
             Request request = new Request.Builder()
-                .url(SitePolicy.LIVE_URL)
-                .header("Origin", SitePolicy.ORIGIN)
+                .url(SitePolicy.parseServer(owner.origin).liveURL())
+                .header("Origin", owner.origin)
                 .build();
             socket = http.newWebSocket(request, new WebSocketListener() {
                 @Override public void onOpen(WebSocket ws, Response response) {
@@ -662,6 +663,7 @@ public final class RecordingService extends Service {
         WebSocket ws = socket;
         double buffered = ((ws == null ? 0 : ws.queueSize()) + (long) audio.size() * rate / 10 * 2) / (rate * 2d);
         JSONObject snapshot = AsteringApplication.object("user_id", owner.owner.userID, "sid", owner.owner.sid,
+            "server_origin", owner.origin, "session_epoch", owner.epoch,
             "note_id", noteID, "generation", generation, "state", state, "partial", partial,
             "elapsed", capturedSamples.get() / (double) rate, "sent_bytes", totalSent, "bytes_per_second", bytesPerSecond,
             "buffered_seconds", buffered, "saved_segments", savedSegments, "model", model, "endpoint", endpoint,
@@ -688,7 +690,8 @@ public final class RecordingService extends Service {
             .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)
             .putExtra("note_id", noteID)
             .putExtra("user_id", owner == null ? 0 : owner.owner.userID)
-            .putExtra("sid", owner == null ? "" : owner.owner.sid);
+            .putExtra("sid", owner == null ? "" : owner.owner.sid)
+            .putExtra("server_origin", owner == null ? "" : owner.origin);
         PendingIntent openNote = PendingIntent.getActivity(this, 0, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         Intent stop = new Intent(this, RecordingService.class).setAction(STOP)
             .setData(android.net.Uri.parse("astering://recording/" + generation))

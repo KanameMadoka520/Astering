@@ -41,7 +41,7 @@ function adoptExternalToken(next: string | null, previous: string | null) {
 	clearServerClock()
 	if (next) {
 		recordServerClock(after?.iat, false)
-		if (isNativeAndroid() && canonicalApiBaseUrl(getApiBaseUrl()) === 'https://task.tcymc.space/api/v2') nativeAndroidSession(after?.type === 1 ? next : null)
+		if (isNativeAndroid()) nativeAndroidSession(after?.type === 1 ? next : null)
 	}
 	for (const listener of identityListeners) listener()
 }
@@ -65,7 +65,7 @@ export const saveToken = (token: string, persist: boolean) => {
 		localStorage.setItem('token', token)
 	}
 	recordServerClock(getTokenPayload(token)?.iat, persist)
-	if (isNativeAndroid() && canonicalApiBaseUrl(getApiBaseUrl()) === 'https://task.tcymc.space/api/v2') {
+	if (isNativeAndroid()) {
 		nativeAndroidSession(getTokenType(token) === 1 ? token : null)
 	}
 }
@@ -160,8 +160,7 @@ let inFlightRefresh: Promise<void> | null = null
 const refreshListeners: (() => void)[] = []
 
 onNativeAndroidEvent(event => {
-	if (event.event !== 'token' || typeof event.token !== 'string' ||
-		canonicalApiBaseUrl(getApiBaseUrl()) !== 'https://task.tcymc.space/api/v2') return
+	if (event.event !== 'token' || typeof event.token !== 'string' || !isNativeAndroid()) return
 	const current = getTokenPayload(getToken())
 	const next = getTokenPayload(event.token)
 	if (!current || !next || !current.sid || current.sid !== next.sid || current.id !== next.id ||
@@ -297,7 +296,7 @@ async function doRefresh(persist: boolean): Promise<void> {
 		}
 
 		// The native recorder and WebView share one rotating refresh cookie and one coordinator.
-		if (isNativeAndroid() && canonicalApiBaseUrl(serverAtStart) === 'https://task.tcymc.space/api/v2') {
+		if (isNativeAndroid()) {
 			const before = getTokenPayload(getToken())
 			try {
 				const result = await requestNativeAndroid<{token: string}>('refresh', {token: getToken()})
