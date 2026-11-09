@@ -277,6 +277,10 @@ func RegisterSessionCleanupCron() {
 			log.Errorf(logPrefix+"Error removing stale sessions: %s", err)
 			return
 		}
+		if err := cleanupRememberedAccounts(s); err != nil {
+			log.Errorf(logPrefix+"Error removing stale device accounts: %s", err)
+			return
+		}
 		if deleted > 0 {
 			log.Debugf(logPrefix+"Deleted %d stale sessions", deleted)
 		}

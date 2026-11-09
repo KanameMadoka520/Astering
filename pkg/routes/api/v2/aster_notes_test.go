@@ -437,3 +437,20 @@ func TestAsterNotesHTTPLatestTranscriptPageIsBoundedOrderedAndPrivate(t *testing
 	forbidden = asterNotesRequest(t, e, 1, http.MethodGet, path+"?latest=true", nil, true, false)
 	require.Equal(t, http.StatusForbidden, forbidden.Code, forbidden.Body.String())
 }
+
+func TestAsterNotesHTTPImportReceiptsAndCaptureIdempotency(t *testing.T) {
+	e, _ := asterNotesFixture(t)
+	note := asterNotesDecode[models.AsterNote](t, asterNotesRequest(t, e, 1, http.MethodPost, "/notes", map[string]any{"title": "Capture original", "content": "Manual article"}, false, false), http.StatusCreated)
+	path := fmt.Sprintf("/notes/%d/segments/import", note.ID)
+	payload := map[string]any{"client_id": uuid.NewString(), "text": "Keep this exact wording", "start_ms": 1234, "end_ms": 2234, "recording_offset_ms": 1234, "recording_id": uuid.NewString(), "recording_started_at": "2026-11-09T01:02:03.123Z", "timezone": "Asia/Shanghai", "append_to_article": true}
+	first := asterNotesDecode[asterNoteImportReceipt](t, asterNotesRequest(t, e, 1, http.MethodPost, path, payload, false, false), http.StatusCreated)
+	require.NotNil(t, first.Segment.CapturedAt)
+	require.Equal(t, "2026-11-09T01:02:04.357Z", first.Segment.CapturedAt.UTC().Format("2006-01-02T15:04:05.000Z"))
+	require.True(t, first.Segment.ArticleAppended)
+	require.EqualValues(t, 2, first.Stats.ArticleRevision)
+	retry := asterNotesDecode[asterNoteImportReceipt](t, asterNotesRequest(t, e, 1, http.MethodPost, path, payload, false, false), http.StatusCreated)
+	require.Equal(t, first.Segment.ID, retry.Segment.ID)
+	require.EqualValues(t, 1, retry.Stats.SegmentCount)
+	require.Equal(t, http.StatusNotFound, asterNotesRequest(t, e, 2, http.MethodPost, path, payload, false, false).Code)
+	require.Equal(t, http.StatusForbidden, asterNotesRequest(t, e, 1, http.MethodPost, path, payload, true, false).Code)
+}

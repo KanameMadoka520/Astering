@@ -72,6 +72,10 @@ func ExportUserData(s *xorm.Session, u *user.User) (previousExportFileID int64, 
 	if err != nil {
 		return 0, err
 	}
+	// Owner-only notes and durable organization previews are independent of projects.
+	if err = exportAsterNotes(s, u, dumpWriter); err != nil {
+		return 0, err
+	}
 	// Vikunja Version
 	err = utils.WriteBytesToZip("VERSION", []byte(version.Version), dumpWriter)
 	if err != nil {

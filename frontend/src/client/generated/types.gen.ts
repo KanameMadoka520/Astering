@@ -779,7 +779,7 @@ export type AsterNote = {
      */
     pinned?: boolean;
     /**
-     * Editorial revision. Transcript appends do not change this value.
+     * Editorial revision. Transcript-only appends leave it unchanged; explicit automatic insertion into the article advances it.
      */
     readonly revision?: number;
     /**
@@ -800,11 +800,129 @@ export type AsterNote = {
     readonly updated?: string;
 };
 
+export type AsterNoteImportReceipt = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Committed immutable final segment; identical retries return the original.
+     */
+    segment?: AsterNoteSegment;
+    /**
+     * Committed note counters and current article revision.
+     */
+    stats?: AsterNoteTranscriptState;
+};
+
+export type AsterNoteOrganization = {
+    /**
+     * Execution generation. Cancelled or stale workers cannot publish into another attempt.
+     */
+    readonly attempt?: number;
+    /**
+     * Successfully checkpointed model requests.
+     */
+    readonly completed_steps?: number;
+    /**
+     * This account's selected text-model connection.
+     */
+    connection_id?: string;
+    /**
+     * Creation time.
+     */
+    readonly created?: string;
+    /**
+     * Sanitized actionable failure detail; original text remains intact.
+     */
+    readonly error?: string;
+    /**
+     * Organization job identifier.
+     */
+    readonly id?: number;
+    /**
+     * Provider-reported cumulative input tokens.
+     */
+    readonly input_tokens?: number;
+    /**
+     * Hierarchical merge level, zero while mapping original text.
+     */
+    readonly level?: number;
+    /**
+     * Model requested from the selected connection.
+     */
+    readonly model?: string;
+    /**
+     * Private source note.
+     */
+    readonly note_id?: number;
+    /**
+     * Provider-reported cumulative output tokens.
+     */
+    readonly output_tokens?: number;
+    /**
+     * Current preparation, map, reduce, or completed phase.
+     */
+    readonly phase?: string;
+    /**
+     * Original text bytes whose map summaries were durably saved.
+     */
+    readonly processed_bytes?: number;
+    /**
+     * Completed Markdown preview. Never automatically replaces the article.
+     */
+    readonly result?: string;
+    /**
+     * Original immutable transcript or a snapshot of the saved article.
+     */
+    source?: 'transcript' | 'article';
+    /**
+     * Logical original text bytes, not a provider token count.
+     */
+    readonly source_bytes?: number;
+    /**
+     * Last immutable transcript segment included in this job. Later recording is not silently added.
+     */
+    readonly source_end_id?: number;
+    /**
+     * Article revision when this job was created; applying always checks the current revision separately.
+     */
+    readonly source_revision?: number;
+    /**
+     * Durable lifecycle. Interrupted means the server restarted; explicit retry resumes saved checkpoints.
+     */
+    readonly status?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted';
+    /**
+     * Logical UTF-8 bytes of temporary source snapshot, checkpoints, result, and error, counted in personal note storage.
+     */
+    readonly storage_bytes?: number;
+    /**
+     * Last durable checkpoint.
+     */
+    readonly updated?: string;
+    /**
+     * Some provider requests did not report usage.
+     */
+    readonly usage_partial?: boolean;
+};
+
 export type AsterNoteSegment = {
     /**
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    /**
+     * Capture-time preference: atomically append this final sentence to the latest saved article once. Does not overwrite another article draft.
+     */
+    append_to_article?: boolean;
+    /**
+     * Whether this sentence was mirrored into the article. False with append_to_article=true means the article reached its size limit; the raw transcript is still safely retained.
+     */
+    readonly article_appended?: boolean;
+    /**
+     * Actual segment capture time in UTC; never inferred from database ingestion time.
+     */
+    captured_at?: string;
     /**
      * Client-generated UUID. Reusing it with identical text and times returns the original segment.
      */
@@ -826,6 +944,18 @@ export type AsterNoteSegment = {
      */
     readonly note_id?: number;
     /**
+     * Client UUID identifying this real recording run, independent from the cumulative note timeline.
+     */
+    recording_id?: string;
+    /**
+     * Segment offset from recording_started_at, independent from start_ms.
+     */
+    recording_offset_ms?: number;
+    /**
+     * Actual UTC recording start, supplied by the capture device; absent for legacy recordings of unknown date.
+     */
+    recording_started_at?: string;
+    /**
      * Start offset in the recording timeline, in milliseconds; not a wall-clock timestamp.
      */
     start_ms?: number;
@@ -833,6 +963,10 @@ export type AsterNoteSegment = {
      * Immutable final transcript text, at most 64 KiB UTF-8.
      */
     text?: string;
+    /**
+     * IANA capture timezone, for example Asia/Shanghai. Empty means unknown.
+     */
+    timezone?: string;
     /**
      * True when the provider lacked precise timestamps and recording offsets were estimated.
      */
@@ -864,6 +998,25 @@ export type AsterNoteSegmentPage = {
      * All currently persisted segments in this note, not just after the cursor.
      */
     total?: number;
+};
+
+export type AsterNoteTranscriptState = {
+    /**
+     * Current editorial revision; changes when a final transcript was automatically appended to the article.
+     */
+    article_revision?: number;
+    /**
+     * Currently committed final transcript segments; independent from editorial revision.
+     */
+    segment_count?: number;
+    /**
+     * Logical UTF-8 final transcript bytes.
+     */
+    transcript_bytes?: number;
+    /**
+     * Server activity time after the final append.
+     */
+    updated?: string;
 };
 
 export type AttachmentUploadError = {
@@ -3329,6 +3482,62 @@ export type ModelStep = {
     usage?: Usage;
 };
 
+export type NoteOrganizationApplyRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Current saved article revision explicitly reviewed by the user.
+     */
+    expected_revision?: number;
+    /**
+     * Append below existing saved text or explicitly replace it. Original transcript is always retained.
+     */
+    mode?: 'append' | 'replace';
+};
+
+export type NoteOrganizationControlRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Cancel an active attempt, explicitly resume a saved checkpoint, or discard a terminal preview and checkpoints without touching the article or raw transcript.
+     */
+    action?: 'cancel' | 'retry' | 'discard';
+};
+
+export type NoteOrganizationCreateRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * This account's text-model connection; empty uses its transcript-cleanup model or assistant.
+     */
+    connection_id?: string;
+    /**
+     * Original transcript or snapshot of the currently saved article.
+     */
+    source?: 'transcript' | 'article';
+};
+
+export type NoteOrganizationActivity = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Durable progress and completed result, absent when no job exists.
+     */
+    job?: AsterNoteOrganization;
+    /**
+     * Actual current provider request telemetry. No invented progress or token counts.
+     */
+    step?: ModelStep;
+};
+
 export type OpenIdAuthInfo = {
     enabled?: boolean;
     providers?: Array<Provider> | null;
@@ -5050,6 +5259,55 @@ export type RegisterUserRequest = {
     username?: string;
 };
 
+export type RememberedAccount = {
+    /**
+     * When this login was last used.
+     */
+    readonly last_active?: string;
+    /**
+     * The account display name.
+     */
+    readonly name?: string;
+    /**
+     * The remembered login on this device; not an authentication secret.
+     */
+    readonly session_id?: string;
+    /**
+     * The account identity; account data is not included.
+     */
+    readonly user_id?: number;
+    /**
+     * The public login name.
+     */
+    readonly username?: string;
+};
+
+export type RememberedAccountsBodyBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Only active logins explicitly remembered by this browser; no email, role, or account content.
+     */
+    readonly accounts?: Array<RememberedAccount> | null;
+    /**
+     * Maximum number of accounts remembered on one device.
+     */
+    readonly limit?: number;
+};
+
+export type RememberedSessionInputBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * A login returned by the device account list. Arbitrary account IDs are not accepted.
+     */
+    session_id: string;
+};
+
 export type RenewTokenBodyBody = {
     /**
      * A URL to the JSON Schema for this object.
@@ -6067,7 +6325,11 @@ export type StorageSummary = {
      */
     note_count: number;
     /**
-     * Title, Markdown and transcript UTF-8 bytes. Independent logical database accounting; excluded from total_bytes. Deleting it does not promise immediate disk reclamation.
+     * Logical UTF-8 temporary article snapshots, organization checkpoints, and preview results. Discarding the preview frees this logical note data without deleting original transcripts.
+     */
+    note_organization_bytes: number;
+    /**
+     * Title, Markdown, transcript and organization preview/checkpoint UTF-8 bytes. Independent logical database accounting; excluded from total_bytes. Deleting it does not promise immediate disk reclamation.
      */
     note_text_bytes: number;
     /**
@@ -8455,7 +8717,37 @@ export type AsterNoteWritable = {
     title?: string;
 };
 
+export type AsterNoteImportReceiptWritable = {
+    /**
+     * Committed immutable final segment; identical retries return the original.
+     */
+    segment?: AsterNoteSegmentWritable;
+    /**
+     * Committed note counters and current article revision.
+     */
+    stats?: AsterNoteTranscriptState;
+};
+
+export type AsterNoteOrganizationWritable = {
+    /**
+     * This account's selected text-model connection.
+     */
+    connection_id?: string;
+    /**
+     * Original immutable transcript or a snapshot of the saved article.
+     */
+    source?: 'transcript' | 'article';
+};
+
 export type AsterNoteSegmentWritable = {
+    /**
+     * Capture-time preference: atomically append this final sentence to the latest saved article once. Does not overwrite another article draft.
+     */
+    append_to_article?: boolean;
+    /**
+     * Actual segment capture time in UTC; never inferred from database ingestion time.
+     */
+    captured_at?: string;
     /**
      * Client-generated UUID. Reusing it with identical text and times returns the original segment.
      */
@@ -8465,6 +8757,18 @@ export type AsterNoteSegmentWritable = {
      */
     end_ms?: number;
     /**
+     * Client UUID identifying this real recording run, independent from the cumulative note timeline.
+     */
+    recording_id?: string;
+    /**
+     * Segment offset from recording_started_at, independent from start_ms.
+     */
+    recording_offset_ms?: number;
+    /**
+     * Actual UTC recording start, supplied by the capture device; absent for legacy recordings of unknown date.
+     */
+    recording_started_at?: string;
+    /**
      * Start offset in the recording timeline, in milliseconds; not a wall-clock timestamp.
      */
     start_ms?: number;
@@ -8472,6 +8776,10 @@ export type AsterNoteSegmentWritable = {
      * Immutable final transcript text, at most 64 KiB UTF-8.
      */
     text?: string;
+    /**
+     * IANA capture timezone, for example Asia/Shanghai. Empty means unknown.
+     */
+    timezone?: string;
     /**
      * True when the provider lacked precise timestamps and recording offsets were estimated.
      */
@@ -9462,6 +9770,46 @@ export type ModelListWritable = {
     truncated?: boolean;
 };
 
+export type NoteOrganizationApplyRequestWritable = {
+    /**
+     * Current saved article revision explicitly reviewed by the user.
+     */
+    expected_revision?: number;
+    /**
+     * Append below existing saved text or explicitly replace it. Original transcript is always retained.
+     */
+    mode?: 'append' | 'replace';
+};
+
+export type NoteOrganizationControlRequestWritable = {
+    /**
+     * Cancel an active attempt, explicitly resume a saved checkpoint, or discard a terminal preview and checkpoints without touching the article or raw transcript.
+     */
+    action?: 'cancel' | 'retry' | 'discard';
+};
+
+export type NoteOrganizationCreateRequestWritable = {
+    /**
+     * This account's text-model connection; empty uses its transcript-cleanup model or assistant.
+     */
+    connection_id?: string;
+    /**
+     * Original transcript or snapshot of the currently saved article.
+     */
+    source?: 'transcript' | 'article';
+};
+
+export type NoteOrganizationActivityWritable = {
+    /**
+     * Durable progress and completed result, absent when no job exists.
+     */
+    job?: AsterNoteOrganizationWritable;
+    /**
+     * Actual current provider request telemetry. No invented progress or token counts.
+     */
+    step?: ModelStep;
+};
+
 export type OperationWritable = {
     /**
      * Proposed changes as JSON, not a claim of execution.
@@ -10351,6 +10699,13 @@ export type RegisterUserRequestWritable = {
     username?: string;
 };
 
+export type RememberedSessionInputBodyWritable = {
+    /**
+     * A login returned by the device account list. Arbitrary account IDs are not accepted.
+     */
+    session_id: string;
+};
+
 export type ReviewInputWritable = {
     /**
      * Human clarification or rejection explanation.
@@ -10798,7 +11153,11 @@ export type StorageSummaryWritable = {
      */
     note_count: number;
     /**
-     * Title, Markdown and transcript UTF-8 bytes. Independent logical database accounting; excluded from total_bytes. Deleting it does not promise immediate disk reclamation.
+     * Logical UTF-8 temporary article snapshots, organization checkpoints, and preview results. Discarding the preview frees this logical note data without deleting original transcripts.
+     */
+    note_organization_bytes: number;
+    /**
+     * Title, Markdown, transcript and organization preview/checkpoint UTF-8 bytes. Independent logical database accounting; excluded from total_bytes. Deleting it does not promise immediate disk reclamation.
      */
     note_text_bytes: number;
     /**
@@ -15258,6 +15617,116 @@ export type NotesUpdateResponses = {
 
 export type NotesUpdateResponse = NotesUpdateResponses[keyof NotesUpdateResponses];
 
+export type NoteOrganizationReadData = {
+    body?: never;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/notes/{id}/organization';
+};
+
+export type NoteOrganizationReadErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type NoteOrganizationReadError = NoteOrganizationReadErrors[keyof NoteOrganizationReadErrors];
+
+export type NoteOrganizationReadResponses = {
+    /**
+     * OK
+     */
+    200: NoteOrganizationActivity;
+};
+
+export type NoteOrganizationReadResponse = NoteOrganizationReadResponses[keyof NoteOrganizationReadResponses];
+
+export type NoteOrganizationCreateData = {
+    body: NoteOrganizationCreateRequestWritable;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/notes/{id}/organization';
+};
+
+export type NoteOrganizationCreateErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type NoteOrganizationCreateError = NoteOrganizationCreateErrors[keyof NoteOrganizationCreateErrors];
+
+export type NoteOrganizationCreateResponses = {
+    /**
+     * Created
+     */
+    201: NoteOrganizationActivity;
+};
+
+export type NoteOrganizationCreateResponse = NoteOrganizationCreateResponses[keyof NoteOrganizationCreateResponses];
+
+export type NoteOrganizationApplyData = {
+    body: NoteOrganizationApplyRequestWritable;
+    path: {
+        id: number;
+        job_id: number;
+    };
+    query?: never;
+    url: '/notes/{id}/organization/{job_id}/apply';
+};
+
+export type NoteOrganizationApplyErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type NoteOrganizationApplyError = NoteOrganizationApplyErrors[keyof NoteOrganizationApplyErrors];
+
+export type NoteOrganizationApplyResponses = {
+    /**
+     * Created
+     */
+    201: AsterNote;
+};
+
+export type NoteOrganizationApplyResponse = NoteOrganizationApplyResponses[keyof NoteOrganizationApplyResponses];
+
+export type NoteOrganizationControlData = {
+    body: NoteOrganizationControlRequestWritable;
+    path: {
+        id: number;
+        job_id: number;
+    };
+    query?: never;
+    url: '/notes/{id}/organization/{job_id}/control';
+};
+
+export type NoteOrganizationControlErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type NoteOrganizationControlError = NoteOrganizationControlErrors[keyof NoteOrganizationControlErrors];
+
+export type NoteOrganizationControlResponses = {
+    /**
+     * Created
+     */
+    201: NoteOrganizationActivity;
+};
+
+export type NoteOrganizationControlResponse = NoteOrganizationControlResponses[keyof NoteOrganizationControlResponses];
+
 export type NoteSegmentsListData = {
     body?: never;
     path: {
@@ -15324,6 +15793,33 @@ export type NoteSegmentsAppendResponses = {
 };
 
 export type NoteSegmentsAppendResponse = NoteSegmentsAppendResponses[keyof NoteSegmentsAppendResponses];
+
+export type NoteSegmentsImportData = {
+    body: AsterNoteSegmentWritable;
+    path: {
+        id: number;
+    };
+    query?: never;
+    url: '/notes/{id}/segments/import';
+};
+
+export type NoteSegmentsImportErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type NoteSegmentsImportError = NoteSegmentsImportErrors[keyof NoteSegmentsImportErrors];
+
+export type NoteSegmentsImportResponses = {
+    /**
+     * Created
+     */
+    201: AsterNoteImportReceipt;
+};
+
+export type NoteSegmentsImportResponse = NoteSegmentsImportResponses[keyof NoteSegmentsImportResponses];
 
 export type NotificationsDeleteAllData = {
     body?: never;
@@ -20420,6 +20916,131 @@ export type UserShowResponses = {
 };
 
 export type UserShowResponse = UserShowResponses[keyof UserShowResponses];
+
+export type AuthAccountSessionsListData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/user/account-sessions';
+};
+
+export type AuthAccountSessionsListErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type AuthAccountSessionsListError = AuthAccountSessionsListErrors[keyof AuthAccountSessionsListErrors];
+
+export type AuthAccountSessionsListResponses = {
+    /**
+     * OK
+     */
+    200: RememberedAccountsBodyBody;
+};
+
+export type AuthAccountSessionsListResponse = AuthAccountSessionsListResponses[keyof AuthAccountSessionsListResponses];
+
+export type AuthAccountSessionsClearData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/user/account-sessions/clear';
+};
+
+export type AuthAccountSessionsClearErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type AuthAccountSessionsClearError = AuthAccountSessionsClearErrors[keyof AuthAccountSessionsClearErrors];
+
+export type AuthAccountSessionsClearResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type AuthAccountSessionsClearResponse = AuthAccountSessionsClearResponses[keyof AuthAccountSessionsClearResponses];
+
+export type AuthAccountSessionsForgetData = {
+    body: RememberedSessionInputBodyWritable;
+    path?: never;
+    query?: never;
+    url: '/user/account-sessions/forget';
+};
+
+export type AuthAccountSessionsForgetErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type AuthAccountSessionsForgetError = AuthAccountSessionsForgetErrors[keyof AuthAccountSessionsForgetErrors];
+
+export type AuthAccountSessionsForgetResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type AuthAccountSessionsForgetResponse = AuthAccountSessionsForgetResponses[keyof AuthAccountSessionsForgetResponses];
+
+export type AuthAccountSessionsRememberData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/user/account-sessions/remember';
+};
+
+export type AuthAccountSessionsRememberErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type AuthAccountSessionsRememberError = AuthAccountSessionsRememberErrors[keyof AuthAccountSessionsRememberErrors];
+
+export type AuthAccountSessionsRememberResponses = {
+    /**
+     * OK
+     */
+    200: RememberedAccountsBodyBody;
+};
+
+export type AuthAccountSessionsRememberResponse = AuthAccountSessionsRememberResponses[keyof AuthAccountSessionsRememberResponses];
+
+export type AuthAccountSessionsSwitchData = {
+    body: RememberedSessionInputBodyWritable;
+    path?: never;
+    query?: never;
+    url: '/user/account-sessions/switch';
+};
+
+export type AuthAccountSessionsSwitchErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type AuthAccountSessionsSwitchError = AuthAccountSessionsSwitchErrors[keyof AuthAccountSessionsSwitchErrors];
+
+export type AuthAccountSessionsSwitchResponses = {
+    /**
+     * OK
+     */
+    200: AuthTokenBodyBody;
+};
+
+export type AuthAccountSessionsSwitchResponse = AuthAccountSessionsSwitchResponses[keyof AuthAccountSessionsSwitchResponses];
 
 export type BotsListData = {
     body?: never;

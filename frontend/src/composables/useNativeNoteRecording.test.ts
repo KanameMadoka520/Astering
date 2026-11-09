@@ -67,7 +67,7 @@ describe('native note recording lifecycle', () => {
 	let wrappers: VueWrapper[]
 	let sequence: number
 
-	function harness(background = false, awake = false) {
+	function harness(background = false, awake = false, engine: 'online' | 'local' = 'online') {
 		const noteID = ref(4)
 		const onSegment = vi.fn()
 		let recorder!: ReturnType<typeof useNativeNoteRecording>
@@ -80,6 +80,7 @@ describe('native note recording lifecycle', () => {
 					language: () => 'zh-CN',
 					allowBackground: () => background,
 					keepAwake: () => awake,
+					engine: () => engine,
 					onSegment,
 				})
 				return () => null
@@ -104,6 +105,7 @@ describe('native note recording lifecycle', () => {
 				sequence: ++sequence,
 				state: 'recording',
 				allow_background: data?.allow_background === true,
+				engine: data?.engine === 'local' ? 'local' : 'online',
 			})
 			if (action === 'stopRecording') return snapshot({sequence: ++sequence, state: 'idle'})
 			throw new Error(`Unexpected native action: ${action}`)
@@ -131,6 +133,64 @@ describe('native note recording lifecycle', () => {
 			keep_awake: true,
 		}), 120_000)
 		expect(h.recorder.state.value).toBe('recording')
+	})
+
+	it('restores the actual local engine independently of the next-run preference', async () => {
+		native.request.mockImplementation(async (action: string) => action === 'recordingStatus'
+			? snapshot({
+				sequence: ++sequence,
+				state: 'recording',
+				engine: 'local',
+				allow_background: true,
+			})
+			: {})
+		const h = harness(true, false, 'online')
+		await flushPromises()
+		expect(h.recorder.active.value).toBe(true)
+		expect(h.recorder.actualEngine.value).toBe('local')
+		emit({
+			sequence: ++sequence,
+			state: 'recording',
+			engine: 'online',
+			user_id: 2,
+		})
+		expect(h.recorder.actualEngine.value).toBe('local')
+	})
+
+	it('treats an old APK snapshot with no engine as online', async () => {
+		const h = harness()
+		await flushPromises()
+		emit({
+			sequence: ++sequence,
+			state: 'recording',
+			allow_background: true,
+		})
+		expect(h.recorder.actualEngine.value).toBe('online')
+	})
+
+	it('exposes the admitted local engine while microphone permission is pending', async () => {
+		const h = harness(false, false, 'local')
+		await flushPromises()
+		const started = deferred<NativeRecordingSnapshot>()
+		native.request.mockImplementation(async (action: string) => {
+			if (action === 'startRecording') return started.promise
+			return {}
+		})
+		const pending = h.recorder.start()
+		await flushPromises()
+		expect(h.recorder.state.value).toBe('permission')
+		expect(h.recorder.actualEngine.value).toBe('local')
+		expect(native.request).toHaveBeenCalledWith('startRecording', expect.objectContaining({
+			engine: 'local',
+			language: 'auto',
+		}), 120_000)
+		started.resolve(snapshot({
+			sequence: ++sequence,
+			state: 'recording',
+			engine: 'local',
+		}))
+		await pending
+		expect(h.recorder.actualEngine.value).toBe('local')
 	})
 
 	it('ignores a late mount status after a newer native event', async () => {

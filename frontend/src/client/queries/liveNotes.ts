@@ -20,6 +20,7 @@ export type LiveNoteTranscriptState = {
 	segment_count: number,
 	transcript_bytes: number,
 	updated: string,
+	article_revision?: number,
 }
 
 export type LiveNoteReceipt = {segment: AsterNoteSegment, stats: LiveNoteTranscriptState}
@@ -38,6 +39,11 @@ export async function openLiveNoteSocket(options: {
 	connectionID: string,
 	offsetMS: number,
 	language: string,
+	recordingID?: string,
+	recordingStartedAt?: string,
+	recordingOffsetMS?: number,
+	timezone?: string,
+	appendToArticle?: boolean,
 	isCurrent: () => boolean,
 	onEvent: (event: LiveNoteEvent) => void,
 	onClose: () => void,
@@ -60,6 +66,11 @@ export async function openLiveNoteSocket(options: {
 				connection_id: options.connectionID,
 				offset_ms: options.offsetMS,
 				language: options.language,
+				recording_id: options.recordingID,
+				recording_started_at: options.recordingStartedAt,
+				recording_offset_ms: options.recordingOffsetMS,
+				timezone: options.timezone,
+				append_to_article: options.appendToArticle,
 			}))
 		} catch {
 			socket.close()

@@ -35,6 +35,9 @@ export interface FrontendSettings {
 	quick_add_default_reminders: {relative_period?: number}[]
 	live_notes_allow_background: boolean
 	live_notes_keep_awake: boolean
+	live_notes_timezone: string
+	live_notes_auto_append: boolean
+	live_notes_engine: 'online' | 'local'
 	time_tracking_default_start?: string
 	default_due_time?: string
 }
@@ -94,5 +97,8 @@ export function defaultFrontendSettings(): FrontendSettings {
 		quick_add_default_reminders: [],
 		live_notes_allow_background: false,
 		live_notes_keep_awake: false,
+		live_notes_timezone: '',
+		live_notes_auto_append: false,
+		live_notes_engine: 'online',
 	}
 }

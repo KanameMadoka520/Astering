@@ -304,6 +304,7 @@ func ReadSummary(ctx context.Context, uid int64) (*StorageSummary, error) {
 	result.NoteCount = notes.Count
 	result.NoteContentBytes = notes.ContentBytes
 	result.NoteTranscriptBytes = notes.TranscriptBytes
+	result.NoteOrganizationBytes = notes.OrganizationBytes
 	result.NoteTextBytes = notes.TextBytes
 	rows := []fileRecord{}
 	err = ownedFiles(s, uid).Select(fileColumns).OrderBy("files.id ASC").Limit(100001).Find(&rows)

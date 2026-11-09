@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import {computed, ref, watch} from 'vue'
+import {computed, ref, useId, watch} from 'vue'
 import {useQuery} from '@tanstack/vue-query'
 import {useI18n} from 'vue-i18n'
 import {liveNoteConnectionsQuery, type LiveNoteReceipt} from '@/client/queries/liveNotes'
 import {useNoteRecording} from '@/composables/useNoteRecording'
 import {useLiveNotePreferences} from '@/composables/useLiveNotePreferences'
 import {isNativeAndroid} from '@/helpers/nativeAndroid'
+import {timezonesQuery} from '@/client/queries/account'
+import {useOfflineNoteSync} from '@/composables/useOfflineNoteSync'
 import XButton from '@/components/input/Button.vue'
+import OfflineTranscriptViewer from './OfflineTranscriptViewer.vue'
 
 const props = defineProps<{noteId: number}>()
 const emit = defineEmits<{
@@ -17,7 +20,31 @@ const {t, locale} = useI18n({useScope: 'global'})
 const connections = useQuery(liveNoteConnectionsQuery())
 const connectionID = ref('')
 const preferences = useLiveNotePreferences()
-const {allowBackground, keepAwake, ready: preferencesReady, loadFailed: preferencesLoadFailed, status: preferenceStatus} = preferences
+const {
+	allowBackground,
+	keepAwake,
+	timezone,
+	autoAppend,
+	ready: preferencesReady,
+	loadFailed: preferencesLoadFailed,
+	status: preferenceStatus,
+} = preferences
+const inputID = useId()
+const zones = useQuery(timezonesQuery())
+const availableZones = computed(() => [...new Set([timezone.value, ...(zones.data.value ?? [])])].sort())
+const offline = useOfflineNoteSync()
+const {
+	available: localAvailable,
+	builtIn: localBuiltIn,
+	unsupported: localUnsupported,
+	status: offlineStatus,
+	busy: offlineBusy,
+	failed: offlineFailed,
+} = offline
+const selectedEngine = ref<'online' | 'local'>('online')
+const clearConfirm = ref(false)
+const outboxOpen = ref(false)
+const {page: offlinePage, pageBusy: offlinePageBusy, pageFailed: offlinePageFailed} = offline
 const chosen = computed(() => connections.data.value?.find(item => item.id === connectionID.value))
 watch(connections.data, list => {
 	if (!list?.some(item => item.id === connectionID.value)) {
@@ -28,18 +55,47 @@ const nativeRecording = isNativeAndroid()
 const recorder = useNoteRecording({
 	noteID: () => props.noteId,
 	connectionID: () => connectionID.value,
-	sampleRate: () => chosen.value?.sample_rate ?? 16_000,
-	language: () => locale.value,
+	sampleRate: () => selectedEngine.value === 'local' ? 16_000 : chosen.value?.sample_rate ?? 16_000,
+	language: () => selectedEngine.value === 'local' ? 'auto' : locale.value,
 	allowBackground: () => allowBackground.value,
 	keepAwake: () => keepAwake.value,
+	engine: () => selectedEngine.value,
+	timezone: () => timezone.value,
+	appendToArticle: () => autoAppend.value,
 	onSegment: receipt => {
 		if (receipt.segment.note_id === props.noteId) emit('segment', receipt)
 	},
 })
 const {
-	state, active, error, detail, partial, elapsed, sentBytes, bytesPerSecond,
-	bufferedSeconds, savedSegments, model, endpoint, screenAwake,
+	state,
+	actualEngine,
+	active,
+	error,
+	detail,
+	partial,
+	elapsed,
+	sentBytes,
+	bytesPerSecond,
+	bufferedSeconds,
+	savedSegments,
+	model,
+	endpoint,
+	screenAwake,
+	retryAttempt,
+	retryInSeconds,
+	recoveryWarning,
+	localText,
+	inferenceMS,
 } = recorder
+const engine = computed(() => active.value ? actualEngine.value : selectedEngine.value)
+const showEngineSelector = computed(() => nativeRecording &&
+	(localBuiltIn.value || engine.value === 'local' || preferences.engine.value === 'local'))
+const needsLocalVerification = computed(() => nativeRecording && engine.value === 'local' &&
+	!active.value && !localAvailable.value && !localUnsupported.value)
+watch([preferencesReady, preferences.engine, active], ([ready, saved, running]) => {
+	if (ready && !running) selectedEngine.value = nativeRecording ? saved : 'online'
+}, {immediate: true})
+const pendingSync = computed(() => offlineStatus.value?.pending_count ?? 0)
 watch(active, value => emit('active', value), {immediate: true})
 const clock = computed(() => {
 	const value = Math.floor(elapsed.value)
@@ -62,12 +118,19 @@ const errorKey = computed(() => {
 	const keys = ['permission', 'unsupported', 'network', 'buffer_full', 'finalize_timeout', 'interrupted',
 		'background', 'microphone', 'authentication', 'note_unavailable', 'already_recording', 'connection', 'provider',
 		'save_failed', 'protocol', 'invalid_start', 'foreground_required', 'notification_permission']
+	keys.push('retry_exhausted', 'local_model', 'local_inference', 'local_backpressure', 'local_storage_full',
+		'local_storage', 'sync_conflict', 'confirmation_required', 'rate_limited')
 	return keys.includes(error.value) ? error.value : 'interrupted'
+})
+const syncErrorText = computed(() => {
+	const code = offlineStatus.value?.sync_error
+	return code && ['authentication', 'note_unavailable', 'network', 'rate_limited', 'sync_conflict', 'local_storage'].includes(code)
+		? t(`liveNotes.errors.${code}`) : code ? t('liveNotes.offlineActionFailed') : ''
 })
 async function toggle() {
 	if (state.value === 'stopping') return
 	if (active.value) await recorder.stop()
-	else if (chosen.value && preferencesReady.value) await recorder.start()
+	else if ((engine.value === 'local' ? localAvailable.value : chosen.value) && preferencesReady.value) await recorder.start()
 }
 const preferencesLocked = computed(() => active.value || !preferencesReady.value || preferenceStatus.value === 'saving')
 const preferenceStatusKey = computed(() => ({
@@ -79,9 +142,33 @@ const preferenceStatusKey = computed(() => ({
 function guardPreferenceClick(event: Event) {
 	if (preferencesLocked.value) event.preventDefault()
 }
-function changePreference(event: Event, key: 'live_notes_allow_background' | 'live_notes_keep_awake') {
+function changePreference(event: Event, key: 'live_notes_allow_background' | 'live_notes_keep_awake' | 'live_notes_auto_append') {
 	if (preferencesLocked.value || !(event.target instanceof HTMLInputElement)) return
 	void preferences.setPreference(key, event.target.checked)
+}
+function changeTimezone(event: Event) {
+	if (!(event.target instanceof HTMLSelectElement)) return
+	if (preferencesLocked.value) {
+		event.target.value = timezone.value
+		return
+	}
+	void preferences.setPreference('live_notes_timezone', event.target.value)
+}
+function changeEngine(event: Event) {
+	if (!(event.target instanceof HTMLSelectElement)) return
+	if (preferencesLocked.value) {
+		event.target.value = engine.value
+		return
+	}
+	const next = event.target.value
+	if (next !== 'online' && next !== 'local') return
+	selectedEngine.value = next
+	void preferences.setPreference('live_notes_engine', next)
+}
+async function clearOffline() {
+	if (active.value || offlineBusy.value || !clearConfirm.value) return
+	await offline.clear()
+	if (!offlineFailed.value) clearConfirm.value = false
 }
 watch(() => props.noteId, () => { void recorder.stop() })
 </script>
@@ -96,15 +183,70 @@ watch(() => props.noteId, () => { void recorder.stop() })
 			<span class="live-voice__title"><Icon icon="microphone" />{{ t('liveNotes.title') }}</span>
 			<span class="live-voice__privacy">{{ t('liveNotes.textOnly') }}</span>
 		</div>
+		<label
+			v-if="showEngineSelector"
+			class="live-voice__engine"
+		>
+			<span>{{ t('liveNotes.engine') }}</span>
+			<select
+				:value="engine"
+				class="input"
+				:aria-disabled="preferencesLocked"
+				@change="changeEngine"
+			>
+				<option value="online">{{ t('liveNotes.onlineEngine') }}</option>
+				<option value="local">{{ t('liveNotes.localEngine') }}</option>
+			</select>
+		</label>
+		<p
+			v-if="engine === 'local'"
+			class="live-voice__hint"
+		>
+			{{ t('liveNotes.localHint') }}
+		</p>
 		<div
-			v-if="connections.isPending.value"
+			v-if="needsLocalVerification"
+			class="live-voice__hint"
+			role="status"
+		>
+			<p>{{ t(localBuiltIn ? 'liveNotes.localVerifying' : 'liveNotes.localChecking') }}</p>
+			<p>{{ t('liveNotes.localVerificationHelp') }}</p>
+			<XButton
+				variant="secondary"
+				:aria-disabled="offlineBusy"
+				@click="offline.sync()"
+			>
+				{{ t('liveNotes.verifyLocalRetry') }}
+			</XButton>
+			<p
+				v-if="syncErrorText"
+				role="alert"
+			>
+				{{ syncErrorText }}
+			</p>
+		</div>
+		<p
+			v-else-if="engine === 'local' && localUnsupported && !active"
+			class="live-voice__hint"
+			role="status"
+		>
+			{{ t('liveNotes.localUnavailable') }}
+		</p>
+		<p
+			v-if="!nativeRecording && preferences.engine.value === 'local'"
+			class="live-voice__hint"
+		>
+			{{ t('liveNotes.localAndroidOnly') }}
+		</p>
+		<div
+			v-if="engine === 'online' && connections.isPending.value"
 			class="live-voice__hint"
 			role="status"
 		>
 			{{ t('liveNotes.loading') }}
 		</div>
 		<div
-			v-else-if="connections.isError.value"
+			v-else-if="engine === 'online' && connections.isError.value"
 			role="alert"
 			class="live-voice__error"
 		>
@@ -117,7 +259,7 @@ watch(() => props.noteId, () => { void recorder.stop() })
 			</XButton>
 		</div>
 		<div
-			v-else-if="!connections.data.value?.length"
+			v-else-if="engine === 'online' && !connections.data.value?.length"
 			class="live-voice__hint"
 		>
 			{{ t('liveNotes.noConnection') }}
@@ -140,10 +282,13 @@ watch(() => props.noteId, () => { void recorder.stop() })
 			</XButton>
 		</p>
 		<div
-			v-if="connections.data.value?.length"
+			v-if="active || (engine === 'local' ? localAvailable : connections.data.value?.length)"
 			class="live-voice__controls"
 		>
-			<label class="live-voice__connection">
+			<label
+				v-if="engine === 'online'"
+				class="live-voice__connection"
+			>
 				<span class="is-sr-only">{{ t('liveNotes.connection') }}</span>
 				<select
 					v-model="connectionID"
@@ -178,8 +323,97 @@ watch(() => props.noteId, () => { void recorder.stop() })
 			/>
 			<span>{{ t(`liveNotes.states.${state}`) }}</span>
 			<time class="live-voice__clock">{{ clock }}</time>
-			<span>{{ t('liveNotes.savedCount', {count: savedSegments}) }}</span>
+			<span>{{ t(actualEngine === 'local' ? 'liveNotes.localSavedCount' : 'liveNotes.savedCount', {count: savedSegments}) }}</span>
 		</div>
+		<p
+			v-if="state === 'reconnecting' && retryAttempt"
+			class="live-voice__hint"
+			role="status"
+		>
+			{{ t('liveNotes.retryStatus', {attempt: retryAttempt, seconds: retryInSeconds}) }}
+		</p>
+		<p
+			v-if="recoveryWarning"
+			class="live-voice__hint"
+			role="status"
+		>
+			{{ t('liveNotes.recoveryWarning') }}
+		</p>
+		<div
+			v-if="localText"
+			class="live-voice__partial"
+		>
+			<span class="live-voice__caption">{{ t('liveNotes.localResult') }}</span>
+			<p>{{ localText }}</p>
+		</div>
+		<div
+			v-if="localAvailable && pendingSync > 0"
+			class="live-voice__outbox"
+			role="status"
+		>
+			<p>{{ t('liveNotes.pendingSync', {count: pendingSync, size: ((offlineStatus?.pending_bytes ?? 0) / 1024).toFixed(1)}) }}</p>
+			<XButton
+				variant="secondary"
+				:aria-disabled="offlineBusy"
+				@click="offline.sync()"
+			>
+				{{ t('liveNotes.syncNow') }}
+			</XButton>
+			<XButton
+				variant="secondary"
+				@click="outboxOpen = true; offline.loadPage()"
+			>
+				{{ t('liveNotes.viewPending') }}
+			</XButton>
+			<p
+				v-if="syncErrorText"
+				role="alert"
+			>
+				{{ syncErrorText }}
+			</p>
+			<XButton
+				v-if="!clearConfirm"
+				variant="tertiary"
+				:aria-disabled="active || offlineBusy"
+				@click="!active && !offlineBusy && (clearConfirm = true)"
+			>
+				{{ t('liveNotes.clearPending') }}
+			</XButton>
+			<div
+				v-else
+				class="live-voice__clear"
+			>
+				<p>{{ t('liveNotes.clearPendingWarning') }}</p>
+				<XButton
+					:aria-disabled="active || offlineBusy"
+					@click="clearOffline"
+				>
+					{{ t('liveNotes.confirmClear') }}
+				</XButton>
+				<XButton
+					variant="tertiary"
+					@click="clearConfirm = false"
+				>
+					{{ t('misc.cancel') }}
+				</XButton>
+			</div>
+		</div>
+		<p
+			v-if="offlineFailed && nativeRecording"
+			class="live-voice__error"
+			role="alert"
+		>
+			{{ t('liveNotes.offlineActionFailed') }}
+		</p>
+		<OfflineTranscriptViewer
+			v-if="outboxOpen"
+			:page="offlinePage"
+			:busy="offlinePageBusy"
+			:failed="offlinePageFailed"
+			:timezone="timezone"
+			@close="outboxOpen = false"
+			@load="offline.loadPage($event)"
+		/>
 		<div
 			v-if="partial"
 			class="live-voice__partial"
@@ -219,6 +453,35 @@ watch(() => props.noteId, () => { void recorder.stop() })
 		<details class="live-voice__diagnostics">
 			<summary>{{ t('liveNotes.details') }}</summary>
 			<label class="live-voice__option"><input
+				:checked="autoAppend"
+				type="checkbox"
+				:aria-disabled="preferencesLocked"
+				@click="guardPreferenceClick"
+				@change="changePreference($event, 'live_notes_auto_append')"
+			> {{ t('liveNotes.autoAppend') }}</label>
+			<p class="live-voice__hint">
+				{{ t('liveNotes.autoAppendHint') }}
+			</p>
+			<label :for="`${inputID}-timezone`">{{ t('liveNotes.timezone') }}</label>
+			<select
+				:id="`${inputID}-timezone`"
+				:value="timezone"
+				class="input"
+				:aria-disabled="preferencesLocked"
+				@change="changeTimezone"
+			>
+				<option
+					v-for="zone in availableZones"
+					:key="zone"
+					:value="zone"
+				>
+					{{ zone }}
+				</option>
+			</select>
+			<p class="live-voice__hint">
+				{{ t('liveNotes.timezoneHint') }}
+			</p>
+			<label class="live-voice__option"><input
 				:checked="allowBackground"
 				type="checkbox"
 				:aria-disabled="preferencesLocked"
@@ -256,10 +519,18 @@ watch(() => props.noteId, () => { void recorder.stop() })
 				{{ t(screenAwake ? 'liveNotes.awakeActive' : 'liveNotes.awakeUnavailable') }}
 			</p>
 			<dl>
-				<dt>{{ t('liveNotes.model') }}</dt><dd>{{ model || chosen?.model || '—' }}</dd>
-				<dt>{{ t('liveNotes.endpoint') }}</dt><dd>{{ endpoint || chosen?.endpoint || '—' }}</dd>
+				<dt>{{ t('liveNotes.model') }}</dt><dd>{{ model || (engine === 'local' ? offlineStatus?.model : chosen?.model) || '—' }}</dd>
+				<dt>{{ t('liveNotes.endpoint') }}</dt><dd>{{ endpoint || (engine === 'local' ? t('liveNotes.onDevice') : chosen?.endpoint) || '—' }}</dd>
 				<dt>{{ t('liveNotes.upload') }}</dt><dd>{{ (sentBytes / 1024).toFixed(1) }} KiB · {{ (bytesPerSecond / 1024).toFixed(1) }} KiB/s</dd>
-				<dt>{{ t('liveNotes.buffer') }}</dt><dd>{{ bufferedSeconds.toFixed(1) }} s / 5 s</dd>
+				<dt>{{ t('liveNotes.buffer') }}</dt><dd>{{ bufferedSeconds.toFixed(1) }} s</dd>
+				<template v-if="localBuiltIn">
+					<dt>{{ t('liveNotes.localModel') }}</dt><dd>{{ offlineStatus?.model }} · {{ ((offlineStatus?.bytes ?? 0) / 1024 / 1024).toFixed(1) }} MiB</dd>
+					<dt v-if="engine === 'local'">
+						{{ t('liveNotes.inferenceTime') }}
+					</dt><dd v-if="engine === 'local'">
+						{{ inferenceMS }} ms
+					</dd>
+				</template>
 			</dl>
 			<p>{{ t('liveNotes.rotationHint') }}</p>
 		</details>
@@ -286,6 +557,24 @@ watch(() => props.noteId, () => { void recorder.stop() })
 		justify-content: space-between;
 		flex-wrap: wrap;
 		margin-block-end: .75rem;
+	}
+	&__engine {
+		display: grid;
+		gap: .4rem;
+		margin-block-end: .75rem;
+		font-size: .85rem;
+	}
+	&__outbox {
+		margin-block-start: .75rem;
+		padding: .75rem;
+		border-radius: .65rem;
+		background: var(--grey-100);
+		font-size: .8rem;
+	}
+	&__outbox :deep(.button) {
+		min-block-size: 2.75rem;
+		margin-inline-end: .5rem;
+		margin-block-start: .5rem;
 	}
 	&__title {
 		font-weight: 600;

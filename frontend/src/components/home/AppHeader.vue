@@ -130,6 +130,13 @@
 					</template>
 
 					<DropdownItem
+						v-if="!isDesktopApp()"
+						icon="user"
+						@click="accountMenu?.closeMenu({focusTrigger: true}); accountSwitcher?.request()"
+					>
+						{{ t('accountSwitch.title') }}
+					</DropdownItem>
+					<DropdownItem
 						icon="cog"
 						:to="{ name: 'user.settings' }"
 					>
@@ -190,6 +197,7 @@
 			</div>
 		</Teleport>
 		<LogoutDialog ref="logoutDialog" />
+		<AccountSwitcher ref="accountSwitcher" />
 	</header>
 </template>
 
@@ -198,6 +206,7 @@ import { computed, ref, watch } from 'vue'
 import {diagnostics, openDiagnostics} from '@/helpers/diagnostics'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import {isDesktopApp} from '@/helpers/desktopAuth'
 
 import { PERMISSIONS as Permissions } from '@/constants/permissions'
 import { PRO_FEATURE } from '@/constants/proFeatures'
@@ -214,6 +223,7 @@ import MenuButton from '@/components/home/MenuButton.vue'
 import OpenQuickActions from '@/components/misc/OpenQuickActions.vue'
 import UserAvatar from '@/components/misc/UserAvatar.vue'
 import LogoutDialog from '@/components/home/LogoutDialog.vue'
+import AccountSwitcher from '@/components/home/AccountSwitcher.vue'
 import ProjectAccessBadge from '@/components/sharing/ProjectAccessBadge.vue'
 
 import { getProjectTitle } from '@/helpers/getProjectTitle'
@@ -280,6 +290,7 @@ const accessLinkLabel = computed(() => {
 const compactAccessBadge = useMediaQuery('(max-width: 1023px)')
 
 const logoutDialog = ref<InstanceType<typeof LogoutDialog> | null>(null)
+const accountSwitcher = ref<InstanceType<typeof AccountSwitcher> | null>(null)
 
 // The account menu lives in the header, which stays mounted: it closes once one of its links opened a page.
 const accountMenu = ref<InstanceType<typeof Dropdown> | null>(null)

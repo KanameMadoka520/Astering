@@ -78,6 +78,7 @@ func asterNotesOperation(op huma.Operation) huma.Operation {
 
 func RegisterAsterNotesRoutes(api huma.API) {
 	tags := []string{"notes"}
+	Register(api, asterNotesOperation(huma.Operation{OperationID: "note-segments-import", Method: http.MethodPost, Path: "/notes/{id}/segments/import", Tags: tags, Summary: "Import one idempotent captured transcript sentence", Description: "Persists immutable raw text and its true capture clock. Optional auto-append is atomic and never overwrites another saved article revision. Returns committed counters; retries must preserve the original UUID and capture-time preferences."}), asterNoteSegmentsImport)
 	Register(api, asterNotesOperation(huma.Operation{
 		OperationID: "notes-list",
 		Method:      http.MethodGet,
@@ -138,6 +139,41 @@ func RegisterAsterNotesRoutes(api huma.API) {
 		Description:  "Persists only final text and elapsed recording offsets, never audio. The active owner is rechecked under the write lock. An identical note/client_id/text/time retry returns the original segment; reuse with different content returns 409 note_segment_conflict. Appending does not overwrite editable Markdown or advance its revision.",
 		MaxBodyBytes: 256 * 1024,
 	}), asterNoteSegmentsAppend)
+}
+
+type asterNoteImportReceipt struct {
+	Segment *models.AsterNoteSegment         `json:"segment" doc:"Committed immutable final segment; identical retries return the original."`
+	Stats   *models.AsterNoteTranscriptState `json:"stats" doc:"Committed note counters and current article revision."`
+}
+
+func asterNoteSegmentsImport(ctx context.Context, in *struct {
+	ID   int64 `path:"id" minimum:"1"`
+	Body models.AsterNoteSegment
+}) (*struct {
+	CacheControl string `header:"Cache-Control"`
+	Body         asterNoteImportReceipt
+}, error) {
+	a, err := asterNotesAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+	s := db.NewSession()
+	defer s.Close()
+	db.SetSessionContext(ctx, s)
+	if err := models.ImportAsterNoteSegment(s, a, in.ID, &in.Body); err != nil {
+		return nil, translateDomainError(err)
+	}
+	stats, err := models.ReadAsterNoteTranscriptState(s, a, in.ID)
+	if err != nil {
+		return nil, translateDomainError(err)
+	}
+	if err := s.Commit(); err != nil {
+		return nil, translateDomainError(err)
+	}
+	return &struct {
+		CacheControl string `header:"Cache-Control"`
+		Body         asterNoteImportReceipt
+	}{CacheControl: "no-store", Body: asterNoteImportReceipt{Segment: &in.Body, Stats: stats}}, nil
 }
 
 func asterNotesList(ctx context.Context, in *struct {

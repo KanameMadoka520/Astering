@@ -60,6 +60,13 @@ export type NoteSegment = {
 	start_ms: number
 	end_ms: number
 	timing_estimated: boolean
+	recording_id?: string
+	recording_started_at?: string | null
+	recording_offset_ms?: number
+	captured_at?: string | null
+	timezone?: string
+	append_to_article?: boolean
+	article_appended?: boolean
 	created?: string
 }
 export type NoteSegmentPage = {
@@ -112,6 +119,13 @@ function normalizeSegment(raw: LiveNoteReceipt['segment'], noteId: number): Note
 		start_ms: raw.start_ms ?? 0,
 		end_ms: raw.end_ms ?? 0,
 		timing_estimated: raw.timing_estimated ?? false,
+		recording_id: raw.recording_id,
+		recording_started_at: raw.recording_started_at,
+		recording_offset_ms: raw.recording_offset_ms,
+		captured_at: raw.captured_at,
+		timezone: raw.timezone,
+		append_to_article: raw.append_to_article,
+		article_appended: raw.article_appended,
 		created: raw.created,
 	}
 }
@@ -395,6 +409,12 @@ export function receiveNoteTranscript(client: QueryClient, id: number, receipt: 
 		else request.receipts.set(id, request.kind.afterId < 0 ? [...receipts.slice(-99), receipt] : [...receipts.slice(0, 99), receipt])
 	}
 	client.setQueryData<Note | null>(noteKeys.detail(id), current => current ? transcriptMetadata(current, stats) : current)
+	// An auto-append changes actual article text. Never attach its new revision to
+	// the old cached text: the editor's draft fence compares the fetched article.
+	const article = client.getQueryData<Note | null>(noteKeys.detail(id))
+	if (stats.article_revision && article && stats.article_revision > article.revision) {
+		void client.invalidateQueries({queryKey: noteKeys.detail(id), exact: true})
+	}
 	if (!client.getQueryData(noteKeys.detail(id))) void client.invalidateQueries({queryKey: noteKeys.detail(id), exact: true, refetchType: 'none'})
 	client.setQueriesData<Paginated<NoteSummary>>({queryKey: noteKeys.lists}, current => current ? {
 		...current,

@@ -7,6 +7,9 @@ const sdk = vi.hoisted(() => ({noteSegmentsList: vi.fn()}))
 const navigation = vi.hoisted(() => ({push: vi.fn()}))
 vi.mock('@/client/generated', () => sdk)
 vi.mock('@/message', () => ({error: vi.fn(), success: vi.fn()}))
+vi.mock('@/composables/useLiveNotePreferences', () => ({
+	useLiveNotePreferences: () => ({timezone: {value: 'UTC'}}),
+}))
 vi.mock('@/helpers/auth', () => ({
 	getToken: () => null,
 	getTokenIdentity: () => ({id: 1, type: 1}),
@@ -19,7 +22,10 @@ vi.mock('vue-router', async original => ({
 }))
 vi.mock('vue-i18n', async original => ({
 	...await original<typeof import('vue-i18n')>(),
-	useI18n: () => ({t: (key: string) => key}),
+	useI18n: () => ({
+		t: (key: string) => key,
+		locale: {value: 'en'},
+	}),
 }))
 
 import {noteKeys, receiveNoteTranscript} from '@/client/queries/notes'

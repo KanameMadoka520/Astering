@@ -25,6 +25,7 @@ frontend/test-results/
 frontend/playwright-report/
 .env
 /worklogs/
+/android/.offline/
 /android/.gradle/
 /android/build/
 /android/app/build/

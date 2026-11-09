@@ -9,6 +9,7 @@ import org.json.JSONObject;
 
 public final class AsteringApplication extends Application {
     NativeSession session;
+    OfflineTranscripts offline;
     private WeakReference<MainActivity> activity = new WeakReference<>(null);
     volatile RecordingService recorder;
     volatile String recordingGeneration = "";
@@ -20,6 +21,13 @@ public final class AsteringApplication extends Application {
     @Override public void onCreate() {
         super.onCreate();
         session = new NativeSession(this);
+        offline = new OfflineTranscripts(this);
+        android.net.ConnectivityManager connectivity = getSystemService(android.net.ConnectivityManager.class);
+        connectivity.registerDefaultNetworkCallback(new android.net.ConnectivityManager.NetworkCallback() {
+            @Override public void onAvailable(android.net.Network network) {
+                main.post(() -> { session.ensureVerified(); offline.kick(true); });
+            }
+        });
     }
 
     void attach(MainActivity value) {
@@ -36,6 +44,11 @@ public final class AsteringApplication extends Application {
         approvedRecording = null;
         recordingGeneration = "";
         lastSnapshot = new JSONObject();
+    }
+
+    void emit(JSONObject event) {
+        MainActivity current = activity.get();
+        if (current != null) current.emit(event);
     }
 
     void emitToken(String token) {

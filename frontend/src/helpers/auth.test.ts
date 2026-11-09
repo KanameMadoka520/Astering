@@ -4,6 +4,9 @@ import {
 	getAuthSessionEpoch,
 	getToken,
 	getTokenIdentity,
+ getTokenSessionID,
+ onAuthIdentityChanged,
+ saveToken,
 	getTokenType,
 	isTokenExpired,
 	MAX_RETRY_AFTER_MS,
@@ -557,4 +560,71 @@ describe('refreshToken in desktop mode', () => {
 		expect(localStorage.getItem('token')).toBeNull()
 		expect(localStorage.getItem('desktopOAuthRefreshToken')).toBeNull()
 	})
+})
+
+
+describe('shared device account identity', () => {
+ function accountToken(id: number, sid: string, type = 1, extra = '') {
+  return `header.${btoa(JSON.stringify({id, sid, type, exp: Date.now() / 1000 + 3600, extra}))}.signature`
+ }
+ beforeEach(() => { removeToken(); localStorage.clear(); post.mockClear() })
+ it('fences an account change at the request boundary before the storage event arrives', () => {
+  saveToken(accountToken(1, 'one'), true)
+  const epoch = getAuthSessionEpoch()
+  const changed = vi.fn()
+  const dispose = onAuthIdentityChanged(changed)
+  const next = accountToken(2, 'two')
+  localStorage.setItem('token', next)
+  expect(getToken()).toBe(next)
+  expect(getTokenSessionID(getToken())).toBe('two')
+  expect(getAuthSessionEpoch()).toBe(epoch + 1)
+  expect(changed).toHaveBeenCalledOnce()
+  // The queued event must not reset the new account a second time.
+  window.dispatchEvent(new StorageEvent('storage', {key: 'token', oldValue: accountToken(1, 'one'), newValue: next, storageArea: localStorage}))
+  expect(changed).toHaveBeenCalledOnce()
+  dispose()
+ })
+ it('notifies a logged-out tab when a request sees a replacement before its storage event', () => {
+  const previous = accountToken(1, 'one')
+  saveToken(previous, true)
+  localStorage.removeItem('token')
+  window.dispatchEvent(new StorageEvent('storage', {key: 'token', oldValue: previous, newValue: null, storageArea: localStorage}))
+  expect(getToken()).toBeNull()
+  const epoch = getAuthSessionEpoch()
+  const changed = vi.fn(() => expect(getTokenSessionID(getToken())).toBe('two'))
+  const dispose = onAuthIdentityChanged(changed)
+  const next = accountToken(2, 'two')
+  localStorage.setItem('token', next)
+  expect(getToken()).toBe(next)
+  expect(getAuthSessionEpoch()).toBe(epoch + 1)
+  expect(changed).toHaveBeenCalledOnce()
+  window.dispatchEvent(new StorageEvent('storage', {key: 'token', oldValue: null, newValue: next, storageArea: localStorage}))
+  expect(changed).toHaveBeenCalledOnce()
+  dispose()
+ })
+ it('retains the epoch for an ordinary same-SID token rotation', () => {
+  saveToken(accountToken(1, 'one'), true)
+  const epoch = getAuthSessionEpoch()
+  const next = accountToken(1, 'one', 1, 'rotated')
+  localStorage.setItem('token', next)
+  expect(getToken()).toBe(next)
+  expect(getAuthSessionEpoch()).toBe(epoch)
+ })
+ it('keeps tab-local link shares independent of browser account switching', () => {
+  const share = accountToken(9, '', 2)
+  saveToken(share, false)
+  localStorage.setItem('token', accountToken(2, 'two'))
+  window.dispatchEvent(new StorageEvent('storage', {key: 'token', newValue: localStorage.getItem('token'), storageArea: localStorage}))
+  expect(getToken()).toBe(share)
+ })
+ it('cannot restore the previous account from a delayed refresh after a switch', async () => {
+  saveToken(accountToken(1, 'one'), true)
+  const pending = refreshToken(true)
+  const next = accountToken(2, 'two')
+  localStorage.setItem('token', next)
+  expect(getToken()).toBe(next)
+  resolvePost?.({data: {token: accountToken(1, 'one', 1, 'late')}})
+  await pending
+  expect(getToken()).toBe(next)
+ })
 })

@@ -83,6 +83,9 @@ export function normalizeUserSettings(data: UserGeneralSettings = {}): UserSetti
 			...frontend,
 			live_notes_allow_background: frontend.live_notes_allow_background === true,
 			live_notes_keep_awake: frontend.live_notes_keep_awake === true,
+			live_notes_auto_append: frontend.live_notes_auto_append === true,
+			live_notes_engine: frontend.live_notes_engine === 'local' ? 'local' : 'online',
+			live_notes_timezone: typeof frontend.live_notes_timezone === 'string' ? frontend.live_notes_timezone : '',
 			quick_add_default_reminders: Array.isArray(frontend.quick_add_default_reminders)
 				? frontend.quick_add_default_reminders.map(reminder => ({...reminder}))
 				: [],

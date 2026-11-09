@@ -17,4 +17,5 @@
     <string name="state_recording">Recording</string>
     <string name="state_rotating">Saving this section</string>
     <string name="state_stopping">Saving final text</string>
+    <string name="recording_local">Local recognition runs on this phone with SenseVoiceSmall. Audio is never saved. Recognized text is encrypted on this device until synced to your current account. At most 2,000 passages or 8 MiB are kept; recording pauses if full. Background recording follows your selected option; use the notification to stop.</string>
 </resources>

@@ -324,6 +324,10 @@ var unauthenticatedAPIPaths = map[string]bool{
 	"/api/v2/oauth/token":                    true,
 	"/api/v2/login":                          true,
 	auth.RefreshTokenPathV2:                  true,
+	"/api/v2/user/account-sessions":          true,
+	"/api/v2/user/account-sessions/switch":   true,
+	"/api/v2/user/account-sessions/forget":   true,
+	"/api/v2/user/account-sessions/clear":    true,
 	"/api/v2/auth/openid/:provider/callback": true,
 
 	// Testing endpoints authenticate with the testing token via a custom
@@ -357,7 +361,7 @@ func collectRoutesForAPITokens(e *echo.Echo) {
 
 		// Saved AI credentials and conversations belong to human sessions only.
 		// Keep these custom state routes out of API-token scope discovery.
-		if strings.HasPrefix(route.Path, "/api/v2/ai/") || route.Path == "/api/v2/notes" || strings.HasPrefix(route.Path, "/api/v2/notes/") {
+		if strings.HasPrefix(route.Path, "/api/v2/user/account-sessions") || strings.HasPrefix(route.Path, "/api/v2/ai/") || route.Path == "/api/v2/notes" || strings.HasPrefix(route.Path, "/api/v2/notes/") {
 			continue
 		}
 
@@ -442,6 +446,9 @@ var v2CredentialPaths = unauthenticatedPathSet(
 	"/api/v2/login",
 	"/api/v2/auth/openid/:provider/callback",
 	"/api/v2/shares/:share/auth",
+	"/api/v2/user/account-sessions/switch",
+	"/api/v2/user/account-sessions/forget",
+	"/api/v2/user/account-sessions/clear",
 )
 
 var v2SessionRenewalPaths = unauthenticatedPathSet(
@@ -470,6 +477,9 @@ func gateV2AdminRoutes() echo.MiddlewareFunc {
 // resource handlers' stack; unauthenticatedAPIPaths keeps them public.
 func registerAPIRoutesV2(e *echo.Echo, a *echo.Group, noAuthRateLimit, refreshRateLimit echo.MiddlewareFunc) {
 	a.Use(rejectFormBodies())
+	a.Use(pathScoped(func(p string) bool {
+		return p == "/api/v2/user/account-sessions" || p == "/api/v2/user/account-sessions/remember"
+	}, noAuthRateLimit))
 	a.Use(noStoreCacheControl())
 	a.Use(SetupTokenMiddleware())
 	a.Use(pathScoped(v2SessionRenewalPaths.has, refreshRateLimit))
@@ -514,6 +524,9 @@ func registerAPIRoutes(a *echo.Group, noAuthRateLimit, refreshRateLimit echo.Mid
 	// until a hard refresh).
 	a.Use(noStoreCacheControl())
 	a.Use(rejectFormBodies())
+	a.Use(pathScoped(func(p string) bool {
+		return p == "/api/v2/user/account-sessions" || p == "/api/v2/user/account-sessions/remember"
+	}, noAuthRateLimit))
 
 	// This is the group with no auth
 	// It is its own group to be able to rate limit this based on different heuristics

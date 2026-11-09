@@ -13,6 +13,7 @@ import {getHumanSize} from '@/helpers/getHumanSize'
 import {useAuthStore} from '@/stores/auth'
 import NoteEditor from '@/components/notes/NoteEditor.vue'
 import NoteTranscripts from '@/components/notes/NoteTranscripts.vue'
+import NoteOrganization from '@/components/notes/NoteOrganization.vue'
 import XButton from '@/components/input/Button.vue'
 import LoadError from '@/components/misc/state/LoadError.vue'
 import Modal from '@/components/misc/Modal.vue'
@@ -416,6 +417,12 @@ async function closeDeletedDraft() {
 						>
 							{{ t('notes.transcript.added') }}
 						</p>
+						<NoteOrganization
+							v-if="!deletedDraft"
+							:key="`organization:${sessionKey}:${editorNote.id}`"
+							:note="editorNote"
+							:article-dirty="editor?.hasUnsavedDraft() ?? false"
+						/>
 						<div
 							id="note-article-panel"
 							class="notes-workspace__article"

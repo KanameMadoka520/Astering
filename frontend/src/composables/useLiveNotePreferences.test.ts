@@ -107,6 +107,31 @@ describe('account-owned recording preferences', () => {
 		expect(microphone).not.toHaveBeenCalled()
 	})
 
+	it('persists capture mode, timestamp zone and automatic article append independently', async () => {
+		const h = harness().preferences
+		await h.setPreference('live_notes_engine', 'local')
+		await h.setPreference('live_notes_timezone', 'Asia/Shanghai')
+		await h.setPreference('live_notes_auto_append', true)
+		expect(h.engine.value).toBe('local')
+		expect(h.timezone.value).toBe('Asia/Shanghai')
+		expect(h.autoAppend.value).toBe(true)
+		expect(server.settings?.frontend_settings).toMatchObject({
+			sidebar_width: 367,
+			live_notes_engine: 'local',
+			live_notes_timezone: 'Asia/Shanghai',
+			live_notes_auto_append: true,
+		})
+		expect(sdk.patchUserSettingsRead.mock.calls.map(([input]) => input.body)).toEqual([
+			{frontend_settings: {live_notes_engine: 'local'}},
+			{frontend_settings: {live_notes_timezone: 'Asia/Shanghai'}},
+			{frontend_settings: {live_notes_auto_append: true}},
+		])
+		await h.setPreference('live_notes_timezone', 'not/a-timezone')
+		expect(h.timezone.value).toBe('Asia/Shanghai')
+		expect(sdk.patchUserSettingsRead).toHaveBeenCalledTimes(3)
+		expect(microphone).not.toHaveBeenCalled()
+	})
+
 	it('keeps a failed choice through stale account reads and retries only edited keys', async () => {
 		const h = harness().preferences
 		sdk.patchUserSettingsRead.mockRejectedValueOnce(new Error('offline'))

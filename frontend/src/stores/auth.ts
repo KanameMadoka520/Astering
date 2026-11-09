@@ -1,6 +1,6 @@
 import {CancelledError, useQuery} from '@tanstack/vue-query'
 import {currentUserQuery, normalizeUserSettings, refreshCurrentUser, type UserInfoResponse} from '@/client/queries/account'
-import {computed, readonly, ref, watch} from 'vue'
+import {computed, onScopeDispose, readonly, ref, watch} from 'vue'
 import {acceptHMRUpdate, defineStore} from 'pinia'
 
 import {
@@ -20,6 +20,9 @@ import {registerViaInviteLink} from '@/client/inviteLink'
 import {parseValidationErrors} from '@/helpers/parseValidationErrors'
 import {
 	getAuthSessionEpoch,
+	isTokenExpired,
+	onAuthIdentityChanged,
+	withAuthSessionLock,
 	getToken,
 	refreshToken,
 	RefreshTokenError,
@@ -51,11 +54,14 @@ import type {IProvider} from '@/types/IProvider'
 import {queryClient} from '@/client/queryClient'
 import {
 	captureClientRequestContext,
+	assertClientRequestContext,
 	isClientRequestContextCurrent,
 	isRequestContextAbort,
 	type ClientRequestContext,
 } from '@/client/requestContext'
 import {clearStorageKeepingScopedDrafts} from '@/helpers/localDrafts'
+import {clearDeviceAccounts, deviceAccountKeys, forgetDeviceAccount, logoutCurrentDeviceAccount, rememberCurrentDeviceAccount, selectDeviceAccount} from '@/client/queries/accountSessions'
+import {error as showError} from '@/message'
 
 const ACCOUNT_GONE_ERROR_CODES: readonly number[] = [
 	ERROR_CODE_USER_DOES_NOT_EXIST,
@@ -219,6 +225,7 @@ export const useAuthStore = defineStore('auth', () => {
 		}
 		const usernameChanged = session.value?.username !== claims?.username
 		session.value = claims
+		currentSessionId.value = claims?.sid ?? null
 		if (identityChanged) useWebSocket().closeStaleConnection()
 		if (usernameChanged && claims) invalidateAvatar()
 		return identityChanged
@@ -313,25 +320,36 @@ export const useAuthStore = defineStore('auth', () => {
 		password?: string,
 		totpPasscode?: string,
 		longToken?: boolean,
+ rememberAccount?: boolean,
 	}) {
 		setIsLoading(true)
 
 		// Delete an eventually preexisting old token
 		removeToken()
 
+		const loginContext = captureClientRequestContext()
 		try {
-			const response = await authLogin({
-				body: {
-					username: credentials.username,
-					password: credentials.password,
-					totp_passcode: credentials.totpPasscode,
-					long_token: credentials.longToken,
-				},
+			const response = await withAuthSessionLock(async () => {
+				assertClientRequestContext(loginContext)
+				const response = await authLogin({
+					body: {
+						username: credentials.username,
+						password: credentials.password,
+						totp_passcode: credentials.totpPasscode,
+						long_token: credentials.longToken,
+					},
+				})
+				assertClientRequestContext(loginContext)
+				adoptSession(response.data.token, true)
+				return response
 			})
-			adoptSession(response.data.token, true)
+			if (!response.data.token) throw new Error('Authentication response has no token')
 
 			// Tell others the user is authenticated
 			await checkAuth()
+			if (credentials.rememberAccount) {
+				try { await rememberAccount() } catch { showError(i18n.global.t('accountSwitch.rememberFailed')) }
+			}
 		} catch (e) {
 			if (
 				(e as VikunjaErrorModel)?.code === ERROR_CODE_TOTP_REQUIRED &&
@@ -677,6 +695,127 @@ export const useAuthStore = defineStore('auth', () => {
 		}
 	}
 
+	// Account-scoped writing stays in its own namespace; its mounted view and
+	// all old queries/subscriptions lose their identity before a cookie changes.
+	function releaseLocalAccount() {
+		useWebSocket().disconnect()
+		cancelRefreshRetry()
+		removeToken()
+		setAuthenticated(false)
+		setSession(null)
+		queryClient.clear()
+		lastUserInfoRefresh.value = null
+		clearStorageKeepingScopedDrafts()
+	}
+
+	async function rememberAccount() {
+		if (isTokenExpired(getToken(), 10)) await refreshUserToken(retryCheckAuth)
+		const owner = captureClientRequestContext()
+		return withAuthSessionLock(async () => {
+			assertClientRequestContext(owner)
+			const token = getToken()
+			if (!token) throw new Error('Authentication required')
+			const data = await rememberCurrentDeviceAccount(token)
+			assertClientRequestContext(owner)
+			queryClient.setQueryData(deviceAccountKeys.list(), data)
+			return data
+		})
+	}
+
+	async function addAccount() {
+		const owner = captureClientRequestContext()
+		await rememberAccount()
+		assertClientRequestContext(owner)
+		releaseLocalAccount()
+		sessionStorage.setItem(JUST_LOGGED_OUT_KEY, 'true')
+		await router.push({name: 'user.login', query: {addAccount: '1'}})
+	}
+
+	async function switchAccount(sessionId: string) {
+		if (isLoading.value) return
+		setIsLoading(true)
+		releaseLocalAccount()
+		const epoch = getAuthSessionEpoch()
+		const api = window.API_URL
+		await router.replace({name: 'user.login', query: {switchingAccount: '1'}})
+		try {
+			await withAuthSessionLock(async () => {
+				if (epoch !== getAuthSessionEpoch() || api !== window.API_URL) return
+				const data = await selectDeviceAccount(sessionId)
+				if (epoch !== getAuthSessionEpoch() || api !== window.API_URL) return
+				adoptSession(data.token, true)
+			})
+			if (epoch !== getAuthSessionEpoch() || api !== window.API_URL) return
+			await checkAuth()
+			if (authenticated.value) await router.replace({name: 'home'})
+		} catch (cause) {
+			if (epoch === getAuthSessionEpoch()) {
+				await router.replace({name: 'user.login', query: {accountError: '1'}})
+			}
+			throw cause
+		} finally {
+			setIsLoading(false)
+		}
+	}
+
+	async function removeRememberedAccount(sessionId: string) {
+		const owner = captureClientRequestContext()
+		const current = session.value?.sid === sessionId
+		await withAuthSessionLock(async () => {
+			assertClientRequestContext(owner)
+			await forgetDeviceAccount(sessionId)
+		})
+		assertClientRequestContext(owner)
+		if (current) {
+			releaseLocalAccount()
+			await router.replace({name: 'user.login'})
+		} else {
+			await queryClient.invalidateQueries({queryKey: deviceAccountKeys.all})
+		}
+	}
+
+	async function logoutAllAccounts() {
+		// Include an active account even when it wasn't previously remembered.
+		if (authUser.value && isTokenExpired(getToken(), 10)) {
+			try { await refreshUserToken(retryCheckAuth) } catch (cause) {
+				if (refreshFailure(cause)?.kind !== 'rejected') throw cause
+			}
+		}
+		const owner = captureClientRequestContext()
+		await withAuthSessionLock(async () => {
+			assertClientRequestContext(owner)
+			const token = getToken()
+			if (authUser.value && token) {
+				try { await logoutCurrentDeviceAccount(token) } catch (cause) {
+					// A prior attempt may have revoked this SID before the device-clear
+					// request lost its connection. Retrying must still clear the other SIDs.
+					const status = (cause as {status?: number})?.status
+					if (status !== 401 && status !== 403) throw cause
+				}
+			}
+			await clearDeviceAccounts()
+		})
+		assertClientRequestContext(owner)
+		releaseLocalAccount()
+		sessionStorage.setItem(JUST_LOGGED_OUT_KEY, 'true')
+		await router.replace({name: 'user.login'})
+	}
+
+	let crossTabChange = 0
+	onScopeDispose(onAuthIdentityChanged(() => {
+		const change = ++crossTabChange
+		useWebSocket().disconnect()
+		cancelRefreshRetry()
+		setAuthenticated(false)
+		setSession(null)
+		queryClient.clear()
+		lastUserInfoRefresh.value = null
+		void checkAuth().then(async () => {
+			if (change !== crossTabChange) return
+			await router.replace({name: authenticated.value ? 'home' : 'user.login'})
+		}).catch(() => {})
+	}))
+
 	function logout() {
 		return logoutCurrentScope()
 	}
@@ -772,6 +911,11 @@ export const useAuthStore = defineStore('auth', () => {
 		verifyEmail,
 		renewToken,
 		logout,
+		rememberAccount,
+		addAccount,
+		switchAccount,
+		removeRememberedAccount,
+		logoutAllAccounts,
 	}
 })
 

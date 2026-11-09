@@ -13,7 +13,7 @@
 
 我们赋予 **Astering**「像星星闪烁、使之星光熠熠」的意象：一次行动、一段研究、一条值得记住的原则，逐渐连接成自己的星群。**Aster的AI集成工业系统**（Aster’s AI-integrated industrial system）是项目的副标题；工具与积累服务于更自由的创造。
 
-- 当前版本：`v2.7.1-aster.64`
+- 当前版本：`v2.7.1-aster.65`
 - 源码与问题反馈：[KanameMadoka520/Astering](https://github.com/KanameMadoka520/Astering)
 - 本机编译的发布产物：[GitHub Releases](https://github.com/KanameMadoka520/Astering/releases)
 - [品牌与升级兼容](docs/brand-migration.md) · [品牌素材](docs/brand-identity.md) · [详细功能与演进记录](docs/product-reference.md)
@@ -31,7 +31,7 @@ Astering 把不同用途保留在各自合适的空间里，关联真实任务�
 | 推进项目 | 项目的列表、看板、表格与甘特图 | 任务、栏目、关系、附件和公告；共享范围沿用项目权限。 |
 | 安排时间 | 独立日历 | 月、周、日与议程查看真实任务日期；精确时段、独立截止与全天自然日分别表达，不猜测午夜等于全天。 |
 | 形成习惯 | 周期任务 | 同一任务保留按日、周、月的进度历史，可设换日时间、额度与单位，不为漏掉的周期自动补打卡。 |
-| 留住随口说的想法 | 笔记 → 原始转录 | 实时语音逐段保存文字，原始音频不留存；选段加入可编辑文章，或交给阿罗娜整理和规划任务。 |
+| 留住随口说的想法 | 笔记 → 原始转录 | 在线实时识别支持有界重连，安卓另可选内置本地识别；保留真实时间与时区，按需自动入文。长文可分片交给阿罗娜整理，先预览再采用，原始音频不留存。 |
 | 回看过去 | 项目回顾 | 按真实日期汇总项目时间线，另看完成与归档记录；没有日期的数据不会被编成工作时段。 |
 | 比较与恢复内容 | 项目内容历史 | 建立命名保存点，先预览差异再恢复；自动保存恢复前状态，保留后来的评论、打卡事实和当前成员权限。 |
 | 留住原则与想法 | 星图 | 空间、图文条目、主题和修订，支持归档与回收站；内容不自动灌入每次模型请求。 |
@@ -58,9 +58,13 @@ Astering 把不同用途保留在各自合适的空间里，关联真实任务�
 
 会话支持管理、置顶、分支、压缩和导出；不同会话可以独立执行或压缩，停止一个会话不会取消其他会话，同一会话保留必要互斥，详见[会话并发](docs/agent-concurrency.md)。图片可来自上传或网盘；阿罗娜可按需查看当前会话附件清单，以真实图片 ID 复用到有权编辑的任务描述中，插入位置沿用描述版本和审核保护。插图成功后，任务附件独立于会话存在；文件详情与删除确认会说明原件归属、使用位置和引用保护，详见[附件归属与保留](docs/attachment-retention.md)。语音输入支持点按开始与结束，触屏长按作为补充；识别结果先进入草稿，不自动发送为任务指令。外部 MCP 按连接和本轮选择使用，不在页面打开时遍历全部远端工具。
 
+笔记另提供不调用工具的「阿罗娜整理」：选择已保存文章或原始转录，按实际上下文预算分片和逐层合并，后台继续，失败后从检查点重试；预览后显式追加或替换正文，原始记录保留，详见[长文整理](docs/note-organization.md)。
+
 详见[阿罗娜集成](docs/arona-integration.md)、[工具模块权限](docs/agent-tool-modules.md)、[运行中补充要求](docs/arona-steering.md)、[外部 MCP 与聊天插图](docs/external-mcp-and-chat-images.md)及[专用语音协议](docs/speech-and-routines-v41.md)。
 
 ## 多账户与运行用量
+
+同一浏览器或 APK 可记住最多五个已登录账号，在账户菜单选择「切换账号」添加、切换、移除或全部退出；不保存密码，跨标签页同步身份，切号释放原麦克风和私人界面，原账号的服务端助手工作不受影响。记住账号仅适合本人可信设备，详见[设备账号切换](docs/account-switching.md)。
 
 个人模型设置、阿罗娜会话、MCP 连接和个人网盘按账户隔离。项目通过显式的用户或团队共享协作，阿罗娜还受本轮工具模块、读写方式、资源权限与审核约束；实例管理员身份不会让她读取或修改未共享项目。这里是同一实例内的多账户协作，并非独立数据库的组织租户，详见[账户隔离与用量](docs/multi-user-isolation.md)。
 
@@ -72,7 +76,7 @@ Astering 把不同用途保留在各自合适的空间里，关联真实任务�
 
 提供签名的安卓 APK、源码包、Git bundle、Linux amd64 二进制、Docker 镜像包和 SHA256 校验文件。检查、测试与编译在维护者本机完成，再手工发布；本仓库不使用 GitHub Actions。
 
-安卓手机可从对应 [Release](https://github.com/KanameMadoka520/Astering/releases) 下载 APK，支持 Android 8.0 及以上。客户端连接本站，登录自己的账户；页面功能随网站发布更新，原生能力升级则重新安装新版 APK。实时语音使用原生麦克风前台服务，可选择离开页面后继续录音，并从系统通知停止；不会自动开机录音，也不在设备保存原始音频。手机省电策略仍可能中断服务。安装、签名校验、权限与具体限制见[安卓客户端](docs/android-client.md)。
+安卓手机可从对应 [Release](https://github.com/KanameMadoka520/Astering/releases) 下载 APK，支持 Android 8.0 及以上的 ARM64 设备。客户端连接本站，登录自己的账户；页面功能随网站发布更新，原生能力升级则重新安装新版 APK。实时语音使用原生麦克风前台服务，可选择离开页面后继续录音，并从系统通知停止；不会自动开机录音，也不在设备保存原始音频。手机省电策略仍可能中断服务。新版 APK 打包 SenseVoiceSmall int8，本地模型、词表与 VAD 合计约 229 MiB；已验证登录后可断网识别，待同步文字按账户加密保存并联网重试，原始录音不落盘。首次完全断网启动仍受页面加载与身份验证限制。模型来源、许可证及可复现实测见[本地语音识别](docs/offline-asr.md)，安装、签名校验、权限与具体限制见[安卓客户端](docs/android-client.md)。
 
 从源码构建：
 
@@ -80,15 +84,15 @@ Astering 把不同用途保留在各自合适的空间里，关联真实任务�
 git clone https://github.com/KanameMadoka520/Astering.git
 cd Astering
 docker build -f Dockerfile.aster \
-  --build-arg RELEASE_VERSION=v2.7.1-aster.64 \
+  --build-arg RELEASE_VERSION=v2.7.1-aster.65 \
   --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
-  -t astering:v2.7.1-aster.64 .
+  -t astering:v2.7.1-aster.65 .
 ```
 
 或下载对应 Release，先检查 `sha256sum -c SHA256SUMS`，再导入镜像包：
 
 ```sh
-docker load -i astering-v2.7.1-aster.64.docker.tar.gz
+docker load -i astering-v2.7.1-aster.65.docker.tar.gz
 ```
 
 以下是**新安装**的最小 SQLite 示例；生产也可配置 PostgreSQL。现有部署不要用新建的空目录替换原数据卷。
@@ -104,7 +108,7 @@ docker run -d --name Astering --restart unless-stopped \
   -e ASTERING_SERVICE_SECRET=替换为随机且持久保存的长密钥 \
   -e ASTERING_SERVICE_ENABLEREGISTRATION=false \
   -e ASTERING_SERVICE_TIMEZONE=Asia/Shanghai \
-  astering:v2.7.1-aster.64
+  astering:v2.7.1-aster.65
 ```
 
 在反向代理提供 HTTPS，将 `PUBLICURL` 改为自己的实际域名。创建首个账户前可查看 CLI 参数：
@@ -119,7 +123,7 @@ docker exec -it Astering /app/astering/astering user create --help
 
 ## 从旧版本升级
 
-`aster.64` 增加安卓客户端及原生长录音通道；录音的后台延续与屏幕常亮选择现在按账户保存，刷新后恢复，始终需要手动开始录音。现有浏览器仍按其系统能力工作，不因保存偏好而获得锁屏采音权限。详见[安卓客户端](docs/android-client.md)与[实时语音笔记](docs/voice-notes.md)。
+`aster.65` 增加安卓客户端及原生长录音通道；录音的后台延续与屏幕常亮选择现在按账户保存，刷新后恢复，始终需要手动开始录音。现有浏览器仍按其系统能力工作，不因保存偏好而获得锁屏采音权限。详见[安卓客户端](docs/android-client.md)与[实时语音笔记](docs/voice-notes.md)。
 
 `aster.63` 将个人笔记接入阿罗娜的可选工具模块，默认关闭，可设只读或读写，按需发现并审核写入。支持分页读取、创建、编辑及受独立许可与版本校验保护的删除；从转录带入聊天的草稿不会自动开启权限。使用方式见[工具模块范围](docs/agent-tool-modules.md)。
 

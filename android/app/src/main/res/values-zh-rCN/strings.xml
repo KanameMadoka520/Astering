@@ -17,4 +17,5 @@
     <string name="state_recording">正在录音</string>
     <string name="state_rotating">正在保存这一段</string>
     <string name="state_stopping">正在保存最终文本</string>
+    <string name="recording_local">使用手机内置 SenseVoiceSmall 离线识别，原始录音不会保存。识别文字会加密暂存在本机，联网后同步到当前账户的笔记；最多保留 2,000 段或 8 MiB，达到上限会暂停。是否后台录音遵循本次选择，可从通知停止。</string>
 </resources>

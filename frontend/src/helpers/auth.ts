@@ -9,6 +9,49 @@ import {MILLISECONDS_A_MINUTE, MILLISECONDS_A_SECOND} from '@/constants/date'
 import {isNativeAndroid, nativeAndroidSession, onNativeAndroidEvent, requestNativeAndroid} from '@/helpers/nativeAndroid'
 
 let savedToken: string | null = null
+let savedTokenPersists = true
+let savedTokenInitialized = false
+
+const identityListeners = new Set<() => void>()
+
+/** A cookie-backed account selection is shared by all tabs on this origin. */
+export function onAuthIdentityChanged(listener: () => void) {
+	identityListeners.add(listener)
+	return () => identityListeners.delete(listener)
+}
+
+export async function withAuthSessionLock<T>(action: () => Promise<T>): Promise<T> {
+	return navigator.locks ? navigator.locks.request('vikunja-token-refresh', action) : action()
+}
+
+function adoptExternalToken(next: string | null, previous: string | null) {
+	savedTokenInitialized = true
+	if (next === savedToken) return
+	const before = getTokenPayload(previous)
+	const after = getTokenPayload(next)
+	savedToken = next
+	savedTokenPersists = true
+	if (before?.id === after?.id && before?.type === after?.type && before?.sid === after?.sid) {
+		if (next) { recordServerClock(after?.iat, false); notifyRefreshListeners() }
+		return
+	}
+	nativeAndroidSession(null)
+	authEpoch++
+	inFlightRefresh = null
+	clearServerClock()
+	if (next) {
+		recordServerClock(after?.iat, false)
+		if (isNativeAndroid() && canonicalApiBaseUrl(getApiBaseUrl()) === 'https://task.tcymc.space/api/v2') nativeAndroidSession(after?.type === 1 ? next : null)
+	}
+	for (const listener of identityListeners) listener()
+}
+
+window.addEventListener('storage', event => {
+	if (event.storageArea !== localStorage || (event.key !== 'token' && event.key !== null)) return
+	// Link-share tokens deliberately belong to one tab and are never persisted.
+	if (savedToken !== null && !savedTokenPersists) return
+	adoptExternalToken(localStorage.getItem('token'), savedToken ?? event.oldValue)
+})
 
 /**
  * Saves a token while optionally saving it to lacal storage. This is used when viewing a link share:
@@ -16,6 +59,8 @@ let savedToken: string | null = null
  */
 export const saveToken = (token: string, persist: boolean) => {
 	savedToken = token
+	savedTokenPersists = persist
+	savedTokenInitialized = true
 	if (persist) {
 		localStorage.setItem('token', token)
 	}
@@ -30,10 +75,27 @@ export const saveToken = (token: string, persist: boolean) => {
  */
 export const getToken = (): string | null => {
 	if (savedToken !== null) {
+		// Read the shared identity at the actual request boundary too: a storage
+		// event may still be queued when another tab already changed its cookies.
+		if (savedTokenPersists && getTokenType(savedToken) === 1) {
+			const persisted = localStorage.getItem('token')
+			if (persisted !== savedToken) adoptExternalToken(persisted, savedToken)
+		}
 		return savedToken
 	}
 
-	savedToken = localStorage.getItem('token')
+	const persisted = localStorage.getItem('token')
+	if (savedTokenInitialized) {
+		// A switch intentionally clears the previous identity first. Requests may
+		// observe the replacement before its storage event, including while this
+		// tab is logged out; notify the auth store instead of silently hydrating it.
+		adoptExternalToken(persisted, savedToken)
+	} else {
+		// The first application boot is already being authenticated by its caller.
+		savedToken = persisted
+		savedTokenPersists = true
+		savedTokenInitialized = true
+	}
 	return savedToken
 }
 
@@ -77,6 +139,8 @@ export function getTokenSessionID(token: string | null): string | null {
 export const removeToken = () => {
 	nativeAndroidSession(null)
 	savedToken = null
+	savedTokenPersists = true
+	savedTokenInitialized = true
 	localStorage.removeItem('token')
 	localStorage.removeItem('desktopOAuthRefreshToken')
 	clearServerClock()
@@ -337,10 +401,5 @@ async function doRefresh(persist: boolean): Promise<void> {
 		}
 	}
 
-	if (navigator.locks) {
-		await navigator.locks.request('vikunja-token-refresh', refreshUnderLock)
-	} else {
-		// Fallback for environments without Web Locks (e.g. insecure HTTP)
-		await refreshUnderLock()
-	}
+	await withAuthSessionLock(refreshUnderLock)
 }

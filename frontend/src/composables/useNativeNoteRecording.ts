@@ -23,6 +23,7 @@ export function useNativeNoteRecording(options: Options) {
 	const identity = getTokenIdentity(getToken())
 	const sid = getTokenSessionID(getToken())
 	const state = ref<LiveRecordingState>('idle')
+	const actualEngine = ref<'online' | 'local'>('online')
 	const error = ref('')
 	const detail = ref('')
 	const partial = ref('')
@@ -34,6 +35,12 @@ export function useNativeNoteRecording(options: Options) {
 	const model = ref('')
 	const endpoint = ref('')
 	const screenAwake = ref(false)
+	const retryAttempt = ref(0)
+	const retryInSeconds = ref(0)
+	const recoveryWarning = ref(false)
+	const localText = ref('')
+	const pendingSync = ref(0)
+	const inferenceMS = ref(0)
 	const active = computed(() => !['idle', 'paused'].includes(state.value))
 	const receipts: number[] = []
 	let allowBackground = false
@@ -52,12 +59,16 @@ export function useNativeNoteRecording(options: Options) {
 			snapshot.note_id !== options.noteID() || !STATES.includes(snapshot.state as LiveRecordingState) ||
 			!Number.isSafeInteger(snapshot.sequence) || snapshot.sequence <= lastSequence) return
 		lastSequence = snapshot.sequence
+		actualEngine.value = snapshot.engine === 'local' ? 'local' : 'online'
 		allowBackground = snapshot.allow_background === true
 		recordingNoteID = snapshot.note_id
+		retryAttempt.value = snapshot.retry_attempt ?? 0
+		retryInSeconds.value = snapshot.retry_in_seconds ?? 0
+		recoveryWarning.value = snapshot.incomplete_audio === true
 		state.value = snapshot.state as LiveRecordingState
 		error.value = snapshot.error ?? ''
 		detail.value = snapshot.detail ?? ''
-		partial.value = snapshot.partial ?? ''
+		partial.value = snapshot.partial || snapshot.interrupted_partial || ''
 		for (const [target, value] of [
 			[elapsed, snapshot.elapsed],
 			[sentBytes, snapshot.sent_bytes],
@@ -70,6 +81,9 @@ export function useNativeNoteRecording(options: Options) {
 		model.value = snapshot.model ?? ''
 		endpoint.value = snapshot.endpoint ?? ''
 		screenAwake.value = snapshot.screen_awake === true
+		localText.value = snapshot.local_text ?? ''
+		pendingSync.value = snapshot.pending_sync ?? 0
+		inferenceMS.value = snapshot.inference_ms ?? 0
 		const segment = snapshot.segment as LiveNoteReceipt['segment'] | undefined
 		const stats = snapshot.stats as LiveNoteReceipt['stats'] | undefined
 		if (segment?.note_id === options.noteID() && typeof segment.id === 'number' &&
@@ -109,14 +123,19 @@ export function useNativeNoteRecording(options: Options) {
 		const noteID = options.noteID()
 		recordingNoteID = noteID
 		allowBackground = options.allowBackground?.() === true
+		const engine = options.engine?.() ?? 'online'
 		const startOptions = {
 			note_id: noteID,
 			connection_id: options.connectionID(),
 			sample_rate: options.sampleRate(),
-			language: options.language(),
+			language: engine === 'local' ? 'auto' : options.language(),
 			allow_background: allowBackground,
 			keep_awake: options.keepAwake?.() === true,
+			engine,
+			timezone: options.timezone?.() || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+			append_to_article: options.appendToArticle?.() === true,
 		}
+		actualEngine.value = startOptions.engine
 		state.value = 'permission'
 		error.value = ''
 		detail.value = ''
@@ -182,7 +201,27 @@ export function useNativeNoteRecording(options: Options) {
 		disposed = true
 	})
 	return {
-		state, active, error, detail, partial, elapsed, sentBytes, bytesPerSecond,
-		bufferedSeconds, savedSegments, model, endpoint, screenAwake, start, stop,
+		state,
+		actualEngine,
+		active,
+		error,
+		detail,
+		partial,
+		elapsed,
+		sentBytes,
+		bytesPerSecond,
+		bufferedSeconds,
+		savedSegments,
+		model,
+		endpoint,
+		screenAwake,
+		retryAttempt,
+		retryInSeconds,
+		recoveryWarning,
+		localText,
+		pendingSync,
+		inferenceMS,
+		start,
+		stop,
 	}
 }

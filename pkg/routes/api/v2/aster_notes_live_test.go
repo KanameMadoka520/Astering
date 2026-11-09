@@ -127,6 +127,8 @@ func TestLiveNotesWebSocketRejectsInvalidOrForeignCredentials(t *testing.T) {
 
 func TestLiveNotesWebSocketPersistsBeforeAcknowledgingAndFlushes(t *testing.T) {
 	url, token, note := liveNotesFixture(t)
+	requestedAt := time.Date(2026, 11, 9, 1, 2, 3, 123000000, time.UTC)
+	actualCapture := requestedAt.Add(7 * time.Second)
 	previous := recognizeLiveNoteSpeech
 	t.Cleanup(func() { recognizeLiveNoteSpeech = previous })
 	recognizeLiveNoteSpeech = func(ctx context.Context, _ tcyai.Connection, _ int, audio <-chan []byte, ready func() error, delta func(tcyai.LiveSpeechDelta) error) error {
@@ -156,10 +158,13 @@ func TestLiveNotesWebSocketPersistsBeforeAcknowledgingAndFlushes(t *testing.T) {
 		return ctx.Err()
 	}
 	socket, ctx := dialLiveNotes(t, url, liveNoteStart{
-		Action:       "start",
-		Token:        token,
-		NoteID:       note.ID,
-		ConnectionID: "live",
+		Action:             "start",
+		Token:              token,
+		NoteID:             note.ID,
+		ConnectionID:       "live",
+		RecordingID:        uuid.NewString(),
+		RecordingStartedAt: &requestedAt,
+		Timezone:           "Asia/Shanghai",
 	})
 	var response struct {
 		Type       string                           `json:"type"`
@@ -170,6 +175,7 @@ func TestLiveNotesWebSocketPersistsBeforeAcknowledgingAndFlushes(t *testing.T) {
 	require.NoError(t, wsjson.Read(ctx, socket, &response))
 	require.Equal(t, "ready", response.Type)
 	assert.Equal(t, 16000, response.SampleRate)
+	require.NoError(t, wsjson.Write(ctx, socket, map[string]any{"action": "capture_started", "recording_started_at": actualCapture}))
 	require.NoError(t, socket.Write(ctx, websocket.MessageBinary, make([]byte, 3200)))
 	require.NoError(t, wsjson.Read(ctx, socket, &response))
 	assert.Equal(t, "partial", response.Type)
@@ -183,6 +189,8 @@ func TestLiveNotesWebSocketPersistsBeforeAcknowledgingAndFlushes(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, found, "the acknowledgement must follow the commit")
 	assert.Equal(t, "A durable idea.", stored.Text)
+	require.NotNil(t, stored.CapturedAt)
+	assert.True(t, stored.CapturedAt.Equal(actualCapture), "capture time must use actual microphone start, excluding provider connection delay")
 	current := &models.AsterNote{}
 	_, err = s.ID(note.ID).Get(current)
 	require.NoError(t, err)

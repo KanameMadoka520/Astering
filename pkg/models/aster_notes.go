@@ -46,7 +46,7 @@ type AsterNote struct {
 	Title            string    `xorm:"varchar(250) not null" json:"title" minLength:"1" maxLength:"250" doc:"Personal note title, up to 250 Unicode characters."`
 	Content          string    `xorm:"longtext not null" json:"content,omitempty" maxLength:"8388608" doc:"Editable Markdown, at most 8 MiB UTF-8. Omitted from lists; raw transcript segments are independent."`
 	Pinned           bool      `xorm:"not null default false" json:"pinned" doc:"Pinned notes appear before other notes."`
-	Revision         int64     `xorm:"bigint not null" json:"revision" readOnly:"true" doc:"Editorial revision. Transcript appends do not change this value."`
+	Revision         int64     `xorm:"bigint not null" json:"revision" readOnly:"true" doc:"Editorial revision. Transcript-only appends leave it unchanged; explicit automatic insertion into the article advances it."`
 	ContentBytes     int64     `xorm:"bigint not null default 0" json:"content_bytes" readOnly:"true" doc:"UTF-8 Markdown bytes; not allocated database disk space."`
 	TitleBytes       int64     `xorm:"bigint not null default 0" json:"-"`
 	TranscriptBytes  int64     `xorm:"bigint not null default 0" json:"transcript_bytes" readOnly:"true" doc:"UTF-8 bytes of independently retained transcript text; no audio is stored."`
@@ -63,14 +63,21 @@ type AsterNote struct {
 func (*AsterNote) TableName() string { return "aster_notes" }
 
 type AsterNoteSegment struct {
-	NoteID          int64     `xorm:"bigint not null unique(aster_note_client) index(aster_note_cursor) index(aster_note_end)" json:"note_id" readOnly:"true" doc:"Containing note, always taken from the request path."`
-	ID              int64     `xorm:"bigint autoincr pk index(aster_note_cursor)" json:"id" readOnly:"true" doc:"Server-assigned cursor; segments are returned in ascending ID order."`
-	ClientID        string    `xorm:"varchar(36) not null unique(aster_note_client)" json:"client_id" format:"uuid" doc:"Client-generated UUID. Reusing it with identical text and times returns the original segment."`
-	Text            string    `xorm:"longtext not null" json:"text" minLength:"1" maxLength:"65536" doc:"Immutable final transcript text, at most 64 KiB UTF-8."`
-	StartMS         int64     `xorm:"bigint not null" json:"start_ms" minimum:"0" doc:"Start offset in the recording timeline, in milliseconds; not a wall-clock timestamp."`
-	EndMS           int64     `xorm:"bigint not null index(aster_note_end)" json:"end_ms" minimum:"0" doc:"End offset in milliseconds; must be greater than or equal to start_ms."`
-	TimingEstimated bool      `xorm:"not null default false" json:"timing_estimated,omitempty" doc:"True when the provider lacked precise timestamps and recording offsets were estimated."`
-	Created         time.Time `xorm:"created not null" json:"created" readOnly:"true" doc:"Server timestamp of the first durable append."`
+	NoteID             int64      `xorm:"bigint not null unique(aster_note_client) index(aster_note_cursor) index(aster_note_end) index(aster_note_recording)" json:"note_id" readOnly:"true" doc:"Containing note, always taken from the request path."`
+	ID                 int64      `xorm:"bigint autoincr pk index(aster_note_cursor)" json:"id" readOnly:"true" doc:"Server-assigned cursor; segments are returned in ascending ID order."`
+	ClientID           string     `xorm:"varchar(36) not null unique(aster_note_client)" json:"client_id" format:"uuid" doc:"Client-generated UUID. Reusing it with identical text and times returns the original segment."`
+	Text               string     `xorm:"longtext not null" json:"text" minLength:"1" maxLength:"65536" doc:"Immutable final transcript text, at most 64 KiB UTF-8."`
+	StartMS            int64      `xorm:"bigint not null" json:"start_ms" minimum:"0" doc:"Start offset in the recording timeline, in milliseconds; not a wall-clock timestamp."`
+	EndMS              int64      `xorm:"bigint not null index(aster_note_end)" json:"end_ms" minimum:"0" doc:"End offset in milliseconds; must be greater than or equal to start_ms."`
+	TimingEstimated    bool       `xorm:"not null default false" json:"timing_estimated,omitempty" doc:"True when the provider lacked precise timestamps and recording offsets were estimated."`
+	RecordingID        string     `xorm:"varchar(36) not null default '' index(aster_note_recording)" json:"recording_id,omitempty" doc:"Client UUID identifying this real recording run, independent from the cumulative note timeline."`
+	RecordingStartedAt *time.Time `xorm:"datetime(3) null" json:"recording_started_at,omitempty" doc:"Actual UTC recording start, supplied by the capture device; absent for legacy recordings of unknown date."`
+	RecordingOffsetMS  int64      `xorm:"bigint not null default 0" json:"recording_offset_ms,omitempty" minimum:"0" doc:"Segment offset from recording_started_at, independent from start_ms."`
+	CapturedAt         *time.Time `xorm:"datetime(3) null" json:"captured_at,omitempty" doc:"Actual segment capture time in UTC; never inferred from database ingestion time."`
+	Timezone           string     `xorm:"varchar(80) not null default ''" json:"timezone,omitempty" maxLength:"80" doc:"IANA capture timezone, for example Asia/Shanghai. Empty means unknown."`
+	AppendToArticle    bool       `xorm:"not null default false" json:"append_to_article,omitempty" doc:"Capture-time preference: atomically append this final sentence to the latest saved article once. Does not overwrite another article draft."`
+	ArticleAppended    bool       `xorm:"not null default false" json:"article_appended" readOnly:"true" doc:"Whether this sentence was mirrored into the article. False with append_to_article=true means the article reached its size limit; the raw transcript is still safely retained."`
+	Created            time.Time  `xorm:"created not null" json:"created" readOnly:"true" doc:"Server timestamp of the first durable append."`
 }
 
 func (*AsterNoteSegment) TableName() string { return "aster_note_segments" }
@@ -333,6 +340,9 @@ func (n *AsterNote) Delete(s *xorm.Session, a web.Auth) error {
 	if (actor.HasPersonalNotesAgentAccess() && n.ExpectedRevision < 1) || (n.ExpectedRevision > 0 && n.ExpectedRevision != current.Revision) {
 		return asterNoteError(http.StatusConflict, "note_revision_conflict")
 	}
+	if _, err := s.Where("note_id = ?", current.ID).Delete(&AsterNoteOrganization{}); err != nil {
+		return err
+	}
 	if _, err := s.Where("note_id = ?", current.ID).Delete(&AsterNoteSegment{}); err != nil {
 		return err
 	}
@@ -391,6 +401,9 @@ func validateAsterNoteSegment(segment *AsterNoteSegment) error {
 	if segment.StartMS < 0 || segment.EndMS < segment.StartMS {
 		return asterNoteError(http.StatusUnprocessableEntity, "note_invalid_segment_time")
 	}
+	if err := NormalizeAsterNoteCapture(segment); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -403,7 +416,7 @@ func AppendAsterNoteSegment(s *xorm.Session, a web.Auth, noteID int64, segment *
 	if segment == nil {
 		return asterNoteError(http.StatusUnprocessableEntity, "note_invalid_segment")
 	}
-	note, err := loadOwnedAsterNote(s, a, noteID, true, false)
+	note, err := loadOwnedAsterNote(s, a, noteID, true, segment.AppendToArticle)
 	if err != nil {
 		return err
 	}
@@ -416,7 +429,7 @@ func AppendAsterNoteSegment(s *xorm.Session, a web.Auth, noteID int64, segment *
 		return err
 	}
 	if found {
-		if existing.Text != segment.Text || existing.StartMS != segment.StartMS || existing.EndMS != segment.EndMS || existing.TimingEstimated != segment.TimingEstimated {
+		if existing.Text != segment.Text || existing.StartMS != segment.StartMS || existing.EndMS != segment.EndMS || existing.TimingEstimated != segment.TimingEstimated || !sameAsterNoteCapture(existing, segment) {
 			return asterNoteError(http.StatusConflict, "note_segment_conflict")
 		}
 		*segment = *existing
@@ -425,6 +438,7 @@ func AppendAsterNoteSegment(s *xorm.Session, a web.Auth, noteID int64, segment *
 	segment.ID = 0
 	segment.NoteID = note.ID
 	segment.Created = time.Time{}
+	segment.ArticleAppended = false
 	if _, err := s.Insert(segment); err != nil {
 		return err
 	}
@@ -432,6 +446,30 @@ func AppendAsterNoteSegment(s *xorm.Session, a web.Auth, noteID int64, segment *
 	note.SegmentCount++
 	if _, err := s.ID(note.ID).Cols("transcript_bytes", "segment_count").Update(note); err != nil {
 		return err
+	}
+	if segment.AppendToArticle {
+		content := note.Content
+		if content != "" {
+			content += "\n\n"
+		}
+		content += asterNoteCapturedText(segment)
+		// Retain the immutable original even when the editable article has no space.
+		if len(content) <= AsterNoteContentLimit {
+			expected := note.Revision
+			note.Content, note.Revision = content, expected+1
+			note.ContentBytes, note.Excerpt = int64(len(content)), asterNoteExcerpt(content)
+			affected, updateErr := s.Where("id = ? AND owner_id = ? AND revision = ?", note.ID, note.OwnerID, expected).Cols("content", "content_bytes", "excerpt", "revision").Update(note)
+			if updateErr != nil {
+				return updateErr
+			}
+			if affected != 1 {
+				return asterNoteError(http.StatusConflict, "note_revision_conflict")
+			}
+			segment.ArticleAppended = true
+			if _, err := s.ID(segment.ID).Cols("article_appended").Update(segment); err != nil {
+				return err
+			}
+		}
 	}
 	// Read back persisted time precision so the first response matches an idempotent retry.
 	_, err = s.ID(segment.ID).Get(segment)
@@ -442,6 +480,7 @@ type AsterNoteTranscriptState struct {
 	SegmentCount    int64     `json:"segment_count" doc:"Currently committed final transcript segments; independent from editorial revision."`
 	TranscriptBytes int64     `json:"transcript_bytes" doc:"Logical UTF-8 final transcript bytes."`
 	Updated         time.Time `json:"updated" doc:"Server activity time after the final append."`
+	ArticleRevision int64     `json:"article_revision" doc:"Current editorial revision; changes when a final transcript was automatically appended to the article."`
 }
 
 // ReadAsterNoteTranscriptState allows committed live events to update counters
@@ -458,6 +497,7 @@ func ReadAsterNoteTranscriptState(s *xorm.Session, a web.Auth, noteID int64) (*A
 		SegmentCount:    note.SegmentCount,
 		TranscriptBytes: note.TranscriptBytes,
 		Updated:         note.Updated,
+		ArticleRevision: note.Revision,
 	}, nil
 }
 
@@ -550,6 +590,9 @@ func AsterNoteRecordingOffset(s *xorm.Session, a web.Auth, noteID int64) (int64,
 
 // DeleteAsterNotesForAccount runs inside the existing account deletion transaction.
 func DeleteAsterNotesForAccount(s *xorm.Session, ownerID int64) error {
+	if _, err := s.Where("owner_id = ?", ownerID).Delete(&AsterNoteOrganization{}); err != nil {
+		return err
+	}
 	owned := builder.Select("id").From("aster_notes").Where(builder.Eq{"owner_id": ownerID})
 	if _, err := s.Where(builder.In("note_id", owned)).Delete(&AsterNoteSegment{}); err != nil {
 		return err
@@ -559,10 +602,11 @@ func DeleteAsterNotesForAccount(s *xorm.Session, ownerID int64) error {
 }
 
 type AsterNoteStorage struct {
-	Count           int64
-	ContentBytes    int64
-	TranscriptBytes int64
-	TextBytes       int64
+	Count             int64
+	ContentBytes      int64
+	TranscriptBytes   int64
+	TextBytes         int64
+	OrganizationBytes int64
 }
 
 // AsterNotesStorage reports logical UTF-8 text lengths only, not database blocks.
@@ -579,10 +623,15 @@ func AsterNotesStorage(s *xorm.Session, ownerID int64) (*AsterNoteStorage, error
 	if err != nil {
 		return nil, err
 	}
+	organizationBytes, err := s.Where("owner_id = ?", ownerID).SumInt(&AsterNoteOrganization{}, "storage_bytes")
+	if err != nil {
+		return nil, err
+	}
 	return &AsterNoteStorage{
-		Count:           count,
-		ContentBytes:    sums[1],
-		TranscriptBytes: sums[2],
-		TextBytes:       sums[0] + sums[1] + sums[2],
+		Count:             count,
+		ContentBytes:      sums[1],
+		TranscriptBytes:   sums[2],
+		TextBytes:         sums[0] + sums[1] + sums[2] + organizationBytes,
+		OrganizationBytes: organizationBytes,
 	}, nil
 }

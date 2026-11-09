@@ -385,6 +385,7 @@ function resultLabel(item: CleanupResult) { return t(`storage.statuses.${item.st
 				<div><dt>{{ t('notes.storage.count') }}</dt><dd>{{ number(summary.note_count ?? 0) }}</dd></div>
 				<div><dt>{{ t('notes.storage.article') }}</dt><dd>{{ bytes(summary.note_content_bytes ?? 0) }}</dd></div>
 				<div><dt>{{ t('notes.storage.transcript') }}</dt><dd>{{ bytes(summary.note_transcript_bytes ?? 0) }}</dd></div>
+				<div><dt>{{ t('notes.storage.organization') }}</dt><dd>{{ bytes(summary.note_organization_bytes ?? 0) }}</dd></div>
 				<div><dt>{{ t('notes.storage.total') }}</dt><dd>{{ bytes(summary.note_text_bytes ?? 0) }}</dd></div>
 			</dl>
 			<p>{{ t('notes.storage.help') }}</p>

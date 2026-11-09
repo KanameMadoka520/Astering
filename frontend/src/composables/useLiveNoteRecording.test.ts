@@ -242,7 +242,11 @@ describe('live PCM finalization and rotation', () => {
 		const h = await recording()
 		expect(h.socket.url.toString()).toBe('wss://notes.example/api/v2/notes/live')
 		expect(h.socket.url.search).toBe('')
-		expect(h.socket.commands()).toEqual([{action: 'start', token: 'first-token', note_id: 4, connection_id: 'speech-connection', offset_ms: 0, language: 'zh-CN'}])
+		expect(h.socket.commands()).toEqual([expect.objectContaining({
+			action: 'start', token: 'first-token', note_id: 4, connection_id: 'speech-connection', offset_ms: 0,
+			language: 'zh-CN', recording_id: expect.any(String), recording_started_at: '1970-01-01T00:00:00.000Z',
+			recording_offset_ms: 0, append_to_article: false,
+		})])
 		frame(h.node)
 		expect(h.socket.frames()).toHaveLength(1)
 		expect(h.socket.commands()).toHaveLength(1)
@@ -344,29 +348,30 @@ describe('live PCM finalization and rotation', () => {
 		expect(h.stopTrack).toHaveBeenCalled()
 		socket.ready()
 		expect(socket.commands().at(-1)).toEqual({action: 'stop'})
-		expect(WorkletFixture.instances).toHaveLength(0)
+		expect(WorkletFixture.instances).toHaveLength(1)
 		socket.event({type: 'done'})
 		await stopping
 		expect(h.recorder.state.value).toBe('idle')
 		expect(h.onSegment).not.toHaveBeenCalled()
 	})
 
-	it('releases the microphone when a disconnect makes a PCM send throw', async () => {
+	it('retains a frame whose send throws and starts bounded recovery', async () => {
 		const h = await recording()
 		h.socket.send.mockImplementationOnce(() => { throw new DOMException('socket is closing', 'InvalidStateError') })
 		frame(h.node)
-		expect(h.recorder.error.value).toBe('network')
-		expect(h.recorder.state.value).toBe('paused')
-		expect(h.recorder.active.value).toBe(false)
-		expect(h.stopTrack).toHaveBeenCalled()
+		expect(h.recorder.error.value).toBe('')
+		expect(h.recorder.state.value).toBe('reconnecting')
+		expect(h.recorder.bufferedSeconds.value).toBe(.1)
+		expect(h.recorder.active.value).toBe(true)
+		expect(h.stopTrack).not.toHaveBeenCalled()
 	})
 
-	it('stops rather than accumulating more than five seconds of audio during an upstream stall', async () => {
+	it('stops rather than accumulating more than thirty seconds of audio during an upstream stall', async () => {
 		const h = await recording(30)
 		for (let index = 0; index < 300; index++) frame(h.node)
 		expect(h.recorder.state.value).toBe('reconnecting')
-		for (let index = 0; index < 50; index++) frame(h.node)
-		expect(h.recorder.bufferedSeconds.value).toBe(5)
+		for (let index = 0; index < 300; index++) frame(h.node)
+		expect(h.recorder.bufferedSeconds.value).toBe(30)
 		frame(h.node)
 		expect(h.recorder.state.value).toBe('paused')
 		expect(h.recorder.error.value).toBe('buffer_full')
@@ -411,6 +416,64 @@ describe('live PCM finalization and rotation', () => {
 	})
 })
 
+
+describe('bounded live recognition recovery', () => {
+	it('reconnects without replaying sent audio and retains unsent capture in order', async () => {
+		const h = await recording()
+		frame(h.node)
+		const original = h.socket.frames()[0]
+		h.socket.close()
+		expect(h.recorder.state.value).toBe('reconnecting')
+		expect(h.recorder.recoveryWarning.value).toBe(true)
+		frame(h.node)
+		frame(h.node)
+		expect(h.recorder.bufferedSeconds.value).toBeCloseTo(.2)
+		vi.advanceTimersByTime(500)
+		await microtasks()
+		const next = SocketFixture.instances[1]
+		next.open()
+		expect(next.commands()[0]).toMatchObject({offset_ms: 100, recording_offset_ms: 100})
+		expect(next.commands()[0].recording_id).toBe(h.socket.commands()[0].recording_id)
+		next.ready(100)
+		vi.advanceTimersByTime(100)
+		expect(next.frames()).toHaveLength(2)
+		expect(next.frames()).not.toContain(original)
+		expect(h.stopTrack).not.toHaveBeenCalled()
+		h.socket.event({type: 'error', code: 'provider'})
+		expect(h.recorder.state.value).toBe('recording')
+		const stopping = h.recorder.stop()
+		await microtasks()
+		next.event({type: 'done'})
+		await stopping
+	})
+
+	it('does not reconnect a pending retry under another account or API', async () => {
+		const h = await recording()
+		frame(h.node)
+		h.socket.close()
+		auth.epoch++
+		vi.advanceTimersByTime(1000)
+		await microtasks()
+		expect(SocketFixture.instances).toHaveLength(1)
+		expect(h.stopTrack).toHaveBeenCalled()
+		expect(h.recorder.active.value).toBe(false)
+	})
+
+	it('bounds repeated handshake failures and releases the microphone', async () => {
+		const h = await recording()
+		for (let attempt = 0; attempt < 6; attempt++) {
+			const socket = SocketFixture.instances[attempt]
+			if (attempt > 0) socket.open()
+			socket.onerror?.()
+			vi.advanceTimersByTime(8000)
+			await microtasks()
+		}
+		expect(SocketFixture.instances).toHaveLength(6)
+		expect(h.recorder.error.value).toBe('retry_exhausted')
+		expect(h.recorder.active.value).toBe(false)
+		expect(h.stopTrack).toHaveBeenCalled()
+	})
+})
 
 describe('long recording background and screen ownership', () => {
 	it('acknowledges accepted PCM once and never acknowledges stale or non-audio messages', async () => {

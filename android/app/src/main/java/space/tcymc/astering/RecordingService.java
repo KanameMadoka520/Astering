@@ -18,7 +18,7 @@ import android.os.PowerManager;
 import android.os.SystemClock;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -37,7 +37,7 @@ public final class RecordingService extends Service {
     private static final String CHANNEL = "live-note-recording";
     private static final int NOTIFICATION = 64;
     private final ScheduledThreadPoolExecutor engine = new ScheduledThreadPoolExecutor(1);
-    private final ArrayBlockingQueue<byte[]> audio = new ArrayBlockingQueue<>(40);
+    private final LinkedBlockingDeque<byte[]> audio = new LinkedBlockingDeque<>(40);
     private final AtomicBoolean reading = new AtomicBoolean();
     private final OkHttpClient http = new OkHttpClient.Builder()
         .followRedirects(false)
@@ -83,6 +83,22 @@ public final class RecordingService extends Service {
     private JSONObject lastSegment;
     private JSONObject lastStats;
     private ScheduledFuture<?> deadline;
+    private LocalRecognizer local;
+    private String asrEngine = "online";
+    private String timezone;
+    private long startOffset;
+    private String recordingStartedAt;
+    private boolean appendToArticle;
+    private boolean localFinishing;
+    private int pendingSaves;
+    private String localText = "";
+    private String localClientID = "";
+    private long inferenceMs;
+    private int retryAttempt;
+    private boolean incompleteAudio;
+    private long retryAt;
+    private long wakeRenewAt;
+    private String interruptedPartial = "";
     private PowerManager.WakeLock wakeLock;
 
     @Override public void onCreate() {
@@ -138,7 +154,15 @@ public final class RecordingService extends Service {
         language = intent.getStringExtra("language");
         background = intent.getBooleanExtra("allow_background", false);
         keepAwake = intent.getBooleanExtra("keep_awake", false);
+        asrEngine = intent.getStringExtra("engine");
+        if (asrEngine == null) asrEngine = "online";
+        timezone = intent.getStringExtra("timezone");
+        startOffset = intent.getLongExtra("start_offset_ms", 0);
+        appendToArticle = intent.getBooleanExtra("append_to_article", false);
+        recordingStartedAt = java.time.Instant.now().toString();
         if (noteID <= 0 || generation == null || (rate != 16000 && rate != 24000)
+            || (!asrEngine.equals("local") && !asrEngine.equals("online"))
+            || asrEngine.equals("local") && (rate != 16000 || !app.session.verified(owner))
             || checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             stopSelf();
             return START_NOT_STICKY;
@@ -156,6 +180,7 @@ public final class RecordingService extends Service {
         }
         startedAt = SystemClock.elapsedRealtime();
         lastSampleAt = startedAt;
+        wakeRenewAt = startedAt + 5 * 60 * 1000L;
         if (background) {
             PowerManager power = getSystemService(PowerManager.class);
             wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Astering:LiveNote");
@@ -164,7 +189,8 @@ public final class RecordingService extends Service {
         }
         engine.execute(() -> {
             publish();
-            openWire();
+            if (asrEngine.equals("local")) openLocal();
+            else openWire();
         });
         engine.scheduleWithFixedDelay(this::pump, 50, 50, TimeUnit.MILLISECONDS);
         return START_NOT_STICKY;
@@ -181,7 +207,7 @@ public final class RecordingService extends Service {
             if (state.equals("idle") || state.equals("paused")) return;
             state = "stopping";
             publish();
-            if (!ready && audio.isEmpty()) {
+            if (!asrEngine.equals("local") && !ready && audio.isEmpty()) {
                 finish();
                 return;
             }
@@ -215,7 +241,8 @@ public final class RecordingService extends Service {
         app.session.refresh(current.token, true, (token, refreshError) -> execute(() -> {
             if (currentWire != wire || stoppingRequested && audio.isEmpty() || !app.session.current(owner)) return;
             if (refreshError != null) {
-                fail(refreshError);
+                if (refreshError.equals("network")) recoverNetwork("network");
+                else fail(refreshError);
                 return;
             }
             Request request = new Request.Builder()
@@ -230,7 +257,10 @@ public final class RecordingService extends Service {
                             return;
                         }
                         ws.send(AsteringApplication.object("action", "start", "token", token, "note_id", noteID,
-                            "connection_id", connection, "language", language, "offset_ms", offset).toString());
+                            "connection_id", connection, "language", language, "offset_ms", offset,
+                            "recording_id", generation, "recording_started_at", recordingStartedAt,
+                            "recording_offset_ms", totalSent * 1000L / (rate * 2L),
+                            "timezone", timezone, "append_to_article", appendToArticle).toString());
                         armDeadline(currentWire, 20, "connection_timeout");
                     });
                 }
@@ -247,20 +277,95 @@ public final class RecordingService extends Service {
 
                 @Override public void onFailure(WebSocket ws, Throwable failure, Response response) {
                     execute(() -> {
-                        if (current(currentWire, ws)) fail(response != null && (response.code() == 401 || response.code() == 403)
-                            ? "authentication" : "network");
+                        if (current(currentWire, ws)) {
+                            if (response != null && (response.code() == 401 || response.code() == 403)) fail("authentication");
+                            else if (response != null && response.code() == 429) fail("rate_limited");
+                            else recoverNetwork("network");
+                        }
                     });
                 }
 
                 @Override public void onClosing(WebSocket ws, int code, String reason) {
                     ws.close(code, null);
                     execute(() -> {
-                        if (current(currentWire, ws)) fail("interrupted");
+                        if (current(currentWire, ws)) recoverNetwork("interrupted");
                     });
                 }
             });
             armDeadline(currentWire, 20, "connection_timeout");
         }));
+    }
+
+    private void openLocal() {
+        model = LocalRecognizer.MODEL;
+        endpoint = "on-device://" + LocalRecognizer.MODEL_ID;
+        local = new LocalRecognizer(getAssets(), language, new LocalRecognizer.Listener() {
+            @Override public void ready() { execute(() -> {
+                if (stoppingRequested || !app.session.current(owner)) { if (local != null) local.abort(); finish(); return; }
+                ready = true; state = "recording"; startCapture(); publish();
+            }); }
+            @Override public void result(String text, long startMs, long endMs, long durationMs) { execute(() -> {
+                if (!app.session.current(owner)) return;
+                String id = java.util.UUID.randomUUID().toString();
+                JSONObject payload = AsteringApplication.object("note_id", noteID, "client_id", id, "text", text,
+                    "start_ms", startOffset + startMs, "end_ms", startOffset + endMs, "timing_estimated", true,
+                    "recording_id", generation, "recording_started_at", recordingStartedAt,
+                    "recording_offset_ms", startMs, "captured_at", java.time.Instant.parse(recordingStartedAt).plusMillis(startMs).toString(),
+                    "timezone", timezone, "append_to_article", appendToArticle);
+                pendingSaves++;
+                inferenceMs = durationMs;
+                app.offline.save(owner, payload, (saved, code) -> execute(() -> {
+                    pendingSaves--;
+                    if (code != null) { partial = text; fail(code); return; }
+                    localText = text; localClientID = id; savedSegments++;
+                    publish();
+                    if (localFinishing && pendingSaves == 0) finish();
+                }));
+            }); }
+            @Override public void failed(String code) { execute(() -> fail(code)); }
+            @Override public void finished() { execute(() -> {
+                localFinishing = true;
+                if (pendingSaves == 0) finish();
+            }); }
+        });
+        publish();
+    }
+
+    private void pumpLocal() {
+        long now = SystemClock.elapsedRealtime();
+        if (wakeLock != null && now >= wakeRenewAt) {
+            wakeLock.acquire(10 * 60 * 1000L);
+            wakeRenewAt = now + 5 * 60 * 1000L;
+        }
+        if (!ready || local == null || localFinishing) return;
+        // ASR receives at most two 100 ms frames per tick, preserving bounded catch-up.
+        for (int i = 0; i < 2; i++) {
+            byte[] frame = audio.pollFirst();
+            if (frame == null) break;
+            if (!local.accept(frame)) { partial = ""; fail("local_backpressure"); return; }
+        }
+        if (stoppingRequested && !reading.get() && audio.isEmpty()) local.finish();
+        if (SystemClock.elapsedRealtime() - lastPublished >= 1000) publish();
+    }
+
+    private void recoverNetwork(String reason) {
+        if (!app.session.current(owner)) { fail("session_changed"); return; }
+        if (++retryAttempt > 5) { fail(reason); return; }
+        // Already handed-off PCM may have reached the server; never replay it and create duplicate text.
+        if (wireSent > 0) {
+            offset += wireSent * 1000L / (rate * 2L);
+            incompleteAudio = true;
+            if (!partial.isEmpty()) interruptedPartial = partial;
+        }
+        ready = false; stopSent = false; rotating = false; wireSent = 0;
+        cancelDeadline(); wire++;
+        WebSocket old = socket; socket = null;
+        if (old != null) old.cancel();
+        state = "reconnecting";
+        long delay = Math.min(2000, 200L << Math.min(retryAttempt - 1, 4));
+        retryAt = SystemClock.elapsedRealtime() + delay;
+        publish();
+        engine.schedule(() -> { retryAt = 0; openWire(); }, delay, TimeUnit.MILLISECONDS);
     }
 
     private boolean current(long currentWire, WebSocket ws) {
@@ -285,6 +390,8 @@ public final class RecordingService extends Service {
                     }
                     cancelDeadline();
                     ready = true;
+                    retryAttempt = 0;
+                    retryAt = 0;
                     offset = event.getLong("offset_ms");
                     rotateAt = Math.min(420, event.getInt("rotate_seconds"));
                     model = event.optString("model");
@@ -365,6 +472,17 @@ public final class RecordingService extends Service {
                 fail("microphone");
                 return;
             }
+            if (capturedSamples.get() == 0) {
+                recordingStartedAt = java.time.Instant.now().toString();
+                if (asrEngine.equals("online")) {
+                    WebSocket ws = socket;
+                    if (ws == null || !ws.send(AsteringApplication.object("action", "capture_started",
+                        "recording_started_at", recordingStartedAt).toString())) {
+                        fail("network");
+                        return;
+                    }
+                }
+            }
             record.startRecording();
             reading.set(true);
             audioThread = new Thread(() -> capture(record, frameSamples), "Astering-PCM");
@@ -393,7 +511,7 @@ public final class RecordingService extends Service {
             if (filled != frameSamples) continue;
             byte[] pcm = new byte[frameSamples * 2];
             ByteBuffer.wrap(pcm).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().put(frame);
-            if (!audio.offer(pcm)) {
+            if (!audio.offerLast(pcm)) {
                 reading.set(false);
                 execute(() -> {
                     if (microphone == record) fail("backpressure");
@@ -405,7 +523,7 @@ public final class RecordingService extends Service {
         if (filled > 0 && app.session.current(owner)) {
             byte[] pcm = new byte[filled * 2];
             ByteBuffer.wrap(pcm).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().put(frame, 0, filled);
-            if (!audio.offer(pcm)) execute(() -> fail("backpressure"));
+            if (!audio.offerLast(pcm)) execute(() -> fail("backpressure"));
         }
     }
 
@@ -413,6 +531,10 @@ public final class RecordingService extends Service {
         if (state.equals("idle") || state.equals("paused")) return;
         if (!app.session.current(owner)) {
             fail("session_changed");
+            return;
+        }
+        if (asrEngine.equals("local")) {
+            pumpLocal();
             return;
         }
         WebSocket ws = socket;
@@ -432,10 +554,11 @@ public final class RecordingService extends Service {
         }
         // One 100ms frame per 50ms tick permits bounded catch-up after a wire rotation.
         for (int i = 0; i < 1 && !rotating; i++) {
-            byte[] frame = audio.poll();
+            byte[] frame = audio.pollFirst();
             if (frame == null) break;
             if (!ws.send(ByteString.of(frame))) {
-                fail("network");
+                if (!audio.offerFirst(frame)) { incompleteAudio = true; fail("backpressure"); }
+                else recoverNetwork("network");
                 return;
             }
             wireSent += frame.length;
@@ -484,7 +607,10 @@ public final class RecordingService extends Service {
     private void armDeadline(long currentWire, long seconds, String code) {
         cancelDeadline();
         deadline = engine.schedule(() -> {
-            if (currentWire == wire && !state.equals("idle") && !state.equals("paused")) fail(code);
+            if (currentWire == wire && !state.equals("idle") && !state.equals("paused")) {
+                if (code.equals("connection_timeout")) recoverNetwork(code);
+                else fail(code);
+            }
         }, seconds, TimeUnit.SECONDS);
     }
 
@@ -496,6 +622,7 @@ public final class RecordingService extends Service {
     private void fail(String code) {
         if (state.equals("paused") || state.equals("idle")) return;
         error = code;
+        if (asrEngine.equals("local") && capturedSamples.get() > 0) incompleteAudio = true;
         state = "paused";
         closeResources();
         publish();
@@ -513,6 +640,7 @@ public final class RecordingService extends Service {
         stoppingRequested = true;
         stopCapture();
         audio.clear();
+        if (local != null) { local.abort(); local = null; }
         cancelDeadline();
         wire++;
         WebSocket ws = socket;
@@ -537,7 +665,11 @@ public final class RecordingService extends Service {
             "note_id", noteID, "generation", generation, "state", state, "partial", partial,
             "elapsed", capturedSamples.get() / (double) rate, "sent_bytes", totalSent, "bytes_per_second", bytesPerSecond,
             "buffered_seconds", buffered, "saved_segments", savedSegments, "model", model, "endpoint", endpoint,
-            "allow_background", background, "keep_awake", keepAwake, "error", error, "detail", "");
+            "allow_background", background, "keep_awake", keepAwake, "error", error, "detail", "",
+            "engine", asrEngine, "local_text", localText, "local_client_id", localClientID,
+            "pending_sync", pendingSaves, "inference_ms", inferenceMs, "incomplete_audio", incompleteAudio,
+            "interrupted_partial", interruptedPartial, "retry_attempt", retryAttempt,
+            "retry_in_seconds", Math.max(0, retryAt - now) / 1000d);
         try {
             if (lastSegment != null) snapshot.put("segment", lastSegment);
             if (lastStats != null) snapshot.put("stats", lastStats);

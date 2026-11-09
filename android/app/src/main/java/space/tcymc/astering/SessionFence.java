@@ -2,6 +2,7 @@ package space.tcymc.astering;
 
 final class SessionFence {
     private long epoch;
+    private long verifiedEpoch = -1;
     private SessionIdentity owner;
     private String token = "";
 
@@ -20,6 +21,16 @@ final class SessionFence {
         epoch++;
         owner = null;
         token = "";
+    }
+
+    synchronized boolean markVerified(Ticket ticket) {
+        if (!current(ticket)) return false;
+        verifiedEpoch = epoch;
+        return true;
+    }
+
+    synchronized boolean verified(Ticket ticket) {
+        return current(ticket) && verifiedEpoch == epoch;
     }
 
     synchronized Ticket ticket() {

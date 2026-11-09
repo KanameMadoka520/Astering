@@ -1,0 +1,28 @@
+Astering Android offline dictation components
+
+Astering, maintained by KanameMadoka520
+https://github.com/KanameMadoka520/Astering
+Derived from Vikunja; upstream copyright and attribution are retained in the source.
+AGPL-3.0-or-later; see Astering-LICENSE. This license does not replace the
+separate model and runtime licenses listed below.
+
+SenseVoiceSmall, FunAudioLLM / FunASR / Alibaba Group
+https://github.com/FunAudioLLM/SenseVoice
+https://huggingface.co/FunAudioLLM/SenseVoiceSmall
+ONNX int8 conversion by csukuangfj / k2-fsa sherpa-onnx:
+https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17
+Pinned revision: 2365baeacb507f821a0c8120fcee3d484dba7a07
+Weights are governed by FunASR-MODEL_LICENSE, not the source code's MIT license.
+Astering makes no claim of training or owning these weights.
+
+sherpa-onnx v2.0.1, k2-fsa / Xiaomi Corporation and contributors
+https://github.com/k2-fsa/sherpa-onnx
+Apache License 2.0; see sherpa-onnx-LICENSE.
+
+Silero VAD, Silero Team
+https://github.com/snakers4/silero-vad
+MIT; see Silero-VAD-LICENSE.
+
+ONNX Runtime, Microsoft Corporation and contributors
+https://github.com/microsoft/onnxruntime
+MIT; see ONNX-Runtime-LICENSE and ONNX-Runtime-ThirdPartyNotices.

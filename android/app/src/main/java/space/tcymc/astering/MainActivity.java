@@ -265,6 +265,22 @@ public final class MainActivity extends Activity {
                     app.session.refresh(command.optString("token"), true, (token, error) ->
                         reply(proxy, page, requestID, AsteringApplication.object("token", token), error));
                     break;
+                case "offlineStatus":
+                    app.offline.status((result, error) -> reply(proxy, page, requestID, result, error));
+                    break;
+                case "listOffline":
+                    app.offline.list(command.optLong("note_id", 0), command.optInt("offset", 0), command.optInt("limit", 20), command.optString("cursor"),
+                        (result, error) -> reply(proxy, page, requestID, result, error));
+                    break;
+                case "syncOffline":
+                    app.session.ensureVerified();
+                    app.offline.kick(true);
+                    app.offline.status((result, error) -> reply(proxy, page, requestID, result, error));
+                    break;
+                case "clearOffline":
+                    if (!command.optBoolean("confirm")) reply(proxy, page, id, null, "confirmation_required");
+                    else app.offline.clear((result, error) -> reply(proxy, page, requestID, result, error));
+                    break;
                 case "recordingStatus":
                     reply(proxy, page, id, app.snapshot(), null);
                     break;
@@ -311,11 +327,20 @@ public final class MainActivity extends Activity {
         int sampleRate = command.getInt("sample_rate");
         String connection = command.optString("connection_id");
         String language = command.optString("language");
-        if (owner == null || !owner.owner.sameOwner(supplied)) {
+        String engine = command.optString("engine", "online");
+        String defaultTimezone = java.time.ZoneId.systemDefault().getId();
+        if (!java.time.ZoneId.getAvailableZoneIds().contains(defaultTimezone)) defaultTimezone = "UTC";
+        String timezone = command.optString("timezone", defaultTimezone);
+        long startOffset = command.optLong("start_offset_ms", 0);
+        if (!java.time.ZoneId.getAvailableZoneIds().contains(timezone) && !timezone.equals("UTC"))
+            throw new IllegalArgumentException("invalid_timezone");
+        if (owner == null || !owner.owner.sameOwner(supplied) || engine.equals("local") && !app.session.verified(owner)) {
             reply(proxy, page, id, null, "authentication");
             return;
         }
-        if (noteID <= 0 || (sampleRate != 16000 && sampleRate != 24000) || connection.length() > 80 || language.length() > 40) {
+        if (noteID <= 0 || (sampleRate != 16000 && sampleRate != 24000) || connection.length() > 80 || language.length() > 40
+            || (!engine.equals("online") && !engine.equals("local")) || engine.equals("local") && sampleRate != 16000
+            || startOffset < 0 || startOffset > 315360000000L || timezone.length() > 100) {
             reply(proxy, page, id, null, "invalid_request");
             return;
         }
@@ -324,10 +349,12 @@ public final class MainActivity extends Activity {
             return;
         }
         pendingStart = new PendingStart(id, page, proxy, owner, noteID, sampleRate, connection, language,
-            command.optBoolean("allow_background"), command.optBoolean("keep_awake"));
+            command.optBoolean("allow_background"), command.optBoolean("keep_awake"), engine, timezone,
+            startOffset, command.optBoolean("append_to_article"));
         startDialog = new AlertDialog.Builder(this)
             .setTitle(R.string.recording_start)
-            .setMessage(pendingStart.background ? R.string.recording_background : R.string.recording_foreground)
+            .setMessage(pendingStart.engine.equals("local") ? R.string.recording_local
+                : pendingStart.background ? R.string.recording_background : R.string.recording_foreground)
             .setNegativeButton(R.string.cancel, (dialog, which) -> cancelPending("cancelled"))
             .setPositiveButton(R.string.start, (dialog, which) -> continueStart())
             .setOnCancelListener(dialog -> cancelPending("cancelled"))
@@ -365,6 +392,10 @@ public final class MainActivity extends Activity {
         intent.putExtra("language", request.language);
         intent.putExtra("allow_background", request.background);
         intent.putExtra("keep_awake", request.keepAwake);
+        intent.putExtra("engine", request.engine);
+        intent.putExtra("timezone", request.timezone);
+        intent.putExtra("start_offset_ms", request.startOffset);
+        intent.putExtra("append_to_article", request.appendToArticle);
         app.approvedRecording = new RecordingLease(request.owner, request.noteID, generation);
         try {
             startForegroundService(intent);
@@ -589,9 +620,14 @@ public final class MainActivity extends Activity {
         final String language;
         final boolean background;
         final boolean keepAwake;
+        final String engine;
+        final String timezone;
+        final long startOffset;
+        final boolean appendToArticle;
 
         PendingStart(String id, long page, JavaScriptReplyProxy proxy, SessionFence.Ticket owner,
-            long noteID, int sampleRate, String connection, String language, boolean background, boolean keepAwake) {
+            long noteID, int sampleRate, String connection, String language, boolean background, boolean keepAwake,
+            String engine, String timezone, long startOffset, boolean appendToArticle) {
             this.id = id;
             this.page = page;
             this.proxy = proxy;
@@ -602,6 +638,10 @@ public final class MainActivity extends Activity {
             this.language = language;
             this.background = background;
             this.keepAwake = keepAwake;
+            this.engine = engine;
+            this.timezone = timezone;
+            this.startOffset = startOffset;
+            this.appendToArticle = appendToArticle;
         }
     }
 }

@@ -1,6 +1,8 @@
 # Astering Android 客户端
 
-Android 客户端基于 Vikunja 改造而来的 Astering 网站，提供系统 WebView 外壳及个人笔记的原生麦克风服务。应用只打开 `https://task.tcymc.space`；正常使用仍需要网络和本站账户。页面来自线上 SPA，因此网页界面更新不需要重新安装 APK；原生权限、服务和桥接代码变更仍需安装新版 APK。
+Android 客户端基于 Vikunja 改造而来的 Astering 网站，提供系统 WebView 界面、个人笔记原生麦克风服务与可选设备本地识别。应用只打开 `https://task.tcymc.space`；登录及页面首次加载仍需要网络和本站账户。已经打开的笔记可使用内置模型在断网时继续识别，文字加密暂存后补传；这不表示整个网站已经支持断网冷启动。页面来自线上 SPA，因此网页界面更新不需要重新安装 APK；原生权限、服务、识别模型和桥接代码变更仍需安装新版 APK。
+
+最新客户端内置约 229 MiB 的 SenseVoiceSmall int8 权重、词表及 VAD，支持近年的 ARM64 安卓手机。实际 APK 还包括原生运行库。模型不会在打开页面时重新下载；详细来源、许可、校验值、体积、加密文字与实测边界见[本地语音识别](offline-asr.md)。
 
 ## 使用与隐私
 
@@ -8,7 +10,7 @@ Android 客户端基于 Vikunja 改造而来的 Astering 网站，提供系统 W
 
 - 默认离开应用即停止采集，并等待服务器保存最终文字。只有本次开始前明确选择允许后台录音，切换应用或熄屏后才继续。
 - 录音期间显示系统麦克风指示和常驻通知。通知包含“停止”和“打开笔记”，不展示转录正文。通知打开已有页面使用正常 SPA 路由，保留网站既有草稿退出保护。
-- PCM16 单声道音频以约 100ms 一帧直接发送本站 `/api/v2/notes/live`，不写录音文件、下载目录、数据库或日志。服务商凭据继续由服务器管理，APK 不包含模型密钥。
+- 在线模式将 PCM16 单声道音频以约 100ms 一帧发送本站 `/api/v2/notes/live`；本地模式在设备上经 VAD 分句和模型推理，不上传音频。两者均不写录音文件、下载目录、数据库或日志。服务商凭据继续由服务器管理，APK 不包含模型密钥。
 - 音频仅短暂放在最多约 4 秒的内存队列中。网络拥塞超出边界时停止并显示错误，不无限积压、不静默丢弃一段声音，也不自动重放未知结果。
 - 约每 420 秒按服务器 `ready.rotate_seconds` 提前结束旧连接；收到最终 `done` 后才续接。续接期间保留同一个麦克风，将新声音暂存于上述有限队列，新的连接按不超过约两倍实时速度追赶。续接等待超过缓冲容量同样明确暂停。
 - 最终分句以服务器提交后的 `segment` 回执为准。页面重新附着后读取持久转录，不把原生端内存状态当成完整笔记历史；网络中断前尚未确认的声音不能声称已经保存。
@@ -58,9 +60,10 @@ Android 客户端基于 Vikunja 改造而来的 Astering 网站，提供系统 W
 
 ## 本机编译与签名
 
-项目目录为 [`android/`](../android/)，使用 Java，最低 Android 8.0（API 26），目标及编译 API 36。固定工具链为 AGP 9.2.1、Gradle 9.4.1、JDK 21（Java 源码目标 17）；依赖 AndroidX WebKit 1.18.0、兼容 API 36 的 OkHttp 5.4.0。没有新增服务端 API，也不把 GitHub Actions 接入构建。
+项目目录为 [`android/`](../android/)，使用 Java，最低 Android 8.0（API 26），目标及编译 API 36，本机识别使用 ARM64 原生库。固定工具链为 AGP 9.2.1、Gradle 9.4.1、JDK 21（Java 源码目标 17）；依赖 AndroidX WebKit 1.18.0、兼容 API 36 的 OkHttp 5.4.0。离线文字通过笔记的幂等导入 API 同步，不把 GitHub Actions 接入构建。
 
 ```sh
+python3 android/scripts/prepare-offline-asr.py
 cd android
 export JAVA_HOME=/path/to/jdk-21
 export ANDROID_HOME=/path/to/android-sdk

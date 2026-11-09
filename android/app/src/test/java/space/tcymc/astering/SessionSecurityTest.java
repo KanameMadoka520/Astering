@@ -63,6 +63,22 @@ public final class SessionSecurityTest {
         assertFalse(sessions.current(restored));
     }
 
+    @Test public void decodedClaimsCannotReadOfflineDataUntilServerValidationAndProofCannotCrossAccounts() {
+        SessionFence sessions = new SessionFence();
+        sessions.set(token(7, SID_A, 100));
+        SessionFence.Ticket first = sessions.ticket();
+        assertFalse(sessions.verified(first));
+        assertTrue(sessions.markVerified(first));
+        sessions.set(token(7, SID_A, 200));
+        assertTrue(sessions.verified(first));
+        sessions.set(token(8, SID_B, 300));
+        assertFalse(sessions.verified(sessions.ticket()));
+        assertFalse(sessions.markVerified(first));
+        sessions.clear();
+        sessions.set(token(7, SID_A, 400));
+        assertFalse(sessions.verified(sessions.ticket()));
+    }
+
     @Test public void oldNotificationDoesNotStopNewRecordingAndOwnerChangeInvalidatesOldApproval() {
         SessionFence sessions = new SessionFence();
         sessions.set(token(1, SID_A, 100));

@@ -7,8 +7,8 @@ import type {LiveNoteReceipt} from '@/client/queries/liveNotes'
 import type {NoteSegment} from '@/client/queries/notes'
 import {captureClientRequestContext, isClientRequestContextCurrent, isRequestContextAbort} from '@/client/requestContext'
 import {stageAronaDraftHandoff} from '@/helpers/aronaDraftHandoff'
-import {selectedTranscript, transcriptTime} from '@/helpers/notes/text'
-import {formatDateShort} from '@/helpers/time/formatDate'
+import {selectedTranscript, transcriptTime, transcriptCapturedTime} from '@/helpers/notes/text'
+import {useLiveNotePreferences} from '@/composables/useLiveNotePreferences'
 import XButton from '@/components/input/Button.vue'
 import Modal from '@/components/misc/Modal.vue'
 import LoadError from '@/components/misc/state/LoadError.vue'
@@ -16,7 +16,9 @@ import LiveVoiceRecorder from './LiveVoiceRecorder.vue'
 
 const props = defineProps<{noteId: number, noteTitle: string}>()
 const emit = defineEmits<{append: [text: string], recording: [active: boolean]}>()
-const {t} = useI18n({useScope: 'global'})
+const {t, locale} = useI18n({useScope: 'global'})
+const preferences = useLiveNotePreferences()
+const captureLabel = (segment: NoteSegment) => transcriptCapturedTime(segment, preferences.timezone.value, locale.value)
 const router = useRouter()
 const owner = captureClientRequestContext()
 const ids = useId()
@@ -40,7 +42,7 @@ const navigating = ref(false)
 const navigationError = ref(false)
 const added = ref(false)
 const visibleSegments = computed(() => notesAccessDenied(query.error.value) ? [] : frozen.value ?? query.segments.value)
-const source = computed(() => selectedText.value || selectedTranscript(visibleSegments.value, selection.value))
+const source = computed(() => selectedText.value || selectedTranscript(visibleSegments.value, selection.value, preferences.timezone.value))
 const allSelected = computed(() => visibleSegments.value.length > 0
 	&& visibleSegments.value.every(segment => selection.value.includes(segment.id)))
 const instructions = computed(() => t(`notes.arona.${preset.value}Prompt`))
@@ -331,11 +333,17 @@ async function sendToArona() {
 								{{ segment.timing_estimated ? '≈ ' : '' }}{{ transcriptTime(segment.start_ms) }}–{{ transcriptTime(segment.end_ms) }}
 							</span>
 							<time
-								v-if="segment.created"
-								:datetime="segment.created"
-							>{{ formatDateShort(segment.created) }}</time>
+								v-if="captureLabel(segment)"
+								:datetime="segment.captured_at ?? undefined"
+								:title="t('notes.transcript.captureClock', {zone: preferences.timezone.value})"
+							>{{ captureLabel(segment) }}</time>
+							<span v-else>{{ t('notes.transcript.captureUnknown') }}</span>
 						</div>
 						<p>{{ segment.text }}</p>
+						<small
+							v-if="segment.append_to_article && !segment.article_appended"
+							role="status"
+						>{{ t('notes.transcript.articleFull') }}</small>
 					</div>
 				</li>
 			</ol>

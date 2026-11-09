@@ -1,6 +1,12 @@
 import {describe, expect, it, vi} from 'vitest'
 import type {NoteSegment, NoteText} from '@/client/queries/notes'
-import {noteExportFilename, sameNoteText, selectedTranscript, transcriptTime} from './text'
+import {
+	noteExportFilename,
+	sameNoteText,
+	selectedTranscript,
+	transcriptCapturedTime,
+	transcriptTime,
+} from './text'
 
 function segment(id: number, text: string): NoteSegment {
 	return {id, note_id: 1, client_id: `segment-${id}`, text, start_ms: id * 1000, end_ms: id * 1000 + 1000, timing_estimated: false}
@@ -13,6 +19,21 @@ describe('notes source selection', () => {
 	})
 	it('keeps elapsed recording hours without wrapping at a day', () => {
 		expect(transcriptTime(26 * 3600 * 1000 + 65_000)).toBe('26:01:05')
+	})
+	it('displays a real capture instant in the selected timezone without changing its elapsed offset', () => {
+		const captured = {
+			...segment(2, 'A thought'),
+			captured_at: '2026-11-09T07:08:10.123Z',
+			timezone: 'UTC',
+		}
+		expect(transcriptCapturedTime(captured, 'Asia/Shanghai', 'en-US')).toContain('15:08:10')
+		expect(transcriptCapturedTime(captured, 'UTC', 'en-US')).toContain('07:08:10')
+		expect(selectedTranscript([captured], [2], 'Asia/Shanghai')).toContain('15:08:10')
+		expect(selectedTranscript([captured], [2], 'Asia/Shanghai')).toContain('00:02–00:03')
+	})
+	it('leaves historical capture dates unknown instead of deriving a clock from offsets', () => {
+		expect(transcriptCapturedTime(segment(2, 'Legacy'))).toBeUndefined()
+		expect(transcriptCapturedTime({captured_at: 'invalid', timezone: 'UTC'})).toBeUndefined()
 	})
 	it('marks approximate provider timing in selected source text', () => {
 		expect(selectedTranscript([{...segment(2, 'Approximate'), timing_estimated: true}], [2]))

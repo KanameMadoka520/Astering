@@ -16,11 +16,30 @@
 			{{ errorMessage }}
 		</Message>
 
+		<Message
+			v-if="route.query.accountError"
+			variant="warning"
+			class="mbe-4"
+		>
+			{{ t('accountSwitch.switchFailed') }}
+		</Message>
+		<p
+			v-if="route.query.addAccount"
+			class="mbe-4"
+		>
+			{{ t('accountSwitch.addHelp') }}
+		</p>
+		<AccountSwitcher
+			v-if="!isDesktop"
+			inline
+			class="mbe-4"
+		/>
 		<DesktopLogin v-if="isDesktop" />
 
 		<form
 			v-if="!isDesktop && (localAuthEnabled || ldapAuthEnabled)"
 			id="loginform"
+			:inert="isLoading"
 			@submit.prevent="submit"
 		>
 			<FormField
@@ -76,6 +95,13 @@
 				:label="$t('user.auth.remember')"
 			/>
 
+			<FormCheckbox
+				v-model="rememberAccount"
+				:label="t('accountSwitch.rememberLogin')"
+			/>
+			<p class="account-switcher-login-help">
+				{{ t('accountSwitch.sharedDevice') }}
+			</p>
 			<XButton
 				:loading="isLoading"
 				class="is-fullwidth login-submit"
@@ -133,6 +159,7 @@ import Password from '@/components/input/Password.vue'
 import FormField from '@/components/input/FormField.vue'
 import FormCheckbox from '@/components/input/FormCheckbox.vue'
 import DesktopLogin from '@/views/user/DesktopLogin.vue'
+import AccountSwitcher from '@/components/home/AccountSwitcher.vue'
 
 import {getErrorText} from '@/message'
 import {getAutoRedirectProvider, redirectToProvider} from '@/helpers/redirectToProvider'
@@ -170,6 +197,7 @@ const errorMessage = ref('')
 const password = ref('')
 const validatePasswordInitially = ref(false)
 const rememberMe = ref(false)
+const rememberAccount = ref(route.query.addAccount === '1')
 
 const authenticated = computed(() => authStore.authenticated)
 
@@ -202,7 +230,7 @@ onBeforeMount(() => {
 		openIdEnabled: openidConnect.value.enabled,
 		providers: openidConnect.value.providers ?? [],
 		isDesktopApp: isDesktop,
-		justLoggedOut,
+		justLoggedOut: justLoggedOut || route.query.addAccount === '1' || route.query.switchingAccount === '1',
 		hasCopyableRedirect: route.hash.startsWith(REDIRECT_HASH_PREFIX),
 	})
 	if (autoRedirectProvider) {
@@ -229,6 +257,7 @@ async function submit() {
 		username: usernameRef.value?.value,
 		password: password.value,
 		longToken: rememberMe.value,
+		rememberAccount: rememberAccount.value,
 	}
 
 	if (credentials.username === '' || credentials.password === '') {
@@ -258,6 +287,11 @@ async function submit() {
 </script>
 
 <style lang="scss" scoped>
+.account-switcher-login-help {
+ color: var(--text-secondary);
+ font-size: var(--text-xs);
+}
+
 .login-submit {
 	margin-block-start: var(--space-4);
 }

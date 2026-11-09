@@ -43,6 +43,17 @@ const liveNoteRotateSeconds = 7 * 60
 
 var recognizeLiveNoteSpeech = tcyai.RecognizeLiveSpeech
 
+type liveNoteCaptureState struct {
+	sync.Mutex
+	segment models.AsterNoteSegment
+}
+
+func (c *liveNoteCaptureState) snapshot() models.AsterNoteSegment {
+	c.Lock()
+	defer c.Unlock()
+	return c.segment
+}
+
 type liveNoteConnection struct {
 	ID         string `json:"id" required:"true"`
 	Name       string `json:"name" required:"true"`
@@ -110,12 +121,17 @@ func registerLiveNoteConnections(api huma.API) {
 }
 
 type liveNoteStart struct {
-	Action       string `json:"action"`
-	Token        string `json:"token"`
-	NoteID       int64  `json:"note_id"`
-	ConnectionID string `json:"connection_id"`
-	OffsetMS     int64  `json:"offset_ms"`
-	Language     string `json:"language"`
+	Action             string     `json:"action"`
+	Token              string     `json:"token"`
+	NoteID             int64      `json:"note_id"`
+	ConnectionID       string     `json:"connection_id"`
+	OffsetMS           int64      `json:"offset_ms"`
+	Language           string     `json:"language"`
+	RecordingID        string     `json:"recording_id"`
+	RecordingStartedAt *time.Time `json:"recording_started_at"`
+	RecordingOffsetMS  int64      `json:"recording_offset_ms"`
+	Timezone           string     `json:"timezone"`
+	AppendToArticle    bool       `json:"append_to_article"`
 }
 
 var liveNoteSlots = struct {
@@ -185,6 +201,12 @@ func LiveNoteSpeech(c *echo.Context) error {
 		fail("authentication")
 		return nil
 	}
+	capture := &models.AsterNoteSegment{RecordingID: start.RecordingID, RecordingStartedAt: start.RecordingStartedAt, RecordingOffsetMS: start.RecordingOffsetMS, Timezone: start.Timezone, AppendToArticle: start.AppendToArticle}
+	if err := models.NormalizeAsterNoteCapture(capture); err != nil {
+		fail("invalid_start")
+		return nil
+	}
+	captureState := &liveNoteCaptureState{segment: *capture}
 	ctx = tcyai.WithAccountRunAdmission(ctx, claims.UserID)
 	if err = checkLiveNoteSession(ctx, claims); err != nil {
 		fail("authentication")
@@ -238,7 +260,7 @@ func LiveNoteSpeech(c *echo.Context) error {
 	ready := make(chan struct{})
 	go func() {
 		defer close(audio)
-		readErr := readLiveNoteAudio(ctx, socket, audio, ready, rate)
+		readErr := readLiveNoteAudio(ctx, socket, audio, ready, rate, captureState)
 		readDone <- readErr
 		if readErr != nil {
 			cancel()
@@ -263,7 +285,7 @@ func LiveNoteSpeech(c *echo.Context) error {
 		}
 		close(ready)
 		return nil
-	}, liveNoteDeltaSink(ctx, actor, start.NoteID, offset, claims, send))
+	}, liveNoteDeltaSink(ctx, actor, start.NoteID, offset, claims, send, captureState))
 	if err != nil {
 		if ctx.Err() == nil {
 			_ = send(map[string]string{
@@ -325,7 +347,7 @@ func saveLiveNoteSegment(ctx context.Context, actor *user.User, noteID int64, se
 	return stats, nil
 }
 
-func readLiveNoteAudio(ctx context.Context, socket *websocket.Conn, audio chan<- []byte, ready <-chan struct{}, rate int) error {
+func readLiveNoteAudio(ctx context.Context, socket *websocket.Conn, audio chan<- []byte, ready <-chan struct{}, rate int, captures ...*liveNoteCaptureState) error {
 	select {
 	case <-ready:
 	case <-ctx.Done():
@@ -333,6 +355,7 @@ func readLiveNoteAudio(ctx context.Context, socket *websocket.Conn, audio chan<-
 	}
 	started := time.Now()
 	var sent int64
+	clockUpdated := false
 	for {
 		kind, data, readErr := socket.Read(ctx)
 		if readErr != nil {
@@ -340,10 +363,35 @@ func readLiveNoteAudio(ctx context.Context, socket *websocket.Conn, audio chan<-
 		}
 		if kind == websocket.MessageText {
 			var command struct {
-				Action string `json:"action"`
+				Action             string     `json:"action"`
+				RecordingStartedAt *time.Time `json:"recording_started_at"`
 			}
-			if json.Unmarshal(data, &command) == nil && command.Action == "stop" {
+			if err := json.Unmarshal(data, &command); err != nil {
+				return errors.New("invalid_command")
+			}
+			if command.Action == "stop" {
 				return nil
+			}
+			if command.Action == "capture_started" && sent == 0 && !clockUpdated && command.RecordingStartedAt != nil && len(captures) > 0 && captures[0] != nil {
+				state := captures[0]
+				state.Lock()
+				capture := state.segment
+				if capture.RecordingOffsetMS != 0 {
+					state.Unlock()
+					return errors.New("invalid_command")
+				}
+				capture.RecordingStartedAt = command.RecordingStartedAt
+				capture.CapturedAt = nil
+				err := models.NormalizeAsterNoteCapture(&capture)
+				if err == nil {
+					state.segment = capture
+				}
+				state.Unlock()
+				if err != nil {
+					return errors.New("invalid_command")
+				}
+				clockUpdated = true
+				continue
 			}
 			return errors.New("invalid_command")
 		}
@@ -361,7 +409,7 @@ func readLiveNoteAudio(ctx context.Context, socket *websocket.Conn, audio chan<-
 	}
 }
 
-func liveNoteDeltaSink(ctx context.Context, actor *user.User, noteID, offset int64, claims *auth.UserTokenClaims, send func(any) error) func(tcyai.LiveSpeechDelta) error {
+func liveNoteDeltaSink(ctx context.Context, actor *user.User, noteID, offset int64, claims *auth.UserTokenClaims, send func(any) error, captures ...*liveNoteCaptureState) func(tcyai.LiveSpeechDelta) error {
 	ids := map[string]string{}
 	return func(delta tcyai.LiveSpeechDelta) error {
 		if !delta.Final {
@@ -388,6 +436,13 @@ func liveNoteDeltaSink(ctx context.Context, actor *user.User, noteID, offset int
 			StartMS:         offset + delta.StartMS,
 			EndMS:           offset + delta.EndMS,
 			TimingEstimated: delta.TimingEstimated,
+		}
+		if len(captures) > 0 && captures[0] != nil {
+			capture := captures[0].snapshot()
+			segment.RecordingID, segment.RecordingStartedAt, segment.Timezone, segment.AppendToArticle = capture.RecordingID, capture.RecordingStartedAt, capture.Timezone, capture.AppendToArticle
+			if capture.RecordingStartedAt != nil {
+				segment.RecordingOffsetMS = capture.RecordingOffsetMS + delta.StartMS
+			}
 		}
 		stats, saveErr := saveLiveNoteSegment(ctx, actor, noteID, segment)
 		if saveErr != nil {

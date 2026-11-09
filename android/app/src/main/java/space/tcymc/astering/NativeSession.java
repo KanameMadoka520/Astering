@@ -35,6 +35,7 @@ final class NativeSession {
         .build();
     private String boundCookie = "";
     private volatile Call refreshCall;
+    private final java.util.concurrent.atomic.AtomicBoolean verifying = new java.util.concurrent.atomic.AtomicBoolean();
 
     NativeSession(AsteringApplication app) {
         this.app = app;
@@ -48,6 +49,10 @@ final class NativeSession {
         return fence.current(ticket);
     }
 
+    boolean verified(SessionFence.Ticket ticket) {
+        return fence.verified(ticket);
+    }
+
     void accept(String token) {
         requireMain();
         boolean changed = fence.set(token);
@@ -56,7 +61,21 @@ final class NativeSession {
             if (call != null) call.cancel();
             boundCookie = cookie();
             app.stopRecordingForSessionChange();
+            if (app.offline != null) app.offline.changed();
         }
+        ensureVerified();
+    }
+
+    void ensureVerified() {
+        SessionFence.Ticket requested = ticket();
+        if (requested == null || verified(requested) || !verifying.compareAndSet(false, true)) return;
+        // Offline data ownership needs a server-validated identity, not merely decoded JWT claims.
+        refresh(requested.token, true, (token, error) -> {
+            verifying.set(false);
+            if (!current(requested)) { ensureVerified(); return; }
+            if (error == null && !verified(ticket())) { ensureVerified(); return; }
+            if (error != null && app.offline != null) app.offline.authenticationFailed(error);
+        });
     }
 
     void clear() {
@@ -66,6 +85,7 @@ final class NativeSession {
         Call call = refreshCall;
         if (call != null) call.cancel();
         app.stopRecordingForSessionChange();
+        if (app.offline != null) app.offline.changed();
     }
 
     void refresh(String requestingToken, boolean force, Callback callback) {
@@ -168,7 +188,9 @@ final class NativeSession {
                     if (error.get() == null) {
                         boundCookie = cookie();
                         fence.set(token);
+                        fence.markVerified(fence.ticket());
                         app.emitToken(fence.ticket().token);
+                        if (app.offline != null) app.offline.authenticated();
                     }
                     done.countDown();
                 });

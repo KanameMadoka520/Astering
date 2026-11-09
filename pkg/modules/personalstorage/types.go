@@ -46,7 +46,8 @@ type StorageSummary struct {
 	NoteCount                  int64             `json:"note_count" required:"true" doc:"Personal editable notes; independent from chat records and Drive originals."`
 	NoteContentBytes           int64             `json:"note_content_bytes" required:"true" doc:"Logical UTF-8 Markdown bytes, excluded from file-based total_bytes; not allocated database space."`
 	NoteTranscriptBytes        int64             `json:"note_transcript_bytes" required:"true" doc:"Logical UTF-8 final transcript bytes; original audio is not stored."`
-	NoteTextBytes              int64             `json:"note_text_bytes" required:"true" doc:"Title, Markdown and transcript UTF-8 bytes. Independent logical database accounting; excluded from total_bytes. Deleting it does not promise immediate disk reclamation."`
+	NoteOrganizationBytes      int64             `json:"note_organization_bytes" required:"true" doc:"Logical UTF-8 temporary article snapshots, organization checkpoints, and preview results. Discarding the preview frees this logical note data without deleting original transcripts."`
+	NoteTextBytes              int64             `json:"note_text_bytes" required:"true" doc:"Title, Markdown, transcript and organization preview/checkpoint UTF-8 bytes. Independent logical database accounting; excluded from total_bytes. Deleting it does not promise immediate disk reclamation."`
 	ConversationCount          int64             `json:"conversation_count" required:"true"`
 	Categories                 []StorageCategory `json:"categories" required:"true"`
 	Definitions                []string          `json:"definitions" required:"true" doc:"Stable accounting notes for presentation and diagnostics."`
