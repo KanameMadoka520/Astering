@@ -6,10 +6,25 @@
 		:loading="busy"
 		:aria-label="t('accountSwitch.title')"
 		class="account-switcher"
+		:class="{'account-switcher--inline': inline}"
 		@close="open = false"
 	>
 		<div class="account-switcher__body">
-			<h2>{{ t('accountSwitch.title') }}</h2>
+			<header class="account-switcher__header">
+				<h2>{{ t('accountSwitch.title') }}</h2>
+				<BaseButton
+					v-if="!inline"
+					class="account-switcher__close"
+					:aria-label="t('misc.closeDialog')"
+					:aria-disabled="busy"
+					@click="!busy && (open = false)"
+				>
+					<Icon
+						icon="times"
+						aria-hidden="true"
+					/>
+				</BaseButton>
+			</header>
 			<p class="account-switcher__help">
 				{{ t('accountSwitch.help') }}
 			</p>
@@ -210,13 +225,73 @@ defineExpose({request})
 <style lang="scss" scoped>
 .account-switcher__body {
 	display: grid;
+	align-content: start;
 	gap: var(--space-3);
+	box-sizing: border-box;
+	inline-size: 100%;
 	min-inline-size: 0;
-	padding: var(--space-3);
+	max-inline-size: 36rem;
+	margin-inline: auto;
+	padding: var(--space-6);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-lg);
+	background: var(--surface-raised);
+	box-shadow: var(--elevation-3);
+	color: var(--text-primary);
+	text-align: start;
+	overflow-wrap: anywhere;
 
 	h2 {
 		margin: 0;
 		font-size: var(--text-xl);
+	}
+}
+
+.account-switcher__header {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: var(--space-3);
+	align-items: center;
+}
+
+.account-switcher__close {
+	display: grid;
+	place-items: center;
+	inline-size: 44px;
+	block-size: 44px;
+	border-radius: var(--radius-md);
+	color: var(--text-secondary);
+	line-height: 1;
+
+	&:hover {
+		background: var(--surface-hover);
+	}
+
+	&:focus-visible {
+		outline: 2px solid var(--focus-ring-color);
+		outline-offset: 2px;
+	}
+}
+
+.account-switcher--inline .account-switcher__body {
+	max-inline-size: none;
+	padding: var(--space-4);
+	box-shadow: none;
+}
+
+@media screen and (max-width: $tablet - 1px) {
+	.account-switcher:not(.account-switcher--inline) {
+		background: var(--surface-raised);
+		color: var(--text-primary);
+
+		.account-switcher__body {
+			min-block-size: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+			max-inline-size: none;
+			padding: var(--space-4);
+			border: 0;
+			border-radius: 0;
+			box-shadow: none;
+		}
 	}
 }
 
