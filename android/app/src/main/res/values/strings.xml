@@ -44,8 +44,7 @@
     <string name="server_address">Astering server address</string>
     <string name="server_connect">Confirm and connect</string>
     <string name="server_change">Change server</string>
-    <string name="server_settings">Settings</string>
-    <string name="server_current">Current server: %1$s</string>
+    <string name="server_settings">Client settings</string>
     <string name="server_change_warning">Changing servers stops recording and synchronization, and clears website login and browser storage. Save website drafts first. Pending local transcripts stay encrypted and separated by server and account; server notes are not deleted.</string>
     <string name="server_confirm_title">Trust and connect to this server?</string>
     <string name="server_confirm_message">%1$s\n\nOnly this HTTPS origin will receive your login and native recording requests. Connecting clears existing website login and browser storage and stops current recording. Save drafts first. Pending local text remains separated by its original server.</string>
@@ -64,4 +63,9 @@
     <string name="legacy_failed">Recovery could not finish. Unprocessed originals remain on this phone. Check free storage and the verified account, then try again from Client settings. Successfully recovered passages are safe to retry without duplicate server entries.</string>
     <string name="update_recording_active">Dictation or final transcript saving is still running. Stop recording and wait for it to finish, then tap Check for updates to install. The verified package is kept.</string>
     <string name="server_cleanup_failed">Previous login cleanup did not finish. No server was connected. Wait a moment and confirm the address again; old pending text remains safe.</string>
+    <string name="client_server_none">No server selected</string>
+    <string name="client_settings_detail">Server\n%1$s\n\nAndroid client\n%2$s · build %3$d</string>
+    <string name="client_settings_help">Closing this window returns to the current page. Changing servers requires a separate confirmation and clears website login and browser storage.</string>
+    <string name="client_settings_close">Close</string>
+    <string name="client_shortcut_label">Astering client settings</string>
 </resources>

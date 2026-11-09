@@ -142,6 +142,7 @@
 					>
 						{{ $t('user.settings.title') }}
 					</DropdownItem>
+					<NativeClientSettingsItem @activate="accountMenu?.closeMenu({focusTrigger: true})" />
 					<DropdownItem
 						v-if="adminPanelEnabled && authStore.info?.is_admin"
 						icon="user-edit"
@@ -224,6 +225,7 @@ import OpenQuickActions from '@/components/misc/OpenQuickActions.vue'
 import UserAvatar from '@/components/misc/UserAvatar.vue'
 import LogoutDialog from '@/components/home/LogoutDialog.vue'
 import AccountSwitcher from '@/components/home/AccountSwitcher.vue'
+import NativeClientSettingsItem from '@/components/home/NativeClientSettingsItem.vue'
 import ProjectAccessBadge from '@/components/sharing/ProjectAccessBadge.vue'
 
 import { getProjectTitle } from '@/helpers/getProjectTitle'

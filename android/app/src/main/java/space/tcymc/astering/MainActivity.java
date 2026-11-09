@@ -27,7 +27,6 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.PopupMenu;
 import android.widget.ScrollView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -41,6 +40,7 @@ import java.util.UUID;
 import org.json.JSONObject;
 
 public final class MainActivity extends Activity {
+    static final String CLIENT_SETTINGS_ACTION = "space.tcymc.astering.OPEN_CLIENT_SETTINGS";
     private static final java.util.concurrent.atomic.AtomicInteger REQUEST_CODES = new java.util.concurrent.atomic.AtomicInteger(1024);
     private int microphoneRequest = -1;
     private int notificationRequest = -1;
@@ -54,6 +54,8 @@ public final class MainActivity extends Activity {
     private LinearLayout root;
     private AndroidUpdater updater;
     private boolean switchingServer;
+    private AlertDialog clientSettingsDialog;
+    private boolean pendingClientSettings;
     private AlertDialog serverDialog;
     private AlertDialog confirmDialog;
     private AlertDialog legacyDialog;
@@ -77,7 +79,10 @@ public final class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         app = (AsteringApplication) getApplication();
         app.attach(this);
-        rememberOpenNote(getIntent());
+        boolean shortcut = CLIENT_SETTINGS_ACTION.equals(getIntent().getAction());
+        pendingClientSettings = shortcut || savedInstanceState != null && savedInstanceState.getBoolean("open_client_settings");
+        if (shortcut) setIntent(new Intent(this, MainActivity.class).setAction(Intent.ACTION_MAIN));
+        else rememberOpenNote(getIntent());
         updater = new AndroidUpdater(this);
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -105,6 +110,12 @@ public final class MainActivity extends Activity {
         if (app.serverChange != null) { switchingServer = true; showServerProgress(); }
         else if (app.site == null) showServerForm();
         else showSelectedServer();
+    }
+
+    @Override public void onConfigurationChanged(android.content.res.Configuration configuration) {
+        super.onConfigurationChanged(configuration);
+        // Keep the existing SPA, drafts and scroll position when the display resizes or rotates.
+        if (web != null && !rendererGone) web.invalidate();
     }
 
     private int dp(int value) {
@@ -247,6 +258,7 @@ public final class MainActivity extends Activity {
         else showSelectedServer();
         if (errorResource != 0) new AlertDialog.Builder(this).setMessage(errorResource)
             .setPositiveButton(android.R.string.ok, null).show();
+        else consumeClientSettings();
     }
 
     private void showSelectedServer() {
@@ -254,28 +266,6 @@ public final class MainActivity extends Activity {
         if (selected == null) { showServerForm(); return; }
         root.removeAllViews();
         rendererGone = false;
-        LinearLayout bar = new LinearLayout(this);
-        bar.setGravity(android.view.Gravity.CENTER_VERTICAL);
-        bar.setPadding(dp(12), 0, dp(4), 0);
-        TextView address = new TextView(this);
-        address.setText(selected.origin.substring("https://".length()));
-        address.setSingleLine(true);
-        address.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
-        address.setTextSize(12);
-        address.setContentDescription(getString(R.string.server_current, selected.origin));
-        bar.addView(address, new LinearLayout.LayoutParams(0, -2, 1));
-        Button settings = new Button(this);
-        settings.setText(R.string.server_settings);
-        settings.setMinHeight(dp(40));
-        settings.setOnClickListener(view -> {
-            PopupMenu menu = new PopupMenu(this, settings);
-            menu.getMenu().add(R.string.server_change).setOnMenuItemClickListener(item -> { editServer(); return true; });
-            menu.getMenu().add(R.string.update_check).setOnMenuItemClickListener(item -> { updater.check(true); return true; });
-            menu.getMenu().add(R.string.legacy_recover).setOnMenuItemClickListener(item -> { checkLegacy(true); return true; });
-            menu.show();
-        });
-        bar.addView(settings, new LinearLayout.LayoutParams(-2, dp(40)));
-        root.addView(bar);
         errorPanel = new LinearLayout(this);
         errorPanel.setPadding(dp(20), dp(20), dp(20), dp(20));
         errorPanel.setOrientation(LinearLayout.VERTICAL);
@@ -290,6 +280,10 @@ public final class MainActivity extends Activity {
             else if (app.site == webSite) web.loadUrl(webSite.origin);
         });
         errorPanel.addView(retry);
+        Button settings = new Button(this);
+        settings.setText(R.string.server_settings);
+        settings.setOnClickListener(v -> showClientSettings());
+        errorPanel.addView(settings);
         errorPanel.setVisibility(View.GONE);
         root.addView(errorPanel);
         web = new WebView(this);
@@ -303,6 +297,58 @@ public final class MainActivity extends Activity {
         root.addView(web, new LinearLayout.LayoutParams(-1, 0, 1));
         configureWebView();
         web.loadUrl(noteURL(getIntent()));
+    }
+
+    /** Native choices stay here; the website may only request opening this dialog. */
+    private boolean showClientSettings() {
+        if (!visible || !resumed || isDestroyed() || isFinishing() || switchingServer || app.serverChange != null) return false;
+        if (clientSettingsDialog != null) return true;
+        if (serverDialog != null || confirmDialog != null || legacyDialog != null || startDialog != null) return false;
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(24), dp(12), dp(24), dp(8));
+        TextView info = new TextView(this);
+        String address = app.site == null ? getString(R.string.client_server_none) : app.site.origin;
+        info.setText(getString(R.string.client_settings_detail, address, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE));
+        info.setTextIsSelectable(true);
+        content.addView(info);
+        TextView help = new TextView(this);
+        help.setText(R.string.client_settings_help);
+        help.setPadding(0, dp(12), 0, dp(12));
+        content.addView(help);
+        Button change = new Button(this);
+        change.setText(R.string.server_change);
+        change.setOnClickListener(view -> { dismissClientSettings(); editServer(); });
+        content.addView(change, new LinearLayout.LayoutParams(-1, -2));
+        Button updates = new Button(this);
+        updates.setText(R.string.update_check);
+        updates.setOnClickListener(view -> { dismissClientSettings(); updater.check(true); });
+        content.addView(updates, new LinearLayout.LayoutParams(-1, -2));
+        Button recover = new Button(this);
+        recover.setText(R.string.legacy_recover);
+        recover.setOnClickListener(view -> { dismissClientSettings(); checkLegacy(true); });
+        content.addView(recover, new LinearLayout.LayoutParams(-1, -2));
+        scroll.addView(content);
+        AlertDialog settings = new AlertDialog.Builder(this)
+            .setTitle(R.string.server_settings)
+            .setView(scroll)
+            .setPositiveButton(R.string.client_settings_close, null)
+            .create();
+        clientSettingsDialog = settings;
+        settings.setOnDismissListener(dialog -> { if (clientSettingsDialog == settings) clientSettingsDialog = null; });
+        settings.show();
+        return true;
+    }
+
+    private void dismissClientSettings() {
+        AlertDialog settings = clientSettingsDialog;
+        clientSettingsDialog = null;
+        if (settings != null) settings.dismiss();
+    }
+
+    private void consumeClientSettings() {
+        if (pendingClientSettings && showClientSettings()) pendingClientSettings = false;
     }
 
     private boolean trusted(String url) {
@@ -493,6 +539,13 @@ public final class MainActivity extends Activity {
             if (id.length() > 80 || id.isEmpty()) return;
             String requestID = id;
             switch (command.getString("action")) {
+                case "clientInfo":
+                    reply(proxy, page, id, AsteringApplication.object("version_name", BuildConfig.VERSION_NAME,
+                        "version_code", BuildConfig.VERSION_CODE, "capabilities", AsteringApplication.object("clientSettings", true)), null);
+                    break;
+                case "openClientSettings":
+                    reply(proxy, page, id, AsteringApplication.object(), showClientSettings() ? null : "foreground_required");
+                    break;
                 case "session": {
                     app.session.accept(command.getString("token"));
                     SessionFence.Ticket current = app.session.ticket();
@@ -562,7 +615,7 @@ public final class MainActivity extends Activity {
     }
 
     private void requestRecording(JSONObject command, long page, JavaScriptReplyProxy proxy, String id) throws Exception {
-        if (!visible || !resumed || !hasWindowFocus()) {
+        if (!visible || !resumed || !hasWindowFocus() || clientSettingsDialog != null) {
             reply(proxy, page, id, null, "foreground_required");
             return;
         }
@@ -740,7 +793,8 @@ public final class MainActivity extends Activity {
 
     private void offerLegacy(SessionFence.Ticket owner, JSONObject status, boolean explicit) {
         if (owner == null || !app.session.verified(owner) || !owner.origin.equals(status.optString("server_origin"))
-            || switchingServer || !resumed || isDestroyed() || legacyDialog != null || serverDialog != null || startDialog != null) return;
+            || switchingServer || !resumed || isDestroyed() || clientSettingsDialog != null
+            || legacyDialog != null || serverDialog != null || startDialog != null) return;
         int count = status.optInt("legacy_pending_count");
         if (count == 0) {
             if (explicit) new AlertDialog.Builder(this).setMessage(R.string.legacy_empty)
@@ -819,6 +873,7 @@ public final class MainActivity extends Activity {
     }
 
     private String noteURL(Intent intent) {
+        if (CLIENT_SETTINGS_ACTION.equals(intent.getAction())) return app.site.origin;
         long note = intent.getLongExtra("note_id", 0);
         SessionFence.Ticket owner = app.session.ticket();
         boolean same = owner != null && owner.owner.userID == intent.getLongExtra("user_id", 0)
@@ -829,6 +884,11 @@ public final class MainActivity extends Activity {
 
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        if (CLIENT_SETTINGS_ACTION.equals(intent.getAction())) {
+            pendingClientSettings = true;
+            consumeClientSettings();
+            return;
+        }
         setIntent(intent);
         rememberOpenNote(intent);
         consumeOpenNote();
@@ -884,10 +944,12 @@ public final class MainActivity extends Activity {
         JSONObject snapshot = app.snapshot();
         setScreenAwake(snapshot.optBoolean("keep_awake") && AsteringApplication.active(snapshot.optString("state")));
         emit(AsteringApplication.object("event", "recording", "snapshot", snapshot));
+        consumeClientSettings();
     }
 
     @Override protected void onPause() {
         resumed = false;
+        dismissClientSettings();
         super.onPause();
     }
 
@@ -923,7 +985,13 @@ public final class MainActivity extends Activity {
         return super.onKeyUp(keyCode, event);
     }
 
+    @Override protected void onSaveInstanceState(Bundle outState) {
+        outState.putBoolean("open_client_settings", pendingClientSettings);
+        super.onSaveInstanceState(outState);
+    }
+
     @Override protected void onDestroy() {
+        dismissClientSettings();
         cancelPending("cancelled");
         cancelPageRequests();
         if (serverDialog != null) serverDialog.dismiss();

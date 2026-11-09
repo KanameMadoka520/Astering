@@ -4,6 +4,10 @@
 		"source": "Astering 开源仓库",
 		"subtitle": "Aster的AI集成工业系统"
 	},
+	"androidClient": {
+		"settings": "客户端设置",
+		"openFailed": "暂时无法打开客户端设置，请重试，也可以长按 Astering 应用图标，使用「客户端设置」快捷入口。"
+	},
 	"bark": {
 		"title": "手机推送 · Bark",
 		"intro": "将本账户的新通知发送到 Bark。关闭网页后，服务器仍会发送；每个账户独立保存自己的设备配置。",

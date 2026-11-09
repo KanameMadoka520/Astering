@@ -4,6 +4,10 @@
     "source": "Astering on GitHub",
     "subtitle": "Aster’s AI-integrated industrial system"
   },
+  "androidClient": {
+    "settings": "Client settings",
+    "openFailed": "Client settings could not be opened. Try again, or use the Astering app icon’s Client settings shortcut."
+  },
   "bark": {
     "title": "Mobile push · Bark",
     "intro": "Send new notifications for your account to Bark, even when the website is closed. Each account stores its own device settings.",

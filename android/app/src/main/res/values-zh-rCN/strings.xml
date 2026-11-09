@@ -45,7 +45,6 @@
     <string name="server_connect">确认并连接</string>
     <string name="server_change">更换服务器</string>
     <string name="server_settings">客户端设置</string>
-    <string name="server_current">当前服务器：%1$s</string>
     <string name="server_change_warning">更换服务器会停止录音和同步，并清除网页登录状态与浏览器存储。请先保存网页草稿。待同步文字会按服务器和账户分别加密保留；不会删除服务器笔记。</string>
     <string name="server_confirm_title">信任并连接此服务器？</string>
     <string name="server_confirm_message">%1$s\n\n只有这个 HTTPS 来源可以接收登录信息和原生录音请求。连接时会清理已有网页登录和浏览器存储，并停止当前录音。请先保存草稿；待同步文字仍与原服务器隔离保存。</string>
@@ -64,4 +63,9 @@
     <string name="legacy_failed">恢复未能全部完成，尚未处理的原件仍保留在本机。请检查剩余空间及账户验证状态，再从「客户端设置」重试。已恢复片段使用固定标识重试，不会重复创建服务器记录。</string>
     <string name="update_recording_active">录音或最终转录保存仍在进行。请先停止录音并等待结束，再点“检查更新”安装；已校验的安装包会保留。</string>
     <string name="server_cleanup_failed">旧登录状态尚未清理完成，未连接任何服务器。请稍候重新确认地址；旧的待同步文字仍安全保留。</string>
+    <string name="client_server_none">尚未选择服务器</string>
+    <string name="client_settings_detail">服务器\n%1$s\n\nAndroid 客户端\n%2$s · 构建 %3$d</string>
+    <string name="client_settings_help">关闭此窗口会回到当前页面。更换服务器需要另行确认，并会清理网页登录和浏览器存储。</string>
+    <string name="client_settings_close">关闭</string>
+    <string name="client_shortcut_label">Astering 客户端设置</string>
 </resources>

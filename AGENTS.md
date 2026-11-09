@@ -13,7 +13,7 @@ Astering: personal projects, records and native AI assistance, based on Vikunja.
 
 ## 本分支的长期约定
 
-- 产品名称为 **Astering**，自有版本使用 `aster` 序列（当前服务端 `v2.7.1-aster.65`、Android `2.7.1-aster.66`），源码仓库为 `KanameMadoka520/Astering`。开篇保留“基于 Vikunja 改造而来”及真实上游版权；历史产物与配置兼容规则见[品牌迁移](docs/brand-migration.md)，不因更名重置数据或凭据。
+- 产品名称为 **Astering**，自有版本使用 `aster` 序列（当前服务端 `v2.7.1-aster.67`、Android `2.7.1-aster.67`），源码仓库为 `KanameMadoka520/Astering`。开篇保留“基于 Vikunja 改造而来”及真实上游版权；历史产物与配置兼容规则见[品牌迁移](docs/brand-migration.md)，不因更名重置数据或凭据。
 - 品牌名称下的副标题为 **Aster的AI集成工业系统**；英文为 **Aster’s AI-integrated industrial system**。维护共用 `Logo.vue` 与 `brand.subtitle`，保留登录、页头和手机导航的适配。
 - 品牌图形采用斜切 A 与一颗小四芒星，配色为炭黑、星蓝／浅青与白灰，深底 A 使用浅青、安装底板使用浅蓝，小星依明暗表面区分；避开紫荆花式五瓣旋转构造。明暗版本、小图标、制作来源和离线生成规则见[品牌素材](docs/brand-identity.md)。
 - 提交使用中文 Conventional Commits，例如 `fix(cache): 修复私人图片重验证`；作者为 `KanameMadoka520 <90090108+KanameMadoka520@users.noreply.github.com>`，不添加 `Co-Authored-By`。详见 [Git 约定](.agents/docs/git-workflow.md)。
@@ -36,6 +36,7 @@ Astering: personal projects, records and native AI assistance, based on Vikunja.
 - 本仓库不使用 GitHub Actions。不要新增或恢复 `.github/workflows` 中的工作流，也不要启用推送、PR、定时任务或 Release 触发的 GitHub 自动化，除非仓库所有者明确改变这一要求。
 - 检查、测试和编译均在本机执行；完成验证后，由维护者上传本机产物到 GitHub Release。
 - **Android APK 仅发布到 GitHub Release，不在业务网站托管或另设下载代理。客户端首次启动的服务器地址必须为空，由用户手动填写并确认；升级旧版也不能把曾经硬编码的站点静默当成用户选择。** 不把维护者的部署域名编译为连接默认值或回退地址。客户端更新只检查本仓库正式 Release 的 Android 包，独立于用户服务器，下载须校验哈希、包标识、递增版本及相同签名并交系统确认安装；单独 Android 发布不替换服务端的 latest。服务器切换须隔离登录、录音、待同步文字及迟到回调，详见[安卓客户端](docs/android-client.md)。
+- Android 正常页面不保留占高度的原生服务器／设置栏；客户端设置整合到既有头像菜单，并通过能力握手兼容旧客户端。页面失败与旧网站须保留原生错误页及桌面长按入口。打开设置不得重建 WebView、丢弃草稿或自动切换服务器、下载更新、开麦。
 - 导入上游更新时，移除带入的 GitHub 工作流。保留本地测试与构建工具，不把本仓库发布关联到上游的软件包更新、镜像推送或其他自动发布服务。
 - 日常工作按用户当前授权的源码提交、推送与手工 Release 流程进行。Git 文档中的 PR/PR 栈说明是可选协作流程，不要求每次任务创建 PR，也不授权启用 GitHub 自动化。
 - 按改动范围执行必要检查。仅修改文档或 agent 说明时检查差异与链接，不为此重建、重启生产服务或发布新二进制。部署时必须遵守[数据保护与发布验收](.agents/docs/development-principles.md#数据保护与发布验收)。

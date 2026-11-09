@@ -5,6 +5,14 @@ type NativeBridge = {
 	onmessage?: (event: {data: string}) => void,
 }
 
+export type NativeClientInfo = {
+	version_name: string,
+	version_code: number,
+	capabilities: {
+		clientSettings: true,
+	},
+}
+
 export type NativeRecordingSnapshot = {
 	user_id: number,
 	sid: string,
@@ -74,6 +82,12 @@ const pending = new Map<string, {
 	apiBaseUrl: string | null,
 }>()
 let attached: NativeBridge | undefined
+let clientInfoCache: {
+	bridge: NativeBridge,
+	origin: string,
+	apiBaseUrl: string,
+	result: Promise<NativeClientInfo | null>,
+} | undefined
 
 function hasNativeBridge(): boolean {
 	try {
@@ -192,4 +206,47 @@ export function nativeAndroidSession(token: string | null): void {
 	// Revocation must still stop the old recorder after the configured API changed.
 	if (!hasNativeBridge() || (token !== null && !isNativeAndroid())) return
 	void requestNativeAndroid(token ? 'session' : 'clearSession', token ? {token} : {}).catch(() => {})
+}
+
+export function getNativeAndroidClientInfo(): Promise<NativeClientInfo | null> {
+	const target = window.AsteringNative
+	const apiBaseUrl = nativeApiBaseUrl()
+	if (!target || apiBaseUrl === null) return Promise.resolve(null)
+	const origin = window.location.origin
+	if (clientInfoCache?.bridge === target && clientInfoCache.origin === origin &&
+		clientInfoCache.apiBaseUrl === apiBaseUrl) return clientInfoCache.result
+
+	const result = requestNativeAndroid<unknown>('clientInfo').then(value => {
+		if (window.AsteringNative !== target || window.location.origin !== origin ||
+			nativeApiBaseUrl() !== apiBaseUrl || !value || typeof value !== 'object') return null
+		const info = value as Record<string, unknown>
+		const capabilities = info.capabilities
+		if (typeof info.version_name !== 'string' || !info.version_name || info.version_name.length > 120 ||
+			typeof info.version_code !== 'number' || !Number.isSafeInteger(info.version_code) || info.version_code <= 0 ||
+			!capabilities || typeof capabilities !== 'object' ||
+			(capabilities as Record<string, unknown>).clientSettings !== true) return null
+		return {
+			version_name: info.version_name,
+			version_code: info.version_code,
+			capabilities: {clientSettings: true as const},
+		}
+	}).catch(() => null)
+	// Device capabilities are account-independent; remounts and sign-ins share one bounded probe.
+	clientInfoCache = {
+		bridge: target,
+		origin,
+		apiBaseUrl,
+		result,
+	}
+	return result
+}
+
+export async function openNativeAndroidClientSettings(): Promise<void> {
+	const target = window.AsteringNative
+	const origin = window.location.origin
+	const apiBaseUrl = nativeApiBaseUrl()
+	if (!await getNativeAndroidClientInfo()) throw new Error('native_client_settings_unavailable')
+	if (window.AsteringNative !== target || window.location.origin !== origin ||
+		nativeApiBaseUrl() !== apiBaseUrl) throw new Error('native_context_changed')
+	await requestNativeAndroid('openClientSettings')
 }

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="client_settings"
+        android:enabled="true"
+        android:icon="@drawable/ic_client_settings"
+        android:shortcutShortLabel="@string/server_settings"
+        android:shortcutLongLabel="@string/client_shortcut_label">
+        <intent
+            android:action="space.tcymc.astering.OPEN_CLIENT_SETTINGS"
+            android:targetPackage="space.tcymc.astering"
+            android:targetClass="space.tcymc.astering.ClientSettingsShortcutActivity" />
+    </shortcut>
+</shortcuts>

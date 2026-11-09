@@ -13,7 +13,7 @@
 
 我们赋予 **Astering**「像星星闪烁、使之星光熠熠」的意象：一次行动、一段研究、一条值得记住的原则，逐渐连接成自己的星群。**Aster的AI集成工业系统**（Aster’s AI-integrated industrial system）是项目的副标题；工具与积累服务于更自由的创造。
 
-- 服务端版本：`v2.7.1-aster.65`；Android 客户端：`2.7.1-aster.66`
+- 服务端版本：`v2.7.1-aster.67`；Android 客户端：`2.7.1-aster.67`
 - 源码与问题反馈：[KanameMadoka520/Astering](https://github.com/KanameMadoka520/Astering)
 - 本机编译的发布产物：[GitHub Releases](https://github.com/KanameMadoka520/Astering/releases)
 - [品牌与升级兼容](docs/brand-migration.md) · [品牌素材](docs/brand-identity.md) · [详细功能与演进记录](docs/product-reference.md)
@@ -78,7 +78,7 @@ Astering 把不同用途保留在各自合适的空间里，关联真实任务�
 
 安卓 APK **仅在 [GitHub Release](https://github.com/KanameMadoka520/Astering/releases) 发布，不在业务网站托管**，支持 Android 8.0 及以上的 ARM64 设备。首次启动的服务器地址为空，请手动填写自己的 Astering HTTPS 地址，再登录该站点的账户；升级旧版也需要确认服务器，应用不预设维护者的站点。
 
-原生「检查更新」检测正式 GitHub Release 中的安卓包，直接下载、显示进度并校验同签名后交由系统确认安装。页面功能随所连接网站发布更新，原生能力升级则重新安装新版 APK。
+客户端不再显示额外的服务器地址栏；「客户端设置」在头像账户菜单中，桌面长按应用图标也可打开。设置中的「检查更新」检测正式 GitHub Release 中的安卓包，直接下载、显示进度并校验同签名后交由系统确认安装。页面功能随所连接网站发布更新，原生能力升级则重新安装新版 APK。
 
 实时语音使用原生麦克风前台服务，可选择离开页面后继续录音，并从系统通知停止；不会自动开机录音，也不在设备保存原始音频。手机省电策略仍可能中断服务。新版 APK 打包 SenseVoiceSmall int8，本地模型、词表与 VAD 合计约 229 MiB；已验证登录后可断网识别，待同步文字按账户加密保存并联网重试，原始录音不落盘。首次完全断网启动仍受页面加载与身份验证限制。模型来源、许可证及可复现实测见[本地语音识别](docs/offline-asr.md)，安装、签名校验、权限与具体限制见[安卓客户端](docs/android-client.md)。
 
@@ -88,15 +88,15 @@ Astering 把不同用途保留在各自合适的空间里，关联真实任务�
 git clone https://github.com/KanameMadoka520/Astering.git
 cd Astering
 docker build -f Dockerfile.aster \
-  --build-arg RELEASE_VERSION=v2.7.1-aster.65 \
+  --build-arg RELEASE_VERSION=v2.7.1-aster.67 \
   --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
-  -t astering:v2.7.1-aster.65 .
+  -t astering:v2.7.1-aster.67 .
 ```
 
 或下载对应 Release，先检查 `sha256sum -c SHA256SUMS`，再导入镜像包：
 
 ```sh
-docker load -i astering-v2.7.1-aster.65.docker.tar.gz
+docker load -i astering-v2.7.1-aster.67.docker.tar.gz
 ```
 
 以下是**新安装**的最小 SQLite 示例；生产也可配置 PostgreSQL。现有部署不要用新建的空目录替换原数据卷。
@@ -112,7 +112,7 @@ docker run -d --name Astering --restart unless-stopped \
   -e ASTERING_SERVICE_SECRET=替换为随机且持久保存的长密钥 \
   -e ASTERING_SERVICE_ENABLEREGISTRATION=false \
   -e ASTERING_SERVICE_TIMEZONE=Asia/Shanghai \
-  astering:v2.7.1-aster.65
+  astering:v2.7.1-aster.67
 ```
 
 在反向代理提供 HTTPS，将 `PUBLICURL` 改为自己的实际域名。创建首个账户前可查看 CLI 参数：
