@@ -33,6 +33,24 @@ describe('normalizeUserSettings', () => {
 		expect(settings.language).toBe('fr-FR')
 	})
 
+	it('defaults live recording preferences to off and only accepts explicit booleans', () => {
+		const defaults = normalizeUserSettings().frontend_settings
+		expect(defaults.live_notes_allow_background).toBe(false)
+		expect(defaults.live_notes_keep_awake).toBe(false)
+		const enabled = normalizeUserSettings({frontend_settings: {
+			live_notes_allow_background: true,
+			live_notes_keep_awake: true,
+		}}).frontend_settings
+		expect(enabled.live_notes_allow_background).toBe(true)
+		expect(enabled.live_notes_keep_awake).toBe(true)
+		const malformed = normalizeUserSettings({frontend_settings: {
+			live_notes_allow_background: 'true',
+			live_notes_keep_awake: 1,
+		}}).frontend_settings
+		expect(malformed.live_notes_allow_background).toBe(false)
+		expect(malformed.live_notes_keep_awake).toBe(false)
+	})
+
 	it('gives the form a draft that does not share nested objects with the read path', () => {
 		const stored = normalizeUserSettings({frontend_settings: {quick_add_default_reminders: [{relative_period: 60}]}})
 		const draft = createUserSettingsDraft(stored)

@@ -81,6 +81,8 @@ export function normalizeUserSettings(data: UserGeneralSettings = {}): UserSetti
 		frontend_settings: {
 			...defaultFrontendSettings(),
 			...frontend,
+			live_notes_allow_background: frontend.live_notes_allow_background === true,
+			live_notes_keep_awake: frontend.live_notes_keep_awake === true,
 			quick_add_default_reminders: Array.isArray(frontend.quick_add_default_reminders)
 				? frontend.quick_add_default_reminders.map(reminder => ({...reminder}))
 				: [],

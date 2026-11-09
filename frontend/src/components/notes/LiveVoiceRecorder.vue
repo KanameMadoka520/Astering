@@ -3,7 +3,9 @@ import {computed, ref, watch} from 'vue'
 import {useQuery} from '@tanstack/vue-query'
 import {useI18n} from 'vue-i18n'
 import {liveNoteConnectionsQuery, type LiveNoteReceipt} from '@/client/queries/liveNotes'
-import {useLiveNoteRecording} from '@/composables/useLiveNoteRecording'
+import {useNoteRecording} from '@/composables/useNoteRecording'
+import {useLiveNotePreferences} from '@/composables/useLiveNotePreferences'
+import {isNativeAndroid} from '@/helpers/nativeAndroid'
 import XButton from '@/components/input/Button.vue'
 
 const props = defineProps<{noteId: number}>()
@@ -14,15 +16,16 @@ const emit = defineEmits<{
 const {t, locale} = useI18n({useScope: 'global'})
 const connections = useQuery(liveNoteConnectionsQuery())
 const connectionID = ref('')
-const allowBackground = ref(false)
-const keepAwake = ref(false)
+const preferences = useLiveNotePreferences()
+const {allowBackground, keepAwake, ready: preferencesReady, loadFailed: preferencesLoadFailed, status: preferenceStatus} = preferences
 const chosen = computed(() => connections.data.value?.find(item => item.id === connectionID.value))
 watch(connections.data, list => {
 	if (!list?.some(item => item.id === connectionID.value)) {
 		connectionID.value = (list?.find(item => item.default) ?? list?.[0])?.id ?? ''
 	}
 }, {immediate: true})
-const recorder = useLiveNoteRecording({
+const nativeRecording = isNativeAndroid()
+const recorder = useNoteRecording({
 	noteID: () => props.noteId,
 	connectionID: () => connectionID.value,
 	sampleRate: () => chosen.value?.sample_rate ?? 16_000,
@@ -58,13 +61,27 @@ watch(partial, () => { copied.value = false; copyFailed.value = false })
 const errorKey = computed(() => {
 	const keys = ['permission', 'unsupported', 'network', 'buffer_full', 'finalize_timeout', 'interrupted',
 		'background', 'microphone', 'authentication', 'note_unavailable', 'already_recording', 'connection', 'provider',
-		'save_failed', 'protocol', 'invalid_start']
+		'save_failed', 'protocol', 'invalid_start', 'foreground_required', 'notification_permission']
 	return keys.includes(error.value) ? error.value : 'interrupted'
 })
 async function toggle() {
 	if (state.value === 'stopping') return
 	if (active.value) await recorder.stop()
-	else if (chosen.value) await recorder.start()
+	else if (chosen.value && preferencesReady.value) await recorder.start()
+}
+const preferencesLocked = computed(() => active.value || !preferencesReady.value || preferenceStatus.value === 'saving')
+const preferenceStatusKey = computed(() => ({
+	idle: 'liveNotes.preferencesSaved',
+	saving: 'liveNotes.preferencesSaving',
+	saved: 'liveNotes.preferencesSaved',
+	error: 'liveNotes.preferencesSaveFailed',
+})[preferenceStatus.value])
+function guardPreferenceClick(event: Event) {
+	if (preferencesLocked.value) event.preventDefault()
+}
+function changePreference(event: Event, key: 'live_notes_allow_background' | 'live_notes_keep_awake') {
+	if (preferencesLocked.value || !(event.target instanceof HTMLInputElement)) return
+	void preferences.setPreference(key, event.target.checked)
 }
 watch(() => props.noteId, () => { void recorder.stop() })
 </script>
@@ -108,8 +125,22 @@ watch(() => props.noteId, () => { void recorder.stop() })
 				{{ t('liveNotes.configure') }}
 			</RouterLink>
 		</div>
+		<p
+			v-if="!preferencesReady"
+			:role="preferencesLoadFailed ? 'alert' : 'status'"
+			class="live-voice__hint"
+		>
+			{{ t(preferencesLoadFailed ? 'liveNotes.preferencesLoadFailed' : 'liveNotes.preferencesLoading') }}
+			<XButton
+				v-if="preferencesLoadFailed"
+				variant="tertiary"
+				@click="preferences.reload()"
+			>
+				{{ t('misc.retry') }}
+			</XButton>
+		</p>
 		<div
-			v-else
+			v-if="connections.data.value?.length"
 			class="live-voice__controls"
 		>
 			<label class="live-voice__connection">
@@ -128,7 +159,7 @@ watch(() => props.noteId, () => { void recorder.stop() })
 			</label>
 			<XButton
 				:icon="active ? 'stop' : 'microphone'"
-				:aria-disabled="state === 'stopping'"
+				:aria-disabled="state === 'stopping' || (!active && !preferencesReady)"
 				@click="toggle"
 			>
 				{{ t(active ? 'liveNotes.stop' : 'liveNotes.start') }}
@@ -183,20 +214,41 @@ watch(() => props.noteId, () => { void recorder.stop() })
 			</p>
 		</div>
 		<p class="live-voice__hint">
-			{{ t(allowBackground ? 'liveNotes.backgroundHint' : 'liveNotes.foregroundHint') }}
+			{{ t(allowBackground ? nativeRecording ? 'liveNotes.nativeBackgroundHint' : 'liveNotes.backgroundHint' : 'liveNotes.foregroundHint') }}
 		</p>
 		<details class="live-voice__diagnostics">
 			<summary>{{ t('liveNotes.details') }}</summary>
 			<label class="live-voice__option"><input
-				v-model="allowBackground"
+				:checked="allowBackground"
 				type="checkbox"
-				:disabled="active"
-			> {{ t('liveNotes.allowBackground') }}</label>
+				:aria-disabled="preferencesLocked"
+				@click="guardPreferenceClick"
+				@change="changePreference($event, 'live_notes_allow_background')"
+			> {{ t(nativeRecording ? 'liveNotes.nativeAllowBackground' : 'liveNotes.allowBackground') }}</label>
 			<label class="live-voice__option"><input
-				v-model="keepAwake"
+				:checked="keepAwake"
 				type="checkbox"
-				:disabled="active"
+				:aria-disabled="preferencesLocked"
+				@click="guardPreferenceClick"
+				@change="changePreference($event, 'live_notes_keep_awake')"
 			> {{ t('liveNotes.keepAwake') }}</label>
+			<p class="live-voice__hint">
+				{{ t('liveNotes.preferencesHint') }}
+			</p>
+			<p
+				v-if="preferenceStatus !== 'idle'"
+				:role="preferenceStatus === 'error' ? 'alert' : 'status'"
+				class="live-voice__hint"
+			>
+				{{ t(preferenceStatusKey) }}
+				<XButton
+					v-if="preferenceStatus === 'error'"
+					variant="tertiary"
+					@click="preferences.retry()"
+				>
+					{{ t('misc.retry') }}
+				</XButton>
+			</p>
 			<p
 				v-if="keepAwake && active"
 				role="status"

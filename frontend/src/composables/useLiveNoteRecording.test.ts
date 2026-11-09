@@ -545,14 +545,52 @@ describe('long recording background and screen ownership', () => {
 		expect(h.recorder.screenAwake.value).toBe(true)
 	})
 
-	it.each(['hidden', 'preference', 'released', 'account', 'session', 'api'])('does not adopt a late screen-lock grant after %s changes', async change => {
+	it('snapshots background and screen preferences until the next manual recording', async () => {
 		const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
-		let keepAwake = true
+		let allowed = true
+		const grant = deferred<WakeLockSentinel>()
+		const request = vi.fn(() => grant.promise)
+		const h = await recording(420, {
+			allowBackground: () => allowed,
+			keepAwake: () => allowed,
+			wakeLock: {request},
+		})
+		// A background account refresh must not change an already started capture.
+		allowed = false
+		const lock = new WakeLockFixture()
+		grant.resolve(lock.sentinel())
+		await microtasks()
+		expect(h.recorder.screenAwake.value).toBe(true)
+		hidden.mockReturnValue(true)
+		document.dispatchEvent(new Event('visibilitychange'))
+		expect(h.recorder.state.value).toBe('recording')
+		hidden.mockReturnValue(false)
+		const stopping = h.recorder.stop()
+		await microtasks()
+		h.socket.event({type: 'done'})
+		await stopping
+		await h.recorder.start()
+		const second = SocketFixture.instances[1]
+		second.open()
+		second.ready()
+		await microtasks()
+		expect(request).toHaveBeenCalledTimes(1)
+		hidden.mockReturnValue(true)
+		document.dispatchEvent(new Event('visibilitychange'))
+		await microtasks()
+		expect(h.recorder.state.value).toBe('stopping')
+		expect(h.recorder.error.value).toBe('background')
+		second.event({type: 'done'})
+		await microtasks()
+	})
+
+	it.each(['hidden', 'released', 'account', 'session', 'api'])('does not adopt a late screen-lock grant after %s changes', async change => {
+		const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
 		const grant = deferred<WakeLockSentinel>()
 		const request = vi.fn(() => grant.promise)
 		const h = await recording(420, {
 			allowBackground: () => true,
-			keepAwake: () => keepAwake,
+			keepAwake: () => true,
 			wakeLock: {request},
 		})
 		expect(request).toHaveBeenCalledTimes(1)
@@ -560,8 +598,7 @@ describe('long recording background and screen ownership', () => {
 		if (change === 'hidden') {
 			hidden.mockReturnValue(true)
 			document.dispatchEvent(new Event('visibilitychange'))
-		} else if (change === 'preference') keepAwake = false
-		else if (change === 'released') lock.released = true
+		} else if (change === 'released') lock.released = true
 		else if (change === 'account') auth.id = 2
 		else if (change === 'session') auth.epoch++
 		else window.API_URL = 'https://another-notes.example'
@@ -569,7 +606,7 @@ describe('long recording background and screen ownership', () => {
 		await microtasks()
 		expect(h.recorder.screenAwake.value).toBe(false)
 		if (change !== 'released') expect(lock.release).toHaveBeenCalledTimes(1)
-		if (change === 'hidden' || change === 'preference' || change === 'released') {
+		if (change === 'hidden' || change === 'released') {
 			expect(h.recorder.state.value).toBe('recording')
 			expect(h.stopTrack).not.toHaveBeenCalled()
 		}

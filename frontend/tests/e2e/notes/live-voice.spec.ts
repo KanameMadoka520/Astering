@@ -117,6 +117,23 @@ for (const viewport of [
 		const start = recorder.getByRole('button', {name: viewport.language === 'en' ? 'Start recording' : '开始记录', exact: true})
 		// Initial navigation still loads the article; measure only after the recorder is ready.
 		await expect(start).toBeVisible()
+		await recorder.locator('summary').click()
+		await recorder.getByRole('checkbox').nth(0).check()
+		await expect.poll(async () => {
+			const account = await (await apiContext.get('/api/v2/user', {headers})).json()
+			return account.settings.frontend_settings.live_notes_allow_background
+		}).toBe(true)
+		await recorder.getByRole('checkbox').nth(1).check()
+		await expect.poll(async () => {
+			const account = await (await apiContext.get('/api/v2/user', {headers})).json()
+			return account.settings.frontend_settings.live_notes_keep_awake
+		}).toBe(true)
+		await page.reload()
+		if (viewport.width < 901) await page.getByRole('tab', {name: /^原始转录/}).click()
+		await recorder.locator('summary').click()
+		await expect(recorder.getByRole('checkbox').nth(0)).toBeChecked()
+		await expect(recorder.getByRole('checkbox').nth(1)).toBeChecked()
+		expect(await page.evaluate(() => (window as VoiceWindow).liveNoteMic.requests)).toBe(0)
 		recordingStarted = true
 		await start.click()
 		await expect(page.locator('.note-transcript__content p')).toContainText('An idea saved while still recording.')
@@ -147,6 +164,25 @@ for (const viewport of [
 		await expect(page.locator('.note-transcript__content p')).toHaveText([
 			'An idea saved while still recording.', 'Final thought saved after stop.',
 		])
+		await recorder.locator('summary').click()
+		await expect(recorder.getByRole('checkbox').nth(0)).toBeChecked()
+		await expect(recorder.getByRole('checkbox').nth(1)).toBeChecked()
+		await recorder.getByRole('checkbox').nth(0).uncheck()
+		await expect.poll(async () => {
+			const account = await (await apiContext.get('/api/v2/user', {headers})).json()
+			return account.settings.frontend_settings.live_notes_allow_background
+		}).toBe(false)
+		await recorder.getByRole('checkbox').nth(1).uncheck()
+		await expect.poll(async () => {
+			const account = await (await apiContext.get('/api/v2/user', {headers})).json()
+			return account.settings.frontend_settings.live_notes_keep_awake
+		}).toBe(false)
+		await page.reload()
+		if (viewport.width < 901) await page.getByRole('tab', {name: /^原始转录/}).click()
+		await recorder.locator('summary').click()
+		await expect(recorder.getByRole('checkbox').nth(0)).not.toBeChecked()
+		await expect(recorder.getByRole('checkbox').nth(1)).not.toBeChecked()
+		expect(await page.evaluate(() => (window as VoiceWindow).liveNoteMic.requests)).toBe(0)
 		const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)
 		expect(overflow).toBe(false)
 		await page.screenshot({path: info.outputPath(`live-notes-${viewport.width}.png`), fullPage: true, animations: 'disabled'})

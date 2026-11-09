@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">Astering</string>
+    <string name="recording_channel">Live note dictation</string>
+    <string name="recording_title">Astering is using your microphone</string>
+    <string name="recording_detail">Note %1$d · %2$s. Tap to open; Stop ends dictation.</string>
+    <string name="recording_start">Start live dictation?</string>
+    <string name="recording_foreground">Audio is sent directly to your Astering server. No audio file is saved. Leaving the app ends recording.</string>
+    <string name="recording_background">Background recording is enabled for this session. Audio is sent directly to your Astering server, with no audio file saved. Use the ongoing notification to stop.</string>
+    <string name="start">Start recording</string>
+    <string name="stop">Stop</string>
+    <string name="cancel">Cancel</string>
+    <string name="open_note">Open note</string>
+    <string name="load_failed">Could not open Astering. Check your connection and try again.</string>
+    <string name="retry">Try again</string>
+    <string name="bridge_unavailable">Update Android System WebView to use native live dictation.</string>
+    <string name="state_connecting">Connecting</string>
+    <string name="state_recording">Recording</string>
+    <string name="state_rotating">Saving this section</string>
+    <string name="state_stopping">Saving final text</string>
+</resources>

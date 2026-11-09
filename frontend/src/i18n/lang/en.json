@@ -5881,8 +5881,16 @@
     "copyFailed": "Could not copy. Select this text and copy it manually.",
     "foregroundHint": "Keep this page open and in the foreground. Locking your phone, switching apps or losing microphone access pauses recording. Confirmed text is saved automatically; original audio is not retained.",
     "backgroundHint": "Background recording is enabled for this session when the browser permits it. Phone lock, browser suspension and microphone interruptions can still stop capture. Return periodically to check the status; saved text remains available.",
+    "nativeAllowBackground": "Continue recording while the Android app is in the background",
+    "nativeBackgroundHint": "Android keeps this recording running in a microphone foreground service. Use its notification to return or stop. Audio is streamed without saving a recording file; system interruptions can still stop recording.",
     "allowBackground": "Continue after switching tabs, when supported",
     "keepAwake": "Try to keep the screen awake while recording",
+    "preferencesHint": "These choices are saved to your account for future recordings. Restoring them never starts the microphone; start each recording yourself.",
+    "preferencesLoading": "Loading your recording preferences…",
+    "preferencesLoadFailed": "Could not load your recording preferences. Retry before starting a recording.",
+    "preferencesSaving": "Saving recording preferences…",
+    "preferencesSaved": "Recording preferences saved to your account.",
+    "preferencesSaveFailed": "Could not save these choices. They are kept here for this page; retry to remember them next time.",
     "awakeActive": "The screen is being kept awake for this recording.",
     "awakeUnavailable": "Screen wake lock is unavailable or was released by the system. Keep the page visible and check your device.",
     "details": "Recording options and connection details",
@@ -5916,6 +5924,8 @@
       "provider": "The speech provider could not complete recognition. Saved segments remain; check the connection details.",
       "save_failed": "The final text could not be saved, so recording stopped. Unconfirmed text remains below for copying; it is not marked as saved.",
       "protocol": "The recognizer returned an unexpected stream. Recording stopped; saved segments remain.",
+      "foreground_required": "Return to the app before starting a recording. Background mode only continues a recording you have already started.",
+      "notification_permission": "Allow recording notifications so you can find and stop background recording from the system notification area.",
       "invalid_start": "The recording request was invalid. Refresh this page and try again."
     }
   }

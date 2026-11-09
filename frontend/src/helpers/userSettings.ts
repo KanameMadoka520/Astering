@@ -33,6 +33,8 @@ export interface FrontendSettings {
 	comment_sort_order: 'asc' | 'desc'
 	desktop_quick_entry_shortcut: string
 	quick_add_default_reminders: {relative_period?: number}[]
+	live_notes_allow_background: boolean
+	live_notes_keep_awake: boolean
 	time_tracking_default_start?: string
 	default_due_time?: string
 }
@@ -90,5 +92,7 @@ export function defaultFrontendSettings(): FrontendSettings {
 		default_due_time: undefined,
 		time_tracking_default_start: '09:00',
 		quick_add_default_reminders: [],
+		live_notes_allow_background: false,
+		live_notes_keep_awake: false,
 	}
 }

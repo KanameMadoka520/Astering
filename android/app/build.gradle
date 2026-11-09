@@ -1,0 +1,69 @@
+plugins {
+    id 'com.android.application'
+}
+
+def signingFile = System.getenv('ASTERING_ANDROID_KEYSTORE')
+def signingPassword = System.getenv('ASTERING_ANDROID_STORE_PASSWORD')
+def signingAlias = System.getenv('ASTERING_ANDROID_KEY_ALIAS')
+def signingKeyPassword = System.getenv('ASTERING_ANDROID_KEY_PASSWORD')
+
+android {
+    namespace 'space.tcymc.astering'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'space.tcymc.astering'
+        minSdk 26
+        targetSdk 36
+        versionCode 64
+        versionName '2.7.1-aster.64'
+        testInstrumentationRunner 'android.test.InstrumentationTestRunner'
+    }
+
+    signingConfigs {
+        release {
+            if (signingFile && signingPassword && signingAlias && signingKeyPassword) {
+                storeFile file(signingFile)
+                storePassword signingPassword
+                keyAlias signingAlias
+                keyPassword signingKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            signingConfig signingConfigs.release
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    lint {
+        abortOnError true
+        checkReleaseBuilds true
+    }
+    buildFeatures {
+        buildConfig true
+    }
+}
+
+tasks.matching { it.name == 'validateSigningRelease' }.configureEach {
+    doFirst {
+        if (!signingFile || !signingPassword || !signingAlias || !signingKeyPassword) {
+            throw new GradleException('Release signing requires the four ASTERING_ANDROID signing environment variables.')
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.webkit:webkit:1.18.0'
+    implementation 'com.squareup.okhttp3:okhttp:5.4.0'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20250517'
+}

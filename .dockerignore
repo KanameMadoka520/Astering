@@ -24,3 +24,10 @@ frontend/dist-dev/
 frontend/test-results/
 frontend/playwright-report/
 .env
+/worklogs/
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/local.properties
+*.jks
+*.keystore

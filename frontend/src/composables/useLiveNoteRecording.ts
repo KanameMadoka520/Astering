@@ -35,6 +35,8 @@ type Session = {
 	lastPump: number,
 	wakeLock?: WakeLockSentinel,
 	wakeRequest?: boolean,
+	allowBackground: boolean,
+	keepAwake: boolean,
 }
 
 /** A bounded microphone stream. Audio is never written to browser storage or uploaded as an attachment. */
@@ -266,11 +268,11 @@ export function useLiveNoteRecording(options: {
 	}
 
 	async function requestWakeLock(s: Session) {
-		if (!options.keepAwake?.() || !navigator.wakeLock || document.hidden || s.wakeLock || s.wakeRequest || s.ending) return
+		if (!s.keepAwake || !navigator.wakeLock || document.hidden || s.wakeLock || s.wakeRequest || s.ending) return
 		s.wakeRequest = true
 		try {
 			const lock = await navigator.wakeLock.request('screen')
-			if (!s.current() || s.disposed || s.ending || document.hidden || !options.keepAwake?.() || lock.released) {
+			if (!s.current() || s.disposed || s.ending || document.hidden || lock.released) {
 				await lock.release()
 				return
 			}
@@ -326,6 +328,9 @@ export function useLiveNoteRecording(options: {
 			rotateAt: 420,
 			reason: '',
 			lastPump: 0,
+			// Account preferences may refresh while recording; an active capture keeps its starting choices.
+			allowBackground: options.allowBackground?.() === true,
+			keepAwake: options.keepAwake?.() === true,
 		}
 		session = s
 		state.value = 'permission'
@@ -399,7 +404,7 @@ export function useLiveNoteRecording(options: {
 	}
 
 	const onHidden = () => {
-		if (document.hidden && !options.allowBackground?.()) void stop('background')
+		if (document.hidden && session && !session.allowBackground) void stop('background')
 		else if (!document.hidden && session) {
 			if (session.context.state !== 'running') void stop('microphone')
 			else void requestWakeLock(session)

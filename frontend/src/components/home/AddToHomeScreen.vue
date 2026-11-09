@@ -26,13 +26,14 @@ import BaseButton from '@/components/base/BaseButton.vue'
 import {useLocalStorage} from '@vueuse/core'
 import {computed} from 'vue'
 import {useAuthStore} from '@/stores/auth'
+import {isNativeAndroid} from '@/helpers/nativeAndroid'
 
 const authStore = useAuthStore()
 
 const hideMessage = useLocalStorage('hideAddToHomeScreenMessage', false)
 
 const shouldShowMessage = computed(() => {
-	if (!authStore.authenticated) {
+	if (!authStore.authenticated || isNativeAndroid()) {
 		return false
 	}
 

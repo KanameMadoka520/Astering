@@ -81,6 +81,8 @@ import {useQuickAddMode} from '@/composables/useQuickAddMode'
 
 import {useConfirmDeletionMutation} from '@/client/queries/accountDeletion'
 import {getSensitiveParam} from '@/helpers/sensitiveQueryParams'
+import {getToken, getTokenSessionID} from '@/helpers/auth'
+import {onNativeAndroidEvent} from '@/helpers/nativeAndroid'
 
 const COLOR_SCHEME_CACHE_KEY = 'vikunja-color-scheme'
 
@@ -119,6 +121,11 @@ useBodyClass('is-touch', isTouchDevice())
 const keyboardShortcutsActive = computed(() => baseStore.keyboardShortcutsActive)
 
 const router = useRouter()
+onBeforeUnmount(onNativeAndroidEvent(event => {
+	if (event.event !== 'openNote' || !authStore.authUser || event.user_id !== authStore.info?.id ||
+		event.sid !== getTokenSessionID(getToken()) || !Number.isSafeInteger(event.note_id) || event.note_id <= 0) return
+	void router.push({name: 'notes.detail', params: {noteId: event.note_id}}).catch(() => {})
+}))
 const confirmDeletion = useConfirmDeletionMutation()
 
 // Without a session the token would burn on an unauthenticated request, so keep it in the URL until login lands.

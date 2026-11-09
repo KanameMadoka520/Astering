@@ -6,6 +6,7 @@ import {ApiError} from '@/client/problem'
 import {isDesktopApp, refreshDesktopToken} from '@/helpers/desktopAuth'
 import {clearServerClock, recordServerClock, serverNowSeconds} from '@/helpers/serverClock'
 import {MILLISECONDS_A_MINUTE, MILLISECONDS_A_SECOND} from '@/constants/date'
+import {isNativeAndroid, nativeAndroidSession, onNativeAndroidEvent, requestNativeAndroid} from '@/helpers/nativeAndroid'
 
 let savedToken: string | null = null
 
@@ -19,6 +20,9 @@ export const saveToken = (token: string, persist: boolean) => {
 		localStorage.setItem('token', token)
 	}
 	recordServerClock(getTokenPayload(token)?.iat, persist)
+	if (isNativeAndroid() && canonicalApiBaseUrl(getApiBaseUrl()) === 'https://task.tcymc.space/api/v2') {
+		nativeAndroidSession(getTokenType(token) === 1 ? token : null)
+	}
 }
 
 /**
@@ -62,10 +66,16 @@ export function getTokenIdentity(token: string | null): {id: number; type: numbe
 	return {id: payload.id, type: payload.type}
 }
 
+export function getTokenSessionID(token: string | null): string | null {
+	const sid = getTokenPayload(token)?.sid
+	return typeof sid === 'string' && sid ? sid : null
+}
+
 /**
  * Removes all tokens everywhere.
  */
 export const removeToken = () => {
+	nativeAndroidSession(null)
 	savedToken = null
 	localStorage.removeItem('token')
 	localStorage.removeItem('desktopOAuthRefreshToken')
@@ -84,6 +94,28 @@ export const removeToken = () => {
 let inFlightRefresh: Promise<void> | null = null
 
 const refreshListeners: (() => void)[] = []
+
+onNativeAndroidEvent(event => {
+	if (event.event !== 'token' || typeof event.token !== 'string' ||
+		canonicalApiBaseUrl(getApiBaseUrl()) !== 'https://task.tcymc.space/api/v2') return
+	const current = getTokenPayload(getToken())
+	const next = getTokenPayload(event.token)
+	if (!current || !next || !current.sid || current.sid !== next.sid || current.id !== next.id ||
+		current.type !== 1 || next.type !== 1 || typeof current.exp !== 'number' ||
+		typeof next.exp !== 'number' || next.exp < current.exp) return
+	saveToken(event.token, true)
+	if (!inFlightRefresh) notifyRefreshListeners()
+})
+
+function notifyRefreshListeners() {
+	for (const listener of [...refreshListeners]) {
+		try {
+			listener()
+		} catch (error) {
+			console.error('Token refresh listener failed', error)
+		}
+	}
+}
 
 export function onTokenRefreshed(listener: () => void) {
 	refreshListeners.push(listener)
@@ -178,15 +210,7 @@ export async function refreshToken(persist: boolean): Promise<void> {
 			inFlightRefresh = null
 		}
 	}).catch(() => {})
-	p.then(() => {
-		for (const listener of [...refreshListeners]) {
-			try {
-				listener()
-			} catch (e) {
-				console.error('Token refresh listener failed', e)
-			}
-		}
-	}, () => {})
+	p.then(notifyRefreshListeners, () => {})
 	return p
 }
 
@@ -205,6 +229,33 @@ async function doRefresh(persist: boolean): Promise<void> {
 		// A logout may have happened while we waited for the lock — don't
 		// re-adopt or re-fetch a token after the user signed out.
 		if (loggedOutSinceStart()) {
+			return
+		}
+
+		// The native recorder and WebView share one rotating refresh cookie and one coordinator.
+		if (isNativeAndroid() && canonicalApiBaseUrl(serverAtStart) === 'https://task.tcymc.space/api/v2') {
+			const before = getTokenPayload(getToken())
+			try {
+				const result = await requestNativeAndroid<{token: string}>('refresh', {token: getToken()})
+				if (loggedOutSinceStart()) return
+				const next = getTokenPayload(result?.token)
+				if (!before || !next || before.id !== next.id || before.sid !== next.sid || next.type !== 1) {
+					throw new Error('native_authentication')
+				}
+				const current = getTokenPayload(getToken())
+				if (!current || current.sid !== before.sid || current.id !== before.id) return
+				if (typeof next.exp !== 'number') throw new Error('native_authentication')
+				if (typeof current.exp !== 'number' || next.exp >= current.exp) saveToken(result.token, persist)
+			} catch (cause) {
+				if (loggedOutSinceStart()) return
+				const code = cause instanceof Error ? cause.message : ''
+				if (code.includes('authentication') || code === 'unauthorized') {
+					throw new RefreshTokenError({kind: 'rejected', status: 401}, cause)
+				}
+				if (code === 'rate_limited') throw new RefreshTokenError({kind: 'rate-limited'}, cause)
+				if (code === 'server') throw new RefreshTokenError({kind: 'server', status: 503}, cause)
+				throw new RefreshTokenError({kind: 'network'}, cause)
+			}
 			return
 		}
 
