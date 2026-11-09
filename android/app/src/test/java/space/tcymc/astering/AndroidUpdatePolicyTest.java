@@ -6,7 +6,7 @@ import org.json.JSONObject;
 import org.junit.Test;
 
 public final class AndroidUpdatePolicyTest {
-    private JSONObject release(int version) {
+    private JSONObject release(int version) throws Exception {
         String tag = "v2.7.1-aster." + version;
         String name = "astering-" + tag + "-android.apk";
         JSONObject apk = new JSONObject().put("name", name).put("state", "uploaded")
@@ -16,7 +16,7 @@ public final class AndroidUpdatePolicyTest {
             .put("assets", new JSONArray().put(apk));
     }
 
-    @Test public void usesHighestAndroidVersionRatherThanServerReleaseOrListPosition() {
+    @Test public void usesHighestAndroidVersionRatherThanServerReleaseOrListPosition() throws Exception {
         JSONObject server = release(99).put("assets", new JSONArray());
         AndroidUpdatePolicy.Update update = AndroidUpdatePolicy.newest(
             new JSONArray().put(release(67)).put(server).put(release(70)).put(release(68)), 66);
@@ -26,17 +26,17 @@ public final class AndroidUpdatePolicyTest {
         assertEquals("a".repeat(64), update.sha256());
     }
 
-    @Test public void installedAndOlderVersionsNeverTriggerUpdate() {
+    @Test public void installedAndOlderVersionsNeverTriggerUpdate() throws Exception {
         assertNull(AndroidUpdatePolicy.newest(new JSONArray().put(release(66)).put(release(65)), 66));
     }
 
-    @Test public void draftsPrereleasesAndUnknownReleaseStatesAreIgnored() {
+    @Test public void draftsPrereleasesAndUnknownReleaseStatesAreIgnored() throws Exception {
         assertNull(AndroidUpdatePolicy.newest(new JSONArray()
             .put(release(67).put("draft", true)).put(release(68).put("prerelease", true))
             .put(release(69).put("draft", JSONObject.NULL)), 66));
     }
 
-    @Test public void requiresExactNameCanonicalRepositoryAndUploadedAsset() {
+    @Test public void requiresExactNameCanonicalRepositoryAndUploadedAsset() throws Exception {
         for (String key : new String[] {"name", "browser_download_url", "state"}) {
             JSONObject release = release(67);
             release.getJSONArray("assets").getJSONObject(0).put(key, "https://attacker.test/payload.apk");
@@ -44,7 +44,7 @@ public final class AndroidUpdatePolicyTest {
         }
     }
 
-    @Test public void rejectsMissingHashAndInvalidOrUnboundedSize() {
+    @Test public void rejectsMissingHashAndInvalidOrUnboundedSize() throws Exception {
         for (Object size : new Object[] {0, -1, AndroidUpdatePolicy.MAX_APK_BYTES + 1}) {
             JSONObject release = release(67);
             release.getJSONArray("assets").getJSONObject(0).put("size", size);
@@ -57,13 +57,13 @@ public final class AndroidUpdatePolicyTest {
         }
     }
 
-    @Test public void malformedTagsCannotBecomeVersionCodes() {
+    @Test public void malformedTagsCannotBecomeVersionCodes() throws Exception {
         for (String tag : new String[] {"v2.7.1-aster.0", "v2.7.1-aster.99999999999999999", "v2.7.1-tcymc.99", "android-latest"}) {
             assertNull(AndroidUpdatePolicy.newest(new JSONArray().put(release(67).put("tag_name", tag)), 66));
         }
     }
 
-    @Test public void redirectDestinationsStayOnExactHttpsGithubAssetHosts() {
+    @Test public void redirectDestinationsStayOnExactHttpsGithubAssetHosts() throws Exception {
         assertTrue(AndroidUpdatePolicy.allowedDownload("https://github.com/KanameMadoka520/Astering/releases/download/v/a.apk"));
         assertTrue(AndroidUpdatePolicy.allowedDownload("https://release-assets.githubusercontent.com/github-production-release-asset/a?sig=public"));
         assertTrue(AndroidUpdatePolicy.allowedDownload("https://objects.githubusercontent.com/github-production-release-asset/a"));
