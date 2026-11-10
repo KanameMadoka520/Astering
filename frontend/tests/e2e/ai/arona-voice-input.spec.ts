@@ -4,7 +4,7 @@ import {test, expect} from '../../support/fixtures'
 const CHAT_ID = '2b8d6024-4d76-4a20-8e55-b077b16dd63b'
 const TRANSCRIPT = 'Voice fixture: review the plan tomorrow.'
 type MicrophoneFixture = {
-	mode: 'normal' | 'pending' | 'denied'
+	mode: 'normal' | 'pending' | 'denied' | 'busy' | 'missing'
 	requests: number
 	tracks: MediaStreamTrack[]
 	contexts: AudioContext[]
@@ -64,6 +64,8 @@ async function microphone(page: Page, mode: MicrophoneFixture['mode'] = 'normal'
 		Object.defineProperty(navigator.mediaDevices, 'getUserMedia', {value: async () => {
 			state.requests++
 			if (state.mode === 'denied') throw new DOMException('Fixture permission rejection', 'NotAllowedError')
+			if (state.mode === 'busy') throw new DOMException('Fixture device busy', 'NotReadableError')
+			if (state.mode === 'missing') throw new DOMException('Fixture device absent', 'NotFoundError')
 			if (state.mode === 'pending') await new Promise<void>(resolve => { state.release = resolve })
 			const context = new AudioContext()
 			const oscillator = context.createOscillator()
@@ -316,6 +318,28 @@ test('denied microphone permission leaves a usable retry', async ({authenticated
 	await released(page, 2)
 	expect(state.requests).toHaveLength(1)
 })
+
+for (const mode of ['busy', 'missing'] as const) {
+	test(`microphone ${mode} reports the actual capture problem and allows retry`, async ({authenticatedPage: page}) => {
+		await microphone(page, mode)
+		const state = await server(page)
+		await open(page)
+		await page.locator('.composer textarea').fill('Keep my draft')
+		await page.locator('.speech-input-control__mic').click()
+		await expect(page.getByText(mode === 'busy'
+			? /The microphone could not start/
+			: /No microphone was found/)).toBeVisible()
+		await expect(page.locator('.composer textarea')).toHaveValue('Keep my draft')
+		await page.evaluate(() => { (window as FixtureWindow).voiceFixture.mode = 'normal' })
+		await page.locator('.speech-input-control__mic').click()
+		await captureReady(page)
+		await page.locator('.speech-input-control__mic').click()
+		await expect(page.locator('.composer textarea')).toHaveValue(`Keep my draft\n${TRANSCRIPT}`)
+		await released(page, 2)
+		expect(state.requests).toHaveLength(1)
+		expect(state.writes).toEqual([])
+	})
+}
 
 for (const width of [320, 390]) {
 	test.describe(`voice touch ${width}px`, () => {

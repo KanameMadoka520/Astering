@@ -578,16 +578,20 @@ const tidy = ref(true)
 const original = ref('')
 const audioInput = ref<HTMLInputElement>()
 const audioStage = ref('')
+const recordingErrorMessages = {
+	unsupported: 'tcymc.text.this_browser_cannot_record_audio_please_upload_an',
+	permission: 'tcymc.text.cannot_access_the_microphone_check_your_browser_s',
+	'no-device': 'tcy.voice.noDevice',
+	device: 'tcy.voice.deviceUnavailable',
+	empty: 'tcymc.text.the_recording_is_empty_please_try_again',
+	'too-large': 'tcymc.text.audio_must_not_exceed_16_mib',
+	interrupted: 'tcymc.text.recording_was_interrupted_please_try_again',
+} as const
 const microphone = useSpeechRecording({
 	capture: captureSpeechOwner,
 	isCurrent: speechOwnerIsCurrent,
 	onComplete: (blob, name, owner) => { void processAudio(blob, name, owner) },
-	onError: kind => showNotice(t(kind === 'unsupported'
-		? 'tcymc.text.this_browser_cannot_record_audio_please_upload_an'
-		: kind === 'permission' ? 'tcymc.text.cannot_access_the_microphone_check_your_browser_s'
-			: kind === 'empty' ? 'tcymc.text.the_recording_is_empty_please_try_again'
-				: kind === 'too-large' ? 'tcymc.text.audio_must_not_exceed_16_mib'
-					: 'tcymc.text.recording_was_interrupted_please_try_again')),
+	onError: kind => showNotice(t(recordingErrorMessages[kind])),
 })
 const {recording, requesting: microphonePending, stopping: microphoneStopping, elapsed} = microphone
 const voiceCaptureActive = computed(() => recording.value || microphonePending.value || microphoneStopping.value)

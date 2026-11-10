@@ -78,6 +78,39 @@ afterEach(() => {
 })
 
 describe('speech recording ownership', () => {
+	it.each([
+		['NotAllowedError', 'permission'],
+		['NotFoundError', 'no-device'],
+		['NotReadableError', 'device'],
+		['NotSupportedError', 'unsupported'],
+		['Error', 'interrupted'],
+	])('reports %s accurately and allows another recording attempt', async (name, expected) => {
+		const h = setup()
+		h.getUserMedia.mockRejectedValueOnce(new DOMException('Fixture capture failure', name))
+		await h.microphone.start()
+		expect(h.onError).toHaveBeenCalledExactlyOnceWith(expected)
+		expect(h.microphone.requesting.value).toBe(false)
+		expect(h.microphone.recording.value).toBe(false)
+		h.getUserMedia.mockResolvedValueOnce(h.stream)
+		await h.microphone.start()
+		expect(h.microphone.recording.value).toBe(true)
+		h.microphone.cancel()
+		expect(h.stopTrack).toHaveBeenCalledTimes(1)
+	})
+
+	it('releases acquired tracks when recorder initialization fails without reporting a permission denial', async () => {
+		const h = setup()
+		vi.spyOn(Recorder.prototype, 'start').mockImplementation(() => {
+			throw new DOMException('Fixture encoder failure', 'NotSupportedError')
+		})
+		const pending = h.microphone.start()
+		h.permission.resolve(h.stream)
+		await pending
+		expect(h.stopTrack).toHaveBeenCalledTimes(1)
+		expect(h.onError).toHaveBeenCalledExactlyOnceWith('unsupported')
+		expect(h.microphone.recording.value).toBe(false)
+	})
+
 	it('acquires the microphone once while permission is pending and stops late tracks after unmount', async () => {
 		const h = setup()
 		const first = h.microphone.start()

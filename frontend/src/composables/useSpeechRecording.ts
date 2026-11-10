@@ -1,6 +1,15 @@
 import {onScopeDispose, ref} from 'vue'
 
-type RecordingError = 'unsupported' | 'permission' | 'interrupted' | 'empty' | 'too-large'
+type RecordingError = 'unsupported' | 'permission' | 'no-device' | 'device' | 'interrupted' | 'empty' | 'too-large'
+
+function captureError(cause: unknown): RecordingError {
+	const name = cause instanceof Error ? cause.name : ''
+	if (name === 'NotAllowedError' || name === 'SecurityError' || name === 'PermissionDeniedError') return 'permission'
+	if (name === 'NotFoundError' || name === 'DevicesNotFoundError') return 'no-device'
+	if (name === 'NotReadableError' || name === 'TrackStartError' || name === 'OverconstrainedError') return 'device'
+	if (name === 'NotSupportedError') return 'unsupported'
+	return 'interrupted'
+}
 
 /** Each gesture owns its recorder and tracks, including a permission request that resolves late. */
 export function useSpeechRecording<Owner>(options: {
@@ -131,7 +140,7 @@ export function useSpeechRecording<Owner>(options: {
 				elapsed.value = Math.max(0, Math.floor((performance.now() - startedAt) / 1000))
 				if (elapsed.value >= (options.maxSeconds ?? 180)) stop()
 			}, 1000)
-		} catch {
+		} catch (cause) {
 			stream?.getTracks().forEach(track => track.stop())
 			if (attempt === generation) {
 				session = undefined
@@ -139,7 +148,7 @@ export function useSpeechRecording<Owner>(options: {
 				stopping.value = false
 			}
 			if (!disposed && attempt === generation && options.isCurrent(owner)) {
-				options.onError('permission')
+				options.onError(captureError(cause))
 			}
 		} finally {
 			if (attempt === generation) requesting.value = false

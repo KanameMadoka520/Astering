@@ -2822,7 +2822,7 @@
       "take_down_page": "Take down page",
       "text_chat_and_tool_calling": "Text chat and tool calling",
       "new_model": "New model",
-      "cannot_access_the_microphone_check_your_browser_s": "Cannot access the microphone. Check your browser's microphone permission.",
+      "cannot_access_the_microphone_check_your_browser_s": "Cannot access the microphone. Allow microphone access in your app or browser settings, then try again.",
       "could_not_fetch_models_some_providers_do_not": "Could not fetch models. Some providers do not offer a model list. You can still enter a model name manually.",
       "sun": "Sun",
       "schedule_generated_at": "Schedule generated at",
@@ -5064,6 +5064,8 @@
       "autoTidy": "Automatically clean up the transcript",
       "cleanupUnavailable": "Select a text cleanup model in AI and voice settings to enable this.",
       "setupHint": "Choose a speech recognition model in AI and voice settings first.",
+      "noDevice": "No microphone was found. Connect a microphone and try again.",
+      "deviceUnavailable": "The microphone could not start. Stop any other recording or call, check the system microphone switch, then try again.",
       "draftChanged": "You edited the draft while cleanup was running. Your edits are kept; run cleanup again if needed."
     }
   },

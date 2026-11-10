@@ -2679,7 +2679,7 @@
 			"take_down_page": "撤下公开页面",
 			"text_chat_and_tool_calling": "文字对话 / 工具调用",
 			"new_model": "新模型",
-			"cannot_access_the_microphone_check_your_browser_s": "无法使用麦克风，请检查浏览器录音权限。",
+			"cannot_access_the_microphone_check_your_browser_s": "未获得麦克风使用许可，请在系统或浏览器设置中允许录音后重试。",
 			"could_not_fetch_models_some_providers_do_not": "无法获取模型列表。部分服务商不提供此接口，仍可手动填写模型名称。",
 			"sun": "日",
 			"schedule_generated_at": "日程生成于",
@@ -5064,6 +5064,8 @@
       "autoTidy": "自动整理识别结果",
       "cleanupUnavailable": "请先在 AI 与语音设置中选择用于整理文字的模型。",
       "setupHint": "请先在 AI 与语音设置中选择默认语音识别模型。",
+      "noDevice": "未找到麦克风，请连接麦克风后重试。",
+      "deviceUnavailable": "麦克风暂时无法启动。请结束其他录音或通话，检查系统麦克风开关后重试。",
       "draftChanged": "整理期间你继续编辑了文字，已保留当前草稿。如有需要，可再次整理。"
     }
   },

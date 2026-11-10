@@ -20,6 +20,12 @@ APK **只发布到 [GitHub Release](https://github.com/KanameMadoka520/Astering/
 
 连接旧版网站、尚未登录或页面无法正常加载时，可在系统桌面**长按 Astering 图标 →「客户端设置」**；页面加载失败时也提供原生设置按钮。打开设置本身不会刷新网页、切换服务器或丢弃输入草稿。更换服务器、安装更新和旧文字恢复仍需各自明确确认。
 
+页面安全区域只避让一次：Android 11（API 30）及以上由原生根布局统一处理系统栏、刘海和键盘；传给 WebView 的对应 Insets 必须清零，不能一边添加原生 padding、一边原样向网页转发。这样网页的 `safe-area-inset-*` 和 Visual Viewport 不会再次扣除同一块空间。必须转发已清零的 Insets，而非只返回 `CONSUMED`，否则 WebView 可能保留之前的安全区域。旋转或窗口尺寸变化只重新分发 Insets，不重建网页或移动未保存的草稿。依据：[Chromium WebView 的 Insets 处理规则](https://chromium.googlesource.com/chromium/src/+/HEAD/android_webview/docs/insets.md)。
+
+Android 8–10 保留系统 Decor 原有的 `fitsSystemWindows` 与 `adjustResize` 行为，根布局仅处理向下传来的剩余 Insets，不额外开启旧版全屏标志。系统内容祖先已处理的安全区域会被消费或减去，不再由根布局重复加入。依据：[AOSP 内容布局](https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r47/core/res/res/layout/screen_simple_overlay_action_mode.xml)、[View 的 Insets 消费](https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r47/core/java/android/view/View.java)及 [DecorView 的内容边距与 Insets 扣除](https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r47/core/java/com/android/internal/policy/DecorView.java)。设备验收应覆盖手势／三键导航、刘海左右变化、键盘打开再关闭和连续进入子页面；不能仅以桌面 Chromium 的手机尺寸代替原生 WebView 验收。
+
+手机全页表单仅让弹窗正文的直接主卡片占满视口，卡片内容区域伸展，标题与第一项内容保持相邻；不能用 `justify-content: space-between` 将短表单分散到整屏，也不能让嵌套卡片都各占一屏。设置子页、笔记、看板打开任务及项目表单后的返回需验证实际边界、顶部间距与文档横向滚动。浏览器回归入口为 `tests/e2e/misc/android-shell-layout.spec.ts`，通过隔离 HTTPS 来源和原生桥验证网页布局，仍不替代 Android 系统 Insets 与软键盘的设备验证。
+
 桌面快捷方式通过无界面、无独立任务归属的转发 Activity 打开现有 MainActivity，只传固定动作，不接受任意网址或其他参数。这样避免 Android 静态快捷方式的默认清任务行为销毁现有网页。依据：[Android 快捷方式的 Activity 启动规则](https://developer.android.com/develop/ui/compose/system/shortcuts/managing-shortcuts#start-one-activity-from-another)。
 
 ## 客户端更新
@@ -35,6 +41,8 @@ Android 首次安装更新需要用户在系统中允许 Astering「安装未知
 协议依据：[GitHub Release API](https://docs.github.com/en/rest/releases/releases)、[Android 安装来源权限](https://developer.android.com/reference/android/content/pm/PackageManager#canRequestPackageInstalls())、[FileProvider 的临时读取授权](https://developer.android.com/reference/androidx/core/content/FileProvider)。
 
 ## 使用与隐私
+
+阿罗娜短语音沿用网页 `getUserMedia` 与 WebView 的音频许可。APK 同时声明 `RECORD_AUDIO` 和 Chromium 音频设备选择所需的普通权限 `MODIFY_AUDIO_SETTINGS`，后者不新增授权弹窗；系统麦克风权限仍由用户决定。网页许可只接受所选可信来源的音频采集，并绑定原 WebView、页面和账户会话；切换或取消后的迟到许可不得开麦。设备不存在或无法启动与权限拒绝分别提示，不能将所有初始化失败都误报为浏览器权限。依据：[Chromium 音频设备权限检查](https://chromium.googlesource.com/chromium/src/media/+/refs/heads/main/base/android/java/src/org/chromium/media/AudioManagerAndroid.java)。
 
 在个人笔记中选择实时听写并点击开始，应用会再次显示原生确认，再申请麦克风权限。Android 13 及以上还需通知权限，确保用户能通过常驻通知停止。打开应用、恢复页面、读取状态或收到通知本身都不会开麦。
 

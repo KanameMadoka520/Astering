@@ -708,11 +708,6 @@ $mobile-max: $tablet - 1px;
 	min-block-size: 0;
 	overflow-y: auto;
 	overscroll-behavior: contain;
-
-	// The mobile :deep(.card) rule below stretches every card to viewport height; a card inside the sheet must not be.
-	:deep(.card) {
-		min-block-size: 0 !important;
-	}
 }
 
 .close {
@@ -784,14 +779,18 @@ $mobile-max: $tablet - 1px;
 		display: grid;
 	}
 
-	:deep(.card) {
+	.modal-content > :deep(.card) {
 		border: none !important;
 		border-radius: 0 !important;
 		min-block-size: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
 		display: flex;
 		flex-direction: column;
-		justify-content: space-between;
 		margin-block-end: 0 !important;
+	}
+
+	// The article fills spare height; spacing the three card sections apart leaves a gap above short forms.
+	.modal-content > :deep(.card > .card-content) {
+		flex: 1 0 auto;
 	}
 }
 

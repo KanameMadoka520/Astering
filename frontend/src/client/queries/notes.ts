@@ -173,6 +173,7 @@ type NoteRead = {
 	closed: boolean
 	close: () => void
 	markStale: () => void
+	refreshArticle: (minimumRevision: number) => void
 }
 type ReadClient = QueryFunctionContext['client']
 const reads = new WeakMap<ReadClient, Set<NoteRead>>()
@@ -188,6 +189,11 @@ async function readNoteSnapshot<T extends NoteSnapshot>(
 		key, kind, owner: captureClientRequestContext(), receipts: new Map(), closed: false, close: () => undefined,
 		markStale: () => {
 			if (isClientRequestContextCurrent(request.owner)) void client.invalidateQueries({queryKey: key, exact: true, refetchType: 'none'})
+		},
+		refreshArticle: minimumRevision => {
+			if (!isClientRequestContextCurrent(request.owner)) return
+			const article = client.getQueryData<Note | null>(key)
+			if (article && article.revision < minimumRevision) void client.invalidateQueries({queryKey: key, exact: true})
 		},
 	}
 	const unsubscribe = client.getQueryCache().subscribe(event => {
@@ -218,6 +224,7 @@ function shareNoteSnapshot(previous: unknown, incoming: unknown): unknown {
 	if (!incoming || typeof incoming !== 'object') return replaceEqualDeep(previous, incoming)
 	const request = responses.get(incoming)
 	let next = incoming as NoteSnapshot
+	let requiredArticleRevision = 0
 	try {
 		if (request) {
 			assertClientRequestContext(request.owner)
@@ -258,8 +265,11 @@ function shareNoteSnapshot(previous: unknown, incoming: unknown): unknown {
 		}
 		for (const receipts of request?.receipts.values() ?? []) {
 			for (const receipt of receipts) {
-				if ('revision' in next && next.id === receipt.segment.note_id) next = transcriptMetadata(next, receipt.stats)
-				else if ('page' in next) next = {...next, items: next.items.map(item => item.id === receipt.segment.note_id ? transcriptMetadata(item, receipt.stats) : item)}
+				if ('revision' in next && next.id === receipt.segment.note_id) {
+					next = transcriptMetadata(next, receipt.stats)
+					const revision = receipt.stats.article_revision
+					if (revision !== undefined && Number.isSafeInteger(revision)) requiredArticleRevision = Math.max(requiredArticleRevision, revision)
+				} else if ('page' in next) next = {...next, items: next.items.map(item => item.id === receipt.segment.note_id ? transcriptMetadata(item, receipt.stats) : item)}
 				else if ('next_cursor' in next && request?.kind.type === 'segments') next = segmentReceipt(next, request.kind.afterId, receipt)
 			}
 		}
@@ -267,6 +277,12 @@ function shareNoteSnapshot(previous: unknown, incoming: unknown): unknown {
 	} finally {
 		// Its order may have been sampled before the final; keep the list stale after Query's successful commit.
 		if (request?.kind.type === 'list' && request.receipts.size && !request.closed) queueMicrotask(request.markStale)
+		// A first GET can predate an auto-append with no cached article for the live
+		// receipt to refresh. Fetch the real text after this older snapshot commits;
+		// never attach the receipt's revision to text sampled before the append.
+		if (request?.kind.type === 'detail' && !request.closed && 'revision' in next && next.revision < requiredArticleRevision) {
+			queueMicrotask(() => request.refreshArticle(requiredArticleRevision))
+		}
 		responses.delete(incoming)
 		request?.close()
 	}

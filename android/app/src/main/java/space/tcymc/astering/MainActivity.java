@@ -69,7 +69,7 @@ public final class MainActivity extends Activity {
     private boolean rendererGone;
     private PendingStart pendingStart;
     private AlertDialog startDialog;
-    private PermissionRequest browserPermission;
+    private PendingBrowserAudio browserPermission;
     private ValueCallback<Uri[]> fileCallback;
     private long pendingOpenNote;
     private long pendingOpenUser;
@@ -85,22 +85,13 @@ public final class MainActivity extends Activity {
         if (shortcut) setIntent(new Intent(this, MainActivity.class).setAction(Intent.ACTION_MAIN));
         else rememberOpenNote(getIntent());
         updater = new AndroidUpdater(this);
+        if (Build.VERSION.SDK_INT >= 30) getWindow().setDecorFitsSystemWindows(false);
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.rgb(248, 250, 252));
-        root.setOnApplyWindowInsetsListener((view, insets) -> {
-            if (Build.VERSION.SDK_INT >= 30) {
-                android.graphics.Insets bars = insets.getInsets(android.view.WindowInsets.Type.systemBars()
-                    | android.view.WindowInsets.Type.displayCutout());
-                android.graphics.Insets keyboard = insets.getInsets(android.view.WindowInsets.Type.ime());
-                view.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, keyboard.bottom));
-            } else {
-                view.setPadding(insets.getSystemWindowInsetLeft(), insets.getSystemWindowInsetTop(),
-                    insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom());
-            }
-            return insets;
-        });
+        root.setOnApplyWindowInsetsListener(MainActivity::applyContentInsets);
         setContentView(root);
+        root.requestApplyInsets();
         if (Build.VERSION.SDK_INT >= 33) {
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,
                 () -> {
@@ -117,6 +108,34 @@ public final class MainActivity extends Activity {
         super.onConfigurationChanged(configuration);
         // Keep the existing SPA, drafts and scroll position when the display resizes or rotates.
         if (web != null && !rendererGone) web.invalidate();
+        if (root != null) root.requestApplyInsets();
+    }
+
+    static android.view.WindowInsets applyContentInsets(View view, android.view.WindowInsets insets) {
+        if (Build.VERSION.SDK_INT >= 30) {
+            int safeTypes = android.view.WindowInsets.Type.systemBars() | android.view.WindowInsets.Type.displayCutout();
+            android.graphics.Insets bars = insets.getInsets(safeTypes);
+            android.graphics.Insets keyboard = insets.getInsets(android.view.WindowInsets.Type.ime());
+            view.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, keyboard.bottom));
+            // Native padding already reserves this space; forwarding it would inset WebView a second time.
+            // Pass zeroes instead of CONSUMED so WebView also clears any previous CSS safe area or IME viewport.
+            return new android.view.WindowInsets.Builder(insets)
+                .setInsets(safeTypes | android.view.WindowInsets.Type.ime(), android.graphics.Insets.NONE)
+                .setInsetsIgnoringVisibility(safeTypes, android.graphics.Insets.NONE)
+                .setDisplayCutout(null)
+                .build();
+        }
+        view.setPadding(insets.getSystemWindowInsetLeft(), insets.getSystemWindowInsetTop(),
+            insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom());
+        if (Build.VERSION.SDK_INT >= 29) {
+            return new android.view.WindowInsets.Builder(insets)
+                .setSystemWindowInsets(android.graphics.Insets.NONE)
+                .setStableInsets(android.graphics.Insets.NONE)
+                .setDisplayCutout(null)
+                .build();
+        }
+        android.view.WindowInsets cleared = insets.replaceSystemWindowInsets(0, 0, 0, 0);
+        return Build.VERSION.SDK_INT >= 28 ? cleared.consumeDisplayCutout() : cleared;
     }
 
     private int dp(int value) {
@@ -379,7 +398,7 @@ public final class MainActivity extends Activity {
         fileRequest = -1;
         fileSite = null;
         fileWeb = null;
-        if (browserPermission != null) { browserPermission.deny(); browserPermission = null; }
+        cancelBrowserAudio(true);
         if (fileCallback != null) { fileCallback.onReceiveValue(null); fileCallback = null; }
     }
 
@@ -474,13 +493,13 @@ public final class MainActivity extends Activity {
             @Override public void onPermissionRequest(PermissionRequest request) {
                 runOnUiThread(() -> {
                     if (web != configuredWeb || app.site != selected || !visible || !resumed || !trusted(request.getOrigin().toString())
-                        || !trusted(web.getUrl()) || pendingStart != null || app.recorder != null
+                        || !trusted(web.getUrl()) || pendingStart != null || app.recorder != null || app.approvedRecording != null
                         || !Arrays.equals(request.getResources(), new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE})) {
                         request.deny();
                         return;
                     }
-                    if (browserPermission != null) browserPermission.deny();
-                    browserPermission = request;
+                    cancelBrowserAudio(true);
+                    browserPermission = new PendingBrowserAudio(request, configuredWeb, selected, document, app.session.ticket());
                     if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                         grantBrowserAudio();
                     } else {
@@ -491,7 +510,9 @@ public final class MainActivity extends Activity {
             }
 
             @Override public void onPermissionRequestCanceled(PermissionRequest request) {
-                if (browserPermission == request) browserPermission = null;
+                runOnUiThread(() -> {
+                    if (browserPermission != null && browserPermission.request == request) cancelBrowserAudio(false);
+                });
             }
 
             @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback,
@@ -745,7 +766,7 @@ public final class MainActivity extends Activity {
             microphoneRequest = -1;
             if (browserPermission != null) {
                 if (granted) grantBrowserAudio();
-                else { browserPermission.deny(); browserPermission = null; }
+                else cancelBrowserAudio(true);
             } else if (granted) continueStart();
             else cancelPending("permission");
         } else if (code == notificationRequest) {
@@ -756,12 +777,26 @@ public final class MainActivity extends Activity {
     }
 
     private void grantBrowserAudio() {
-        PermissionRequest pending = browserPermission;
+        PendingBrowserAudio pending = browserPermission;
         browserPermission = null;
         if (pending == null) return;
-        if (visible && web != null && trusted(web.getUrl()) && app.recorder == null) {
-            pending.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
-        } else pending.deny();
+        microphoneRequest = -1;
+        boolean sameSession = pending.owner == null ? app.session.ticket() == null : app.session.current(pending.owner);
+        if (visible && !rendererGone && web == pending.web && webSite == pending.site && app.site == pending.site
+            && document == pending.document && trusted(web.getUrl()) && trusted(pending.request.getOrigin().toString())
+            && app.recorder == null && app.approvedRecording == null && pendingStart == null && sameSession
+            && checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            pending.request.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
+        } else pending.request.deny();
+    }
+
+    private void cancelBrowserAudio(boolean deny) {
+        PendingBrowserAudio pending = browserPermission;
+        browserPermission = null;
+        if (pending == null) return;
+        // A canceled WebView prompt must not complete a later native microphone request.
+        microphoneRequest = -1;
+        if (deny) pending.request.deny();
     }
 
     @Override protected void onActivityResult(int code, int result, Intent data) {
@@ -978,10 +1013,7 @@ public final class MainActivity extends Activity {
             app.approvedRecording = null;
             app.publishIdle(approved.noteID);
         }
-        if (browserPermission != null) {
-            browserPermission.deny();
-            browserPermission = null;
-        }
+        cancelBrowserAudio(true);
         if (!isChangingConfigurations() && app.recorder != null) app.recorder.activityHidden();
         if (web != null && !rendererGone) web.onPause();
         setScreenAwake(false);
@@ -1019,6 +1051,22 @@ public final class MainActivity extends Activity {
         replyProxy = null;
         destroyWeb(false);
         super.onDestroy();
+    }
+
+    private static final class PendingBrowserAudio {
+        final PermissionRequest request;
+        final WebView web;
+        final SitePolicy site;
+        final long document;
+        final SessionFence.Ticket owner;
+
+        PendingBrowserAudio(PermissionRequest request, WebView web, SitePolicy site, long document, SessionFence.Ticket owner) {
+            this.request = request;
+            this.web = web;
+            this.site = site;
+            this.document = document;
+            this.owner = owner;
+        }
     }
 
     private static final class PendingStart {

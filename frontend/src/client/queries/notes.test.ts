@@ -208,6 +208,98 @@ describe('personal notes query boundary', () => {
 		expect(page.has_more).toBe(true)
 	})
 
+	it('refetches an observed first article when an auto-append committed after that GET took its snapshot', async () => {
+		const first = deferred<{data: Partial<Note>}>()
+		const refreshed = deferred<{data: Partial<Note>}>()
+		sdk.notesRead.mockReturnValueOnce(first.promise).mockReturnValueOnce(refreshed.promise)
+		const options = noteQuery(3)
+		const observer = new QueryObserver(client, {
+			queryKey: options.queryKey,
+			queryFn: options.queryFn,
+			structuralSharing: options.structuralSharing,
+			staleTime: Infinity,
+		})
+		const unsubscribe = observer.subscribe(() => undefined)
+		try {
+			const final = receipt(1)
+			final.segment = {...final.segment, append_to_article: true, article_appended: true}
+			final.stats.article_revision = 2
+			receiveNoteTranscript(client, 3, final, captureClientRequestContext())
+			first.resolve({data: {id: 3, title: 'First read', content: 'Original article', revision: 1}})
+			await vi.waitFor(() => expect(sdk.notesRead).toHaveBeenCalledTimes(2))
+			// A receipt cannot attach its new revision to article text from an older GET.
+			expect(client.getQueryData(noteKeys.detail(3))).toMatchObject({content: 'Original article', revision: 1, segment_count: 1})
+			refreshed.resolve({data: {id: 3, title: 'First read', content: 'Original article\n\nFinal 1', revision: 2, segment_count: 1, transcript_bytes: 10}})
+			await vi.waitFor(() => expect(client.getQueryData(noteKeys.detail(3)))
+				.toMatchObject({content: 'Original article\n\nFinal 1', revision: 2, segment_count: 1}))
+			expect(sdk.notesRead).toHaveBeenCalledTimes(2)
+		} finally {
+			unsubscribe()
+			client.clear()
+		}
+	})
+
+	it('does not refetch when the first article already includes the auto-append revision', async () => {
+		const first = deferred<{data: Partial<Note>}>()
+		sdk.notesRead.mockReturnValueOnce(first.promise)
+		const pending = client.fetchQuery(noteQuery(3))
+		const final = receipt(1)
+		final.stats.article_revision = 2
+		receiveNoteTranscript(client, 3, final, captureClientRequestContext())
+		first.resolve({data: {id: 3, content: 'Already appended', revision: 2}})
+		await pending
+		expect(sdk.notesRead).toHaveBeenCalledTimes(1)
+		expect(client.getQueryState(noteKeys.detail(3))?.isInvalidated).toBe(false)
+		expect(client.getQueryData(noteKeys.detail(3))).toMatchObject({content: 'Already appended', revision: 2, segment_count: 1})
+	})
+
+	it('keeps an unobserved older article stale without downloading it in the background', async () => {
+		const first = deferred<{data: Partial<Note>}>()
+		sdk.notesRead.mockReturnValueOnce(first.promise)
+		const pending = client.fetchQuery(noteQuery(3))
+		const final = receipt(1)
+		final.stats.article_revision = 2
+		receiveNoteTranscript(client, 3, final, captureClientRequestContext())
+		first.resolve({data: {id: 3, content: 'Before append', revision: 1}})
+		await pending
+		expect(sdk.notesRead).toHaveBeenCalledTimes(1)
+		expect(client.getQueryState(noteKeys.detail(3))?.isInvalidated).toBe(true)
+		expect(client.getQueryData(noteKeys.detail(3))).toMatchObject({content: 'Before append', revision: 1, segment_count: 1})
+	})
+
+	it.each(['identity changed', 'note deleted'] as const)('does not start a queued article refresh after the %s', async boundary => {
+		const first = deferred<{data: Partial<Note>}>()
+		sdk.notesRead.mockReturnValueOnce(first.promise)
+		const options = noteQuery(3)
+		const observer = new QueryObserver(client, {
+			queryKey: options.queryKey,
+			queryFn: options.queryFn,
+			structuralSharing: options.structuralSharing,
+			staleTime: Infinity,
+		})
+		let crossedBoundary = false
+		const unsubscribe = observer.subscribe(result => {
+			if (result.data?.revision !== 1 || crossedBoundary) return
+			crossedBoundary = true
+			if (boundary === 'identity changed') session.epoch++
+			else client.setQueryData(noteKeys.detail(3), null)
+		})
+		try {
+			const pending = observer.refetch()
+			const final = receipt(1)
+			final.stats.article_revision = 2
+			receiveNoteTranscript(client, 3, final, captureClientRequestContext())
+			first.resolve({data: {id: 3, content: 'Before append', revision: 1}})
+			await pending
+			expect(crossedBoundary).toBe(true)
+			expect(sdk.notesRead).toHaveBeenCalledTimes(1)
+			if (boundary === 'note deleted') expect(client.getQueryData(noteKeys.detail(3))).toBeNull()
+		} finally {
+			unsubscribe()
+			client.clear()
+		}
+	})
+
 	it('does not let an older HTTP detail/list/page replace newer confirmed metadata or editorial revision', async () => {
 		const note = normalizeNote({id: 3, title: 'New article title', content: 'New article', revision: 8, segment_count: 1, transcript_bytes: 10, updated})
 		client.setQueryData(noteKeys.detail(3), note)
