@@ -16,12 +16,13 @@ android {
         minSdk 26
         targetSdk 36
         ndk { abiFilters 'arm64-v8a' }
-        versionCode 67
-        versionName '2.7.1-aster.67'
+        versionCode 68
+        versionName '2.7.1-aster.68'
         testInstrumentationRunner 'android.test.InstrumentationTestRunner'
     }
 
-    sourceSets.main.assets.srcDirs += ['../.offline/assets']
+    // Only the runtime, tiny VAD and notices ship in the APK. Recognizer weights are opt-in downloads.
+    sourceSets.main.assets.srcDirs += ['../.offline/runtime-assets']
     androidResources { noCompress += ['onnx'] }
 
     signingConfigs {
@@ -73,11 +74,23 @@ dependencies {
     testImplementation 'org.json:json:20250517'
 }
 
-// Run the verified preparation script once before Gradle; never silently build an online-only APK.
+// Runtime is mandatory; speech weights come from the pinned, verified in-app catalogue.
 tasks.named('preBuild').configure {
     doFirst {
-        if (!file('../.offline/sherpa-onnx.aar').isFile() || !file('../.offline/assets/offline-asr/model.int8.onnx').isFile()) {
-            throw new GradleException('Run python3 android/scripts/prepare-offline-asr.py before building. Offline ASR assets are required.')
+        def required = [
+            '../.offline/sherpa-onnx.aar': '07e042d97f3a6bd5b7fe74d4eef0513dc01a714b16c15a903250095aba43a575',
+            '../.offline/runtime-assets/offline-asr/silero_vad.onnx': '9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6'
+        ]
+        required.each { name, expected ->
+            def artifact = file(name)
+            def digest = java.security.MessageDigest.getInstance('SHA-256')
+            if (!artifact.isFile()) throw new GradleException('Run python3 android/scripts/prepare-offline-asr.py before building. Verified runtime assets are required.')
+            artifact.withInputStream { input ->
+                byte[] buffer = new byte[1048576]
+                int count
+                while ((count = input.read(buffer)) != -1) digest.update(buffer, 0, count)
+            }
+            if (digest.digest().encodeHex().toString() != expected) throw new GradleException('Offline ASR runtime checksum mismatch; prepare verified assets again.')
         }
     }
 }

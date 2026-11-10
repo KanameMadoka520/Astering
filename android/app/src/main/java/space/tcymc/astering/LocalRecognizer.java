@@ -4,8 +4,10 @@ import android.content.res.AssetManager;
 import com.k2fsa.sherpa.onnx.OfflineModelConfig;
 import com.k2fsa.sherpa.onnx.OfflineRecognizer;
 import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig;
+import com.k2fsa.sherpa.onnx.OfflineQwen3AsrModelConfig;
 import com.k2fsa.sherpa.onnx.OfflineSenseVoiceModelConfig;
 import com.k2fsa.sherpa.onnx.OfflineStream;
+import com.k2fsa.sherpa.onnx.OfflineTransducerModelConfig;
 import com.k2fsa.sherpa.onnx.SileroVadModelConfig;
 import com.k2fsa.sherpa.onnx.SpeechSegment;
 import com.k2fsa.sherpa.onnx.Vad;
@@ -16,7 +18,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/** CPU-only SenseVoice + Silero. Raw sound exists only in finite RAM, never in files. */
+/** CPU-only installed model + bundled Silero. Raw sound stays in finite RAM, never in files. */
 final class LocalRecognizer {
     static final String MODEL = "SenseVoiceSmall int8 · 2024-07-17";
     static final String MODEL_ID = "sensevoice-small-int8-2024-07-17";
@@ -27,6 +29,7 @@ final class LocalRecognizer {
         void finished();
     }
     private final Listener listener;
+    private final OfflineModels.Lease lease;
     private final ThreadPoolExecutor inference = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS,
         new ArrayBlockingQueue<>(3), runnable -> new Thread(runnable, "Astering-ASR"));
     private final AtomicInteger pending = new AtomicInteger();
@@ -37,25 +40,13 @@ final class LocalRecognizer {
     private volatile boolean cancelled;
     private boolean finishing;
 
-    LocalRecognizer(AssetManager assets, String language, Listener listener) {
+    LocalRecognizer(AssetManager assets, OfflineModels.Lease lease, String language, Listener listener) {
         this.listener = listener;
+        this.lease = lease;
         inference.execute(() -> {
             try {
-                OfflineSenseVoiceModelConfig sense = new OfflineSenseVoiceModelConfig();
-                sense.setModel("offline-asr/model.int8.onnx");
-                // Interface language must not force monolingual recognition of mixed Chinese/English notes.
-                sense.setLanguage("auto");
-                sense.setUseInverseTextNormalization(true);
-                OfflineModelConfig model = new OfflineModelConfig();
-                model.setSenseVoice(sense);
-                model.setTokens("offline-asr/tokens.txt");
-                model.setModelType("sense_voice");
-                // Two CPU threads leave headroom for capture/UI and limit sustained CPU use.
-                model.setNumThreads(2);
-                model.setProvider("cpu");
-                OfflineRecognizerConfig config = new OfflineRecognizerConfig();
-                config.setModelConfig(model);
-                recognizer = new OfflineRecognizer(assets, config);
+                if (cancelled) { releaseRecognizer(); return; }
+                recognizer = new OfflineRecognizer(null, configuration(lease));
                 SileroVadModelConfig silero = new SileroVadModelConfig();
                 silero.setModel("offline-asr/silero_vad.onnx");
                 silero.setMinSilenceDuration(0.6f);
@@ -70,7 +61,7 @@ final class LocalRecognizer {
                 }
                 if (cancelled) releaseRecognizer();
                 else listener.ready();
-            } catch (RuntimeException | LinkageError error) {
+            } catch (RuntimeException | LinkageError | OutOfMemoryError error) {
                 releaseRecognizer();
                 if (!cancelled) listener.failed("local_model");
             }
@@ -113,7 +104,8 @@ final class LocalRecognizer {
                     } finally {
                         stream.release();
                     }
-                } catch (RuntimeException | LinkageError error) {
+                } catch (RuntimeException | LinkageError | OutOfMemoryError error) {
+                    releaseRecognizer();
                     if (!cancelled) listener.failed("local_inference");
                 } finally {
                     pending.decrementAndGet();
@@ -146,14 +138,75 @@ final class LocalRecognizer {
         if (cancelled) return;
         cancelled = true;
         if (vad != null) { vad.release(); vad = null; }
-        inference.getQueue().clear();
         if (!inference.isShutdown()) {
+            inference.getQueue().clear();
             inference.execute(this::releaseRecognizer);
             inference.shutdown();
         }
+        // finish() already queued teardown before shutdown; abort must not discard that finalizer.
     }
 
     private void releaseRecognizer() {
-        if (recognizer != null) { recognizer.release(); recognizer = null; }
+        try {
+            if (recognizer != null) {
+                OfflineRecognizer previous = recognizer;
+                recognizer = null;
+                previous.release();
+            }
+        } catch (RuntimeException | LinkageError | OutOfMemoryError ignored) {
+            // An exceptional JNI teardown must not leave an installed model permanently locked.
+        } finally {
+            lease.close();
+        }
+    }
+
+    static OfflineRecognizerConfig configuration(OfflineModels.Lease lease) {
+        OfflineRecognizerConfig config = new OfflineRecognizerConfig();
+        config.setModelConfig(modelConfig(lease));
+        config.getFeatConfig().setSampleRate(16000);
+        config.getFeatConfig().setFeatureDim("qwen3_asr".equals(lease.model.engine) ? 128 : 80);
+        return config;
+    }
+
+    private static OfflineModelConfig modelConfig(OfflineModels.Lease lease) {
+        OfflineModelConfig model = new OfflineModelConfig();
+        model.setNumThreads(2);
+        model.setProvider("cpu");
+        switch (lease.model.engine) {
+            case "sense_voice":
+                OfflineSenseVoiceModelConfig sense = new OfflineSenseVoiceModelConfig();
+                sense.setModel(lease.path("model.int8.onnx"));
+                // UI language must not force monolingual decoding of mixed Chinese-English notes.
+                sense.setLanguage("auto");
+                sense.setUseInverseTextNormalization(true);
+                model.setSenseVoice(sense);
+                model.setTokens(lease.path("tokens.txt"));
+                model.setModelType("sense_voice");
+                break;
+            case "zipformer":
+                OfflineTransducerModelConfig transducer = new OfflineTransducerModelConfig();
+                transducer.setEncoder(lease.path("encoder-epoch-99-avg-1.int8.onnx"));
+                transducer.setDecoder(lease.path("decoder-epoch-99-avg-1.onnx"));
+                transducer.setJoiner(lease.path("joiner-epoch-99-avg-1.int8.onnx"));
+                model.setTransducer(transducer);
+                model.setTokens(lease.path("tokens.txt"));
+                model.setModelType("transducer");
+                break;
+            case "qwen3_asr":
+                OfflineQwen3AsrModelConfig qwen = new OfflineQwen3AsrModelConfig();
+                qwen.setConvFrontend(lease.path("conv_frontend.onnx"));
+                qwen.setEncoder(lease.path("encoder.int8.onnx"));
+                qwen.setDecoder(lease.path("decoder.int8.onnx"));
+                qwen.setTokenizer(lease.path("tokenizer"));
+                // The native default of 128 output tokens can truncate a fast 20-second Chinese segment.
+                qwen.setMaxNewTokens(512);
+                qwen.setMaxTotalLen(2048);
+                model.setQwen3Asr(qwen);
+                model.setTokens("");
+                break;
+            default:
+                throw new IllegalArgumentException("Unsupported installed ASR engine");
+        }
+        return model;
     }
 }

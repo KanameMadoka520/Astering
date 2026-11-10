@@ -13,6 +13,7 @@ public final class AsteringApplication extends Application {
     ServerChange serverChange;
     NativeSession session;
     OfflineTranscripts offline;
+    OfflineModels models;
     private WeakReference<MainActivity> activity = new WeakReference<>(null);
     volatile RecordingService recorder;
     volatile String recordingGeneration = "";
@@ -26,6 +27,7 @@ public final class AsteringApplication extends Application {
         servers = new ServerSettings(this);
         site = servers.selected();
         session = new NativeSession(this);
+        models = new OfflineModels(this);
         offline = new OfflineTranscripts(this);
         android.net.ConnectivityManager connectivity = getSystemService(android.net.ConnectivityManager.class);
         connectivity.registerDefaultNetworkCallback(new android.net.ConnectivityManager.NetworkCallback() {

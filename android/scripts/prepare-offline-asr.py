@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Fetch immutable, SHA-256 verified upstream artifacts. Model weights never enter Git."""
 import hashlib
+import argparse
 import json
 import os
 from pathlib import Path
@@ -24,10 +25,20 @@ def digest(path):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--with-reference-model', action='store_true',
+                        help='Also prepare the old SenseVoice benchmark fixture; never packaged in the APK.')
+    args = parser.parse_args()
     CACHE.mkdir(parents=True, exist_ok=True)
     OUTPUT.mkdir(parents=True, exist_ok=True)
-    for name, asset, expected in ARTIFACTS:
+    verified = {}
+    for name, asset, expected in ARTIFACTS if args.with_reference_model else ARTIFACTS[:2]:
         target = CACHE / name
+        retained = OUTPUT / ('sherpa-onnx.aar' if name.endswith('.aar') else 'assets/offline-asr/' + name)
+        if retained.is_file() and digest(retained) == expected:
+            verified[name] = retained
+            print(f'Verified retained {name}', flush=True)
+            continue
         if not target.exists() or digest(target) != expected:
             request = urllib.request.Request(
                 f'https://api.github.com/repos/k2-fsa/sherpa-onnx/releases/assets/{asset}?download={int(time.time())}',
@@ -42,15 +53,33 @@ def main():
             finally:
                 temporary.unlink(missing_ok=True)
         print(f'Verified {name}', flush=True)
-    shutil.copyfile(CACHE / ARTIFACTS[0][0], OUTPUT / 'sherpa-onnx.aar')
+        verified[name] = target
+    aar = OUTPUT / 'sherpa-onnx.aar'
+    if verified[ARTIFACTS[0][0]] != aar:
+        shutil.copyfile(verified[ARTIFACTS[0][0]], aar)
+    runtime = OUTPUT / 'runtime-assets/offline-asr'
+    if runtime.exists():
+        shutil.rmtree(runtime)
+    runtime.mkdir(parents=True)
+    shutil.copyfile(verified['silero_vad.onnx'], runtime / 'silero_vad.onnx')
+    shutil.copytree(ROOT / 'licenses', runtime / 'licenses', dirs_exist_ok=True)
+    shutil.copyfile(ROOT.parent / 'LICENSE', runtime / 'licenses/Astering-LICENSE')
+    (runtime / 'manifest.json').write_text(json.dumps({
+        'runtime': 'sherpa-onnx 2.0.1', 'models': 'download-on-demand',
+        'files': {'silero_vad.onnx': {'bytes': (runtime / 'silero_vad.onnx').stat().st_size,
+                                    'sha256': digest(runtime / 'silero_vad.onnx')}}
+    }, indent=2) + '\n')
+    print('Verified runtime-only assets; speech model weights are downloaded explicitly in the app.', flush=True)
+    if not args.with_reference_model:
+        return
     models = OUTPUT / 'assets/offline-asr'
     models.mkdir(parents=True, exist_ok=True)
     archive_root = 'sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17/'
-    with tarfile.open(CACHE / ARTIFACTS[2][0]) as archive:
+    with tarfile.open(verified[ARTIFACTS[2][0]]) as archive:
         for name in ['model.int8.onnx', 'tokens.txt']:
             with archive.extractfile(archive_root + name) as src, (models / name).open('wb') as out:
                 shutil.copyfileobj(src, out, 1024 * 1024)
-    shutil.copyfile(CACHE / 'silero_vad.onnx', models / 'silero_vad.onnx')
+    shutil.copyfile(verified['silero_vad.onnx'], models / 'silero_vad.onnx')
     manifest = {'id': 'sensevoice-small-int8-2024-07-17', 'runtime': 'sherpa-onnx 2.0.1',
                 'source': 'https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17',
                 'revision': '2365baeacb507f821a0c8120fcee3d484dba7a07',

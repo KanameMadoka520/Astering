@@ -298,9 +298,11 @@ public final class RecordingService extends Service {
     }
 
     private void openLocal() {
-        model = LocalRecognizer.MODEL;
-        endpoint = "on-device://" + LocalRecognizer.MODEL_ID;
-        local = new LocalRecognizer(getAssets(), language, new LocalRecognizer.Listener() {
+        OfflineModels.Lease selected = app.models.acquire();
+        if (selected == null) { fail("local_model"); return; }
+        model = selected.model.name;
+        endpoint = "on-device://" + selected.model.id;
+        local = new LocalRecognizer(getAssets(), selected, language, new LocalRecognizer.Listener() {
             @Override public void ready() { execute(() -> {
                 if (stoppingRequested || !app.session.current(owner)) { if (local != null) local.abort(); finish(); return; }
                 ready = true; state = "recording"; startCapture(); publish();

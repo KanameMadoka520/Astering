@@ -1,8 +1,28 @@
 # 安卓本地语音识别与待同步文字
 
-Astering 的 Android ARM64 客户端内置 SenseVoiceSmall int8 和 Silero VAD，不依赖手机安装额外识别服务，也不会把识别请求转发给模型厂商。本地模型固定自动判断语言，优先满足中英文混合的随口笔记；界面使用英文也不会把识别强制设为英语。自动识别仍可能错听专有名词或句中切换，不能承诺复杂混合语音的完整准确率。设置中的「本机离线识别」只在支持该能力的新 APK 出现。旧 APK、普通浏览器继续使用现有在线识别。
+Astering Android ARM64 客户端从 `.68` 起支持按需下载和切换离线识别模型。APK 只保留 sherpa-onnx 运行库、小型 Silero VAD 与许可说明，不把大型识别权重全塞进去。识别在手机 CPU 上完成，不依赖手机额外安装识别服务，也不向模型厂商上传声音。界面语言不会强制限制识别语言；自动识别仍可能错听专有名词或混合语音，不能承诺完整准确率。普通浏览器和旧 APK 继续兼容原有在线功能。
 
-## 选型与体积
+## 离线模型管理（.68 起）
+
+在头像菜单 → 客户端设置 → 离线模型管理中下载模型，校验完成后点击「使用此模型」。首次无模型时，点击本机听写会先引导下载，不开麦。**从内置 SenseVoice 的旧 APK 升级后，也需手动下载一次**；不静默消耗手机流量。网页中的原生入口来自能力握手，无需替换服务器或重新加载当前草稿。
+
+| 可选模型 | 实际模型文件合计 | 说明 |
+|---|---:|---|
+| [SenseVoiceSmall int8](https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/tree/2365baeacb507f821a0c8120fcee3d484dba7a07) | 239,549,735 B，228.45 MiB | 延续现有方案，中英日韩粤语，自动判断语言 |
+| [X-ASR 中英 int8](https://huggingface.co/csukuangfj2/sherpa-onnx-x-asr-zipformer-transducer-zh-en-punct-int8-2026-06-03/tree/ce812cc05d858539a68dd42e86f4fd7a9ce1acf0) | 175,693,762 B，167.55 MiB | 带标点，使用官方离线分句导出，并非逐字流式版 |
+| [Qwen3-ASR 0.6B int8](https://huggingface.co/csukuangfj2/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25/tree/68818b2313fe77bd06f6a7c5068ff3ef59d02b8a) | 987,015,347 B，941.29 MiB | 实验性；本兼容导出接近 1 GB，不能沿用“约 600 MB”的估算；长时手机性能待测 |
+
+- 只接受应用内固定目录、固定上游 revision、固定长度与 SHA-256，不允许网页或模型下发任意权重地址。每次下载使用独立无认证 HTTP 客户端；仅跟随 HTTPS 官方 HF/CDN，不发送站点 Cookie、令牌或笔记。
+- 显示真实下载量、占用、百分比和速度；计费网络开始前确认。有效 `206 Content-Range` 才追加，服务商忽略 Range 时从头写，超长、截断、错误校验和及非法重定向不能变成已安装模型。
+- 暂停或断网保留 `.part`，重开应用后可以手动续传。下载时请保持应用打开；不承诺系统杀进程后仍继续联网。完整下载后校验并原子替换；启动时在后台再次检查，不在 UI 线程读取大型权重。
+- 模型是设备公共资源，账户可共用，不随切号重复下载。选择只影响下次录音；录音持有实际模型 lease，停止并完成释放前不能切换或删除使用中的权重。下载另一个模型不会替换当前录音模型。
+- 删除需明确确认，仅删除该模型及未完成下载；笔记、服务器文件、加密待同步文字和其他模型保留。下载失败可重试，坏文件不会成为已安装模型。首次未选模型时保留身份验证和文字缓存读取能力，不把“模型未安装”误报成需要重新登录。
+
+2026-11-10 已在 Linux、sherpa-onnx 2.0.1 CPU 两线程下，断网处理同一组公开中英样本，三模型均通过初始化和解码；Qwen 另通过 29.488 秒四段交替中英的 VAD 检查。Qwen 峰值进程内存约 1.96 GiB，明显高于另外两者约 350–360 MiB。该结果只能证明推理链路及配置正确，不是准确率排名，也不代表安卓长时耗电、温升、后台可靠性或速度验收。真实手机对比仍需用户的同一批口述。
+
+配置保留 Qwen 的 128 维特征及与最长 20 秒分句匹配的 512 输出 token / 2048 总序列预算；X-ASR 使用对应非流式 encoder/decoder/joiner，不能直接换入 streaming 权重。原始资料：[Qwen 接入](https://k2-fsa.github.io/sherpa/onnx/qwen3-asr/index.html)、[X-ASR 离线导出](https://github.com/k2-fsa/sherpa-onnx/blob/v2.0.1/scripts/zipformer-transducer/x-asr/export-non-streaming.sh)。
+
+## .65–.67 内置方案的历史选型与体积
 
 | 方案 | 官方模型体积 | Android 集成 | 本轮选择 |
 |---|---:|---|---|
@@ -51,7 +71,7 @@ SenseVoice 的「Small」是模型名称，**不表示 APK 只有几十 MB**。�
 
 `engine` 缺省为 `online`。本地录音起点由原生实际开始时间产生，`generation` 同时作为 `recording_id`；每句独立 UUID。自动入文是本次开始快照，不因用户后来改设置而改变已录内容的处理。
 
-`offlineStatus` 返回 `available/ready/model_id/model/bytes/sample_rate/user_id/pending_count/pending_bytes/max_pending_count/max_pending_bytes/audio_persisted/sync_error`。`available` 表示 APK 内置模型，`ready` 还要求当前身份经过服务器验证；未验证时不暴露其他账户缓存的数量或内容。`listOffline` 可按 `note_id` 查看待同步的原始分句，支持 `limit`（最多 50）、`cursor` 与响应的 `entries/next_cursor/has_more/status`；游标仅是有格式校验的修改时间＋UUID，不能被当作路径使用。每次最多扫描 100 个文件，响应小于 192 KiB，当前身份和响应前复核都通过才返回文字。稳定游标避免同步删除文件造成下一页跳项；旧 `offset` 参数仅保留兼容。`syncOffline` 触发有限重试并返回状态；`clearOffline` 需 `{confirm:true}` 且停止录音后执行。旧 APK 返回 `unsupported`，网页不应显示无法使用的本地引擎。
+`offlineStatus` 返回 `available/ready/model_ready/model_id/model/bytes/sample_rate/user_id/pending_count/pending_bytes/max_pending_count/max_pending_bytes/audio_persisted/sync_error`。`available` 表示 APK 支持本地识别运行库，`ready` 表示当前身份经过服务器验证，新增 `model_ready` 表示已下载并选择模型。即使没有模型，也不阻止本人原有待同步文字的读取和同步；未验证时不暴露其他账户缓存的数量或内容。`listOffline` 可按 `note_id` 查看待同步的原始分句，支持 `limit`（最多 50）、`cursor` 与响应的 `entries/next_cursor/has_more/status`；游标仅是有格式校验的修改时间＋UUID，不能被当作路径使用。每次最多扫描 100 个文件，响应小于 192 KiB，当前身份和响应前复核都通过才返回文字。稳定游标避免同步删除文件造成下一页跳项；旧 `offset` 参数仅保留兼容。`syncOffline` 触发有限重试并返回状态；`clearOffline` 需 `{confirm:true}` 且停止录音后执行。旧 APK 返回 `unsupported`，网页不应显示无法使用的本地引擎。
 
 本地事件为 `{event:"offline", user_id, status, receipt?}`；只有成功同步才有 `{segment,stats}` 的 `receipt`。录音快照额外带 `engine/local_text/local_client_id/pending_sync/inference_ms`。`local_text` 是已落盘的本机文字预览，不应伪装为服务器成功的正式 `segment`。`pending_sync` 指当前服务尚在落盘的句数，总待同步数取 `offlineStatus.pending_count`。
 
@@ -68,7 +88,9 @@ ANDROID_HOME=/opt/astering/tools/android-sdk \
   :app:compileDebugJavaWithJavac :app:testDebugUnitTest :app:lintDebug
 ```
 
-脚本从官方 GitHub Release API 获取固定资产，核对官方 SHA-256，才提取固定文件到 Git 忽略的 `android/.offline`；缺少模型时 Gradle 明确失败，不能悄悄产出空壳 APK。原始模型仓库 revision 为 `2365baeacb507f821a0c8120fcee3d484dba7a07`，权重 SHA-256 为 `c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51`。构建时必须同时核对模型清单、实际 APK 内 assets 与签名。
+准备脚本默认仅获取或复用已通过 SHA-256 的 AAR、VAD 和许可证，写入 Git 忽略的 `android/.offline/runtime-assets`；Gradle 再次核对两个固定运行资源的 SHA，缺失或损坏就失败。大型权重不进入 APK；所有模型文件及校验值由 `OfflineModelCatalog.java` 固定。`--with-reference-model` 仅供旧 SenseVoice 基准准备权重与官方样本，不影响 APK 内容。构建时核对 APK 内没有混入大型权重、许可齐全、版本和签名正确。
+
+`.68` 本机验证：51 项 Android 单元测试、`lintRelease` 和正式签名构建通过。APK 约 25.3 MB / 24.1 MiB（旧 `.67` 约 264.6 MB）；ZIP 16 KiB 对齐通过，签名证书与旧版一致，包内不含识别权重，VAD 与新增许可证齐全。真实下载器使用 X-ASR 小文件验证 64 KiB 断点、HF 302、官方 CDN 206、最终 SHA 及成品零网络复用。此记录不替代安卓真机 UI、麦克风、后台或长时性能验收。
 
 AES-GCM 单元测试覆盖账户/UUID/密钥绑定、篡改拒绝、随机 IV 和容量边界。离线音频基准脚本使用同一权重和运行库处理官方真实语音、静音及连续拼接片段；具体结果见本文件后续验收记录。Linux 实测只能证明离线推理链路与输入正确，不能替代安卓真机的麦克风、后台限制、发热和耗电验收；本机没有可用真机时必须如实保留该限制。
 

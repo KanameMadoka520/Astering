@@ -44,6 +44,10 @@ final class OfflineTranscripts {
         if (owner != null) storeWork(() -> emitStatus(owner, null, false), (result, code) -> {});
         kick(true);
     }
+    void modelChanged() {
+        SessionFence.Ticket owner = app.session.ticket();
+        if (owner != null) storeWork(() -> emitStatus(owner, null, false), (result, code) -> {});
+    }
     void authenticationFailed(String error) {
         syncError = error.equals("authentication") ? "authentication" : error.equals("rate_limited") ? "rate_limited" : "network";
         SessionFence.Ticket owner = app.session.ticket();
@@ -107,12 +111,15 @@ final class OfflineTranscripts {
             result.put("legacy_pending_bytes", legacy.optLong("pending_bytes"));
             result.put("server_origin", owner.origin);
             result.put("available", true); result.put("ready", verified); result.put("engine", "local");
-            result.put("model_id", LocalRecognizer.MODEL_ID); result.put("model", LocalRecognizer.MODEL);
+            OfflineModelCatalog.Model selected = app.models.selected();
+            result.put("model_id", selected == null ? "" : selected.id);
+            result.put("model", selected == null ? app.getString(R.string.models_none) : selected.name);
+            result.put("model_ready", selected != null);
             result.put("audio_persisted", false); result.put("sync_error", syncError);
             result.put("sample_rate", 16000); result.put("user_id", user);
-            result.put("bytes", 240193589L);
-            result.put("source", "https://huggingface.co/FunAudioLLM/SenseVoiceSmall");
-            result.put("license", "FunASR Model Open Source License Agreement 1.1");
+            result.put("bytes", selected == null ? 0 : selected.bytes());
+            result.put("source", selected == null ? "" : selected.source);
+            result.put("license", selected == null ? "" : selected.license);
         } catch (org.json.JSONException impossible) { throw new IllegalStateException(impossible); }
         return result;
     }

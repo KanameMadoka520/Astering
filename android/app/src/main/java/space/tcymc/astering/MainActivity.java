@@ -55,6 +55,7 @@ public final class MainActivity extends Activity {
     private AndroidUpdater updater;
     private boolean switchingServer;
     private AlertDialog clientSettingsDialog;
+    private OfflineModelsDialog modelsDialog;
     private boolean pendingClientSettings;
     private AlertDialog serverDialog;
     private AlertDialog confirmDialog;
@@ -325,6 +326,10 @@ public final class MainActivity extends Activity {
         updates.setText(R.string.update_check);
         updates.setOnClickListener(view -> { dismissClientSettings(); updater.check(true); });
         content.addView(updates, new LinearLayout.LayoutParams(-1, -2));
+        Button models = new Button(this);
+        models.setText(R.string.models_title);
+        models.setOnClickListener(view -> showOfflineModels());
+        content.addView(models, new LinearLayout.LayoutParams(-1, -2));
         Button recover = new Button(this);
         recover.setText(R.string.legacy_recover);
         recover.setOnClickListener(view -> { dismissClientSettings(); checkLegacy(true); });
@@ -342,9 +347,16 @@ public final class MainActivity extends Activity {
     }
 
     private void dismissClientSettings() {
+        if (modelsDialog != null) { modelsDialog.dismiss(); modelsDialog = null; }
         AlertDialog settings = clientSettingsDialog;
         clientSettingsDialog = null;
         if (settings != null) settings.dismiss();
+    }
+
+    private void showOfflineModels() {
+        if (!showClientSettings()) return;
+        if (modelsDialog == null) modelsDialog = new OfflineModelsDialog(this, app.models);
+        modelsDialog.show();
     }
 
     private void consumeClientSettings() {
@@ -644,6 +656,11 @@ public final class MainActivity extends Activity {
         }
         if (pendingStart != null || app.recorder != null || browserPermission != null) {
             reply(proxy, page, id, null, "already_recording");
+            return;
+        }
+        if (engine.equals("local") && !app.models.hasSelected()) {
+            reply(proxy, page, id, null, "cancelled");
+            showOfflineModels();
             return;
         }
         pendingStart = new PendingStart(id, page, proxy, owner, noteID, sampleRate, connection, language,

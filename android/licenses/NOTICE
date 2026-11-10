@@ -15,6 +15,27 @@ Pinned revision: 2365baeacb507f821a0c8120fcee3d484dba7a07
 Weights are governed by FunASR-MODEL_LICENSE, not the source code's MIT license.
 Astering makes no claim of training or owning these weights.
 
+X-ASR-zh-en, Gilgamesh-J and contributors
+https://github.com/Gilgamesh-J/X-ASR
+Source license revision: 838297cd47fed858e6cf72eaf5a52f948a3edd73
+Apache License 2.0; see X-ASR-LICENSE.
+The optional downloaded model is the non-streaming, int8, punctuation-enabled
+ONNX export by k2-fsa / sherpa-onnx. It is not bundled into the APK.
+https://huggingface.co/csukuangfj2/sherpa-onnx-x-asr-zipformer-transducer-zh-en-punct-int8-2026-06-03
+Pinned model revision: ce812cc05d858539a68dd42e86f4fd7a9ce1acf0
+
+Qwen3-ASR-0.6B, Qwen Team / Alibaba Cloud
+https://github.com/QwenLM/Qwen3-ASR
+https://huggingface.co/Qwen/Qwen3-ASR-0.6B
+Source license revision: 7c6daf77a2421100f5fb066495372c00129d39ff
+Apache License 2.0; see Qwen3-ASR-LICENSE.
+The optional downloaded model is an int8 ONNX conversion by Wasser1462 and
+k2-fsa / sherpa-onnx. It is not bundled into the APK.
+https://github.com/Wasser1462/Qwen3-ASR-onnx
+https://huggingface.co/csukuangfj2/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25
+Pinned model revision: 68818b2313fe77bd06f6a7c5068ff3ef59d02b8a
+Astering makes no claim of training or owning either optional model.
+
 sherpa-onnx v2.0.1, k2-fsa / Xiaomi Corporation and contributors
 https://github.com/k2-fsa/sherpa-onnx
 Apache License 2.0; see sherpa-onnx-LICENSE.
