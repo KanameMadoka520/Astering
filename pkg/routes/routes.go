@@ -344,8 +344,9 @@ var unauthenticatedAPIPaths = map[string]bool{
 
 	// WebSocket upgrade (a raw echo route — OpenAPI can't model WebSockets);
 	// it authenticates via its first message, so the upgrade needs no JWT.
-	"/api/v2/ws":         true,
-	"/api/v2/notes/live": true,
+	"/api/v2/ws":             true,
+	"/api/v2/notes/live":     true,
+	"/api/v2/ai/speech/live": true,
 }
 
 // collectRoutesForAPITokens collects all routes for API token permission checking.
@@ -505,6 +506,7 @@ func registerAPIRoutesV2(e *echo.Echo, a *echo.Group, noAuthRateLimit, refreshRa
 	// self-register via init()/RegisterAll.
 	a.GET("/ws", ws.UpgradeHandler, noAuthRateLimit)
 	a.GET("/notes/live", apiv2.LiveNoteSpeech, noAuthRateLimit)
+	a.GET("/ai/speech/live", apiv2.LiveAssistantSpeech, noAuthRateLimit)
 
 	// Resources self-register via init(); RegisterAll runs them all + AutoPatch.
 	apiv2.RegisterAll(api)

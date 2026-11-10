@@ -27,6 +27,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/KanameMadoka520/Astering/pkg/config"
@@ -187,7 +188,8 @@ var webCmd = &cobra.Command{
 		// Wait for interrupt signal to gracefully shut down the server with
 		// a timeout of 10 seconds.
 		quit := make(chan os.Signal, 1)
-		signal.Notify(quit, os.Interrupt)
+		signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+		defer signal.Stop(quit)
 		<-quit
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()

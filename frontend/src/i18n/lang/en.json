@@ -6066,5 +6066,38 @@
     "privacy": "Account passwords and refresh tokens are never stored in the account list. Switching releases the previous account’s microphone and private views; Arona tasks continue on the server.",
     "rememberFailed": "Signed in, but this account could not be remembered for quick switching. You can retry from Switch account.",
     "retry": "Try again"
+  },
+  "aronaVoice": {
+    "livePreview": "Live transcription",
+    "interimHint": "Live text may still change. Only the confirmed final transcript enters your draft. If interrupted, you can copy this preview manually.",
+    "copyPreview": "Copy preview",
+    "cleaningAfterReady": "Transcript ready to edit or send; polishing in the background…",
+    "keepRaw": "Keep transcript",
+    "cleanupKept": "Polished suggestion · your edits were kept",
+    "cleanupFailed": "Text polishing failed. Your transcript is still in the draft; you can edit or send it.",
+    "details": "Voice recognition details",
+    "mode": "Input mode",
+    "live": "Realtime audio",
+    "file": "Recorded audio / uploaded file",
+    "model": "Recognition model",
+    "endpoint": "Provider endpoint",
+    "requestID": "Trace ID",
+    "timingHint": "Stop-to-text is measured in this browser. First text and finalization are server observations; timings use different starting points and must not be added together. Upload and recognition share one request timer.",
+    "preparing": "Preparing audio…",
+    "liveFailed": "Realtime recognition was interrupted. Check your connection and speech settings. Any preview remains available to copy; it has not been sent.",
+    "stages": {
+      "flushing": "Finishing the audio capture…",
+      "draining": "Sending the remaining audio…",
+      "finishing": "Waiting for the final transcript…"
+    },
+    "metrics": {
+      "stopToTextMS": "Stop → usable text",
+      "prepareMS": "Local audio preparation",
+      "requestMS": "Upload + recognition",
+      "firstTextMS": "Server → first text",
+      "finishMS": "Server finalization",
+      "cleanupMS": "Text polishing",
+      "audioMS": "Audio duration"
+    }
   }
 }

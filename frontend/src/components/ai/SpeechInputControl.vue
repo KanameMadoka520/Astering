@@ -53,7 +53,7 @@ const statusKey = computed(() => props.processing ? 'tcy.voice.processing'
 const statusLabel = computed(() => {
 	if (props.requesting) return t('tcy.voice.requesting')
 	if (slidingToCancel.value) return t('tcy.voice.cancelReleaseHint')
-	if (props.processing && props.processingLabel) return props.processingLabel
+	if ((props.stopping || props.processing) && props.processingLabel) return props.processingLabel
 	if (holding.value && props.recording) return t('tcy.voice.releaseHint')
 	return t(statusKey.value)
 })
@@ -139,7 +139,7 @@ function pointerUp(event: PointerEvent) {
 	if (!previous.started) return // A short tap uses the button's native click, including keyboard support.
 	suppressPointerClick = true
 	if (props.recording) emit('stop')
-	else emit('cancel') // Releasing during the permission prompt must not start an invisible recording later.
+	else if (!props.stopping && !props.processing) emit('cancel') // Pending permission must not start an invisible recording later.
 }
 
 function pointerCancel(event: PointerEvent) {

@@ -6066,5 +6066,38 @@
 		"privacy": "账号列表不保存密码或可读取的刷新令牌。切换时会关闭原账号的麦克风并清理私人界面；服务器上的阿罗娜任务会继续执行。",
 		"rememberFailed": "登录成功，但暂时无法记住此账号。稍后可在“切换账号”里重试。",
 		"retry": "重试"
+	},
+	"aronaVoice": {
+		"livePreview": "实时转录预览",
+		"interimHint": "实时文字还可能变化，只有确认后的最终转录才会进入输入框。如遇中断，可以手动复制这份预览。",
+		"copyPreview": "复制预览",
+		"cleaningAfterReady": "转录已可编辑或发送，正在后台整理文字…",
+		"keepRaw": "保留原文",
+		"cleanupKept": "整理建议 · 已保留你的修改",
+		"cleanupFailed": "文字整理失败，转录原文仍在输入框中，可以继续编辑或发送。",
+		"details": "语音识别详情",
+		"mode": "输入方式",
+		"live": "实时传输音频",
+		"file": "录音文件／上传音频",
+		"model": "识别模型",
+		"endpoint": "服务商请求端点",
+		"requestID": "追踪编号",
+		"timingHint": "“停止到文字可用”由当前浏览器计时。首字和收尾由服务器观测，计时起点不同，不能直接相加；文件上传与识别暂合并计时。",
+		"preparing": "正在准备音频…",
+		"liveFailed": "实时识别中断，请检查网络和语音连接设置。已有预览可以手动复制，尚未自动发送。",
+		"stages": {
+			"flushing": "正在收完最后一段音频…",
+			"draining": "正在发送剩余音频…",
+			"finishing": "正在等待最终转录…"
+		},
+		"metrics": {
+			"stopToTextMS": "停止到文字可用",
+			"prepareMS": "本地音频准备",
+			"requestMS": "上传与识别",
+			"firstTextMS": "服务器到首字",
+			"finishMS": "服务器收尾",
+			"cleanupMS": "文字整理",
+			"audioMS": "音频时长"
+		}
 	}
 }

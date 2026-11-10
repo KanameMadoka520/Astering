@@ -144,6 +144,26 @@ describe('speech input touch and native button controls', () => {
 		expect(wrapper.emitted('start')).toHaveLength(1)
 	})
 
+	it.each(['stopping', 'processing'] as const)('keeps an automatically finishing hold on release while %s', async phase => {
+		const {wrapper, mic} = mountControl()
+		pointer(mic.element, 'pointerdown')
+		await vi.advanceTimersByTimeAsync(350)
+		await wrapper.setProps({recording: true})
+		await wrapper.setProps({recording: false, [phase]: true})
+		pointer(mic.element, 'pointerup')
+		await click(mic.element)
+		expect(wrapper.emitted('cancel')).toBeUndefined()
+		expect(wrapper.emitted('stop')).toBeUndefined()
+		expect(wrapper.emitted('start')).toEqual([[]])
+	})
+
+	it('shows the actual finalization stage while stopping and prioritizes a permission prompt', async () => {
+		const {wrapper} = mountControl({stopping: true, processingLabel: 'Flushing captured audio'})
+		expect(wrapper.get('[role="status"]').text()).toBe('Flushing captured audio')
+		await wrapper.setProps({requesting: true, processing: true})
+		expect(wrapper.get('[role="status"]').text()).toBe('tcy.voice.requesting')
+	})
+
 	it('cancels even when release happens before the parent renders the permission state', async () => {
 		const {wrapper, mic} = mountControl()
 		pointer(mic.element, 'pointerdown')

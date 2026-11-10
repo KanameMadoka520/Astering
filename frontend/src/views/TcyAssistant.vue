@@ -7,9 +7,13 @@ import {useDocumentVisibility, useMediaQuery} from '@vueuse/core'
 import {useConversationRead} from '@/composables/useConversationRead'
 import {prepareSpeechFile, speechSampleRate} from '@/helpers/tcyAudio'
 import {useSpeechRecording} from '@/composables/useSpeechRecording'
+import {useLiveSpeechRecording, supportsLiveSpeechRecording} from '@/composables/useLiveSpeechRecording'
+import {useDraftSpeechCleanup} from '@/composables/useDraftSpeechCleanup'
+import type {SpeechTelemetry} from '@/helpers/speechTelemetry'
 import {useConversationEvents} from '@/client/queries/conversationEvents'
 import {aiSettingsQuery, useCleanupAI, useTranscribeAI} from '@/client/queries/tcyAi'
 import SpeechInputControl from '@/components/ai/SpeechInputControl.vue'
+import SpeechFeedback from '@/components/ai/SpeechFeedback.vue'
 import MCPSessionPicker from '@/components/ai/MCPSessionPicker.vue'
 import ToolModulePicker from '@/components/ai/ToolModulePicker.vue'
 import AssistantPreferences from '@/components/ai/AssistantPreferences.vue'
@@ -576,6 +580,9 @@ watch(prompt, async () => {await nextTick(); resizeComposer()})
 const effectivePrompt = useQuery(computed(() => promptQuery(projectID.value, mode.value, allowDelete.value, showSystemPrompt.value, toolModules.value)))
 const tidy = ref(true)
 const original = ref('')
+const speechTelemetry = shallowRef<SpeechTelemetry>()
+const showLivePreview = ref(false)
+let speechStoppedAt: number | undefined
 const audioInput = ref<HTMLInputElement>()
 const audioStage = ref('')
 const recordingErrorMessages = {
@@ -587,13 +594,46 @@ const recordingErrorMessages = {
 	'too-large': 'tcymc.text.audio_must_not_exceed_16_mib',
 	interrupted: 'tcymc.text.recording_was_interrupted_please_try_again',
 } as const
-const microphone = useSpeechRecording({
+const fileMicrophone = useSpeechRecording({
 	capture: captureSpeechOwner,
 	isCurrent: speechOwnerIsCurrent,
 	onComplete: (blob, name, owner) => { void processAudio(blob, name, owner) },
 	onError: kind => showNotice(t(recordingErrorMessages[kind])),
 })
-const {recording, requesting: microphonePending, stopping: microphoneStopping, elapsed} = microphone
+const liveMicrophone = useLiveSpeechRecording({
+	capture: captureSpeechOwner,
+	isCurrent: speechOwnerIsCurrent,
+	connectionID: owner => owner.connectionID,
+	onComplete: (text, stats, owner) => {
+		showLivePreview.value = false
+		finishSpeech(text, owner, {
+			mode: 'live',
+			model: stats.model,
+			endpoint: stats.endpoint,
+			requestID: stats.request_id,
+			firstTextMS: stats.first_text_ms,
+			finishMS: stats.finish_ms,
+			audioMS: stats.audio_duration_ms,
+			stopToTextMS: speechStoppedAt === undefined ? undefined : performance.now() - speechStoppedAt,
+		})
+	},
+	onError: kind => showNotice(t(kind in recordingErrorMessages
+		? recordingErrorMessages[kind as keyof typeof recordingErrorMessages] : 'aronaVoice.liveFailed')),
+})
+const recording = computed(() => fileMicrophone.recording.value || liveMicrophone.recording.value)
+const microphonePending = computed(() => fileMicrophone.requesting.value || liveMicrophone.requesting.value)
+const microphoneStopping = computed(() => fileMicrophone.stopping.value || liveMicrophone.stopping.value)
+const elapsed = computed(() => liveMicrophone.recording.value || liveMicrophone.stopping.value
+	? liveMicrophone.elapsed.value : fileMicrophone.elapsed.value)
+const speechCleanup = useDraftSpeechCleanup({
+	request: (text, signal) => cleanup.mutateAsync({text, signal}),
+	revision: () => draftRevision,
+	onFailure: () => showNotice(t('aronaVoice.cleanupFailed')),
+})
+const speechProcessingLabel = computed(() => audioStage.value
+	? t(audioStage.value === 'audioPreparing' ? 'aronaVoice.preparing' : `flow.${audioStage.value}`)
+	: liveMicrophone.stopping.value ? t(`aronaVoice.stages.${liveMicrophone.stage.value}`)
+		: speechCleanup.pending.value ? t('aronaVoice.cleaningAfterReady') : '')
 const voiceCaptureActive = computed(() => recording.value || microphonePending.value || microphoneStopping.value)
 const editingBusy = computed(() => Boolean(pendingMessage.value)
 	|| chatUploads.running.value
@@ -606,12 +646,11 @@ const editingBusy = computed(() => Boolean(pendingMessage.value)
 	|| send.isPending.value
 	|| action.isPending.value
 	|| transcribe.isPending.value
-	|| cleanup.isPending.value
 	|| recording.value || microphonePending.value || microphoneStopping.value)
 const busy = computed(() => !optionsReady.value || editingBusy.value || activeRun.value || Boolean(paused.value))
 const executionScopeLocked = computed(() => busy.value || archived.value)
 // Dictation edits the draft, including an instruction to steer a running turn.
-const voiceBusy = computed(() => !optionsReady.value || editingBusy.value || archived.value)
+const voiceBusy = computed(() => !optionsReady.value || editingBusy.value || speechCleanup.pending.value || archived.value)
 watch([activeRun, editingBusy, () => steer.isPending.value], ([running, editing, steering]) => {
 	emit('activity', running || editing)
 	// Expanding unmounts the panel, and an instruction's failure would have no note left to show it.
@@ -777,6 +816,7 @@ async function sendSteer(retry?: SteerFailure) {
 		requestID = shownSteerFailures.value.find(failure => failure.owner === owner && failure.state === 'failed'
 			&& failure.turn === turn && failure.message === message)?.requestID ?? crypto.randomUUID()
 		typed = prompt.value
+		speechCleanup.cancel()
 		const fromButton = document.activeElement instanceof HTMLElement && document.activeElement.closest('.composer-steer')
 		prompt.value = ''
 		// The send button leaves with the text.
@@ -900,6 +940,7 @@ async function submit() {
 		return
 	}
 	const originalPrompt = prompt.value
+	speechCleanup.cancel()
 	const message = prompt.value.trim() || t('chatFiles.defaultPrompt')
 	const id = chatID.value
 	const location = route.fullPath
@@ -1158,6 +1199,7 @@ function captureSpeechOwner() {
 		chat: chatID.value,
 		connectionID: connection?.id ?? '',
 		protocol: connection?.protocol ?? 'openai-transcription',
+		model: connection?.model ?? '',
 		configuration: JSON.stringify(connection),
 		cleanup: tidy.value,
 	}
@@ -1171,18 +1213,22 @@ let speechAttempt: SpeechOwner | undefined
 let audioOperation = 0
 let audioController: AbortController | undefined
 let uploadOwner: SpeechOwner | undefined
-let cleanupController: AbortController | undefined
-let cleanupOwner: {context: ReturnType<typeof captureClientRequestContext>, chat: string} | undefined
+let cleanupContext: ReturnType<typeof captureClientRequestContext> | undefined
 function cancelVoice() {
-	microphone.cancel()
+	fileMicrophone.cancel()
+	liveMicrophone.cancel()
 	audioController?.abort()
-	cleanupController?.abort()
+	speechCleanup.cancel()
+	cleanupContext = undefined
+	showLivePreview.value = false
+	speechTelemetry.value = undefined
+	speechStoppedAt = undefined
 	speechAttempt = undefined
 	audioOperation++
 	audioStage.value = ''
 }
 function voiceKeydown(event: KeyboardEvent) {
-	if (event.key !== 'Escape' || !(recording.value || microphonePending.value || microphoneStopping.value || audioStage.value || cleanupController)) return
+	if (event.key !== 'Escape' || !(recording.value || microphonePending.value || microphoneStopping.value || audioStage.value || speechCleanup.pending.value)) return
 	event.preventDefault()
 	event.stopPropagation()
 	cancelVoice()
@@ -1197,8 +1243,9 @@ watch(() => mobileLayout.value && baseStore.menuActive, hidden => {
 	if (hidden) cancelVoice()
 }, {flush: 'sync'})
 watch([() => auth.session, tokenRefreshes], () => {
-	if (!speechAttemptIsCurrent() || cleanupOwner && !isClientRequestContextCurrent(cleanupOwner.context)) cancelVoice()
+	if (!speechAttemptIsCurrent() || cleanupContext && !isClientRequestContextCurrent(cleanupContext)) cancelVoice()
 }, {flush: 'sync'})
+watch(() => cleanupConfiguration(), () => speechCleanup.cancel(), {flush: 'sync'})
 function speechAttemptIsCurrent() {
 	return !speechAttempt || speechOwnerIsCurrent(speechAttempt)
 }
@@ -1221,7 +1268,8 @@ async function processAudio(file: Blob, filename: string, owner = captureSpeechO
 	audioController = controller
 	const current = () => operation === audioOperation && !controller.signal.aborted && speechOwnerIsCurrent(owner)
 	dismissNotice()
-	audioStage.value = 'preparing'
+	audioStage.value = 'audioPreparing'
+	const started = performance.now()
 	try {
 		if (speechSampleRate(owner.protocol) || ['openai-audio', 'mimo-asr', 'dashscope-file-asr', 'sensevoice'].includes(owner.protocol)) {
 			audioStage.value = 'audioConverting'
@@ -1243,12 +1291,21 @@ async function processAudio(file: Blob, filename: string, owner = captureSpeechO
 		})
 		if (!current()) return
 		audioStage.value = 'audioProcessing'
-		const result = await transcribe.mutateAsync({audio, filename, connection_id: owner.connectionID, cleanup: owner.cleanup, signal: controller.signal})
+		const requestStarted = performance.now()
+		const result = await transcribe.mutateAsync({audio, filename, connection_id: owner.connectionID, cleanup: false, signal: controller.signal})
 		if (!current()) return
-		original.value = result.original ?? ''
-		prompt.value = [prompt.value, result.text].filter(Boolean).join('\n')
+		finishSpeech(result.text ?? result.original ?? '', owner, {
+			mode: 'file',
+			model: owner.model,
+			endpoint: result.endpoint,
+			prepareMS: requestStarted - started,
+			requestMS: performance.now() - requestStarted,
+			firstTextMS: result.first_text_ms,
+			audioMS: result.audio_duration_ms,
+			inputBytes: file.size,
+			stopToTextMS: speechStoppedAt === undefined ? undefined : performance.now() - speechStoppedAt,
+		})
 		if (result.warning) showNotice(result.warning)
-		else showNotice(t('tcymc.text.transcription_complete_edit_the_text_if_needed_then'), 'info')
 	} catch (e) {
 		if (!current() || isRequestContextAbort(e)) return
 		showNotice(t('tcymc.text.speech_recognition_failed_check_the_model_settings_or'))
@@ -1260,12 +1317,26 @@ async function processAudio(file: Blob, filename: string, owner = captureSpeechO
 function startRecording() {
 	if (voiceBusy.value || !hasSpeech.value || !presenting.value) return
 	dismissNotice()
+	speechCleanup.cancel()
+	speechTelemetry.value = undefined
+	speechStoppedAt = undefined
 	speechAttempt = captureSpeechOwner()
-	void microphone.start()
+	showLivePreview.value = supportsLiveSpeechRecording(speechAttempt.protocol)
+	if (showLivePreview.value) void liveMicrophone.start()
+	else void fileMicrophone.start()
+}
+
+function stopRecording() {
+	speechStoppedAt = performance.now()
+	if (liveMicrophone.recording.value) void liveMicrophone.stop()
+	else fileMicrophone.stop()
 }
 
 function chooseAudio() {
 	if (voiceBusy.value || !hasSpeech.value) return
+	speechTelemetry.value = undefined
+	speechStoppedAt = undefined
+	showLivePreview.value = false
 	uploadOwner = captureSpeechOwner()
 	speechAttempt = uploadOwner
 	// Keep this synchronous with the user's click (iOS file picker activation).
@@ -1280,27 +1351,39 @@ async function upload(event: Event) {
 	if (file && owner && !voiceBusy.value) await processAudio(file, file.name, owner)
 }
 
-async function tidyText() {
-	if (voiceBusy.value || !prompt.value.trim() || !settings.data.value?.cleanup) return
-	const text = prompt.value
-	const revision = draftRevision
+function cleanupConfiguration() {
+	return JSON.stringify(settings.data.value?.connections.find(connection => connection.id === settings.data.value?.cleanup))
+}
+
+function cleanSpeechText(text: string, prefix: string) {
 	const context = captureClientRequestContext()
+	cleanupContext = context
 	const chat = chatID.value
-	const controller = new AbortController()
-	cleanupController = controller
-	cleanupOwner = {context, chat}
-	try {
-		const result = await cleanup.mutateAsync({text, signal: controller.signal})
-		if (disposed || controller.signal.aborted || !presenting.value || chatID.value !== chat || !isClientRequestContextCurrent(context)) return
-		if (draftRevision !== revision) {
-			showNotice(t('tcy.voice.draftChanged'), 'info')
-			return
-		}
-		original.value = result.original ?? ''
-		prompt.value = result.text ?? ''
-	} catch { return } finally {
-		if (cleanupController === controller) { cleanupController = undefined; cleanupOwner = undefined }
-	}
+	const configuration = cleanupConfiguration()
+	void speechCleanup.run({
+		text,
+		current: () => !disposed && presenting.value && chatID.value === chat
+			&& isClientRequestContextCurrent(context) && cleanupConfiguration() === configuration,
+		apply: cleaned => { prompt.value = prefix + cleaned },
+		onTiming: cleanupMS => { if (speechTelemetry.value) speechTelemetry.value = {...speechTelemetry.value, cleanupMS} },
+	})
+}
+
+function finishSpeech(text: string, owner: SpeechOwner, telemetry: SpeechTelemetry) {
+	if (!speechOwnerIsCurrent(owner)) return
+	if (!text.trim()) { showNotice(t('tcymc.text.the_recording_is_empty_please_try_again')); return }
+	const prefix = prompt.value ? `${prompt.value}\n` : ''
+	original.value = text
+	prompt.value = prefix + text
+	speechTelemetry.value = telemetry
+	showNotice(t('tcymc.text.transcription_complete_edit_the_text_if_needed_then'), 'info')
+	if (owner.cleanup && settings.data.value?.cleanup) cleanSpeechText(text, prefix)
+}
+
+function tidyText() {
+	if (voiceBusy.value || !prompt.value.trim() || !settings.data.value?.cleanup) return
+	original.value = prompt.value
+	cleanSpeechText(prompt.value, '')
 }
 
 onBeforeUnmount(() => {
@@ -1754,13 +1837,13 @@ onBeforeUnmount(() => {
 									:recording="recording"
 									:requesting="microphonePending"
 									:stopping="microphoneStopping"
-									:processing="Boolean(audioStage) || cleanup.isPending.value"
-									:processing-label="audioStage ? t(`flow.${audioStage}`) : ''"
+									:processing="Boolean(audioStage) || speechCleanup.pending.value"
+									:processing-label="speechProcessingLabel"
 									:elapsed="elapsed"
 									:can-cleanup="Boolean(settings.data.value?.cleanup)"
 									:can-tidy="!voiceBusy && Boolean(prompt.trim() && settings.data.value?.cleanup)"
 									@start="startRecording"
-									@stop="microphone.stop"
+									@stop="stopRecording"
 									@cancel="cancelVoice"
 									@upload="chooseAudio"
 									@tidy="tidyText"
@@ -1905,6 +1988,14 @@ onBeforeUnmount(() => {
 								</button>
 							</p>
 						</div>
+						<SpeechFeedback
+							:live-text="liveMicrophone.liveText.value"
+							:live-active="showLivePreview"
+							:cleanup-pending="speechCleanup.pending.value"
+							:cleanup-proposal="speechCleanup.proposal.value"
+							:telemetry="speechTelemetry"
+							@cancelCleanup="speechCleanup.cancel"
+						/>
 						<details
 							v-if="original"
 							class="original-transcript"

@@ -186,6 +186,7 @@ export function useRunAI() {
 
 export function useTranscribeAI() {
 	return useSecretMutation(contextMutationOptions({
+		toastError: () => false,
 		mutationFn: async ({signal, ...body}: TcyAiTranscribeData['body'] & {signal?: AbortSignal}) =>
 			(await tcyAiTranscribe({body, signal})).data,
 	}))
@@ -193,6 +194,7 @@ export function useTranscribeAI() {
 
 export function useCleanupAI() {
 	return useMutation(contextMutationOptions({
+		toastError: () => false,
 		mutationFn: async ({text, signal}: {text: string, signal?: AbortSignal}) => (await tcyAiCleanup({body: {text}, signal})).data,
 	}))
 }
