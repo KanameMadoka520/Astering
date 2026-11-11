@@ -148,7 +148,10 @@ func RecognizeLiveSpeech(
 			finished = event.Header.Event == "task-finished"
 		}
 		if event.Header.Event == "task-failed" || event.Type == "error" || event.Type == "conversation.item.input_audio_transcription.failed" {
-			return tcylocale.Error("speechProviderRejected")
+			if protocol == "dashscope-asr" {
+				return speechProviderFailure(event.Header.ErrorCode, event.Header.RequestID, taskID, c.APIKey)
+			}
+			return event.Error.failure(event.RequestID, c.APIKey)
 		}
 		if started {
 			if upload != nil {
@@ -247,18 +250,17 @@ func consumeLiveSpeechTranscript(protocol string, event *liveSpeechEvent, transc
 }
 
 type liveSpeechEvent struct {
-	Type       string `json:"type"`
-	ItemID     string `json:"item_id"`
-	Text       string `json:"text"`
-	Stash      string `json:"stash"`
-	Transcript string `json:"transcript"`
-	AudioStart *int64 `json:"audio_start_ms"`
-	AudioEnd   *int64 `json:"audio_end_ms"`
-	Header     struct {
-		Event  string `json:"event"`
-		TaskID string `json:"task_id"`
-	} `json:"header"`
-	Payload struct {
+	Type       string            `json:"type"`
+	ItemID     string            `json:"item_id"`
+	Text       string            `json:"text"`
+	Stash      string            `json:"stash"`
+	Transcript string            `json:"transcript"`
+	AudioStart *int64            `json:"audio_start_ms"`
+	AudioEnd   *int64            `json:"audio_end_ms"`
+	RequestID  string            `json:"request_id"`
+	Error      *speechEventError `json:"error"`
+	Header     speechEventHeader `json:"header"`
+	Payload    struct {
 		Output struct {
 			Sentence *struct {
 				ID        int    `json:"sentence_id"`

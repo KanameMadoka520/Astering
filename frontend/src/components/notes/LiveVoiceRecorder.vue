@@ -88,6 +88,18 @@ const {
 	inferenceMS,
 } = recorder
 const engine = computed(() => active.value ? actualEngine.value : selectedEngine.value)
+const browserDiagnostics = computed(() => 'diagnostics' in recorder ? recorder.diagnostics.value : undefined)
+const microphoneDB = computed(() => {
+	const rms = browserDiagnostics.value?.rms ?? 0
+	return rms > 0 ? 20 * Math.log10(rms) : null
+})
+const microphoneLevelText = computed(() => microphoneDB.value === null
+	? t('liveNotes.diagnostics.silent')
+	: t('liveNotes.diagnostics.decibels', {value: microphoneDB.value.toFixed(1)}))
+function activityAge(seconds: number | null) {
+	return seconds === null ? t('liveNotes.diagnostics.notYet')
+		: t('liveNotes.diagnostics.secondsAgo', {seconds: Math.floor(seconds)})
+}
 const showEngineSelector = computed(() => nativeRecording &&
 	(localBuiltIn.value || engine.value === 'local' || preferences.engine.value === 'local'))
 const needsLocalVerification = computed(() => nativeRecording && engine.value === 'local' &&
@@ -117,7 +129,7 @@ watch(partial, () => { copied.value = false; copyFailed.value = false })
 const errorKey = computed(() => {
 	const keys = ['permission', 'unsupported', 'network', 'buffer_full', 'finalize_timeout', 'interrupted',
 		'background', 'microphone', 'authentication', 'note_unavailable', 'already_recording', 'connection', 'provider',
-		'save_failed', 'protocol', 'invalid_start', 'foreground_required', 'notification_permission']
+		'save_failed', 'protocol', 'invalid_start', 'foreground_required', 'notification_permission', 'invalid_audio', 'capture_empty']
 	keys.push('retry_exhausted', 'local_model', 'local_inference', 'local_backpressure', 'local_storage_full',
 		'local_storage', 'sync_conflict', 'confirmation_required', 'rate_limited')
 	return keys.includes(error.value) ? error.value : 'interrupted'
@@ -325,6 +337,38 @@ watch(() => props.noteId, () => { void recorder.stop() })
 			<time class="live-voice__clock">{{ clock }}</time>
 			<span>{{ t(actualEngine === 'local' ? 'liveNotes.localSavedCount' : 'liveNotes.savedCount', {count: savedSegments}) }}</span>
 		</div>
+		<div
+			v-if="browserDiagnostics && active"
+			class="live-voice__signal"
+		>
+			<div class="live-voice__signal-heading">
+				<span :id="`${inputID}-level`">{{ t('liveNotes.diagnostics.inputLevel') }}</span>
+				<span>{{ microphoneLevelText }}</span>
+			</div>
+			<p v-if="browserDiagnostics.microphoneName">
+				{{ browserDiagnostics.microphoneName }}
+			</p>
+			<meter
+				:min="-60"
+				:max="0"
+				:value="Math.max(-60, microphoneDB ?? -60)"
+				:aria-labelledby="`${inputID}-level`"
+				:aria-valuetext="microphoneLevelText"
+			/>
+			<p>
+				{{ t('liveNotes.diagnostics.sending', {
+					size: (sentBytes / 1024).toFixed(1),
+					speed: active ? (bytesPerSecond / 1024).toFixed(1) : '0.0',
+				}) }}
+			</p>
+			<p
+				v-if="active && browserDiagnostics.warning"
+				class="live-voice__signal-warning"
+				role="status"
+			>
+				{{ t(`liveNotes.diagnostics.${browserDiagnostics.warning}`) }}
+			</p>
+		</div>
 		<p
 			v-if="state === 'reconnecting' && retryAttempt"
 			class="live-voice__hint"
@@ -446,6 +490,12 @@ watch(() => props.noteId, () => { void recorder.stop() })
 			>
 				{{ detail }}
 			</p>
+			<p
+				v-if="browserDiagnostics?.requestID"
+				class="live-voice__detail"
+			>
+				{{ t('liveNotes.diagnostics.trace', {id: browserDiagnostics.requestID}) }}
+			</p>
 		</div>
 		<p class="live-voice__hint">
 			{{ t(allowBackground ? nativeRecording ? 'liveNotes.nativeBackgroundHint' : 'liveNotes.backgroundHint' : 'liveNotes.foregroundHint') }}
@@ -523,6 +573,63 @@ watch(() => props.noteId, () => { void recorder.stop() })
 				<dt>{{ t('liveNotes.endpoint') }}</dt><dd>{{ endpoint || (engine === 'local' ? t('liveNotes.onDevice') : chosen?.endpoint) || '—' }}</dd>
 				<dt>{{ t('liveNotes.upload') }}</dt><dd>{{ (sentBytes / 1024).toFixed(1) }} KiB · {{ (bytesPerSecond / 1024).toFixed(1) }} KiB/s</dd>
 				<dt>{{ t('liveNotes.buffer') }}</dt><dd>{{ bufferedSeconds.toFixed(1) }} s</dd>
+				<template v-if="browserDiagnostics">
+					<dt>{{ t('liveNotes.diagnostics.capture') }}</dt>
+					<dd>
+						{{ t('liveNotes.diagnostics.captureCount', {
+							frames: browserDiagnostics.captureFrames,
+							size: (browserDiagnostics.capturedBytes / 1024).toFixed(1),
+						}) }}
+					</dd>
+					<template v-if="active">
+						<dt>{{ t('liveNotes.diagnostics.lastCapture') }}</dt>
+						<dd>{{ activityAge(browserDiagnostics.captureAgeSeconds) }}</dd>
+						<dt>{{ t('liveNotes.diagnostics.lastUpload') }}</dt>
+						<dd>{{ activityAge(browserDiagnostics.uploadAgeSeconds) }}</dd>
+						<dt>{{ t('liveNotes.diagnostics.lastTranscript') }}</dt>
+						<dd>{{ activityAge(browserDiagnostics.transcriptAgeSeconds) }}</dd>
+					</template>
+					<template v-if="browserDiagnostics.requestID">
+						<dt>{{ t('liveNotes.diagnostics.requestID') }}</dt>
+						<dd>{{ browserDiagnostics.requestID }}</dd>
+					</template>
+					<template v-if="browserDiagnostics.providerCode">
+						<dt>{{ t('liveNotes.diagnostics.providerCode') }}</dt>
+						<dd>{{ browserDiagnostics.providerCode }}</dd>
+					</template>
+					<template v-if="browserDiagnostics.providerRequestID">
+						<dt>{{ t('liveNotes.diagnostics.providerRequestID') }}</dt>
+						<dd>{{ browserDiagnostics.providerRequestID }}</dd>
+					</template>
+					<template v-if="browserDiagnostics.providerTaskID">
+						<dt>{{ t('liveNotes.diagnostics.providerTaskID') }}</dt>
+						<dd>{{ browserDiagnostics.providerTaskID }}</dd>
+					</template>
+					<template v-if="browserDiagnostics.server">
+						<dt>{{ t('liveNotes.diagnostics.serverAudio') }}</dt>
+						<dd>
+							{{ t('liveNotes.diagnostics.serverAudioValue', {
+								size: (browserDiagnostics.server.received_bytes / 1024).toFixed(1),
+								seconds: (browserDiagnostics.server.audio_duration_ms / 1000).toFixed(1),
+							}) }}
+						</dd>
+						<dt>{{ t('liveNotes.diagnostics.serverText') }}</dt>
+						<dd>
+							{{ t('liveNotes.diagnostics.serverTextValue', {
+								partial: browserDiagnostics.server.partial_updates,
+								saved: browserDiagnostics.server.saved_segments,
+							}) }}
+						</dd>
+						<dt>{{ t('liveNotes.diagnostics.serverElapsed') }}</dt>
+						<dd>{{ (browserDiagnostics.server.elapsed_ms / 1000).toFixed(1) }} s</dd>
+						<dt>{{ t('liveNotes.diagnostics.serverFirstText') }}</dt>
+						<dd>
+							{{ browserDiagnostics.server.partial_updates || browserDiagnostics.server.saved_segments
+								? `${(browserDiagnostics.server.first_text_ms / 1000).toFixed(1)} s`
+								: t('liveNotes.diagnostics.notYet') }}
+						</dd>
+					</template>
+				</template>
 				<template v-if="localBuiltIn">
 					<dt>{{ t('liveNotes.localModel') }}</dt><dd>{{ offlineStatus?.model }} · {{ ((offlineStatus?.bytes ?? 0) / 1024 / 1024).toFixed(1) }} MiB</dd>
 					<dt v-if="engine === 'local'">
@@ -532,6 +639,12 @@ watch(() => props.noteId, () => { void recorder.stop() })
 					</dd>
 				</template>
 			</dl>
+			<p v-if="browserDiagnostics">
+				{{ t('liveNotes.diagnostics.help') }}
+			</p>
+			<p v-if="browserDiagnostics?.server">
+				{{ t('liveNotes.diagnostics.snapshotHelp') }}
+			</p>
 			<p>{{ t('liveNotes.rotationHint') }}</p>
 		</details>
 	</section>
@@ -617,6 +730,34 @@ watch(() => props.noteId, () => { void recorder.stop() })
 		block-size: .5rem;
 		border-radius: 50%;
 		background: var(--primary);
+	}
+	&__signal {
+		margin-block-start: .75rem;
+		padding: .65rem .75rem;
+		border-radius: .65rem;
+		background: var(--grey-100);
+		font-size: .78rem;
+		font-variant-numeric: tabular-nums;
+		line-height: 1.6;
+	}
+	&__signal-heading {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: space-between;
+		gap: .25rem .75rem;
+	}
+	&__signal meter {
+		display: block;
+		inline-size: 100%;
+		block-size: 1rem;
+		accent-color: var(--primary);
+	}
+	&__signal p {
+		margin-block: .2rem 0;
+		overflow-wrap: anywhere;
+	}
+	&__signal-warning {
+		color: var(--grey-700);
 	}
 	&__partial {
 		margin-block-start: .8rem;

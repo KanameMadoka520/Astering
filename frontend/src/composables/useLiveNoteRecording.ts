@@ -1,9 +1,33 @@
-import {computed, onScopeDispose, ref} from 'vue'
+import {computed, onScopeDispose, ref, shallowRef} from 'vue'
 import {captureClientRequestContext, isClientRequestContextCurrent} from '@/client/requestContext'
-import {openLiveNoteSocket, type LiveNoteEvent, type LiveNoteReceipt} from '@/client/queries/liveNotes'
+import {
+	openLiveNoteSocket,
+	type LiveNoteEvent,
+	type LiveNoteReceipt,
+	type LiveNoteServerDiagnostics,
+	type LiveNoteTrace,
+} from '@/client/queries/liveNotes'
 import pcmWorkletURL from '@/worklets/livePcmCapture.js?url'
 
 export type LiveRecordingState = 'idle' | 'permission' | 'connecting' | 'recording' | 'reconnecting' | 'stopping' | 'paused'
+
+export type LiveNoteDiagnostics = {
+	capturedBytes: number,
+	captureFrames: number,
+	uploadFrames: number,
+	rms: number,
+	peak: number,
+	captureAgeSeconds: number | null,
+	uploadAgeSeconds: number | null,
+	transcriptAgeSeconds: number | null,
+	warning: '' | 'capture_waiting' | 'input_quiet' | 'upload_waiting' | 'recognizer_waiting',
+	microphoneName: string,
+	requestID: string,
+	providerCode: string,
+	providerRequestID: string,
+	providerTaskID: string,
+	server?: LiveNoteServerDiagnostics,
+}
 
 type Session = {
 	current: () => boolean,
@@ -47,10 +71,35 @@ type Session = {
 	retryTimer?: ReturnType<typeof setTimeout>,
 	retryCount: number,
 	connectedAt: number,
+	captureStartedAt?: number,
+	lastCaptureAt?: number,
+	lastUploadAt?: number,
+	lastTranscriptAt?: number,
+	lastSoundAt?: number,
+	quietStartedAt?: number,
 }
 
 const MAX_BUFFER_SECONDS = 30
 const MAX_RETRY_ATTEMPTS = 5
+
+function emptyDiagnostics(): LiveNoteDiagnostics {
+	return {
+		capturedBytes: 0,
+		captureFrames: 0,
+		uploadFrames: 0,
+		rms: 0,
+		peak: 0,
+		captureAgeSeconds: null,
+		uploadAgeSeconds: null,
+		transcriptAgeSeconds: null,
+		warning: '',
+		microphoneName: '',
+		requestID: '',
+		providerCode: '',
+		providerRequestID: '',
+		providerTaskID: '',
+	}
+}
 
 /** A bounded microphone stream. Audio is never written to browser storage or uploaded as an attachment. */
 export function useLiveNoteRecording(options: {
@@ -83,6 +132,7 @@ export function useLiveNoteRecording(options: {
 	const recoveryWarning = ref(false)
 	const localText = ref('')
 	const inferenceMS = ref(0)
+	const diagnostics = shallowRef<LiveNoteDiagnostics>(emptyDiagnostics())
 	const active = computed(() => !['idle', 'paused'].includes(state.value))
 	let generation = 0
 	let session: Session | undefined
@@ -91,10 +141,15 @@ export function useLiveNoteRecording(options: {
 	function closeCapture(s: Session) {
 		if (s.captureClosed) return
 		s.captureClosed = true
+		s.context.onstatechange = null
 		s.node?.disconnect()
 		s.source?.disconnect()
 		s.silent?.disconnect()
-		s.stream?.getTracks().forEach(track => track.stop())
+		s.stream?.getTracks().forEach(track => {
+			track.onended = null
+			track.onmute = null
+			track.stop()
+		})
 		void s.context.close().catch(() => {})
 		void s.wakeLock?.release().catch(() => {})
 		s.wakeLock = undefined
@@ -111,6 +166,8 @@ export function useLiveNoteRecording(options: {
 		clearTimeout(s.deadline)
 		clearTimeout(s.stopDeadline)
 		clearTimeout(s.retryTimer)
+		s.flush?.()
+		s.flush = undefined
 		s.socket?.close()
 		s.queue.length = 0
 		s.queueBytes = 0
@@ -119,7 +176,97 @@ export function useLiveNoteRecording(options: {
 			session = undefined
 			state.value = s.reason ? 'paused' : 'idle'
 			bufferedSeconds.value = 0
+			bytesPerSecond.value = 0
 			retryInSeconds.value = 0
+			diagnostics.value = s.current() ? {...diagnostics.value, rms: 0, peak: 0, warning: ''} : emptyDiagnostics()
+		}
+	}
+
+	function updateDiagnostics(s: Session) {
+		if (!s.current() || s.disposed || s.captureStartedAt === undefined) return
+		const now = performance.now()
+		const age = (timestamp: number | undefined) => timestamp === undefined
+			? null : Math.max(0, (now - timestamp) / 1000)
+		const captureAgeSeconds = age(s.lastCaptureAt)
+		const uploadAgeSeconds = age(s.lastUploadAt)
+		const transcriptAgeSeconds = age(s.lastTranscriptAt)
+		let warning: LiveNoteDiagnostics['warning'] = ''
+		if (!s.ending) {
+			if (now - (s.lastCaptureAt ?? s.captureStartedAt) >= 3000) warning = 'capture_waiting'
+			else if (s.quietStartedAt !== undefined && now - s.quietStartedAt >= 8000) warning = 'input_quiet'
+			else if (s.queueBytes > s.rate * 2 * 3 && (uploadAgeSeconds === null || uploadAgeSeconds >= 3)) {
+				warning = 'upload_waiting'
+			} else if (s.ready && s.lastSoundAt !== undefined && s.lastSoundAt > (s.lastTranscriptAt ?? -1) &&
+				uploadAgeSeconds !== null && uploadAgeSeconds < 3 &&
+				now - Math.max(s.lastTranscriptAt ?? s.connectedAt, s.connectedAt) >= 12000) {
+				warning = 'recognizer_waiting'
+			}
+		}
+		diagnostics.value = {
+			...diagnostics.value,
+			captureAgeSeconds,
+			uploadAgeSeconds,
+			transcriptAgeSeconds,
+			warning,
+			...(captureAgeSeconds !== null && captureAgeSeconds >= 1 ? {rms: 0, peak: 0} : {}),
+		}
+	}
+
+	function measureFrame(s: Session, frame: ArrayBuffer) {
+		const samples = new DataView(frame)
+		let squareSum = 0
+		let peak = 0
+		for (let index = 0; index < samples.byteLength; index += 2) {
+			const value = samples.getInt16(index, true) / 32768
+			squareSum += value * value
+			peak = Math.max(peak, Math.abs(value))
+		}
+		const rms = Math.sqrt(squareSum / (samples.byteLength / 2))
+		const now = performance.now()
+		s.lastCaptureAt = now
+		// This threshold only explains the input meter; every PCM sample is still uploaded unchanged.
+		if (rms > 0.001) {
+			s.lastSoundAt = now
+			s.quietStartedAt = undefined
+		} else s.quietStartedAt ??= now
+		diagnostics.value = {
+			...diagnostics.value,
+			capturedBytes: diagnostics.value.capturedBytes + frame.byteLength,
+			captureFrames: diagnostics.value.captureFrames + 1,
+			rms,
+			peak,
+		}
+	}
+
+	function receiveTrace(event: LiveNoteTrace, ready = false) {
+		const identifier = (value: unknown) => typeof value === 'string' && /^[\w.:-]{1,128}$/.test(value) ? value : ''
+		const snapshot = ready ? undefined : event.diagnostics
+		const valid = snapshot && [
+			snapshot.elapsed_ms,
+			snapshot.received_bytes,
+			snapshot.audio_duration_ms,
+			snapshot.last_audio_ms,
+			snapshot.partial_updates,
+			snapshot.saved_segments,
+			snapshot.first_text_ms,
+			snapshot.last_text_ms,
+		].every(value => typeof value === 'number' && Number.isFinite(value) && value >= 0)
+		diagnostics.value = {
+			...diagnostics.value,
+			requestID: identifier(event.request_id) || (ready ? '' : diagnostics.value.requestID),
+			providerCode: identifier(event.provider_code),
+			providerRequestID: identifier(event.provider_request_id),
+			providerTaskID: identifier(event.provider_task_id),
+			server: valid ? {
+				elapsed_ms: snapshot.elapsed_ms,
+				received_bytes: snapshot.received_bytes,
+				audio_duration_ms: snapshot.audio_duration_ms,
+				last_audio_ms: snapshot.last_audio_ms,
+				partial_updates: snapshot.partial_updates,
+				saved_segments: snapshot.saved_segments,
+				first_text_ms: snapshot.first_text_ms,
+				last_text_ms: snapshot.last_text_ms,
+			} : undefined,
 		}
 	}
 
@@ -200,6 +347,8 @@ export function useLiveNoteRecording(options: {
 				return
 			}
 			s.sent += frame.byteLength / 2
+			s.lastUploadAt = performance.now()
+			diagnostics.value = {...diagnostics.value, uploadFrames: diagnostics.value.uploadFrames + 1}
 			s.lastPump = performance.now()
 			sentBytes.value += frame.byteLength
 			bufferedSeconds.value = s.queueBytes / 2 / s.rate
@@ -260,6 +409,7 @@ export function useLiveNoteRecording(options: {
 	function receive(s: Session, event: LiveNoteEvent, noteID: number, connectionID: string) {
 		if (!s.current() || s.disposed) return
 		if (event.type === 'error') {
+			receiveTrace(event)
 			if (typeof event.text === 'string' && new TextEncoder().encode(event.text).byteLength <= 64 * 1024) partial.value = event.text
 			if (['network', 'interrupted', 'already_recording'].includes(event.code)) {
 				retry(s, noteID, connectionID)
@@ -275,6 +425,7 @@ export function useLiveNoteRecording(options: {
 				return
 			}
 			clearTimeout(s.deadline)
+			receiveTrace(event, true)
 			s.offset = event.offset_ms
 			s.rotateAt = event.rotate_seconds
 			s.ready = true
@@ -285,8 +436,10 @@ export function useLiveNoteRecording(options: {
 			state.value = s.ending ? 'stopping' : 'recording'
 			pump(s)
 		} else if (event.type === 'partial') {
+			if (event.text.trim()) s.lastTranscriptAt = performance.now()
 			partial.value = event.text
 		} else if (event.type === 'segment') {
+			s.lastTranscriptAt = performance.now()
 			partial.value = ''
 			savedSegments.value++
 			options.onSegment({segment: event.segment, stats: event.stats})
@@ -296,6 +449,7 @@ export function useLiveNoteRecording(options: {
 				return
 			}
 			clearTimeout(s.deadline)
+			receiveTrace(event)
 			s.wire++
 			const previous = s.socket
 			s.socket = undefined
@@ -312,6 +466,8 @@ export function useLiveNoteRecording(options: {
 		const node = new AudioWorkletNode(s.context, 'astering-live-pcm', {processorOptions: {rate: s.rate}})
 		s.node = node
 		node.port.onmessage = event => {
+			if (!s.current()) return cleanup(s)
+			if (s.disposed || s.captureClosed) return
 			if (event.data === 'overflow') {
 				fail(s, 'buffer_full')
 				return
@@ -320,8 +476,12 @@ export function useLiveNoteRecording(options: {
 				s.flush?.()
 				return
 			}
-			if (!s.current() || s.disposed || !(event.data instanceof ArrayBuffer)) return
+			if (!(event.data instanceof ArrayBuffer)) return
 			const frame = event.data as ArrayBuffer
+			if (!frame.byteLength || frame.byteLength % 2 || frame.byteLength > s.rate * 2 / 10) {
+				fail(s, 'protocol')
+				return
+			}
 			node.port.postMessage('ack')
 			if (s.queueBytes + frame.byteLength > s.rate * 2 * MAX_BUFFER_SECONDS) {
 				fail(s, 'buffer_full')
@@ -330,11 +490,17 @@ export function useLiveNoteRecording(options: {
 			s.captured += frame.byteLength / 2
 			s.queue.push(frame)
 			s.queueBytes += frame.byteLength
+			measureFrame(s, frame)
 			elapsed.value = s.captured / s.rate
 			bufferedSeconds.value = s.queueBytes / 2 / s.rate
 			pump(s)
 		}
 		s.recordingStartedAt = new Date().toISOString()
+		s.captureStartedAt = performance.now()
+		diagnostics.value = {
+			...diagnostics.value,
+			microphoneName: s.stream.getAudioTracks()[0]?.label?.slice(0, 512) ?? '',
+		}
 		s.source = s.context.createMediaStreamSource(s.stream)
 		s.silent = s.context.createGain()
 		s.silent.gain.value = 0
@@ -434,9 +600,14 @@ export function useLiveNoteRecording(options: {
 		retryAttempt.value = 0
 		retryInSeconds.value = 0
 		recoveryWarning.value = false
+		diagnostics.value = emptyDiagnostics()
 		try {
 			// Create/resume the audio context within the initial user gesture on mobile Safari.
-			void context.resume().catch(() => {})
+			const resumed = context.resume().then(() => true, () => {
+				if (s.current() && !s.disposed) fail(s, 'microphone')
+				else cleanup(s)
+				return false
+			})
 			const stream = await navigator.mediaDevices.getUserMedia({
 				audio: {channelCount: 1, echoCancellation: true, noiseSuppression: true},
 			})
@@ -446,6 +617,9 @@ export function useLiveNoteRecording(options: {
 				return
 			}
 			s.stream = stream
+			if (!await resumed) return
+			if (!s.current() || s.disposed || s.ending) return cleanup(s)
+			if (context.state !== 'running') return fail(s, 'microphone')
 			if (!context.audioWorklet || context.sampleRate < s.rate) {
 				fail(s, 'unsupported')
 				return
@@ -454,13 +628,23 @@ export function useLiveNoteRecording(options: {
 			await beginCapture(s)
 			if (!s.current() || s.disposed || s.ending) return cleanup(s)
 			let previousBytes = 0
+			let previousSampleAt = performance.now()
 			s.timer = setInterval(() => {
 				if (!s.current()) {
 					cleanup(s)
 					return
 				}
-				bytesPerSecond.value = sentBytes.value - previousBytes
+				const sampledAt = performance.now()
+				const interval = sampledAt - previousSampleAt
+				bytesPerSecond.value = interval > 0 ? (sentBytes.value - previousBytes) * 1000 / interval : 0
 				previousBytes = sentBytes.value
+				previousSampleAt = sampledAt
+				updateDiagnostics(s)
+				if (!s.ending && s.captureStartedAt !== undefined && s.captured === 0 &&
+					performance.now() - s.captureStartedAt >= 10000) {
+					fail(s, 'capture_empty')
+					return
+				}
 				if (s.ready && performance.now() - s.connectedAt >= 30_000) {
 					s.retryCount = 0
 					retryAttempt.value = 0
@@ -488,11 +672,17 @@ export function useLiveNoteRecording(options: {
 		}
 		if (s.node) {
 			await new Promise<void>(resolve => {
-				const timeout = setTimeout(resolve, 500)
+				const timeout = setTimeout(() => fail(s, 'finalize_timeout'), 1500)
 				s.flush = () => { clearTimeout(timeout); resolve() }
-				s.node!.port.postMessage('flush')
+				try {
+					s.node!.port.postMessage('flush')
+				} catch {
+					fail(s, 'microphone')
+				}
 			})
+			s.flush = undefined
 		}
+		if (s.disposed) return
 		closeCapture(s)
 		if (s.disposed) return
 		const done = new Promise<void>(resolve => { s.complete = resolve })
@@ -551,6 +741,7 @@ export function useLiveNoteRecording(options: {
 		recoveryWarning,
 		localText,
 		inferenceMS,
+		diagnostics,
 		start,
 		stop,
 	}

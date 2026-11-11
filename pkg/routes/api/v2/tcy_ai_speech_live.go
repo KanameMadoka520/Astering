@@ -259,7 +259,20 @@ func LiveAssistantSpeech(c *echo.Context) error {
 		return err
 	})
 	if err != nil {
-		fail(shortSpeechFailure(runCtx))
+		if runCtx.Err() == nil {
+			provider := tcyai.SpeechProviderErrorDiagnostic(err)
+			_ = send(map[string]string{
+				"type":                "error",
+				"code":                "provider",
+				"message":             tcyai.ExplainError(transportCtx, err),
+				"request_id":          requestID,
+				"provider_code":       provider.Code,
+				"provider_request_id": provider.RequestID,
+				"provider_task_id":    provider.TaskID,
+			})
+		} else {
+			fail(shortSpeechFailure(runCtx))
+		}
 		return nil
 	}
 	if state.stoppedAt.Load() == 0 || checkShortSpeechSession(runCtx, claims) != nil {

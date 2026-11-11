@@ -102,7 +102,7 @@ func transcribeDashScope(ctx context.Context, c Connection, filename string, aud
 			return transcript.finish()
 		case "task-failed":
 			// Provider messages can echo the audio transcript or credentials; never expose them.
-			return "", tcylocale.Error("speechProtocol05")
+			return "", speechProviderFailure(event.Header.ErrorCode, event.Header.RequestID, taskID, c.APIKey)
 		}
 	}
 }
@@ -217,7 +217,7 @@ func transcribeQwenRealtime(ctx context.Context, c Connection, filename string, 
 			}
 			return transcript.finish()
 		case "error", "conversation.item.input_audio_transcription.failed":
-			return "", tcylocale.Error("speechProtocol05")
+			return "", event.Error.failure(event.RequestID, c.APIKey)
 		}
 	}
 }
@@ -255,10 +255,7 @@ func dashSpeechCommand(taskID, action string, payload map[string]any) map[string
 }
 
 type dashSpeechEvent struct {
-	Header struct {
-		Event  string `json:"event"`
-		TaskID string `json:"task_id"`
-	} `json:"header"`
+	Header  speechEventHeader `json:"header"`
 	Payload struct {
 		Output struct {
 			Sentence *struct {
@@ -272,11 +269,13 @@ type dashSpeechEvent struct {
 }
 
 type qwenSpeechEvent struct {
-	Type       string `json:"type"`
-	ItemID     string `json:"item_id"`
-	Text       string `json:"text"`
-	Stash      string `json:"stash"`
-	Transcript string `json:"transcript"`
+	Type       string            `json:"type"`
+	ItemID     string            `json:"item_id"`
+	Text       string            `json:"text"`
+	Stash      string            `json:"stash"`
+	Transcript string            `json:"transcript"`
+	RequestID  string            `json:"request_id"`
+	Error      *speechEventError `json:"error"`
 }
 
 func readSpeechEvent(ctx context.Context, socket *websocket.Conn, event any) error {

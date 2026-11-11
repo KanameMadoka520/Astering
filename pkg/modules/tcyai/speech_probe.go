@@ -92,7 +92,7 @@ func probeDashScopeSpeech(ctx context.Context, c Connection) error {
 			}
 			return nil
 		case "task-failed":
-			return tcylocale.Error("speechProtocol05")
+			return speechProviderFailure(event.Header.ErrorCode, event.Header.RequestID, taskID, c.APIKey)
 		}
 	}
 	return tcylocale.Error("speechProtocol10")
@@ -135,7 +135,7 @@ func probeQwenSpeech(ctx context.Context, c Connection) error {
 			}
 			return nil
 		case "error", "conversation.item.input_audio_transcription.failed":
-			return tcylocale.Error("speechProtocol05")
+			return event.Error.failure(event.RequestID, c.APIKey)
 		}
 	}
 	return tcylocale.Error("speechProtocol10")

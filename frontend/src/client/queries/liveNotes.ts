@@ -25,12 +25,31 @@ export type LiveNoteTranscriptState = {
 
 export type LiveNoteReceipt = {segment: AsterNoteSegment, stats: LiveNoteTranscriptState}
 
+export type LiveNoteServerDiagnostics = {
+	elapsed_ms: number,
+	received_bytes: number,
+	audio_duration_ms: number,
+	last_audio_ms: number,
+	partial_updates: number,
+	saved_segments: number,
+	first_text_ms: number,
+	last_text_ms: number,
+}
+
+export type LiveNoteTrace = {
+	request_id?: string,
+	provider_code?: string,
+	provider_request_id?: string,
+	provider_task_id?: string,
+	diagnostics?: LiveNoteServerDiagnostics,
+}
+
 export type LiveNoteEvent =
-	| {type: 'ready', sample_rate: number, offset_ms: number, rotate_seconds: number, model: string, endpoint: string}
+	| ({type: 'ready', sample_rate: number, offset_ms: number, rotate_seconds: number, model: string, endpoint: string} & LiveNoteTrace)
 	| {type: 'partial', id: string, text: string}
 	| ({type: 'segment', id: string} & LiveNoteReceipt)
-	| {type: 'done'}
-	| {type: 'error', code: string, message?: string, text?: string}
+	| ({type: 'done'} & LiveNoteTrace)
+	| ({type: 'error', code: string, message?: string, text?: string} & LiveNoteTrace)
 
 // Browser WebSockets cannot set an Authorization header; authenticate in the first frame, never in a URL.
 export async function openLiveNoteSocket(options: {

@@ -45,7 +45,8 @@ var recognizeLiveNoteSpeech = tcyai.RecognizeLiveSpeech
 
 type liveNoteCaptureState struct {
 	sync.Mutex
-	segment models.AsterNoteSegment
+	segment  models.AsterNoteSegment
+	progress *liveNoteProgress
 }
 
 func (c *liveNoteCaptureState) snapshot() models.AsterNoteSegment {
@@ -170,16 +171,22 @@ func LiveNoteSpeech(c *echo.Context) error {
 	}
 	defer func() { _ = socket.CloseNow() }()
 	socket.SetReadLimit(8192)
-	ctx, cancel := context.WithTimeout(c.Request().Context(), 10*time.Minute)
+	transportCtx, transportDone := context.WithTimeout(c.Request().Context(), 10*time.Minute)
+	defer transportDone()
+	ctx, cancel := context.WithCancel(transportCtx)
 	defer cancel()
 	var writeMu sync.Mutex
-	send := func(value any) error {
+	write := func(writeContext context.Context, value any) error {
 		writeMu.Lock()
 		defer writeMu.Unlock()
-		writeCtx, done := context.WithTimeout(ctx, 5*time.Second)
+		if err := writeContext.Err(); err != nil {
+			return err
+		}
+		writeCtx, done := context.WithTimeout(writeContext, 5*time.Second)
 		defer done()
 		return wsjson.Write(writeCtx, socket, value)
 	}
+	send := func(value any) error { return write(ctx, value) }
 	fail := func(code string) {
 		_ = send(map[string]string{
 			"type": "error",
@@ -254,6 +261,17 @@ func LiveNoteSpeech(c *echo.Context) error {
 		fail("unsupported")
 		return nil
 	}
+	requestID := uuid.NewString()
+	progress := &liveNoteProgress{
+		started: time.Now(),
+		rate:    rate,
+	}
+	captureState.progress = progress
+	status := "interrupted"
+	var provider tcyai.SpeechProviderDiagnostic
+	defer func() {
+		progress.log(requestID, claims.UserID, start.NoteID, connection.EffectiveProtocol(), status, provider)
+	}()
 	socket.SetReadLimit(32 * 1024)
 	audio := make(chan []byte, 64)
 	readDone := make(chan error, 1)
@@ -275,6 +293,7 @@ func LiveNoteSpeech(c *echo.Context) error {
 		}
 		if sendErr := send(map[string]any{
 			"type":           "ready",
+			"request_id":     requestID,
 			"sample_rate":    rate,
 			"offset_ms":      offset,
 			"rotate_seconds": rotate,
@@ -283,16 +302,21 @@ func LiveNoteSpeech(c *echo.Context) error {
 		}); sendErr != nil {
 			return sendErr
 		}
+		progress.providerReady.Store(true)
 		close(ready)
 		return nil
 	}, liveNoteDeltaSink(ctx, actor, start.NoteID, offset, claims, send, captureState))
 	if err != nil {
-		if ctx.Err() == nil {
-			_ = send(map[string]string{
-				"type":    "error",
-				"code":    "provider",
-				"message": tcyai.ExplainError(ctx, err),
-			})
+		var failure map[string]any
+		status, provider, failure = progress.failureEvent(ctx, err, readDone, requestID)
+		if failure != nil {
+			if status == "invalid_audio" {
+				// Only this fixed error and content-free counters may outlive the
+				// reader's cancellation. Transcript events remain fenced by ctx.
+				_ = write(transportCtx, failure)
+			} else {
+				_ = send(failure)
+			}
 		}
 		return nil
 	}
@@ -307,7 +331,12 @@ func LiveNoteSpeech(c *echo.Context) error {
 	}
 	// A done event permits the next wire; free this slot before acknowledging rotation.
 	release()
-	_ = send(map[string]string{"type": "done"})
+	status = "done"
+	_ = send(map[string]any{
+		"type":        "done",
+		"request_id":  requestID,
+		"diagnostics": progress.snapshot(),
+	})
 	_ = socket.Close(websocket.StatusNormalClosure, "")
 	return nil
 }
@@ -367,7 +396,7 @@ func readLiveNoteAudio(ctx context.Context, socket *websocket.Conn, audio chan<-
 				RecordingStartedAt *time.Time `json:"recording_started_at"`
 			}
 			if err := json.Unmarshal(data, &command); err != nil {
-				return errors.New("invalid_command")
+				return errLiveNoteInvalidCommand
 			}
 			if command.Action == "stop" {
 				return nil
@@ -378,7 +407,7 @@ func readLiveNoteAudio(ctx context.Context, socket *websocket.Conn, audio chan<-
 				capture := state.segment
 				if capture.RecordingOffsetMS != 0 {
 					state.Unlock()
-					return errors.New("invalid_command")
+					return errLiveNoteInvalidCommand
 				}
 				capture.RecordingStartedAt = command.RecordingStartedAt
 				capture.CapturedAt = nil
@@ -388,18 +417,20 @@ func readLiveNoteAudio(ctx context.Context, socket *websocket.Conn, audio chan<-
 				}
 				state.Unlock()
 				if err != nil {
-					return errors.New("invalid_command")
+					return errLiveNoteInvalidCommand
 				}
 				clockUpdated = true
 				continue
 			}
-			return errors.New("invalid_command")
+			return errLiveNoteInvalidCommand
 		}
 		sent += int64(len(data))
-		// Permit a small reconnect catch-up, never an upload of an hours-long recording.
-		allowed := int64(time.Since(started).Seconds()*float64(rate*2)) + int64(rate*2*6)
+		allowed := liveNoteAllowedAudioBytes(time.Since(started), rate)
 		if len(data) == 0 || len(data)%2 != 0 || sent > allowed || sent > int64(rate*2*tcyai.MaxLiveSpeechSeconds) {
-			return errors.New("invalid_audio")
+			return errLiveNoteInvalidAudio
+		}
+		if len(captures) > 0 && captures[0] != nil {
+			captures[0].progress.received(len(data))
 		}
 		select {
 		case audio <- data:
@@ -412,6 +443,17 @@ func readLiveNoteAudio(ctx context.Context, socket *websocket.Conn, audio chan<-
 func liveNoteDeltaSink(ctx context.Context, actor *user.User, noteID, offset int64, claims *auth.UserTokenClaims, send func(any) error, captures ...*liveNoteCaptureState) func(tcyai.LiveSpeechDelta) error {
 	ids := map[string]string{}
 	return func(delta tcyai.LiveSpeechDelta) error {
+		if err := ctx.Err(); err != nil {
+			if delta.Final {
+				return auth.ErrUserTokenRejected
+			}
+			return err
+		}
+		var progress *liveNoteProgress
+		if len(captures) > 0 && captures[0] != nil {
+			progress = captures[0].progress
+		}
+		progress.transcript(delta.Final, strings.TrimSpace(delta.Text) != "")
 		if !delta.Final {
 			return send(map[string]any{
 				"type": "partial",
@@ -451,7 +493,10 @@ func liveNoteDeltaSink(ctx context.Context, actor *user.User, noteID, offset int
 				"code": "save_failed",
 				"text": delta.Text,
 			})
-			return saveErr
+			return errors.Join(errLiveNoteSaveFailed, saveErr)
+		}
+		if progress != nil {
+			progress.savedSegments.Add(1)
 		}
 		return send(map[string]any{
 			"type":    "segment",

@@ -23,11 +23,13 @@ class AudioNodeFixture {
 }
 class AudioContextFixture {
 	static instances: AudioContextFixture[] = []
-	state = 'running'
+	static initialState = 'running'
+	static resumeBehavior: () => Promise<void> = async () => {}
+	state = AudioContextFixture.initialState
 	sampleRate = 48000
 	audioWorklet = {addModule: vi.fn(async () => {})}
 	destination = new AudioNodeFixture()
-	resume = vi.fn(async () => {})
+	resume = vi.fn(() => AudioContextFixture.resumeBehavior())
 	close = vi.fn(async () => { this.state = 'closed' })
 	createMediaStreamSource = vi.fn(() => new AudioNodeFixture())
 	createGain = vi.fn(() => Object.assign(new AudioNodeFixture(), {gain: {value: 1}}))
@@ -97,7 +99,7 @@ class WakeLockFixture extends EventTarget {
 
 function setup(preferences: RecordingPreferences = {}) {
 	const stopTrack = vi.fn()
-	const track = {stop: stopTrack, onended: null, onmute: null}
+	const track = {stop: stopTrack, onended: null, onmute: null, label: 'Fixture microphone'}
 	const stream = {getTracks: () => [track], getAudioTracks: () => [track]} as unknown as MediaStream
 	const permission = deferred<MediaStream>()
 	const getUserMedia = vi.fn(() => permission.promise)
@@ -135,6 +137,14 @@ function frame(node: WorkletFixture, milliseconds = 100) {
 	node.frame()
 }
 
+function audibleFrame(node: WorkletFixture) {
+	vi.advanceTimersByTime(100)
+	const pcm = new Int16Array(1600)
+	for (let index = 0; index < pcm.length; index++) pcm[index] = index % 2 ? -16384 : 16384
+	node.frame(pcm.buffer)
+	return pcm.buffer
+}
+
 beforeEach(() => {
 	vi.useFakeTimers()
 	vi.setSystemTime(0)
@@ -143,6 +153,8 @@ beforeEach(() => {
 	vi.stubGlobal('AudioWorkletNode', WorkletFixture)
 	vi.stubGlobal('WebSocket', SocketFixture)
 	AudioContextFixture.instances = []
+	AudioContextFixture.initialState = 'running'
+	AudioContextFixture.resumeBehavior = async () => {}
 	WorkletFixture.instances = []
 	SocketFixture.instances = []
 	auth.id = 1
@@ -202,6 +214,33 @@ describe('live note microphone ownership', () => {
 		expect(h.getUserMedia).not.toHaveBeenCalled()
 	})
 
+	it('releases a late microphone and never connects when audio context resume rejects', async () => {
+		AudioContextFixture.resumeBehavior = async () => { throw new Error('Context could not resume') }
+		const h = setup()
+		const pending = h.recorder.start()
+		await microtasks()
+		expect(h.recorder.active.value).toBe(false)
+		expect(h.recorder.error.value).toBe('microphone')
+		h.permission.resolve(h.stream)
+		await pending
+		expect(h.stopTrack).toHaveBeenCalledTimes(1)
+		expect(SocketFixture.instances).toHaveLength(0)
+		expect(WorkletFixture.instances).toHaveLength(0)
+	})
+
+	it('refuses a resolved resume that leaves the audio context suspended', async () => {
+		AudioContextFixture.initialState = 'suspended'
+		const h = setup()
+		const pending = h.recorder.start()
+		h.permission.resolve(h.stream)
+		await pending
+		expect(h.recorder.error.value).toBe('microphone')
+		expect(h.recorder.active.value).toBe(false)
+		expect(h.stopTrack).toHaveBeenCalledTimes(1)
+		expect(SocketFixture.instances).toHaveLength(0)
+		expect(WorkletFixture.instances).toHaveLength(0)
+	})
+
 	it.each(['account', 'session', 'api'])('cancels active audio after %s changes without adopting a new credential', async change => {
 		const h = await recording()
 		frame(h.node)
@@ -238,6 +277,23 @@ describe('live note microphone ownership', () => {
 })
 
 describe('live PCM finalization and rotation', () => {
+	it('does not claim a normal finish when the worklet never confirms its tail flush', async () => {
+		const h = await recording()
+		frame(h.node)
+		h.node.autoFlush = false
+		const stopping = h.recorder.stop()
+		await vi.advanceTimersByTimeAsync(1500)
+		await microtasks()
+		expect(h.recorder.error.value).toBe('finalize_timeout')
+		expect(h.recorder.active.value).toBe(false)
+		expect(h.socket.commands().map(command => command.action)).not.toContain('stop')
+		expect(h.stopTrack).toHaveBeenCalledTimes(1)
+		h.node.port.onmessage?.({data: 'flushed'})
+		h.node.frame()
+		expect(h.socket.frames()).toHaveLength(1)
+		await stopping
+	})
+
 	it('sends PCM before stopping, flushes the last frame, and waits for committed segments plus done', async () => {
 		const h = await recording()
 		expect(h.socket.url.toString()).toBe('wss://notes.example/api/v2/notes/live')
@@ -416,6 +472,171 @@ describe('live PCM finalization and rotation', () => {
 	})
 })
 
+describe('browser live note diagnostics', () => {
+	it('computes upload speed from the actual sampling interval when a timer runs late', async () => {
+		const h = await recording()
+		frame(h.node)
+		const bytes = h.recorder.sentBytes.value
+		// The callback is scheduled for one second, but the monotonic clock observed five elapsed seconds.
+		vi.mocked(performance.now).mockImplementation(() => Date.now() + 4000)
+		vi.advanceTimersByTime(900)
+		expect(h.recorder.bytesPerSecond.value).toBeCloseTo(bytes / 5)
+		expect(h.recorder.sentBytes.value).toBe(bytes)
+		const stopping = h.recorder.stop()
+		await microtasks()
+		h.socket.event({type: 'done'})
+		await stopping
+		expect(h.recorder.bytesPerSecond.value).toBe(0)
+	})
+
+	it('measures the actual PCM input without changing or filtering the uploaded frame', async () => {
+		const h = await recording()
+		const pcm = audibleFrame(h.node)
+		expect(h.socket.frames()).toEqual([pcm])
+		expect(h.recorder.diagnostics.value).toMatchObject({
+			capturedBytes: 3200,
+			captureFrames: 1,
+			uploadFrames: 1,
+			rms: 0.5,
+			peak: 0.5,
+			microphoneName: 'Fixture microphone',
+			warning: '',
+		})
+		vi.advanceTimersByTime(900)
+		expect(h.recorder.diagnostics.value.captureAgeSeconds).toBeCloseTo(0.9)
+		expect(h.recorder.diagnostics.value.uploadAgeSeconds).toBeCloseTo(0.9)
+		expect(h.recorder.diagnostics.value.transcriptAgeSeconds).toBeNull()
+		h.socket.event({type: 'partial', id: 'one', text: 'A real recognition event'})
+		vi.advanceTimersByTime(1000)
+		expect(h.recorder.diagnostics.value.transcriptAgeSeconds).toBe(1)
+	})
+
+	it('reports capture inactivity even when the upstream has acknowledged a connection', async () => {
+		const h = await recording()
+		vi.advanceTimersByTime(3000)
+		expect(h.recorder.diagnostics.value.warning).toBe('capture_waiting')
+		expect(h.recorder.diagnostics.value.captureFrames).toBe(0)
+		expect(h.recorder.active.value).toBe(true)
+		audibleFrame(h.node)
+		vi.advanceTimersByTime(900)
+		expect(h.recorder.diagnostics.value.warning).toBe('')
+	})
+
+	it('labels low input without suppressing silence or treating it as a failed connection', async () => {
+		const h = await recording()
+		for (let index = 0; index < 110; index++) frame(h.node)
+		expect(h.recorder.diagnostics.value.warning).toBe('input_quiet')
+		expect(h.recorder.diagnostics.value.rms).toBe(0)
+		expect(h.socket.frames()).toHaveLength(110)
+		expect(h.recorder.error.value).toBe('')
+		expect(h.recorder.active.value).toBe(true)
+	})
+
+	it('stops with an explicit capture error when the running graph never produces its first PCM frame', async () => {
+		const h = await recording()
+		vi.advanceTimersByTime(10000)
+		expect(h.recorder.error.value).toBe('capture_empty')
+		expect(h.recorder.active.value).toBe(false)
+		expect(h.stopTrack).toHaveBeenCalledTimes(1)
+		expect(h.socket.close).toHaveBeenCalled()
+		expect(h.socket.commands().map(command => command.action)).toEqual(['start'])
+		h.node.frame()
+		expect(h.socket.frames()).toHaveLength(0)
+		expect(h.recorder.diagnostics.value.captureFrames).toBe(0)
+	})
+
+	it('distinguishes an unsent buffer from audio that the browser is sending without text', async () => {
+		const h = setup()
+		const starting = h.recorder.start()
+		h.permission.resolve(h.stream)
+		await starting
+		const socket = SocketFixture.instances[0]
+		socket.open()
+		const node = WorkletFixture.instances[0]
+		for (let index = 0; index < 40; index++) audibleFrame(node)
+		expect(h.recorder.diagnostics.value.warning).toBe('upload_waiting')
+		expect(h.recorder.diagnostics.value.uploadFrames).toBe(0)
+		expect(h.recorder.diagnostics.value.server).toBeUndefined()
+		socket.ready()
+		for (let index = 0; index < 130; index++) audibleFrame(node)
+		expect(h.recorder.diagnostics.value.warning).toBe('recognizer_waiting')
+		expect(h.recorder.diagnostics.value.uploadFrames).toBeGreaterThan(0)
+		// Handing bytes to a browser socket does not fabricate a server receipt.
+		expect(h.recorder.diagnostics.value.server).toBeUndefined()
+		socket.event({type: 'partial', id: 'one', text: 'The recognizer responded'})
+		for (let index = 0; index < 10; index++) audibleFrame(node)
+		expect(h.recorder.diagnostics.value.warning).toBe('')
+	})
+
+	it('retains a bounded server failure snapshot and clears it before the next recording', async () => {
+		const h = await recording()
+		audibleFrame(h.node)
+		const snapshot = {
+			elapsed_ms: 1200,
+			received_bytes: 3200,
+			audio_duration_ms: 100,
+			last_audio_ms: 100,
+			partial_updates: 0,
+			saved_segments: 0,
+			first_text_ms: 0,
+			last_text_ms: 0,
+		}
+		h.socket.event({
+			type: 'error',
+			code: 'invalid_audio',
+			request_id: 'ce8e96a5-ec17-49f7-ab6f-a40a2b05921a',
+			provider_code: 'InvalidParameter',
+			provider_request_id: 'a08b5c2f-8809-4054-b819-f9cef054b38c',
+			provider_task_id: '8f2a2c058e9f4062b841943f27255e5a',
+			diagnostics: snapshot,
+		})
+		expect(h.recorder.error.value).toBe('invalid_audio')
+		expect(h.recorder.diagnostics.value).toMatchObject({
+			requestID: 'ce8e96a5-ec17-49f7-ab6f-a40a2b05921a',
+			providerCode: 'InvalidParameter',
+			server: snapshot,
+			peak: 0,
+		})
+		await h.recorder.start()
+		expect(h.recorder.diagnostics.value.server).toBeUndefined()
+		expect(h.recorder.diagnostics.value.requestID).toBe('')
+		expect(h.recorder.diagnostics.value.capturedBytes).toBe(0)
+	})
+
+	it('rejects malformed diagnostic numbers and does not carry old metrics into another account', async () => {
+		const h = await recording()
+		audibleFrame(h.node)
+		h.socket.event({
+			type: 'ready',
+			sample_rate: 16000,
+			offset_ms: 0,
+			rotate_seconds: 420,
+		})
+		expect(h.recorder.error.value).toBe('protocol')
+		await h.recorder.start()
+		const next = SocketFixture.instances[1]
+		next.open()
+		next.ready()
+		next.event({
+			type: 'error',
+			code: 'provider',
+			request_id: '<script>not an identifier</script>',
+			provider_code: 'Invalid\nrequest',
+			diagnostics: {elapsed_ms: -1},
+		})
+		expect(h.recorder.diagnostics.value.requestID).toBe('')
+		expect(h.recorder.diagnostics.value.providerCode).toBe('')
+		expect(h.recorder.diagnostics.value.server).toBeUndefined()
+		await h.recorder.start()
+		const currentNode = WorkletFixture.instances[2]
+		audibleFrame(currentNode)
+		auth.epoch++
+		currentNode.frame()
+		expect(h.recorder.diagnostics.value.capturedBytes).toBe(0)
+		expect(h.recorder.diagnostics.value.microphoneName).toBe('')
+	})
+})
+
 
 describe('bounded live recognition recovery', () => {
 	it('reconnects without replaying sent audio and retains unsent capture in order', async () => {
@@ -461,6 +682,7 @@ describe('bounded live recognition recovery', () => {
 
 	it('bounds repeated handshake failures and releases the microphone', async () => {
 		const h = await recording()
+		frame(h.node)
 		for (let attempt = 0; attempt < 6; attempt++) {
 			const socket = SocketFixture.instances[attempt]
 			if (attempt > 0) socket.open()
