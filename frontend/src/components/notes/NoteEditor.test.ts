@@ -156,6 +156,27 @@ describe('note editor saves and drafts', () => {
 		expect(sdk.notesUpdate).toHaveBeenCalledTimes(1)
 	})
 
+	it.each([false, true])('reconciles a newer server article received during a save while preserving newer typing: %s', async keepsTyping => {
+		const pending = deferred<{data: ReturnType<typeof normalizeNote>}>()
+		sdk.notesUpdate.mockImplementationOnce(() => pending.promise)
+		const wrapper = editor()
+		const body = wrapper.get('textarea')
+		await body.setValue('Saved first draft')
+		await wrapper.get('.note-editor__actions .button.is-primary').trigger('click')
+		await flushPromises()
+		if (keepsTyping) await body.setValue('Newer local draft')
+		const latest = {...original, content: 'Saved first draft\n\nAutomatic transcript', revision: 3}
+		await wrapper.setProps({note: latest})
+		expect(body.element.value).toBe(keepsTyping ? 'Newer local draft' : 'Saved first draft')
+		pending.resolve({data: {...original, content: 'Saved first draft', revision: 2}})
+		await flushPromises()
+		expect(body.element.value).toBe(keepsTyping ? 'Newer local draft' : latest.content)
+		expect(wrapper.get('.note-editor__status').text()).toBe(keepsTyping ? 'notes.save.conflict' : 'notes.save.saved')
+		expect(wrapper.find('[role="alert"]').exists()).toBe(keepsTyping)
+		await vi.advanceTimersByTimeAsync(2400)
+		expect(sdk.notesUpdate).toHaveBeenCalledTimes(1)
+	})
+
 	it('never dispatches a timer save after the authentication session changed', async () => {
 		const wrapper = editor()
 		await wrapper.get('textarea').setValue('Old account draft')

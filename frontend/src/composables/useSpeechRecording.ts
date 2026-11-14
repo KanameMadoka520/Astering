@@ -2,6 +2,8 @@ import {onScopeDispose, ref} from 'vue'
 
 type RecordingError = 'unsupported' | 'permission' | 'no-device' | 'device' | 'interrupted' | 'empty' | 'too-large'
 
+const FINALIZE_TIMEOUT_MS = 30_000
+
 function captureError(cause: unknown): RecordingError {
 	const name = cause instanceof Error ? cause.name : ''
 	if (name === 'NotAllowedError' || name === 'SecurityError' || name === 'PermissionDeniedError') return 'permission'
@@ -55,6 +57,7 @@ export function useSpeechRecording<Owner>(options: {
 			let stopRequested = false
 			let bytes = 0
 			let timer: ReturnType<typeof setInterval> | undefined
+			let deadline: ReturnType<typeof setTimeout> | undefined
 			const clearTimer = () => {
 				if (timer === undefined) return
 				clearInterval(timer)
@@ -64,6 +67,7 @@ export function useSpeechRecording<Owner>(options: {
 				if (released) return
 				released = true
 				clearTimer()
+				clearTimeout(deadline)
 				ownedStream.getTracks().forEach(track => track.stop())
 				if (attempt === generation) {
 					recording.value = false
@@ -75,13 +79,14 @@ export function useSpeechRecording<Owner>(options: {
 				if (finished) return
 				discarded ||= discard
 				if (discarded) chunks.length = 0
-				clearTimer()
 				if (!stopRequested) {
 					stopRequested = true
 					if (attempt === generation) {
 						recording.value = false
 						stopping.value = !discarded
 					}
+					// Encoder final events can stall; retain ownership checks while waiting, but never hold the mic forever.
+					if (!discarded) deadline = setTimeout(() => fail('interrupted'), FINALIZE_TIMEOUT_MS)
 					try {
 						if (recorder.state !== 'inactive') recorder.stop()
 					} catch {
@@ -137,6 +142,7 @@ export function useSpeechRecording<Owner>(options: {
 					stop(true)
 					return
 				}
+				if (stopRequested) return
 				elapsed.value = Math.max(0, Math.floor((performance.now() - startedAt) / 1000))
 				if (elapsed.value >= (options.maxSeconds ?? 180)) stop()
 			}, 1000)

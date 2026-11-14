@@ -7,7 +7,7 @@
 ## 当前身份
 
 - 产品名：**Astering**；副标题：**Aster的AI集成工业系统** / **Aster’s AI-integrated industrial system**。
-- 自有版本序列：`aster`，当前正式版本为 `v2.7.1-aster.61`。
+- 自有版本序列：`aster`，当前服务端与 Android 正式版本以 [README](../README.md) 和对应 Release 为准。
 - 源码、问题反馈与手工 Release：[KanameMadoka520/Astering](https://github.com/KanameMadoka520/Astering)。
 - 构建文件：`Dockerfile.aster`；镜像示例：`astering:v2.7.1-aster.61`；应用二进制：`/app/astering/astering`。
 - 新部署 Compose 应用服务为 `astering`，本机应用容器名为 `Astering`、数据库容器名为 `Astering-postgres`。主机指标的四个只读文件挂载至 `/run/aster-host-proc/`。

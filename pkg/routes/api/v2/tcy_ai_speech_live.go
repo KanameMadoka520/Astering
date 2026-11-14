@@ -78,6 +78,69 @@ type shortSpeechTranscript struct {
 	nonempty int
 }
 
+type shortSpeechWriter struct {
+	sync.Mutex
+	socket *websocket.Conn
+}
+
+func (w *shortSpeechWriter) send(ctx, transportCtx context.Context, value any) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	body, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	if len(body) > shortSpeechEventBytes {
+		return errShortSpeechLimit
+	}
+	w.Lock()
+	defer w.Unlock()
+	// Cancellation may happen while an earlier socket write is in progress.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	// Once admitted, a frame may already be visible to the client. Canceling
+	// websocket.Write would close the transport and lose the fixed error reply.
+	// Finish that frame within the transport's bounded deadline, then report
+	// cancellation to the caller. No queued event can pass the check above.
+	writeCtx, done := context.WithTimeout(transportCtx, 5*time.Second)
+	defer done()
+	if err := w.socket.Write(writeCtx, websocket.MessageText, body); err != nil {
+		return err
+	}
+	return ctx.Err()
+}
+
+type shortSpeechDeltaSink struct {
+	ctx         context.Context
+	transcript  *shortSpeechTranscript
+	started     time.Time
+	firstTextMS int64
+	send        func(any) error
+}
+
+func (s *shortSpeechDeltaSink) consume(delta tcyai.LiveSpeechDelta) error {
+	// An upstream event may already have been read when the account, client or
+	// audio reader cancels the run. It must not mutate or publish its transcript.
+	if err := s.ctx.Err(); err != nil {
+		return err
+	}
+	changed, err := s.transcript.update(delta)
+	if err != nil || !changed {
+		return err
+	}
+	if s.firstTextMS == 0 && strings.TrimSpace(delta.Text) != "" {
+		s.firstTextMS = max(1, time.Since(s.started).Milliseconds())
+	}
+	return s.send(map[string]any{
+		"type":  "transcript",
+		"id":    delta.ID,
+		"text":  delta.Text,
+		"final": delta.Final,
+	})
+}
+
 func (t *shortSpeechTranscript) update(delta tcyai.LiveSpeechDelta) (bool, error) {
 	previous, exists := t.segments[delta.ID]
 	if exists && previous.Final {
@@ -138,20 +201,12 @@ func LiveAssistantSpeech(c *echo.Context) error {
 	}
 	runCtx, cancel := context.WithCancelCause(transportCtx)
 	defer cancel(context.Canceled)
-	send := func(value any) error {
-		body, err := json.Marshal(value)
-		if err != nil {
-			return err
-		}
-		if len(body) > shortSpeechEventBytes {
-			return errShortSpeechLimit
-		}
-		writeCtx, done := context.WithTimeout(transportCtx, 5*time.Second)
-		defer done()
-		return socket.Write(writeCtx, websocket.MessageText, body)
-	}
+	writer := &shortSpeechWriter{socket: socket}
+	send := func(value any) error { return writer.send(runCtx, transportCtx, value) }
 	fail := func(code, key string) {
-		_ = send(map[string]string{
+		// Only this fixed, localized error envelope may be admitted after run
+		// cancellation. Earlier admitted frames finish before this error reply.
+		_ = writer.send(transportCtx, transportCtx, map[string]string{
 			"type":    "error",
 			"code":    code,
 			"message": tcylocale.Render(transportCtx, tcylocale.Error(key)),
@@ -216,8 +271,8 @@ func LiveAssistantSpeech(c *echo.Context) error {
 	go limitShortSpeechRecording(runCtx, cancel, ready, state.stopped)
 	started := time.Now()
 	requestID := uuid.NewString()
-	var firstTextMS int64
 	transcript := &shortSpeechTranscript{segments: map[string]tcyai.LiveSpeechDelta{}}
+	sink := &shortSpeechDeltaSink{ctx: runCtx, transcript: transcript, started: started, send: send}
 	err = tcyai.RecognizeLiveSpeech(runCtx, connection, rate, audio, func() error {
 		if err := checkShortSpeechSession(runCtx, claims); err != nil {
 			cancel(auth.ErrUserTokenRejected)
@@ -236,23 +291,7 @@ func LiveAssistantSpeech(c *echo.Context) error {
 		}
 		return nil
 	}, func(delta tcyai.LiveSpeechDelta) error {
-		changed, err := transcript.update(delta)
-		if err != nil {
-			cancel(err)
-			return err
-		}
-		if !changed {
-			return nil
-		}
-		if firstTextMS == 0 && strings.TrimSpace(delta.Text) != "" {
-			firstTextMS = max(1, time.Since(started).Milliseconds())
-		}
-		err = send(map[string]any{
-			"type":  "transcript",
-			"id":    delta.ID,
-			"text":  delta.Text,
-			"final": delta.Final,
-		})
+		err := sink.consume(delta)
 		if err != nil {
 			cancel(err)
 		}
@@ -280,13 +319,12 @@ func LiveAssistantSpeech(c *echo.Context) error {
 		return nil
 	}
 	finishMS := time.Since(time.Unix(0, state.stoppedAt.Load())).Milliseconds()
-	finish()
 	release()
 	err = send(map[string]any{
 		"type":              "done",
 		"text":              transcript.text(),
 		"elapsed_ms":        time.Since(started).Milliseconds(),
-		"first_text_ms":     firstTextMS,
+		"first_text_ms":     sink.firstTextMS,
 		"audio_duration_ms": state.bytes.Load() * 1000 / int64(rate*2),
 		"finish_ms":         finishMS,
 		"request_id":        requestID,

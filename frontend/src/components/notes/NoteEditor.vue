@@ -85,14 +85,15 @@ function adopt(note: Note) {
 	latest.value = undefined
 }
 
-watch(() => props.note, note => {
-	if (!current() || update.isPending.value || note.revision <= baseline.value.revision) return
+function reconcileServerNote(note: Note) {
+	if (!current() || props.deleted || update.isPending.value || note.revision <= baseline.value.revision) return
 	if (dirty.value) {
 		conflict.value = true
 		latest.value = note
 		clearTimeout(timer)
 	} else adopt(note)
-})
+}
+watch(() => props.note, reconcileServerNote)
 
 async function save() {
 	clearTimeout(timer)
@@ -129,7 +130,11 @@ async function save() {
 		if (cause instanceof ApiError && cause.status === 409) conflict.value = true
 		else failure.value = t('notes.save.error')
 	} finally {
-		if (current()) schedule()
+		if (current()) {
+			// A newer article may have arrived while saving. Reconcile it after adopting the save receipt.
+			reconcileServerNote(props.note)
+			schedule()
+		}
 	}
 }
 

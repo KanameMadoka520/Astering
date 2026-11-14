@@ -1,4 +1,8 @@
-import {assertClientRequestContext, captureClientRequestContext} from '@/client/requestContext'
+import {
+	assertClientRequestContext,
+	captureClientRequestContext,
+	isClientRequestContextCurrent,
+} from '@/client/requestContext'
 import {ref, shallowRef} from 'vue'
 import {i18n} from '@/i18n'
 
@@ -14,6 +18,8 @@ export const UPLOAD_RECORD_HEADER = 'X-Tcy-Upload-Record'
 const clientHeaders = [UPLOAD_CHOICE_HEADER.toLowerCase(), UPLOAD_RECORD_HEADER.toLowerCase()]
 export type ImageBatch = {choice: ImageChoice | null; headers(recordId?: string): Record<string, string>; release(): void}
 const activeRequests = new Set<() => void>()
+// Only active operations are retained; a caller's retry supersedes its earlier preparation and progress.
+const recordOwners = new Map<string, symbol>()
 const presets = new Map<string, ImageChoice>()
 let uploadEpoch = 0
 // The shared panel keeps its latest 12 rows; rows with a caller-chosen id belong to that caller's own list
@@ -22,7 +28,14 @@ function capped(rows: UploadRecord[]) {
 	let shared = 0
 	return rows.filter(row => row.scoped || shared++ < 12)
 }
-export function clearUploads() { uploadEpoch++; presets.clear(); imagePrompt.value?.resolve(null); for (const cancel of activeRequests) cancel(); uploads.value=[] }
+export function clearUploads() {
+	uploadEpoch++
+	recordOwners.clear()
+	presets.clear()
+	imagePrompt.value?.resolve(null)
+	for (const cancel of activeRequests) cancel()
+	uploads.value = []
+}
 let queue = Promise.resolve()
 const {t} = i18n.global
 
@@ -80,10 +93,6 @@ export async function convertImage(file: File, choice: ImageChoice): Promise<Fil
 	} finally { source.close() }
 }
 
-function update(id: string, patch: Partial<UploadRecord>) {
-	uploads.value = uploads.value.map(row => row.id === id ? {...row, ...patch} : row)
-}
-
 function withoutClientHeaders(request: Request) {
 	const headers = new Headers(request.headers)
 	for (const name of clientHeaders) headers.delete(name)
@@ -99,32 +108,72 @@ export const uploadAwareFetch: typeof fetch = async (input, init) => {
 	const preset = presets.get(request.headers.get(UPLOAD_CHOICE_HEADER) ?? '')
 	const recordId = request.headers.get(UPLOAD_RECORD_HEADER) || undefined
 	const context = captureClientRequestContext()
-	const form = await request.clone().formData()
-	const files = Array.from(form.values()).filter((item): item is File => item instanceof File)
-	const images = files.filter(file => file.type.startsWith('image/'))
-	// A caller-chosen id lets a retry replace its earlier row instead of stacking another one.
+	const epoch = uploadEpoch
+	// Claim the row before reading multipart bytes, whose completion order may differ from the request order.
 	const id = recordId ?? crypto.randomUUID()
-	uploads.value = capped([{id, names: files.map(file => file.name).join(', '), stage: 'preparing' as const, loaded: 0, total: 0, originalBytes: files.reduce((sum, f) => sum + f.size, 0), sentBytes: 0, targetPath: new URL(request.url).pathname, bytesPerSecond: 0, averageBytesPerSecond: 0, elapsedMs: 0, scoped: Boolean(recordId)}, ...uploads.value.filter(row => row.id !== id)])
-	let mode: ImageChoice['mode'] | undefined
+	const operation = Symbol()
+	recordOwners.set(id, operation)
+	const assertCurrent = () => {
+		assertClientRequestContext(context)
+		if (epoch !== uploadEpoch || recordOwners.get(id) !== operation || request.signal.aborted) {
+			throw new DOMException('Upload cancelled', 'AbortError')
+		}
+	}
+	const updateProgress = (patch: Partial<UploadRecord>) => {
+		if (epoch !== uploadEpoch || recordOwners.get(id) !== operation || !isClientRequestContextCurrent(context)) return
+		uploads.value = uploads.value.map(row => row.id === id ? {
+			...row,
+			...patch,
+		} : row)
+	}
 	try {
+		const form = await request.clone().formData()
+		// Check before exposing old file names or asking for a choice after account cleanup.
+		assertCurrent()
+		const files = Array.from(form.values()).filter((item): item is File => item instanceof File)
+		const images = files.filter(file => file.type.startsWith('image/'))
+		uploads.value = capped([
+			{
+				id,
+				names: files.map(file => file.name).join(', '),
+				stage: 'preparing' as const,
+				loaded: 0,
+				total: 0,
+				originalBytes: files.reduce((sum, f) => sum + f.size, 0),
+				sentBytes: 0,
+				targetPath: new URL(request.url).pathname,
+				bytesPerSecond: 0,
+				averageBytesPerSecond: 0,
+				elapsedMs: 0,
+				scoped: Boolean(recordId),
+			},
+			...uploads.value.filter(row => row.id !== id),
+		])
+		let mode: ImageChoice['mode'] | undefined
 		let body = form
 		if (images.length) {
 			// An unknown token (released, or cleared with the account) falls back to asking.
 			const choice = preset ?? await chooseImageUpload(images, request.signal)
 			if (!choice) throw new DOMException('Upload cancelled', 'AbortError')
+			assertCurrent()
 			mode = choice.mode
-			update(id, {stage: choice.mode === 'webp' ? 'converting' : 'preparing'})
+			updateProgress({stage: choice.mode === 'webp' ? 'converting' : 'preparing'})
 			body = new FormData()
 			for (const [key, value] of form) {
-				if (request.signal.aborted) throw new DOMException('Upload cancelled', 'AbortError')
-				body.append(key, value instanceof File ? await convertImage(value, choice) : value)
+				assertCurrent()
+				const converted = value instanceof File ? await convertImage(value, choice) : value
+				assertCurrent()
+				body.append(key, converted)
 				// Let the preparing indicator paint between files.
 				await new Promise(resolve => requestAnimationFrame(resolve))
 			}
 		}
-		assertClientRequestContext(context)
+		assertCurrent()
 		const sentBytes = Array.from(body.values()).reduce((sum, value) => sum + (value instanceof File ? value.size : 0), 0)
-		update(id, {stage: 'uploading', sentBytes})
+		updateProgress({
+			stage: 'uploading',
+			sentBytes,
+		})
 		const response = await new Promise<Response>((resolve, reject) => {
 			const xhr = new XMLHttpRequest()
 			xhr.open(request.method, request.url)
@@ -151,19 +200,25 @@ export const uploadAwareFetch: typeof fetch = async (input, init) => {
 					sampleAt = now
 					sampleBytes = loaded
 				}
-				update(id, patch)
+				updateProgress(patch)
 			}
 			const timer = setInterval(tick, 500)
 			const cleanup = () => { tick(); clearInterval(timer); request.signal.removeEventListener('abort', abort); activeRequests.delete(abort) }
 			xhr.upload.onprogress = event => {
 				loaded = event.loaded
 				total = event.lengthComputable ? event.total : 0
-				update(id, {loaded, total})
+				updateProgress({
+					loaded,
+					total,
+				})
 			}
 			xhr.upload.onload = () => {
 				tick()
 				transferring = false
-				update(id, {stage: 'processing', bytesPerSecond: 0})
+				updateProgress({
+					stage: 'processing',
+					bytesPerSecond: 0,
+				})
 			}
 			xhr.onerror = () => { cleanup(); reject(new TypeError(t('flow.networkError'))) }
 			xhr.onabort = () => { cleanup(); reject(new DOMException('Upload cancelled', 'AbortError')) }
@@ -183,7 +238,11 @@ export const uploadAwareFetch: typeof fetch = async (input, init) => {
 						if (Array.isArray(result.errors) && result.errors.length) {failed = true; failure = t('flow.filesFailed')}
 					} catch { /* The SDK reports malformed responses. */ }
 				}
-				update(id, {stage: failed ? 'error' : 'done', error: failure, bytesPerSecond: 0})
+				updateProgress({
+					stage: failed ? 'error' : 'done',
+					error: failure,
+					bytesPerSecond: 0,
+				})
 				resolve(new Response(xhr.status === 204 ? null : xhr.response, {status: xhr.status, statusText: xhr.statusText, headers}))
 			}
 			if (request.signal.aborted) { cleanup(); reject(new DOMException('Upload cancelled', 'AbortError')); return }
@@ -191,7 +250,12 @@ export const uploadAwareFetch: typeof fetch = async (input, init) => {
 		})
 		return response
 	} catch (error) {
-		update(id, {stage: error instanceof DOMException && error.name === 'AbortError' ? 'cancelled' : 'error', error: error instanceof Error ? error.message : String(error)})
+		updateProgress({
+			stage: error instanceof DOMException && error.name === 'AbortError' ? 'cancelled' : 'error',
+			error: error instanceof Error ? error.message : String(error),
+		})
 		throw error
+	} finally {
+		if (recordOwners.get(id) === operation) recordOwners.delete(id)
 	}
 }
