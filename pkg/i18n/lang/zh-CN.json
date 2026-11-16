@@ -1,5 +1,8 @@
 {
 	"notifications": {
+		"automation": {
+			"subject": "阿罗娜自动化"
+		},
 		"email_confirm": {
 			"subject": "%[1]s, 请在Astering确认你的邮箱地址",
 			"welcome": "欢迎使用 Astering！",

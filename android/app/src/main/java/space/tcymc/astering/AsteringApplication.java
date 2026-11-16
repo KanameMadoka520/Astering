@@ -14,6 +14,7 @@ public final class AsteringApplication extends Application {
     NativeSession session;
     OfflineTranscripts offline;
     OfflineModels models;
+    DeviceNotifications notifications;
     private WeakReference<MainActivity> activity = new WeakReference<>(null);
     volatile RecordingService recorder;
     volatile String recordingGeneration = "";
@@ -29,6 +30,7 @@ public final class AsteringApplication extends Application {
         session = new NativeSession(this);
         models = new OfflineModels(this);
         offline = new OfflineTranscripts(this);
+        notifications = new DeviceNotifications(this);
         android.net.ConnectivityManager connectivity = getSystemService(android.net.ConnectivityManager.class);
         connectivity.registerDefaultNetworkCallback(new android.net.ConnectivityManager.NetworkCallback() {
             @Override public void onAvailable(android.net.Network network) {
@@ -72,6 +74,11 @@ public final class AsteringApplication extends Application {
 
     void detach(MainActivity value) {
         if (activity.get() == value) activity.clear();
+    }
+
+    void sessionVerified() {
+        MainActivity current = activity.get();
+        if (current != null) current.notificationSessionReady();
     }
 
     void stopRecordingForSessionChange() {

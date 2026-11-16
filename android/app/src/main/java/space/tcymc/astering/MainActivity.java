@@ -44,6 +44,8 @@ public final class MainActivity extends Activity {
     private static final java.util.concurrent.atomic.AtomicInteger REQUEST_CODES = new java.util.concurrent.atomic.AtomicInteger(1024);
     private int microphoneRequest = -1;
     private int notificationRequest = -1;
+    private int deviceNotificationRequest = -1;
+    private Runnable deviceNotificationPermission;
     private int fileRequest = -1;
     private long fileDocument;
     private SitePolicy fileSite;
@@ -56,6 +58,7 @@ public final class MainActivity extends Activity {
     private boolean switchingServer;
     private AlertDialog clientSettingsDialog;
     private OfflineModelsDialog modelsDialog;
+    private NotificationsDialog notificationsDialog;
     private boolean pendingClientSettings;
     private AlertDialog serverDialog;
     private AlertDialog confirmDialog;
@@ -75,6 +78,7 @@ public final class MainActivity extends Activity {
     private long pendingOpenUser;
     private String pendingOpenSid = "";
     private String pendingOpenOrigin = "";
+    private Intent pendingNotification;
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -84,6 +88,7 @@ public final class MainActivity extends Activity {
         pendingClientSettings = shortcut || savedInstanceState != null && savedInstanceState.getBoolean("open_client_settings");
         if (shortcut) setIntent(new Intent(this, MainActivity.class).setAction(Intent.ACTION_MAIN));
         else rememberOpenNote(getIntent());
+        if (DeviceNotifications.OPEN.equals(getIntent().getAction())) pendingNotification = new Intent(getIntent());
         updater = new AndroidUpdater(this);
         if (Build.VERSION.SDK_INT >= 30) getWindow().setDecorFitsSystemWindows(false);
         root = new LinearLayout(this);
@@ -349,6 +354,13 @@ public final class MainActivity extends Activity {
         models.setText(R.string.models_title);
         models.setOnClickListener(view -> showOfflineModels());
         content.addView(models, new LinearLayout.LayoutParams(-1, -2));
+        Button notifications = new Button(this);
+        notifications.setText(R.string.notifications_title);
+        notifications.setOnClickListener(view -> {
+            if (notificationsDialog == null) notificationsDialog = new NotificationsDialog(this);
+            notificationsDialog.show();
+        });
+        content.addView(notifications, new LinearLayout.LayoutParams(-1, -2));
         Button recover = new Button(this);
         recover.setText(R.string.legacy_recover);
         recover.setOnClickListener(view -> { dismissClientSettings(); checkLegacy(true); });
@@ -367,6 +379,7 @@ public final class MainActivity extends Activity {
 
     private void dismissClientSettings() {
         if (modelsDialog != null) { modelsDialog.dismiss(); modelsDialog = null; }
+        if (notificationsDialog != null) { notificationsDialog.dismiss(); notificationsDialog = null; }
         AlertDialog settings = clientSettingsDialog;
         clientSettingsDialog = null;
         if (settings != null) settings.dismiss();
@@ -574,7 +587,8 @@ public final class MainActivity extends Activity {
             switch (command.getString("action")) {
                 case "clientInfo":
                     reply(proxy, page, id, AsteringApplication.object("version_name", BuildConfig.VERSION_NAME,
-                        "version_code", BuildConfig.VERSION_CODE, "capabilities", AsteringApplication.object("clientSettings", true)), null);
+                        "version_code", BuildConfig.VERSION_CODE, "capabilities", AsteringApplication.object("clientSettings", true,
+                            "deviceNotifications", true)), null);
                     break;
                 case "openClientSettings":
                     reply(proxy, page, id, AsteringApplication.object(), showClientSettings() ? null : "foreground_required");
@@ -584,6 +598,7 @@ public final class MainActivity extends Activity {
                     SessionFence.Ticket current = app.session.ticket();
                     reply(proxy, page, id, AsteringApplication.object("user_id", current.owner.userID, "sid", current.owner.sid), null);
                     consumeOpenNote();
+                    consumeOpenNotification();
                     break;
                 }
                 case "clearSession":
@@ -595,6 +610,10 @@ public final class MainActivity extends Activity {
                 case "refresh":
                     app.session.refresh(command.optString("token"), true, (token, error) ->
                         reply(proxy, page, requestID, AsteringApplication.object("token", token), error));
+                    break;
+                case "notificationsReadChanged":
+                    if (app.session.verified(app.session.ticket())) app.notifications.requestSync(false);
+                    reply(proxy, page, id, AsteringApplication.object(), null);
                     break;
                 case "offlineStatus":
                     app.offline.status((result, error) -> reply(proxy, page, requestID, result, error));
@@ -762,7 +781,13 @@ public final class MainActivity extends Activity {
     @Override public void onRequestPermissionsResult(int code, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(code, permissions, results);
         boolean granted = results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED;
-        if (code == microphoneRequest) {
+        if (code == deviceNotificationRequest) {
+            deviceNotificationRequest = -1;
+            Runnable ready = deviceNotificationPermission;
+            deviceNotificationPermission = null;
+            if (granted && ready != null && visible && !isDestroyed()) ready.run();
+            else android.widget.Toast.makeText(this, R.string.notifications_permission_denied, android.widget.Toast.LENGTH_LONG).show();
+        } else if (code == microphoneRequest) {
             microphoneRequest = -1;
             if (browserPermission != null) {
                 if (granted) grantBrowserAudio();
@@ -774,6 +799,16 @@ public final class MainActivity extends Activity {
             if (granted) continueStart();
             else cancelPending("notification_permission");
         }
+    }
+
+    void requestDeviceNotificationPermission(Runnable granted) {
+        if (!visible || !resumed || isDestroyed() || deviceNotificationPermission != null) return;
+        if (Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+            granted.run(); return;
+        }
+        deviceNotificationPermission = granted;
+        deviceNotificationRequest = nextRequestCode();
+        requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, deviceNotificationRequest);
     }
 
     private void grantBrowserAudio() {
@@ -942,6 +977,11 @@ public final class MainActivity extends Activity {
             return;
         }
         setIntent(intent);
+        if (DeviceNotifications.OPEN.equals(intent.getAction())) {
+            pendingNotification = new Intent(intent);
+            consumeOpenNotification();
+            return;
+        }
         rememberOpenNote(intent);
         consumeOpenNote();
     }
@@ -964,6 +1004,23 @@ public final class MainActivity extends Activity {
         pendingOpenNote = 0;
         pendingOpenSid = "";
         pendingOpenOrigin = "";
+    }
+
+    void notificationSessionReady() { consumeOpenNotification(); }
+
+    private void consumeOpenNotification() {
+        if (pendingNotification == null || replyProxy == null || !visible) return;
+        SessionFence.Ticket owner = app.session.ticket();
+        if (owner == null || !app.session.verified(owner)) return;
+        Intent pending = pendingNotification;
+        pendingNotification = null;
+        JSONObject target = app.notifications.target(pending, owner);
+        if (target == null) {
+            android.widget.Toast.makeText(this, R.string.notifications_tap_unavailable, android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        emit(AsteringApplication.object("event", "openNotification", "user_id", owner.owner.userID, "sid", owner.owner.sid,
+            "server_origin", owner.origin, "target", target));
     }
 
     boolean isVisible() {
@@ -997,6 +1054,8 @@ public final class MainActivity extends Activity {
         setScreenAwake(snapshot.optBoolean("keep_awake") && AsteringApplication.active(snapshot.optString("state")));
         emit(AsteringApplication.object("event", "recording", "snapshot", snapshot));
         consumeClientSettings();
+        consumeOpenNotification();
+        app.notifications.reschedule();
     }
 
     @Override protected void onPause() {
@@ -1043,6 +1102,7 @@ public final class MainActivity extends Activity {
         dismissClientSettings();
         cancelPending("cancelled");
         cancelPageRequests();
+        deviceNotificationPermission = null;
         if (serverDialog != null) serverDialog.dismiss();
         if (confirmDialog != null) confirmDialog.dismiss();
         if (legacyDialog != null) legacyDialog.dismiss();

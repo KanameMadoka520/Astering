@@ -13,7 +13,7 @@
 
 我们赋予 **Astering**「像星星闪烁、使之星光熠熠」的意象：一次行动、一段研究、一条值得记住的原则，逐渐连接成自己的星群。**Aster的AI集成工业系统**（Aster’s AI-integrated industrial system）是项目的副标题；工具与积累服务于更自由的创造。
 
-- 服务端版本：`v2.7.1-aster.72`；Android 客户端：`2.7.1-aster.69`
+- 服务端版本：`v2.7.1-aster.73`；Android 客户端：`2.7.1-aster.73`
 - 源码与问题反馈：[KanameMadoka520/Astering](https://github.com/KanameMadoka520/Astering)
 - 本机编译的发布产物：[GitHub Releases](https://github.com/KanameMadoka520/Astering/releases)
 - [品牌与升级兼容](docs/brand-migration.md) · [品牌素材](docs/brand-identity.md) · [详细功能与演进记录](docs/product-reference.md)
@@ -52,7 +52,7 @@ Astering 把不同用途保留在各自合适的空间里，关联真实任务�
 开始一轮对话前，选择模型、工作方式和工具范围：
 
 1. **工具模块**分别设置项目任务、星图的关闭、只读或读写；旧项目配置保持兼容，星图默认关闭。全局只读模式仍限制写入。
-2. **权限与审核**叠加账户原有权限、项目写入范围及操作策略。星图写入和外部 MCP 写入需审核；模型不能靠参数或自称管理员扩大权限。
+2. **权限与审核**叠加账户原有权限、项目写入范围及操作策略。无人值守模式在授权范围内直接执行，其余策略保持原有审核要求；模型不能靠参数或自称管理员扩大权限。
 3. **执行中补充要求**保留原目标，将新要求排队在安全的模型或工具边界应用。已经执行的操作不会因一句补充要求自动回滚。
 4. **记录与恢复**保留服务商返回的中间说明、工具步骤、错误、用量和时间指标；不编造隐藏推理。失败后按安全边界重试，结果未知的写入不会自动重放。
 
@@ -61,6 +61,12 @@ Astering 把不同用途保留在各自合适的空间里，关联真实任务�
 笔记另提供不调用工具的「阿罗娜整理」：选择已保存文章或原始转录，按实际上下文预算分片和逐层合并，后台继续，失败后从检查点重试；预览后显式追加或替换正文，原始记录保留，详见[长文整理](docs/note-organization.md)。
 
 详见[阿罗娜集成](docs/arona-integration.md)、[工具模块权限](docs/agent-tool-modules.md)、[运行中补充要求](docs/arona-steering.md)、[外部 MCP 与聊天插图](docs/external-mcp-and-chat-images.md)及[专用语音协议](docs/speech-and-routines-v41.md)。
+
+## 自动化与定时提醒
+
+侧栏「自动化」可定期运行阿罗娜指令，或发送无需模型的简单提醒；支持一次性、每天、工作日、每周、每月、每年和固定间隔。保存时显示时区与下一次执行时间，浏览器关闭后服务器继续工作。每次模型执行生成独立会话，记录真实工具结果；可立即运行、暂停后续计划、编辑或删除，并查看执行历史。
+
+普通会话和自动化都可显式选择「无人值守」，让授权范围内的操作直接执行。项目、工具模块、删除及 MCP 范围仍由本人控制，账户与共享权限不变。模型追问或用户选择的审核仍会显示需要处理；结果未知的操作不自动重放。暂停计划与停止当前执行是两个独立操作，详见[自动化、运行边界与通知](docs/automations.md)。
 
 ## 多账户与运行用量
 
@@ -76,7 +82,7 @@ Astering 把不同用途保留在各自合适的空间里，关联真实任务�
 
 提供签名的安卓 APK、源码包、Git bundle、Linux amd64 二进制、Docker 镜像包和 SHA256 校验文件。检查、测试与编译在维护者本机完成，再手工发布；本仓库不使用 GitHub Actions。
 
-安卓 APK **仅在 [GitHub Release](https://github.com/KanameMadoka520/Astering/releases) 发布，不在业务网站托管**，支持 Android 8.0 及以上的 ARM64 设备。首次启动的服务器地址为空，请手动填写自己的 Astering HTTPS 地址，再登录该站点的账户；升级旧版也需要确认服务器，应用不预设维护者的站点。
+安卓 APK **仅在 [GitHub Release](https://github.com/KanameMadoka520/Astering/releases) 发布，不在业务网站托管**，支持 Android 8.0 及以上的 ARM64 设备。首次启动的服务器地址为空，请手动填写自己的 Astering HTTPS 地址，再登录该站点的账户；升级旧版也需要确认服务器，应用不预设维护者的站点。 `.73` 在客户端设置增加可选的后台任务通知、日期提醒和系统角标，授权与系统限制见[安卓通知与提醒](docs/android-notifications.md)。
 
 客户端不再显示额外的服务器地址栏；「客户端设置」在头像账户菜单中，桌面长按应用图标也可打开。设置中的「检查更新」检测正式 GitHub Release 中的安卓包，直接下载、显示进度并校验同签名后交由系统确认安装。页面功能随所连接网站发布更新，原生能力升级则重新安装新版 APK。
 
@@ -88,15 +94,15 @@ Astering 把不同用途保留在各自合适的空间里，关联真实任务�
 git clone https://github.com/KanameMadoka520/Astering.git
 cd Astering
 docker build -f Dockerfile.aster \
-  --build-arg RELEASE_VERSION=v2.7.1-aster.72 \
+  --build-arg RELEASE_VERSION=v2.7.1-aster.73 \
   --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
-  -t astering:v2.7.1-aster.72 .
+  -t astering:v2.7.1-aster.73 .
 ```
 
 或下载对应 Release，先检查 `sha256sum -c SHA256SUMS`，再导入镜像包：
 
 ```sh
-docker load -i astering-v2.7.1-aster.72.docker.tar.gz
+docker load -i astering-v2.7.1-aster.73.docker.tar.gz
 ```
 
 以下是**新安装**的最小 SQLite 示例；生产也可配置 PostgreSQL。现有部署不要用新建的空目录替换原数据卷。
@@ -112,7 +118,7 @@ docker run -d --name Astering --restart unless-stopped \
   -e ASTERING_SERVICE_SECRET=替换为随机且持久保存的长密钥 \
   -e ASTERING_SERVICE_ENABLEREGISTRATION=false \
   -e ASTERING_SERVICE_TIMEZONE=Asia/Shanghai \
-  astering:v2.7.1-aster.72
+  astering:v2.7.1-aster.73
 ```
 
 在反向代理提供 HTTPS，将 `PUBLICURL` 改为自己的实际域名。创建首个账户前可查看 CLI 参数：
@@ -152,6 +158,7 @@ docker exec -it Astering /app/astering/astering user create --help
 | 周期任务 | [公告与日常基础](docs/project-announcements-routines.md)、[周期与额度扩展](docs/speech-and-routines-v41.md) |
 | 星图与图文记录 | [使用设计](docs/compass.md)、[数据与权限](docs/compass-data.md) |
 | 语音与多模态 | [语音输入交互](docs/voice-input-v43.md)、[协议适配](docs/speech-and-routines-v41.md)、[阿罗娜集成](docs/arona-integration.md) |
+| 自动化与无人值守 | [定时计划、运行历史与权限](docs/automations.md) |
 | 笔记与长时间录音 | [实时语音笔记](docs/voice-notes.md)、[安卓客户端](docs/android-client.md) |
 | 模型与工具执行 | [运行时](docs/arona-runtime-design.md)、[工具发现恢复](docs/agent-tool-loading.md)、[模块范围](docs/agent-tool-modules.md) |
 | 缓存与弱网 | [浏览器缓存](docs/browser-cache.md)、[弱网设计与验证](docs/weak-network-v49.md) |

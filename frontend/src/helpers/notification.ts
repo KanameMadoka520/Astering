@@ -2,6 +2,7 @@ import type {DatabaseNotification, User, Task, Project, Team} from '@/client/gen
 import type {RouteLocationRaw} from 'vue-router'
 import {getDisplayName} from '@/helpers/user'
 import {getTaskIdentifier} from '@/helpers/task'
+import {i18n} from '@/i18n'
 
 export const NOTIFICATION_NAMES = {
 	'TASK_COMMENT': 'task.comment',
@@ -12,6 +13,7 @@ export const NOTIFICATION_NAMES = {
 	'PROJECT_CREATED': 'project.created',
 	'TEAM_MEMBER_ADDED': 'team.member.added',
 	'TASK_MENTIONED': 'task.mentioned',
+	'AUTOMATION': 'ai.automation',
 } as const
 
 function record(value: unknown): Record<string, unknown> {
@@ -33,6 +35,16 @@ export function notificationText(n: DatabaseNotification, user: Pick<User, 'id'>
 	const doer = record(payload.doer) as User
 	let who: string
 	switch (n.name) {
+		case NOTIFICATION_NAMES.AUTOMATION: {
+			const title = typeof payload.title === 'string' ? payload.title : ''
+			if (payload.kind === 'reminder' && typeof payload.message === 'string') {
+				return `${i18n.global.t('automations.notification', {title})} · ${payload.message}`
+			}
+			const states = ['running', 'succeeded', 'failed', 'interrupted', 'canceled', 'needs_attention']
+			const status = typeof payload.status === 'string' && states.includes(payload.status)
+				? i18n.global.t(`automations.status.${payload.status}`) : ''
+			return i18n.global.t('automations.notificationResult', {title, status})
+		}
 		case NOTIFICATION_NAMES.TASK_COMMENT:
 			return `commented on ${getTaskIdentifier(task)}`
 		case NOTIFICATION_NAMES.TASK_ASSIGNED:
@@ -68,6 +80,11 @@ export function notificationText(n: DatabaseNotification, user: Pick<User, 'id'>
 
 export function notificationRoute(n: DatabaseNotification): RouteLocationRaw | null {
 	const payload = record(n.notification)
+	if (n.name === NOTIFICATION_NAMES.AUTOMATION) {
+		const id = payload.automation_id
+		return typeof id === 'string' && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(id)
+			? {name: 'automations', params: {automationId: id}} : null
+	}
 	const taskNames = [
 		NOTIFICATION_NAMES.TASK_COMMENT,
 		NOTIFICATION_NAMES.TASK_ASSIGNED,

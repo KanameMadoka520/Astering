@@ -55,7 +55,7 @@ func (e *aiExecution) noteActor(name string, id int64) (web.Auth, error) {
 	principal := user.WithPersonalNotesAgentAccess(e.auth, name, id)
 	actor, ok := principal.(*user.User)
 	if !ok || !actor.PersonalNotesAgentAllows(name, id) {
-		return nil, tcyai.ToolFailure("FORBIDDEN", "Personal notes require the original human's active browser session. Project scopes, bots and API tokens never grant note access.")
+		return nil, tcyai.ToolFailure("FORBIDDEN", "Personal notes require an active session of the original human account. Project scopes, bots and API tokens never grant note access.")
 	}
 	return actor, nil
 }
@@ -67,7 +67,7 @@ func aiNoteError(err error) error {
 	}
 	switch noteError.Status {
 	case http.StatusConflict:
-		return tcyai.ToolFailure("STATE_CONFLICT", "The note changed. Read its current revision and prepare a new reviewed operation; never overwrite a newer draft.")
+		return tcyai.ToolFailure("STATE_CONFLICT", "The note changed. Read its current revision and prepare a fresh operation under the current approval policy; never overwrite a newer draft.")
 	case http.StatusNotFound:
 		return tcyai.ToolFailure("NOT_FOUND", "The requested personal note or segment was not found for this account.")
 	case http.StatusForbidden:
@@ -315,8 +315,8 @@ func applyAINoteFields(note *models.AsterNote, args aiNoteArgs) {
 
 func (e *aiExecution) mutateNotes(ctx context.Context, name string, raw json.RawMessage, args aiNoteArgs) (string, error) {
 	op := tcyai.CurrentOperation(ctx)
-	if op == nil || !op.Approved || op.Version == "" {
-		return "", tcyai.ToolFailure("REVIEW_REQUIRED", "Every personal-note write requires the user's approval of its exact prepared preview.")
+	if op == nil || op.Version == "" || (!op.Approved && !tcyai.UnattendedWrites(e.input)) {
+		return "", tcyai.ToolFailure("REVIEW_REQUIRED", "A personal-note write needs its exact prepared preview and human approval unless this run explicitly uses unattended write mode.")
 	}
 	actor, err := e.noteActor(name, args.ID)
 	if err != nil {
@@ -333,7 +333,7 @@ func (e *aiExecution) mutateNotes(ctx context.Context, name string, raw json.Raw
 			return "", aiNoteError(err)
 		}
 		if args.ExpectedRevision < 1 || args.ExpectedRevision != note.Revision {
-			return "", tcyai.ToolFailure("STATE_CONFLICT", "The note revision changed; read it and prepare a new reviewed operation.")
+			return "", tcyai.ToolFailure("STATE_CONFLICT", "The note revision changed; read it and prepare a fresh operation under the current approval policy.")
 		}
 		before, err = aiNoteBefore(name, note)
 		if err != nil {
@@ -341,7 +341,7 @@ func (e *aiExecution) mutateNotes(ctx context.Context, name string, raw json.Raw
 		}
 	}
 	if aiNoteVersion(before, raw) != op.Version {
-		return "", tcyai.ToolFailure("STATE_CONFLICT", "The note, original transcripts or proposal changed after review. Prepare and review a fresh operation.")
+		return "", tcyai.ToolFailure("STATE_CONFLICT", "The note, original transcripts or proposal changed after preparation. Read the current state and prepare a fresh operation under the current approval policy.")
 	}
 	applyAINoteFields(note, args)
 	switch name {

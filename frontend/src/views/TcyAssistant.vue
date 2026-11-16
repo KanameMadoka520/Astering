@@ -463,7 +463,7 @@ watch(chatID, (id, previous) => {
 }, {flush: 'sync'})
 const mode = ref<'read' | 'write'>('read')
 const allowDelete = ref(false)
-const approval = ref<'smart' | 'review' | 'auto'>('smart')
+const approval = ref<AssistantOptions['approval']>('smart')
 const writeProjectIDs = ref<number[]>([])
 const mcpServerIDs = ref<string[]>([])
 const toolModules = ref<ToolModules>(defaultToolModules())

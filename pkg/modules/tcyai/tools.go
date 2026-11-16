@@ -230,8 +230,13 @@ func IsWriteTool(name string) bool {
 	return !strings.HasPrefix(name, "list_") && !strings.HasPrefix(name, "get_") && name != "find_tools" && name != "find_mcp_tools" && name != "ask_user" && name != "web_search" && name != "read_tool_result" && name != "view_attachment" && name != "delegate_tasks"
 }
 
+// UnattendedWrites changes only human review, never the tool or resource policy.
+func UnattendedWrites(in RunInput) bool {
+	return in.Mode == "write" && in.Approval == "unattended"
+}
+
 func NeedsReview(name string, in RunInput) bool {
-	if !IsWriteTool(name) {
+	if !IsWriteTool(name) || UnattendedWrites(in) {
 		return false
 	}
 	if IsCompassTool(name) || IsNoteTool(name) || name == "restore_project_version" {

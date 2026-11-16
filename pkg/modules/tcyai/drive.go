@@ -684,7 +684,7 @@ func (chatDriveBridge) Referenced(ownerID, fileID int64) (bool, error) {
 	}
 	found := []string{}
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".enc") {
+		if entry.IsDir() || !storageConversationName(entry.Name()) {
 			continue
 		}
 		cid := strings.TrimSuffix(entry.Name(), ".enc")

@@ -119,9 +119,13 @@ describe('AssistantPreferences', () => {
 
 	it('keeps an open draft but refuses applying it if execution becomes locked', async () => {
 		const wrapper = mountDialog()
+		const approval = () => page().findAll('label')
+			.find(label => label.text().startsWith('agent.approvalPolicy'))!.find('select')
+		await approval().setValue('unattended')
 		await page().find('select[aria-label="toolModules.compass"]').setValue('write')
 		await wrapper.setProps({locked: true})
 
+		expect(approval().attributes('disabled')).toBeDefined()
 		expect(page().find('select[aria-label="toolModules.compass"]').attributes('disabled')).toBeDefined()
 		expect(button('assistantUI.apply')!.attributes('disabled')).toBeDefined()
 		expect(page().text()).toContain('toolModules.locked')
@@ -131,9 +135,15 @@ describe('AssistantPreferences', () => {
 		expect(wrapper.emitted('close')).toBeUndefined()
 
 		await wrapper.setProps({locked: false})
+		expect(approval().element).toHaveProperty('value', 'unattended')
 		expect(page().find('select[aria-label="toolModules.compass"]').element).toHaveProperty('value', 'write')
 		await page().find('form').trigger('submit')
-		expect(wrapper.emitted('apply')?.[0]?.[0]).toMatchObject({tool_modules: {compass: 'write'}})
+		expect(wrapper.emitted('apply')?.[0]?.[0]).toMatchObject({
+			approval: 'unattended',
+			allow_delete: false,
+			mcp_server_ids: [],
+			tool_modules: {compass: 'write'},
+		})
 		expect(wrapper.emitted('close')).toHaveLength(1)
 	})
 })

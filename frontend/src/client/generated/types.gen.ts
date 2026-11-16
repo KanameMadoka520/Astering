@@ -140,7 +140,11 @@ export type AccountManagementUser = {
      */
     ai_attachment_bytes: number;
     /**
-     * Sum of independent AI encrypted conversation, legacy attachment and settings file lengths. A lower bound when ai_scan_complete is false.
+     * Actual length of encrypted automation definitions and bounded execution receipts, without decrypting their content.
+     */
+    ai_automation_bytes: number;
+    /**
+     * Sum of independent AI encrypted conversation, legacy attachment, settings and automation file lengths. A lower bound when ai_scan_complete is false.
      */
     ai_bytes: number;
     /**
@@ -326,7 +330,11 @@ export type AccountUsageOverview = {
      */
     ai_attachment_bytes: number;
     /**
-     * Sum of independent AI encrypted conversation, legacy attachment and settings file lengths. A lower bound when ai_scan_complete is false.
+     * Actual length of encrypted automation definitions and bounded execution receipts, without decrypting their content.
+     */
+    ai_automation_bytes: number;
+    /**
+     * Sum of independent AI encrypted conversation, legacy attachment, settings and automation file lengths. A lower bound when ai_scan_complete is false.
      */
     ai_bytes: number;
     /**
@@ -650,13 +658,13 @@ export type ApplicationSnapshot = {
 
 export type AssistantOptions = {
     /**
-     * Enable task and personal-note deletion; personal-note writes always require human review.
+     * Enable task and personal-note deletion within existing account permissions and the selected approval policy.
      */
     allow_delete?: boolean;
     /**
-     * Review policy; destructive and notification operations always require review.
+     * smart, review and auto retain human review for destructive and sensitive writes; unattended permits prepared writes without human approval, never beyond current permissions.
      */
-    approval?: 'smart' | 'review' | 'auto';
+    approval?: 'smart' | 'review' | 'auto' | 'unattended';
     /**
      * Empty follows the configured assistant connection.
      */
@@ -1121,6 +1129,291 @@ export type AutoCompaction = {
     usage?: Usage;
 };
 
+export type Automation = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Creation time in UTC.
+     */
+    readonly created?: string;
+    /**
+     * Pause future scheduled runs without stopping an existing run.
+     */
+    enabled?: boolean;
+    /**
+     * Server-generated account-scoped UUID.
+     */
+    readonly id?: string;
+    /**
+     * Agent uses the selected model and tools; reminder only delivers a notification.
+     */
+    kind?: 'agent' | 'reminder';
+    /**
+     * Most recent execution start, or null.
+     */
+    readonly last_run_at?: string | null;
+    /**
+     * Most recent run status; empty before the first run.
+     */
+    readonly last_status?: string;
+    /**
+     * Total job deadline across execution segments, in seconds; timeout stops this conversation without replaying writes.
+     */
+    max_runtime_seconds?: number;
+    /**
+     * Next planned instant, or null when paused/finished.
+     */
+    readonly next_run?: string | null;
+    /**
+     * Notify after failed, interrupted or needs-attention execution.
+     */
+    notify_on_failure?: boolean;
+    /**
+     * Notify after successful agent execution; reminders always notify.
+     */
+    notify_on_success?: boolean;
+    /**
+     * Required for agent runs. Current account/resource/MCP permissions are always rechecked; a policy requiring human review can pause execution.
+     */
+    options?: AssistantOptions;
+    /**
+     * Instruction for agent runs, or the body of a pure reminder.
+     */
+    prompt?: string;
+    /**
+     * Configuration revision; execution receipts do not invalidate an open edit.
+     */
+    readonly revision?: number;
+    /**
+     * Exactly one validated recurrence; no arbitrary cron or code.
+     */
+    schedule?: AutomationSchedule;
+    /**
+     * IANA timezone, independent of the server/browser timezone.
+     */
+    timezone?: string;
+    /**
+     * Private display name.
+     */
+    title?: string;
+    /**
+     * Last explicit configuration edit.
+     */
+    readonly updated?: string;
+};
+
+export type AutomationDeleteRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Revision to delete. Running conversation and all existing resource changes are retained.
+     */
+    expected_revision?: number;
+};
+
+export type AutomationRunRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Idempotency key: preserve this exact ID after a network failure; never replay a trimmed old receipt.
+     */
+    request_id?: string;
+};
+
+export type AutomationUpdateRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Pause future scheduled runs without stopping an existing run.
+     */
+    enabled?: boolean;
+    /**
+     * Revision read by the editor. Stale replacement returns 409; existing execution uses its original snapshot.
+     */
+    expected_revision?: number;
+    /**
+     * Agent uses the selected model and tools; reminder only delivers a notification.
+     */
+    kind?: 'agent' | 'reminder';
+    /**
+     * Total job deadline across execution segments, in seconds; timeout stops this conversation without replaying writes.
+     */
+    max_runtime_seconds?: number;
+    /**
+     * Notify after failed, interrupted or needs-attention execution.
+     */
+    notify_on_failure?: boolean;
+    /**
+     * Notify after successful agent execution; reminders always notify.
+     */
+    notify_on_success?: boolean;
+    /**
+     * Required for agent runs. Current account/resource/MCP permissions are always rechecked; a policy requiring human review can pause execution.
+     */
+    options?: AssistantOptions;
+    /**
+     * Instruction for agent runs, or the body of a pure reminder.
+     */
+    prompt?: string;
+    /**
+     * Exactly one validated recurrence; no arbitrary cron or code.
+     */
+    schedule?: AutomationSchedule;
+    /**
+     * IANA timezone, independent of the server/browser timezone.
+     */
+    timezone?: string;
+    /**
+     * Private display name.
+     */
+    title?: string;
+};
+
+export type AutomationRun = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Configuration revision frozen at claim time.
+     */
+    automation_revision?: number;
+    /**
+     * Private conversation containing complete model/tool results, or empty for a pure reminder/start failure.
+     */
+    conversation_id?: string;
+    /**
+     * Safe user-facing explanation; detailed model/tool diagnostics remain in the private conversation.
+     */
+    error?: string;
+    /**
+     * Stable safe failure category, never raw upstream credentials/content.
+     */
+    error_code?: string;
+    /**
+     * Terminal receipt time; null while running.
+     */
+    finished?: string | null;
+    /**
+     * Durable receipt UUID, never replayed automatically.
+     */
+    id?: string;
+    /**
+     * none, sent, failed or unknown; delivery errors do not replay the agent.
+     */
+    notification_status?: string;
+    /**
+     * Execution parameter snapshot; not a permission grant.
+     */
+    options?: AssistantOptions;
+    /**
+     * Prompt fingerprint; the original agent prompt is preserved in the linked conversation.
+     */
+    prompt_sha256?: string;
+    /**
+     * Original due slot in UTC; missed slots coalesce rather than queue.
+     */
+    scheduled_for?: string;
+    /**
+     * Time the durable claim was committed.
+     */
+    started?: string;
+    /**
+     * interrupted means outcome may be unknown; inspect conversation before manual retry.
+     */
+    status?: 'running' | 'succeeded' | 'failed' | 'interrupted' | 'canceled' | 'needs_attention';
+    /**
+     * How this execution was admitted.
+     */
+    trigger?: 'schedule' | 'manual';
+};
+
+export type AutomationSchedule = {
+    /**
+     * RFC3339 absolute instant for once only.
+     */
+    at?: string;
+    /**
+     * Monthly/yearly day, 1..31. Months without the date are skipped.
+     */
+    day?: number;
+    /**
+     * Interval recurrence, 1..525600 minutes. Missed slots coalesce into one execution.
+     */
+    interval_minutes?: number;
+    /**
+     * Civil-time recurrence; missing monthly/yearly dates and DST gaps are skipped, never shifted.
+     */
+    kind?: 'once' | 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'yearly' | 'interval';
+    /**
+     * Yearly month, 1..12.
+     */
+    month?: number;
+    /**
+     * Local HH:mm in the automation timezone for civil-time recurrence.
+     */
+    time?: string;
+    /**
+     * Weekly recurrence only: Sunday=0 through Saturday=6.
+     */
+    weekdays?: Array<number> | null;
+};
+
+export type AutomationSpec = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Pause future scheduled runs without stopping an existing run.
+     */
+    enabled?: boolean;
+    /**
+     * Agent uses the selected model and tools; reminder only delivers a notification.
+     */
+    kind?: 'agent' | 'reminder';
+    /**
+     * Total job deadline across execution segments, in seconds; timeout stops this conversation without replaying writes.
+     */
+    max_runtime_seconds?: number;
+    /**
+     * Notify after failed, interrupted or needs-attention execution.
+     */
+    notify_on_failure?: boolean;
+    /**
+     * Notify after successful agent execution; reminders always notify.
+     */
+    notify_on_success?: boolean;
+    /**
+     * Required for agent runs. Current account/resource/MCP permissions are always rechecked; a policy requiring human review can pause execution.
+     */
+    options?: AssistantOptions;
+    /**
+     * Instruction for agent runs, or the body of a pure reminder.
+     */
+    prompt?: string;
+    /**
+     * Exactly one validated recurrence; no arbitrary cron or code.
+     */
+    schedule?: AutomationSchedule;
+    /**
+     * IANA timezone, independent of the server/browser timezone.
+     */
+    timezone?: string;
+    /**
+     * Private display name.
+     */
+    title?: string;
+};
+
 export type BarkDelivery = {
     /**
      * Delivery attempts including uncertain network outcomes.
@@ -1575,6 +1868,182 @@ export type ChatTurn = {
      * Additional user instructions in server acceptance order; original prompt and execution permissions are preserved.
      */
     readonly steering?: Array<SteeringInstruction> | null;
+};
+
+export type ClientNotificationTokenCreateRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * User-visible device label without control characters.
+     */
+    device_name?: string;
+    /**
+     * Persistent random installation UUID; grouping metadata only, never authentication proof.
+     */
+    installation_id?: string;
+};
+
+export type ClientNotificationCounts = {
+    /**
+     * Open personal deadlines from generated_at inclusive to horizon_end exclusive.
+     */
+    due_in_window?: number;
+    /**
+     * Open personal tasks with an actual deadline before generated_at.
+     */
+    overdue?: number;
+    personal_open?: number;
+    /**
+     * Full currently authorized unread count, independent of the capped metadata list.
+     */
+    unread_notifications?: number;
+    /**
+     * Open personal start/end points or explicit all-day spans in the window. May overlap deadline categories.
+     */
+    upcoming?: number;
+};
+
+export type ClientNotificationGrantBody = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Independent 30-day grant. Revoking the originating browser session does not revoke this grant.
+     */
+    expires_at?: string;
+    /**
+     * Always client:notifications_snapshot, one read-only metadata endpoint.
+     */
+    scope?: string;
+    server_time?: string;
+    /**
+     * Notification-only bearer secret, returned once; never a web login or refresh token.
+     */
+    token?: string;
+    /**
+     * Revoke through the existing human API-token management endpoint.
+     */
+    token_id?: number;
+    user_id?: number;
+};
+
+export type ClientNotificationReminder = {
+    /**
+     * Stable reminder identity. Deduplicate by key plus trigger_at, not key alone.
+     */
+    key?: string;
+    project_id?: number;
+    /**
+     * Explicit saved reminder or optional default start/deadline notification; trigger_at remains the actual instant.
+     */
+    source?: 'explicit' | 'start' | 'due';
+    task_id?: number;
+    /**
+     * Task version hint for replacing scheduled notifications.
+     */
+    task_updated_at?: string;
+    title?: string;
+    /**
+     * Actual current stored or projected routine-period reminder instant.
+     */
+    trigger_at?: string;
+};
+
+export type ClientNotificationSnapshot = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    counts?: ClientNotificationCounts;
+    generated_at?: string;
+    /**
+     * Exclusive seven-day scheduling horizon.
+     */
+    horizon_end?: string;
+    /**
+     * Latest currently visible persisted notification ID, including already-read rows; baseline only, never mark-read.
+     */
+    newest_notification_id?: number;
+    notifications?: Array<ClientUnreadNotification> | null;
+    notifications_complete?: boolean;
+    reminders?: Array<ClientNotificationReminder> | null;
+    /**
+     * False means omitted reminders must not cancel previously scheduled reminder alarms.
+     */
+    reminders_complete?: boolean;
+    schema_version?: number;
+    tasks?: Array<ClientNotificationTask> | null;
+    /**
+     * False means omitted tasks must not cancel previously scheduled task alarms.
+     */
+    tasks_complete?: boolean;
+    timezone?: string;
+    user_id?: number;
+    /**
+     * Snapshot authorization freshness, at most 24 hours and no later than token expiry.
+     */
+    valid_until?: string;
+};
+
+export type ClientNotificationTask = {
+    all_day?: boolean;
+    /**
+     * Explicit exclusive civil date.
+     */
+    all_day_end?: string;
+    /**
+     * Explicit inclusive civil date, unchanged across timezones.
+     */
+    all_day_start?: string;
+    /**
+     * Independent stored deadline, null when unset.
+     */
+    due_at?: string | null;
+    /**
+     * Stored end instant, null when unset; never treated as a deadline.
+     */
+    end_at?: string | null;
+    /**
+     * Existing task ID for an authenticated deep link.
+     */
+    id?: number;
+    project_id?: number;
+    /**
+     * Stored start instant, null when unset.
+     */
+    start_at?: string | null;
+    /**
+     * At most 100 Unicode characters of the title; open the existing task for the full text.
+     */
+    title?: string;
+    updated_at?: string;
+};
+
+export type ClientUnreadNotification = {
+    created_at?: string;
+    /**
+     * Stable persisted notification ID, never a task ID.
+     */
+    id?: number;
+    /**
+     * Event type only; raw event JSON and comment text are never returned.
+     */
+    name?: string;
+    /**
+     * 0 for account-scoped notifications; otherwise a currently readable project.
+     */
+    project_id?: number;
+    /**
+     * Optional verified reminder identity, only for task.reminder events; absent on legacy or oversized payloads.
+     */
+    reminder_key?: string;
+    /**
+     * Optional matching actual reminder instant. Silence only if this exact event was already delivered locally.
+     */
+    reminder_trigger_at?: string;
 };
 
 export type ColumnMapping = {
@@ -2581,7 +3050,11 @@ export type InstanceUserUsage = {
      */
     ai_attachment_bytes: number;
     /**
-     * Sum of independent AI encrypted conversation, legacy attachment and settings file lengths. A lower bound when ai_scan_complete is false.
+     * Actual length of encrypted automation definitions and bounded execution receipts, without decrypting their content.
+     */
+    ai_automation_bytes: number;
+    /**
+     * Sum of independent AI encrypted conversation, legacy attachment, settings and automation file lengths. A lower bound when ai_scan_complete is false.
      */
     ai_bytes: number;
     /**
@@ -3700,6 +4173,30 @@ export type PaginatedAsterNote = {
      */
     readonly $schema?: string;
     items?: Array<AsterNote> | null;
+    page?: number;
+    per_page?: number;
+    total?: number;
+    total_pages?: number;
+};
+
+export type PaginatedAutomation = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    items?: Array<Automation> | null;
+    page?: number;
+    per_page?: number;
+    total?: number;
+    total_pages?: number;
+};
+
+export type PaginatedAutomationRun = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    items?: Array<AutomationRun> | null;
     page?: number;
     per_page?: number;
     total?: number;
@@ -5384,13 +5881,13 @@ export type RunInput = {
      */
     readonly $schema?: string;
     /**
-     * Allow task and personal-note deletion for this request, only in write mode; note deletion always needs human review.
+     * Allow task and personal-note deletion for this request, only in write mode; approval policy and existing resource permissions still apply.
      */
     allow_delete?: boolean;
     /**
-     * smart reviews bulk/destructive/notification actions; review checks all writes; auto skips ordinary bulk review but still reviews destructive and notification actions.
+     * smart reviews bulk/destructive/notification actions; review checks all writes; auto skips ordinary bulk review; unattended skips human approval for prepared writes within all existing permissions and scopes.
      */
-    approval?: 'smart' | 'review' | 'auto';
+    approval?: 'smart' | 'review' | 'auto' | 'unattended';
     /**
      * IDs of files already uploaded to this conversation. Images require an image-capable model.
      */
@@ -6048,7 +6545,7 @@ export type StorageCategory = {
     cleanable: boolean;
     count: number;
     /**
-     * Mutually exclusive category: images, video, audio, documents, other, trash, previews, conversations, legacy_attachments or settings.
+     * Mutually exclusive category: images, video, audio, documents, other, trash, previews, conversations, legacy_attachments, settings or automations.
      */
     id: string;
 };
@@ -6299,6 +6796,10 @@ export type StorageSummary = {
      */
     readonly $schema?: string;
     as_of: string;
+    /**
+     * Protected encrypted automation definitions and bounded run receipts, managed in Automations.
+     */
+    automation_bytes: number;
     categories: Array<StorageCategory> | null;
     /**
      * False means measured bytes are a lower bound, never proof of zero usage.
@@ -8842,6 +9343,208 @@ export type AuthorizeResponseWritable = {
     state?: string;
 };
 
+export type AutomationWritable = {
+    /**
+     * Pause future scheduled runs without stopping an existing run.
+     */
+    enabled?: boolean;
+    /**
+     * Agent uses the selected model and tools; reminder only delivers a notification.
+     */
+    kind?: 'agent' | 'reminder';
+    /**
+     * Total job deadline across execution segments, in seconds; timeout stops this conversation without replaying writes.
+     */
+    max_runtime_seconds?: number;
+    /**
+     * Notify after failed, interrupted or needs-attention execution.
+     */
+    notify_on_failure?: boolean;
+    /**
+     * Notify after successful agent execution; reminders always notify.
+     */
+    notify_on_success?: boolean;
+    /**
+     * Required for agent runs. Current account/resource/MCP permissions are always rechecked; a policy requiring human review can pause execution.
+     */
+    options?: AssistantOptions;
+    /**
+     * Instruction for agent runs, or the body of a pure reminder.
+     */
+    prompt?: string;
+    /**
+     * Exactly one validated recurrence; no arbitrary cron or code.
+     */
+    schedule?: AutomationSchedule;
+    /**
+     * IANA timezone, independent of the server/browser timezone.
+     */
+    timezone?: string;
+    /**
+     * Private display name.
+     */
+    title?: string;
+};
+
+export type AutomationDeleteRequestWritable = {
+    /**
+     * Revision to delete. Running conversation and all existing resource changes are retained.
+     */
+    expected_revision?: number;
+};
+
+export type AutomationRunRequestWritable = {
+    /**
+     * Idempotency key: preserve this exact ID after a network failure; never replay a trimmed old receipt.
+     */
+    request_id?: string;
+};
+
+export type AutomationUpdateRequestWritable = {
+    /**
+     * Pause future scheduled runs without stopping an existing run.
+     */
+    enabled?: boolean;
+    /**
+     * Revision read by the editor. Stale replacement returns 409; existing execution uses its original snapshot.
+     */
+    expected_revision?: number;
+    /**
+     * Agent uses the selected model and tools; reminder only delivers a notification.
+     */
+    kind?: 'agent' | 'reminder';
+    /**
+     * Total job deadline across execution segments, in seconds; timeout stops this conversation without replaying writes.
+     */
+    max_runtime_seconds?: number;
+    /**
+     * Notify after failed, interrupted or needs-attention execution.
+     */
+    notify_on_failure?: boolean;
+    /**
+     * Notify after successful agent execution; reminders always notify.
+     */
+    notify_on_success?: boolean;
+    /**
+     * Required for agent runs. Current account/resource/MCP permissions are always rechecked; a policy requiring human review can pause execution.
+     */
+    options?: AssistantOptions;
+    /**
+     * Instruction for agent runs, or the body of a pure reminder.
+     */
+    prompt?: string;
+    /**
+     * Exactly one validated recurrence; no arbitrary cron or code.
+     */
+    schedule?: AutomationSchedule;
+    /**
+     * IANA timezone, independent of the server/browser timezone.
+     */
+    timezone?: string;
+    /**
+     * Private display name.
+     */
+    title?: string;
+};
+
+export type AutomationRunWritable = {
+    /**
+     * Configuration revision frozen at claim time.
+     */
+    automation_revision?: number;
+    /**
+     * Private conversation containing complete model/tool results, or empty for a pure reminder/start failure.
+     */
+    conversation_id?: string;
+    /**
+     * Safe user-facing explanation; detailed model/tool diagnostics remain in the private conversation.
+     */
+    error?: string;
+    /**
+     * Stable safe failure category, never raw upstream credentials/content.
+     */
+    error_code?: string;
+    /**
+     * Terminal receipt time; null while running.
+     */
+    finished?: string | null;
+    /**
+     * Durable receipt UUID, never replayed automatically.
+     */
+    id?: string;
+    /**
+     * none, sent, failed or unknown; delivery errors do not replay the agent.
+     */
+    notification_status?: string;
+    /**
+     * Execution parameter snapshot; not a permission grant.
+     */
+    options?: AssistantOptions;
+    /**
+     * Prompt fingerprint; the original agent prompt is preserved in the linked conversation.
+     */
+    prompt_sha256?: string;
+    /**
+     * Original due slot in UTC; missed slots coalesce rather than queue.
+     */
+    scheduled_for?: string;
+    /**
+     * Time the durable claim was committed.
+     */
+    started?: string;
+    /**
+     * interrupted means outcome may be unknown; inspect conversation before manual retry.
+     */
+    status?: 'running' | 'succeeded' | 'failed' | 'interrupted' | 'canceled' | 'needs_attention';
+    /**
+     * How this execution was admitted.
+     */
+    trigger?: 'schedule' | 'manual';
+};
+
+export type AutomationSpecWritable = {
+    /**
+     * Pause future scheduled runs without stopping an existing run.
+     */
+    enabled?: boolean;
+    /**
+     * Agent uses the selected model and tools; reminder only delivers a notification.
+     */
+    kind?: 'agent' | 'reminder';
+    /**
+     * Total job deadline across execution segments, in seconds; timeout stops this conversation without replaying writes.
+     */
+    max_runtime_seconds?: number;
+    /**
+     * Notify after failed, interrupted or needs-attention execution.
+     */
+    notify_on_failure?: boolean;
+    /**
+     * Notify after successful agent execution; reminders always notify.
+     */
+    notify_on_success?: boolean;
+    /**
+     * Required for agent runs. Current account/resource/MCP permissions are always rechecked; a policy requiring human review can pause execution.
+     */
+    options?: AssistantOptions;
+    /**
+     * Instruction for agent runs, or the body of a pure reminder.
+     */
+    prompt?: string;
+    /**
+     * Exactly one validated recurrence; no arbitrary cron or code.
+     */
+    schedule?: AutomationSchedule;
+    /**
+     * IANA timezone, independent of the server/browser timezone.
+     */
+    timezone?: string;
+    /**
+     * Private display name.
+     */
+    title?: string;
+};
+
 export type BarkSettingsWritable = {
     /**
      * Write-only device key. Empty preserves it only for the same server.
@@ -9058,6 +9761,70 @@ export type ChatDriveInputBodyWritable = {
 
 export type ChatTurnWritable = {
     [key: string]: never;
+};
+
+export type ClientNotificationTokenCreateRequestWritable = {
+    /**
+     * User-visible device label without control characters.
+     */
+    device_name?: string;
+    /**
+     * Persistent random installation UUID; grouping metadata only, never authentication proof.
+     */
+    installation_id?: string;
+};
+
+export type ClientNotificationGrantBodyWritable = {
+    /**
+     * Independent 30-day grant. Revoking the originating browser session does not revoke this grant.
+     */
+    expires_at?: string;
+    /**
+     * Always client:notifications_snapshot, one read-only metadata endpoint.
+     */
+    scope?: string;
+    server_time?: string;
+    /**
+     * Notification-only bearer secret, returned once; never a web login or refresh token.
+     */
+    token?: string;
+    /**
+     * Revoke through the existing human API-token management endpoint.
+     */
+    token_id?: number;
+    user_id?: number;
+};
+
+export type ClientNotificationSnapshotWritable = {
+    counts?: ClientNotificationCounts;
+    generated_at?: string;
+    /**
+     * Exclusive seven-day scheduling horizon.
+     */
+    horizon_end?: string;
+    /**
+     * Latest currently visible persisted notification ID, including already-read rows; baseline only, never mark-read.
+     */
+    newest_notification_id?: number;
+    notifications?: Array<ClientUnreadNotification> | null;
+    notifications_complete?: boolean;
+    reminders?: Array<ClientNotificationReminder> | null;
+    /**
+     * False means omitted reminders must not cancel previously scheduled reminder alarms.
+     */
+    reminders_complete?: boolean;
+    schema_version?: number;
+    tasks?: Array<ClientNotificationTask> | null;
+    /**
+     * False means omitted tasks must not cancel previously scheduled task alarms.
+     */
+    tasks_complete?: boolean;
+    timezone?: string;
+    user_id?: number;
+    /**
+     * Snapshot authorization freshness, at most 24 hours and no later than token expiry.
+     */
+    valid_until?: string;
 };
 
 export type CompassRevisionsRestoreRequestWritable = {
@@ -9922,6 +10689,22 @@ export type PaginatedAsterNoteWritable = {
     total_pages?: number;
 };
 
+export type PaginatedAutomationWritable = {
+    items?: Array<AutomationWritable> | null;
+    page?: number;
+    per_page?: number;
+    total?: number;
+    total_pages?: number;
+};
+
+export type PaginatedAutomationRunWritable = {
+    items?: Array<AutomationRunWritable> | null;
+    page?: number;
+    per_page?: number;
+    total?: number;
+    total_pages?: number;
+};
+
 export type PaginatedBotUserWritable = {
     items?: Array<BotUserWritable> | null;
     page?: number;
@@ -10731,13 +11514,13 @@ export type ReviewInputWritable = {
 
 export type RunInputWritable = {
     /**
-     * Allow task and personal-note deletion for this request, only in write mode; note deletion always needs human review.
+     * Allow task and personal-note deletion for this request, only in write mode; approval policy and existing resource permissions still apply.
      */
     allow_delete?: boolean;
     /**
-     * smart reviews bulk/destructive/notification actions; review checks all writes; auto skips ordinary bulk review but still reviews destructive and notification actions.
+     * smart reviews bulk/destructive/notification actions; review checks all writes; auto skips ordinary bulk review; unattended skips human approval for prepared writes within all existing permissions and scopes.
      */
-    approval?: 'smart' | 'review' | 'auto';
+    approval?: 'smart' | 'review' | 'auto' | 'unattended';
     /**
      * IDs of files already uploaded to this conversation. Images require an image-capable model.
      */
@@ -11127,6 +11910,10 @@ export type StoragePreviewWritable = {
 
 export type StorageSummaryWritable = {
     as_of: string;
+    /**
+     * Protected encrypted automation definitions and bounded run receipts, managed in Automations.
+     */
+    automation_bytes: number;
     categories: Array<StorageCategory> | null;
     /**
      * False means measured bytes are a lower bound, never proof of zero usage.
@@ -12573,6 +13360,266 @@ export type AdminUsersPatchStatusResponses = {
 
 export type AdminUsersPatchStatusResponse = AdminUsersPatchStatusResponses[keyof AdminUsersPatchStatusResponses];
 
+export type AutomationListData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * 1-based page number.
+         */
+        page?: number;
+        /**
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
+         */
+        per_page?: number;
+        /**
+         * Search query; filters the list to items matching this string.
+         */
+        q?: string;
+    };
+    url: '/ai/automations';
+};
+
+export type AutomationListErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type AutomationListError = AutomationListErrors[keyof AutomationListErrors];
+
+export type AutomationListResponses = {
+    /**
+     * OK
+     */
+    200: PaginatedAutomation;
+};
+
+export type AutomationListResponse = AutomationListResponses[keyof AutomationListResponses];
+
+export type AutomationCreateData = {
+    body: AutomationSpecWritable;
+    path?: never;
+    query?: never;
+    url: '/ai/automations';
+};
+
+export type AutomationCreateErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type AutomationCreateError = AutomationCreateErrors[keyof AutomationCreateErrors];
+
+export type AutomationCreateResponses = {
+    /**
+     * Created
+     */
+    201: Automation;
+};
+
+export type AutomationCreateResponse = AutomationCreateResponses[keyof AutomationCreateResponses];
+
+export type AutomationDeleteData = {
+    body: AutomationDeleteRequestWritable;
+    path: {
+        /**
+         * Automation UUID belonging only to the signed-in human account.
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/ai/automations/{id}';
+};
+
+export type AutomationDeleteErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type AutomationDeleteError = AutomationDeleteErrors[keyof AutomationDeleteErrors];
+
+export type AutomationDeleteResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type AutomationDeleteResponse = AutomationDeleteResponses[keyof AutomationDeleteResponses];
+
+export type AutomationReadData = {
+    body?: never;
+    path: {
+        /**
+         * Automation UUID belonging only to the signed-in human account.
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/ai/automations/{id}';
+};
+
+export type AutomationReadErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type AutomationReadError = AutomationReadErrors[keyof AutomationReadErrors];
+
+export type AutomationReadResponses = {
+    /**
+     * OK
+     */
+    200: Automation;
+};
+
+export type AutomationReadResponse = AutomationReadResponses[keyof AutomationReadResponses];
+
+export type AutomationUpdateData = {
+    body: AutomationUpdateRequestWritable;
+    path: {
+        /**
+         * Automation UUID belonging only to the signed-in human account.
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/ai/automations/{id}';
+};
+
+export type AutomationUpdateErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type AutomationUpdateError = AutomationUpdateErrors[keyof AutomationUpdateErrors];
+
+export type AutomationUpdateResponses = {
+    /**
+     * OK
+     */
+    200: Automation;
+};
+
+export type AutomationUpdateResponse = AutomationUpdateResponses[keyof AutomationUpdateResponses];
+
+export type AutomationRunData = {
+    body: AutomationRunRequestWritable;
+    path: {
+        /**
+         * Automation UUID belonging only to the signed-in human account.
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/ai/automations/{id}/run';
+};
+
+export type AutomationRunErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type AutomationRunError = AutomationRunErrors[keyof AutomationRunErrors];
+
+export type AutomationRunResponses = {
+    /**
+     * Created
+     */
+    201: AutomationRun;
+};
+
+export type AutomationRunResponse = AutomationRunResponses[keyof AutomationRunResponses];
+
+export type AutomationRunsData = {
+    body?: never;
+    path: {
+        /**
+         * Automation UUID belonging only to the signed-in human account.
+         */
+        id: string;
+    };
+    query?: {
+        /**
+         * 1-based page number.
+         */
+        page?: number;
+        /**
+         * Items per page. Defaults to the instance's configured maximum (service.maxitemsperpage, reported as max_items_per_page by /info) and is silently capped at it; asking for more is not an error.
+         */
+        per_page?: number;
+        /**
+         * Search query; filters the list to items matching this string.
+         */
+        q?: string;
+    };
+    url: '/ai/automations/{id}/runs';
+};
+
+export type AutomationRunsErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type AutomationRunsError = AutomationRunsErrors[keyof AutomationRunsErrors];
+
+export type AutomationRunsResponses = {
+    /**
+     * OK
+     */
+    200: PaginatedAutomationRun;
+};
+
+export type AutomationRunsResponse = AutomationRunsResponses[keyof AutomationRunsResponses];
+
+export type AutomationRunReadData = {
+    body?: never;
+    path: {
+        /**
+         * Automation UUID belonging only to the signed-in human account.
+         */
+        id: string;
+        /**
+         * Receipt UUID within this account's automation.
+         */
+        run: string;
+    };
+    query?: never;
+    url: '/ai/automations/{id}/runs/{run}';
+};
+
+export type AutomationRunReadErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type AutomationRunReadError = AutomationRunReadErrors[keyof AutomationRunReadErrors];
+
+export type AutomationRunReadResponses = {
+    /**
+     * OK
+     */
+    200: AutomationRun;
+};
+
+export type AutomationRunReadResponse = AutomationRunReadResponses[keyof AutomationRunReadResponses];
+
 export type TcyAiCleanupData = {
     body: TcyAiCleanupRequestWritable;
     path?: never;
@@ -13616,6 +14663,31 @@ export type BackgroundsUnsplashSearchResponses = {
 };
 
 export type BackgroundsUnsplashSearchResponse = BackgroundsUnsplashSearchResponses[keyof BackgroundsUnsplashSearchResponses];
+
+export type ClientNotificationsSnapshotData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/client/notifications/snapshot';
+};
+
+export type ClientNotificationsSnapshotErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type ClientNotificationsSnapshotError = ClientNotificationsSnapshotErrors[keyof ClientNotificationsSnapshotErrors];
+
+export type ClientNotificationsSnapshotResponses = {
+    /**
+     * OK
+     */
+    200: ClientNotificationSnapshot;
+};
+
+export type ClientNotificationsSnapshotResponse = ClientNotificationsSnapshotResponses[keyof ClientNotificationsSnapshotResponses];
 
 export type CompassEntriesDeleteData = {
     body?: never;
@@ -21230,6 +22302,31 @@ export type BotsUpdateResponses = {
 };
 
 export type BotsUpdateResponse = BotsUpdateResponses[keyof BotsUpdateResponses];
+
+export type ClientNotificationTokenCreateData = {
+    body: ClientNotificationTokenCreateRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/user/client/notifications/token';
+};
+
+export type ClientNotificationTokenCreateErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type ClientNotificationTokenCreateError = ClientNotificationTokenCreateErrors[keyof ClientNotificationTokenCreateErrors];
+
+export type ClientNotificationTokenCreateResponses = {
+    /**
+     * Created
+     */
+    201: ClientNotificationGrantBody;
+};
+
+export type ClientNotificationTokenCreateResponse = ClientNotificationTokenCreateResponses[keyof ClientNotificationTokenCreateResponses];
 
 export type AuthConfirmEmailData = {
     body: EmailConfirmWritable;

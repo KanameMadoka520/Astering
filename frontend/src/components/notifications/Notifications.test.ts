@@ -8,8 +8,9 @@ import {QueryClient, VueQueryPlugin} from '@tanstack/vue-query'
 import en from '@/i18n/lang/en.json'
 import testid from '@/directives/testid'
 import XButton from '@/components/input/Button.vue'
+import {OPEN_NOTIFICATION_INBOX} from '@/helpers/nativeNotificationTarget'
 
-const sdk = vi.hoisted(() => ({notificationsList: vi.fn(), notificationsDeleteAll: vi.fn()}))
+const sdk = vi.hoisted(() => ({notificationsList: vi.fn(), notificationsDeleteAll: vi.fn(), notificationsMarkRead: vi.fn()}))
 vi.mock('@/client/generated', async original => ({...await original<typeof import('@/client/generated')>(), ...sdk}))
 vi.mock('@/message', () => ({error: vi.fn(), success: vi.fn()}))
 vi.mock('@/composables/useWebSocket', async () => {
@@ -73,6 +74,36 @@ afterEach(() => {
 	wrapper = undefined
 	vi.unstubAllGlobals()
 	document.body.innerHTML = ''
+})
+
+it('opens the existing inbox from a validated native notification without navigating', async () => {
+	const view = await setup()
+	await view.find('.trigger-button').trigger('click')
+	expect(view.find('.notifications-list').exists()).toBe(false)
+	const go = vi.spyOn(view.vm.$router, 'go')
+	window.dispatchEvent(new Event(OPEN_NOTIFICATION_INBOX))
+	await flushPromises()
+	expect(view.find('.notifications-list').exists()).toBe(true)
+	expect(document.activeElement).toBe(view.find('.notifications-list').element)
+	expect(go).not.toHaveBeenCalled()
+})
+
+it('keeps the current task page mounted when a notification points to the same task', async () => {
+	sdk.notificationsList.mockResolvedValue({data: {
+		items: [{id: 1, name: 'task.assigned', notification: {task: {id: 7}}}],
+		page: 1, per_page: 20, total: 1, total_pages: 1,
+	}})
+	sdk.notificationsMarkRead.mockResolvedValue({data: {read_at: '2026-11-16T12:00:00Z'}})
+	const view = await setup()
+	const router = view.vm.$router
+	router.addRoute({path: '/tasks/:id', name: 'task.detail', component: {render: () => null}})
+	await router.push({name: 'task.detail', params: {id: 7}})
+	const go = vi.spyOn(router, 'go')
+	await view.find('.single-notification').trigger('click')
+	await flushPromises()
+	expect(router.currentRoute.value.fullPath).toBe('/tasks/7')
+	expect(go).not.toHaveBeenCalled()
+	expect(sdk.notificationsMarkRead).toHaveBeenCalledWith(expect.objectContaining({path: {notificationid: 1}}))
 })
 
 describe('Notifications clearing', () => {

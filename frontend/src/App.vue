@@ -83,6 +83,7 @@ import {useConfirmDeletionMutation} from '@/client/queries/accountDeletion'
 import {getSensitiveParam} from '@/helpers/sensitiveQueryParams'
 import {getToken, getTokenSessionID} from '@/helpers/auth'
 import {onNativeAndroidEvent} from '@/helpers/nativeAndroid'
+import {nativeNotificationAction, OPEN_NOTIFICATION_INBOX} from '@/helpers/nativeNotificationTarget'
 
 const COLOR_SCHEME_CACHE_KEY = 'vikunja-color-scheme'
 
@@ -122,6 +123,17 @@ const keyboardShortcutsActive = computed(() => baseStore.keyboardShortcutsActive
 
 const router = useRouter()
 onBeforeUnmount(onNativeAndroidEvent(event => {
+	if (event.event === 'openNotification') {
+		if (!authStore.authUser) return
+		const target = nativeNotificationAction(event, {
+			userID: authStore.info?.id ?? 0,
+			sid: getTokenSessionID(getToken()) ?? '',
+			origin: window.location.origin,
+		})
+		if (target === 'inbox') window.dispatchEvent(new Event(OPEN_NOTIFICATION_INBOX))
+		else if (target) void router.push(target).catch(() => {})
+		return
+	}
 	if (event.event !== 'openNote' || !authStore.authUser || event.user_id !== authStore.info?.id ||
 		event.sid !== getTokenSessionID(getToken()) || !Number.isSafeInteger(event.note_id) || event.note_id <= 0) return
 	void router.push({name: 'notes.detail', params: {noteId: event.note_id}}).catch(() => {})

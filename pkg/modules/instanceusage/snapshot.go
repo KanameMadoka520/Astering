@@ -335,6 +335,7 @@ func addCounts(a *UsageCounts, b UsageCounts) {
 	a.AIConversationBytes += b.AIConversationBytes
 	a.AIAttachmentBytes += b.AIAttachmentBytes
 	a.AISettingsBytes += b.AISettingsBytes
+	a.AIAutomationBytes += b.AIAutomationBytes
 	a.AIBytes += b.AIBytes
 	a.TotalStorageBytes += b.TotalStorageBytes
 }

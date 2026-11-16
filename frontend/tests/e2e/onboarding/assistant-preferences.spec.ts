@@ -90,6 +90,63 @@ for (const width of [1440, 390]) {
 	})
 }
 
+for (const width of [1440, 390]) {
+	test(`unattended permissions persist only when explicitly chosen at ${width}px`, async ({
+		authenticatedPage: page,
+		apiContext,
+		userToken,
+	}) => {
+		await page.setViewportSize({width, height: 900})
+		await page.goto('/ai')
+		await page.locator('.configuration-toggle:visible').click()
+		const configuration = page.getByRole('dialog', {name: 'Chat configuration', exact: true})
+		const open = configuration.getByRole('button', {name: 'Permissions and execution', exact: true})
+		const panel = page.getByRole('dialog', {name: 'Scenarios & preferences'})
+		await open.click()
+		await panel.getByRole('button', {name: /Daily assistant Create and update/}).click()
+		const policy = panel.getByLabel('Operation review policy')
+		await expect(policy).toHaveValue('smart')
+		await policy.selectOption('unattended')
+		await expect(panel).toContainText('Authorized writes run without manual review')
+		await expect(panel).toContainText('selected MCP connection permissions still apply')
+		await expect(panel.getByLabel('Allow task or personal note deletion for this request')).not.toBeChecked()
+		await expect(panel.getByRole('combobox', {name: 'Compass', exact: true})).toHaveValue('off')
+		await expect(panel.getByRole('combobox', {name: 'Personal notes', exact: true})).toHaveValue('off')
+		await panel.getByLabel('Save a personal template', {exact: true}).fill('Unattended routine')
+		await panel.getByRole('button', {name: 'Save as new template'}).click()
+		await expect(panel.getByLabel('My templates')).toContainText('Unattended routine')
+		await panel.getByRole('button', {name: 'Make my default'}).click()
+		await expect(panel.getByLabel('My templates')).toContainText('Unattended routine · Default')
+		await panel.getByRole('button', {name: 'Use for upcoming messages'}).click()
+		await expect(panel).not.toBeVisible()
+		await expect(page.locator('.composer-hint')).toContainText('Execute · Unattended')
+
+		const response = await apiContext.get(`${api}/ai/preferences`, {
+			headers: {Authorization: `Bearer ${userToken}`},
+		})
+		const stored = await response.json() as AssistantPreferences
+		expect(stored.profiles?.find(profile => profile.name === 'Unattended routine')?.options).toMatchObject({
+			approval: 'unattended',
+			mode: 'write',
+			allow_delete: false,
+			mcp_server_ids: [],
+			tool_modules: {
+				compass: 'off',
+				notes: 'off',
+			},
+		})
+		await page.reload()
+		await page.locator('.configuration-toggle:visible').click()
+		await open.click()
+		await expect(policy).toHaveValue('unattended')
+		await panel.getByRole('button', {name: /Daily assistant Create and update/}).click()
+		await expect(policy).toHaveValue('smart')
+		await page.keyboard.press('Escape')
+		await expect(page.locator('.composer-hint')).toContainText('Execute · Unattended')
+		expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+	})
+}
+
 test('a stale template save retains edits, and its retry reloads and keeps the other window\'s change', async ({authenticatedPage: page, apiContext, userToken}) => {
 	await page.goto('/ai')
 	await page.getByRole('button', {name: 'Scenarios & preferences', exact: true}).click()

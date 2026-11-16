@@ -460,7 +460,7 @@ func mcpCheckPolicy(definition MCPToolDefinition, connection MCPConnection, inpu
 		return ToolFailure("MCP_WRITE_DENIED", "External writes require write mode, an enabled connection write switch, and no Astering-only project restriction.")
 	}
 	if definition.Destructive && !connection.AllowDelete {
-		return ToolFailure("MCP_DELETE_DENIED", "Destructive or unknown external tools require this connection's deletion permission and a separate human review.")
+		return ToolFailure("MCP_DELETE_DENIED", "Destructive or unknown external tools require this connection's deletion permission; the run's approval policy is an independent requirement.")
 	}
 	return nil
 }
@@ -492,7 +492,7 @@ func (runtime *MCPRuntime) Prepare(ctx context.Context, serverID, name string, r
 			continue
 		}
 		if definition.Ticket != ticket {
-			return MCPPreparedOperation{}, ToolFailure("MCP_DEFINITION_CHANGED", "The remote tool changed. Discover its current contract and review it again.")
+			return MCPPreparedOperation{}, ToolFailure("MCP_DEFINITION_CHANGED", "The remote tool changed. Discover its current contract and prepare a fresh operation under the current approval policy.")
 		}
 		if err = mcpCheckPolicy(definition, connection, input); err != nil {
 			return MCPPreparedOperation{}, err
@@ -550,7 +550,7 @@ func (runtime *MCPRuntime) Call(ctx context.Context, prepared MCPPreparedOperati
 		return "", err
 	}
 	if current != prepared {
-		return "", ToolFailure("MCP_REVIEW_REQUIRED", "The MCP proposal changed and must be reviewed again.")
+		return "", ToolFailure("MCP_REVIEW_REQUIRED", "The prepared MCP proposal changed. Prepare the exact current operation again under this run's approval policy.")
 	}
 	runtime.mu.Lock()
 	remote := runtime.remotes[prepared.ServerID]

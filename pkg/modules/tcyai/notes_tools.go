@@ -103,11 +103,11 @@ func NoteToolDefinitions(mode string, allowDelete bool) []map[string]any {
 	update["id"] = id
 	update["expected_revision"] = id
 	result = append(result,
-		tool("create_note", "创建本人私人笔记，必须明确标题；正文默认空，置顶默认false。不创建或修改原始语音转录。每次写入均需人工审核。", fields, "title"),
-		tool("update_note", "仅修改明确提供的笔记标题/Markdown正文/置顶；省略字段保留，至少提供一项变更。必须先读真实expected_revision，过期拒绝且不能擅自重试覆盖。content是整篇替换，分页未读完时不能猜测未读取部分；只增补内容用append_content（保留全文，不自动加换行），二者互斥。不改原始语音。每次需人工审核。", update, "id", "expected_revision"),
+		tool("create_note", "创建本人私人笔记，必须明确标题；正文默认空，置顶默认false。不创建或修改原始语音转录。写入遵循本轮审批策略，显式unattended可免人工点击，仍需准备并核对版本。", fields, "title"),
+		tool("update_note", "仅修改明确提供的笔记标题/Markdown正文/置顶；省略字段保留，至少提供一项变更。必须先读真实expected_revision，过期拒绝且不能擅自重试覆盖。content是整篇替换，分页未读完时不能猜测未读取部分；只增补内容用append_content（保留全文，不自动加换行），二者互斥。不改原始语音。遵循本轮审批策略，显式unattended免人工点击但不跳过准备和版本校验。", update, "id", "expected_revision"),
 	)
 	if allowDelete {
-		result = append(result, tool("delete_note", "永久删除本人指定笔记及全部原始语音文字，没有回收站。仅用户明确要求删除整个笔记时使用；必须提供刚读到的expected_revision，独立允许删除且每次人工审核。审核后正文或原始转录有变化时拒绝，必须重新确认。", map[string]any{
+		result = append(result, tool("delete_note", "永久删除本人指定笔记及全部原始语音文字，没有回收站。仅用户明确要求删除整个笔记时使用；必须提供刚读到的expected_revision，独立允许删除并遵循本轮审批策略；显式unattended免人工点击，仍校验完整预览。准备后正文或原始转录有变化时拒绝，必须重新读取。", map[string]any{
 			"id":                id,
 			"expected_revision": id,
 		}, "id", "expected_revision"))

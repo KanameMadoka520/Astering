@@ -107,7 +107,7 @@ const busy = computed(() => access.isFetching.value || (allowed.value && usage.i
 const statuses = ['all', 'active', 'email_confirmation_required', 'disabled', 'account_locked'] as const
 const roles = ['all', 'human', 'bot', 'instance_admin', 'usage_admin'] as const
 const sorts = ['projects_owned', 'projects_created_24h', 'projects_created_7d', 'tasks_owned', 'tasks_created', 'file_bytes', 'ai_bytes', 'username', 'created', 'id'] as const
-const details = ['projects_archived', 'projects_created_24h', 'projects_created_7d', 'tasks_created', 'files_uploaded', 'file_bytes', 'drive_files', 'drive_file_bytes', 'drive_trashed_files', 'drive_trashed_bytes', 'compass_spaces_owned', 'compass_entries_owned', 'ai_conversations', 'ai_conversation_bytes', 'ai_attachment_bytes', 'ai_settings_bytes'] as const
+const details = ['projects_archived', 'projects_created_24h', 'projects_created_7d', 'tasks_created', 'files_uploaded', 'file_bytes', 'drive_files', 'drive_file_bytes', 'drive_trashed_files', 'drive_trashed_bytes', 'compass_spaces_owned', 'compass_entries_owned', 'ai_conversations', 'ai_conversation_bytes', 'ai_attachment_bytes', 'ai_settings_bytes', 'ai_automation_bytes'] as const
 function number(value: number) { return new Intl.NumberFormat(locale.value).format(value) }
 function bytes(value: number) {
 	if (!value) return '0 B'

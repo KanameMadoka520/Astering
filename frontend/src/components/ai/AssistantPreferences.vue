@@ -13,6 +13,7 @@ const props = defineProps<{
 	options: AssistantOptions
 	profile: string
 	locked?: boolean
+	context?: 'conversation' | 'automation'
 }>()
 const emit = defineEmits<{close: [], apply: [options: AssistantOptions, profile: string]}>()
 const {t} = useI18n({useScope: 'global'})
@@ -188,7 +189,12 @@ onBeforeUnmount(() => {clearTimeout(displayNoteTimer); displayNoteRequest++; dia
 				@submit.prevent="apply"
 			>
 				<header>
-					<div><h2>{{ t('assistantUI.preferences') }}</h2><p>{{ t('assistantUI.nextRequest') }}</p></div><button
+					<div>
+						<h2>{{ t('assistantUI.preferences') }}</h2>
+						<p>
+							{{ t(context === 'automation' ? 'assistantUI.automationDraftHint' : 'assistantUI.nextRequest') }}
+						</p>
+					</div><button
 						type="button"
 						class="plain-button close-button"
 						:aria-label="t('misc.close')"
@@ -311,11 +317,20 @@ onBeforeUnmount(() => {clearTimeout(displayNoteTimer); displayNoteRequest++; dia
 							class="input"
 							@change="draft.mode === 'read' && (draft.allow_delete = false)"
 						><option value="read">{{ t('tcymc.text.read_only_look_up_tasks_and_suggest_changes') }}</option><option value="write">{{ t('tcymc.text.execute_allow_creation_and_changes') }}</option></select><small>{{ t('assistantUI.modeHelp') }}</small></label>
-						<label>{{ t('agent.approvalPolicy') }}<select
-							v-model="draft.approval"
-							class="input"
-							:disabled="locked || draft.mode === 'read'"
-						><option value="smart">{{ t('agent.smart') }}</option><option value="review">{{ t('agent.reviewAll') }}</option><option value="auto">{{ t('agent.auto') }}</option></select><small>{{ t(`assistantUI.approval_${draft.approval}`) }}</small></label>
+						<label>
+							{{ t('agent.approvalPolicy') }}
+							<select
+								v-model="draft.approval"
+								class="input"
+								:disabled="locked || draft.mode === 'read'"
+							>
+								<option value="smart">{{ t('agent.smart') }}</option>
+								<option value="review">{{ t('agent.reviewAll') }}</option>
+								<option value="auto">{{ t('agent.auto') }}</option>
+								<option value="unattended">{{ t('agent.unattended') }}</option>
+							</select>
+							<small>{{ t(`assistantUI.approval_${draft.approval}`) }}</small>
+						</label>
 						<label class="checkbox"><input
 							v-model="draft.allow_delete"
 							type="checkbox"
@@ -498,7 +513,7 @@ onBeforeUnmount(() => {clearTimeout(displayNoteTimer); displayNoteRequest++; dia
 						type="submit"
 						:disabled="locked || !valid || save.isPending.value"
 					>
-						{{ t('assistantUI.apply') }}
+						{{ t(context === 'automation' ? 'assistantUI.applyAutomationDraft' : 'assistantUI.apply') }}
 					</button>
 				</footer>
 			</form>

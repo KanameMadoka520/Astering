@@ -129,7 +129,9 @@ func checkAPITokenAndPutItInContext(tokenHeaderValue string, c *echo.Context, sk
 		return echo.NewHTTPError(http.StatusUnauthorized, "Unauthorized")
 	}
 
-	if !skipRouteCheck && !models.CanDoAPIRoute(c, token) {
+	// A native notification grant is a purpose-specific capability, even on
+	// validation/internal routes that ordinary API tokens may use implicitly.
+	if (models.IsClientNotificationGrant(token) || !skipRouteCheck) && !models.CanDoAPIRoute(c, token) {
 		log.Debugf("[auth] Tried authenticating with token %d but it does not have permission to do this route", token.ID)
 		return echo.NewHTTPError(http.StatusUnauthorized, "Unauthorized")
 	}

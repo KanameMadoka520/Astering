@@ -173,6 +173,7 @@ import {getDisplayName} from '@/helpers/user'
 import {useAuthStore} from '@/stores/auth'
 import {useWebSocket} from '@/composables/useWebSocket'
 import XButton from '@/components/input/Button.vue'
+import {OPEN_NOTIFICATION_INBOX} from '@/helpers/nativeNotificationTarget'
 
 const {authenticated, isAwaitingFirstConnection} = useWebSocket()
 const authStore = useAuthStore()
@@ -224,8 +225,19 @@ function closeAndRestoreFocus() {
 	trigger.value?.focus()
 }
 
-onMounted(() => document.addEventListener('click', hidePopup))
-onUnmounted(() => document.removeEventListener('click', hidePopup))
+async function openInbox() {
+	showNotifications.value = true
+	await nextTick()
+	popup.value?.focus({preventScroll: true})
+}
+onMounted(() => {
+	document.addEventListener('click', hidePopup)
+	window.addEventListener(OPEN_NOTIFICATION_INBOX, openInbox)
+})
+onUnmounted(() => {
+	document.removeEventListener('click', hidePopup)
+	window.removeEventListener(OPEN_NOTIFICATION_INBOX, openInbox)
+})
 
 function hidePopup(e: MouseEvent) {
 	// The delete question opens outside the popup; answering it is not a click away from the list.
@@ -240,7 +252,8 @@ async function to(n: NotificationRow) {
 	readMutation.mutate(n.id)
 	showNotifications.value = false
 	const failure = await router.push(n.route)
-	if (isNavigationFailure(failure, NavigationFailureType.duplicated)) router.go(0)
+	// A repeated notification may target the page already open. Its live query handles freshness.
+	if (isNavigationFailure(failure, NavigationFailureType.duplicated)) return
 }
 
 function markAllRead() { readAllMutation.mutate() }

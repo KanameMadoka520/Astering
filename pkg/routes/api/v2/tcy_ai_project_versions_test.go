@@ -111,6 +111,7 @@ func projectVersionAICall(t *testing.T, executor *aiExecution, name string, args
 	op, err := executor.prepare(context.Background(), name, raw)
 	require.NoError(t, err)
 	op.ID = uuid.NewString() // The real runner creates this before persisting a pending operation.
+	op.Approved = tcyai.NeedsReview(name, executor.input)
 	data, err := executor.execute(tcyai.WithOperation(context.Background(), &op), name, raw)
 	require.NoError(t, err)
 	var result map[string]any
@@ -119,8 +120,21 @@ func projectVersionAICall(t *testing.T, executor *aiExecution, name string, args
 }
 
 func TestAIProjectVersionsRealHTTPRestoreAndScope(t *testing.T) {
+	for _, approval := range []string{
+		"auto",
+		"unattended",
+	} {
+		t.Run(approval, func(t *testing.T) {
+			verifyAIProjectVersionRestoreScope(t, approval)
+		})
+	}
+}
+
+func verifyAIProjectVersionRestoreScope(t *testing.T, approval string) {
+	t.Helper()
 	makeExecutor := projectVersionAIExecutors(t)
 	executor := makeExecutor(1)
+	executor.input.Approval = approval
 	s := db.NewSession()
 	project := &models.Project{Title: "Agent checkpoint fixture"}
 	require.NoError(t, project.Create(s, &user.User{ID: 1}))
@@ -152,8 +166,17 @@ func TestAIProjectVersionsRealHTTPRestoreAndScope(t *testing.T) {
 	_, err = executor.prepare(context.Background(), "restore_project_version", raw)
 	requireAIBucketCode(t, err, "SCOPE_DENIED")
 	executor.input.WriteProjectIDs = []int64{project.ID}
+	_, err = executor.execute(context.Background(), "restore_project_version", raw)
+	requireAIBucketCode(t, err, "STATE_CONFLICT")
+	if approval == "auto" {
+		prepared, prepareErr := executor.prepare(context.Background(), "restore_project_version", raw)
+		require.NoError(t, prepareErr)
+		_, err = executor.execute(tcyai.WithOperation(context.Background(), &prepared), "restore_project_version", raw)
+		requireAIBucketCode(t, err, "REVIEW_REQUIRED")
+	}
 	restored, restoreOp := projectVersionAICall(t, executor, "restore_project_version", args)
 	assert.True(t, restoreOp.Verified)
+	assert.Equal(t, approval != "unattended", restoreOp.Approved)
 	assert.Equal(t, true, restored["verified"])
 	assert.EqualValues(t, version, restored["restored_from_version_id"])
 	assert.Contains(t, restoreOp.Before, "Before editing")
@@ -181,11 +204,13 @@ func TestAIProjectVersionsCannotInheritInstanceAdminOrDisabledModule(t *testing.
 	require.True(t, canRead, "the licensed ordinary admin bypass must really be available in this fixture")
 	require.NoError(t, s.Close())
 	outsider := makeExecutor(2)
+	outsider.input.Approval = "unattended"
 	_, err = outsider.execute(context.Background(), "list_project_versions", json.RawMessage(`{"project_id":1}`))
 	require.Error(t, err)
 	_, err = outsider.prepare(context.Background(), "save_project_version", json.RawMessage(`{"project_id":1,"name":"Do not save"}`))
 	require.Error(t, err)
 	owner := makeExecutor(1)
+	owner.input.Approval = "unattended"
 	owner.input.ToolModules.ProjectTasks = "off"
 	_, err = owner.execute(context.Background(), "list_project_versions", json.RawMessage(`{"project_id":1}`))
 	requireAIBucketCode(t, err, "TOOL_NOT_ALLOWED")

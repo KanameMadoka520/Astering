@@ -66,6 +66,7 @@ final class NativeSession {
             boundCookie = cookie();
             app.stopRecordingForSessionChange();
             if (app.offline != null) app.offline.changed();
+            if (app.notifications != null) app.notifications.ownerChanged(fence.ticket());
         }
         ensureVerified();
     }
@@ -107,6 +108,8 @@ final class NativeSession {
 
     void clear() {
         requireMain();
+        SessionFence.Ticket previous = fence.ticket();
+        if (app.notifications != null) app.notifications.loggedOut(fence.verified(previous) ? previous : null);
         fence.clear();
         boundCookie = "";
         Call call = refreshCall;
@@ -219,6 +222,7 @@ final class NativeSession {
                             fence.markVerified(fence.ticket());
                             app.emitToken(fence.ticket(), fence.ticket().token);
                             if (app.offline != null) app.offline.authenticated();
+                            app.sessionVerified();
                         }
                         done.countDown();
                     } finally { cookieWriteFinished(); }

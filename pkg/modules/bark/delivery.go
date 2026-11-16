@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -97,7 +98,11 @@ func pushContent(s BarkSettings, n *notifications.DatabaseNotification) payload 
 		return p
 	}
 	var data struct {
-		Task *struct {
+		AutomationID string `json:"automation_id"`
+		Kind         string `json:"kind"`
+		Title        string `json:"title"`
+		Message      string `json:"message"`
+		Task         *struct {
 			ID    int64  `json:"id"`
 			Title string `json:"title"`
 		} `json:"task"`
@@ -111,6 +116,31 @@ func pushContent(s BarkSettings, n *notifications.DatabaseNotification) payload 
 		if s.Language == "zh-CN" {
 			p.Body = "任务提醒时间到了，请打开 Astering 查看。"
 		}
+	}
+	if n.Name == "ai.automation" {
+		p.URL = strings.TrimRight(config.ServicePublicURL.GetString(), "/") + "/automations/" + url.PathEscape(data.AutomationID)
+		p.Body = "An automation has an update. Open Astering to view it."
+		if s.Language == "zh-CN" {
+			p.Body = "自动化有新结果，请打开 Astering 查看。"
+		}
+		if data.Kind == "reminder" {
+			p.Body = "A reminder is due. Open Astering to view it."
+			if s.Language == "zh-CN" {
+				p.Body = "提醒时间到了，请打开 Astering 查看。"
+			}
+		}
+		if s.Preview {
+			preview := data.Title
+			if data.Kind == "reminder" && data.Message != "" {
+				preview += "\n" + data.Message
+			}
+			text := []rune(preview)
+			if len(text) > 240 {
+				text = text[:240]
+			}
+			p.Body += "\n" + string(text)
+		}
+		return p
 	}
 	if data.Task != nil {
 		if data.Task.ID > 0 {
@@ -196,6 +226,22 @@ func latestNotification(uid int64) (int64, error) {
 	_, e := s.Where("notifiable_id = ?", uid).Desc("id").Get(&n)
 	return n.ID, e
 }
+
+// Pure automation reminders participate in reminders-only push scope; agent
+// completion/failure notices remain in the all-notifications scope.
+func isReminderNotification(n *notifications.DatabaseNotification) bool {
+	if n.Name == "task.reminder" {
+		return true
+	}
+	if n.Name != "ai.automation" {
+		return false
+	}
+	var body struct {
+		Kind string `json:"kind"`
+	}
+	raw, err := json.Marshal(n.Notification)
+	return err == nil && json.Unmarshal(raw, &body) == nil && body.Kind == "reminder"
+}
 func enqueue(uid int64, r *record) error {
 	s := db.NewSession()
 	defer s.Close()
@@ -216,7 +262,7 @@ func enqueue(uid int64, r *record) error {
 			}
 		}
 		r.Cursor = n.ID
-		if r.Settings.Scope == "reminders" && n.Name != "task.reminder" {
+		if r.Settings.Scope == "reminders" && !isReminderNotification(&n) {
 			continue
 		}
 		appendDelivery(r, BarkDelivery{NotificationID: n.ID, Status: "pending", Updated: time.Now().UTC()})

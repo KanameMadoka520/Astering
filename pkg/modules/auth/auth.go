@@ -182,9 +182,24 @@ func NewUserAuthTokenResponse(u *user.User, c *echo.Context, long bool, oidc *mo
 // The token includes the session UUID as the `sid` claim. This is a global
 // function to be able to call it from web tests.
 func NewUserJWTAuthtoken(u *user.User, sessionID string) (token string, err error) {
+	return newUserJWTAuthtoken(u, sessionID, time.Duration(config.ServiceJWTTTLShort.GetInt64())*time.Second)
+}
+
+// NewBackgroundUserJWTAuthtoken binds an internal, non-refreshable token to an
+// existing ordinary session and an explicit job deadline. It never skips session
+// or account checks. Callers must revoke the service session when work ends.
+// No API accepts a custom expiry and no such token is persisted or returned.
+func NewBackgroundUserJWTAuthtoken(u *user.User, sessionID string, expires time.Time) (string, error) {
+	ttl := time.Until(expires)
+	if ttl <= 0 || ttl > 24*time.Hour+time.Minute || u == nil || u.ID <= 0 || sessionID == "" {
+		return "", errors.New("invalid background credential deadline")
+	}
+	return newUserJWTAuthtoken(u, sessionID, ttl)
+}
+
+func newUserJWTAuthtoken(u *user.User, sessionID string, ttl time.Duration) (token string, err error) {
 	t := jwt.New(jwt.SigningMethodHS256)
 
-	var ttl = time.Duration(config.ServiceJWTTTLShort.GetInt64())
 	now := time.Now()
 
 	claims := t.Claims.(jwt.MapClaims)
@@ -194,7 +209,7 @@ func NewUserJWTAuthtoken(u *user.User, sessionID string) (token string, err erro
 	claims["is_admin"] = u.IsAdmin
 	// The frontend derives its clock offset from iat, so exp is judged by server time.
 	claims["iat"] = now.Unix()
-	claims["exp"] = now.Add(time.Second * ttl).Unix()
+	claims["exp"] = now.Add(ttl).Unix()
 	claims["sid"] = sessionID
 	claims["jti"] = uuid.New().String()
 

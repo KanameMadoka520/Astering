@@ -2,6 +2,9 @@ import type {Page} from '@playwright/test'
 import {test, expect} from '../../support/fixtures'
 import {apiRootUrl} from '../../support/apiUrl'
 import {updateUserSettings} from '../../support/updateUserSettings'
+import {ProjectFactory} from '../../factories/project'
+import {TaskFactory} from '../../factories/task'
+import {createDefaultViews} from '../project/prepareProjects'
 
 const ORIGIN = 'https://astering.test'
 type ClientMode = 'supported' | 'legacy' | 'browser'
@@ -65,9 +68,12 @@ async function installFacade(page: Page, token: string, baseURL: string, mode: C
 				})
 				const unsupported = command.action === 'clientInfo' && mode === 'legacy'
 				const result = command.action === 'clientInfo' ? {
-					version_name: '2.7.1-aster.67',
-					version_code: 67,
-					capabilities: {clientSettings: true},
+					version_name: '2.7.1-aster.73',
+					version_code: 73,
+					capabilities: {
+						clientSettings: true,
+						deviceNotifications: true,
+					},
 				} : command.action === 'refresh' ? {token} : {}
 				queueMicrotask(() => bridge.onmessage?.({data: JSON.stringify({
 					id: command.id,
@@ -87,6 +93,12 @@ async function installFacade(page: Page, token: string, baseURL: string, mode: C
 
 async function commands(page: Page) {
 	return page.evaluate(() => (window as TestWindow).__clientCommands)
+}
+
+async function notificationEvent(page: Page, event: Record<string, unknown>) {
+	await page.evaluate(event => {
+		window.AsteringNative?.onmessage?.({data: JSON.stringify(event)})
+	}, event)
 }
 
 for (const scenario of [
@@ -166,3 +178,87 @@ for (const mode of ['browser', 'legacy'] as const) {
 		await page.goto('about:blank')
 	})
 }
+
+test('native notification taps keep the mobile SPA and reject a different account, session or server', async ({
+	page,
+	baseURL,
+	apiContext,
+	currentUser,
+	userToken,
+}, info) => {
+	await page.setViewportSize({
+		width: 390,
+		height: 844,
+	})
+	await updateUserSettings(apiContext, userToken, {language: 'en'})
+	await ProjectFactory.create(1, {
+		id: 41,
+		owner_id: currentUser.id,
+		title: 'Native notification project',
+	})
+	await createDefaultViews(41, 81)
+	await TaskFactory.create(1, {
+		id: 43,
+		project_id: 41,
+		created_by_id: currentUser.id,
+		title: 'Open this actual task from a notification',
+	})
+	await installFacade(page, userToken, baseURL || 'http://127.0.0.1:4173', 'supported')
+	const documents: string[] = []
+	page.on('request', request => {
+		if (request.isNavigationRequest() && request.frame() === page.mainFrame()) documents.push(request.url())
+	})
+	await page.goto(`${ORIGIN}/projects`)
+	await expect(page.getByRole('link', {name: 'Native notification project', exact: true}).first()).toBeVisible()
+	await expect.poll(() => page.evaluate(() => typeof window.AsteringNative?.onmessage)).toBe('function')
+	const initialDocument = await page.evaluate(() => performance.timeOrigin)
+	const claims = JSON.parse(Buffer.from(userToken.split('.')[1], 'base64url').toString()) as {sid: string}
+	expect(claims.sid).toBeTruthy()
+	const event = {
+		event: 'openNotification',
+		user_id: currentUser.id,
+		sid: claims.sid,
+		server_origin: ORIGIN,
+		target: {
+			kind: 'task',
+			id: '43',
+		},
+	}
+	for (const invalid of [
+		{user_id: currentUser.id + 1},
+		{sid: '00000000-0000-4000-8000-000000000000'},
+		{server_origin: 'https://another.example'},
+	]) await notificationEvent(page, {...event, ...invalid})
+	// A quiet real network barrier lets an incorrectly accepted SPA navigation settle.
+	await page.waitForLoadState('networkidle')
+	await expect(page).toHaveURL(`${ORIGIN}/projects`)
+	await expect(page.locator('.task-view')).toHaveCount(0)
+	await expect(page.locator('.notifications-list')).toHaveCount(0)
+	const loadedTask = page.waitForResponse(response => response.request().method() === 'GET'
+		&& new URL(response.url()).pathname === '/api/v2/tasks/43')
+	await notificationEvent(page, event)
+	const taskResponse = await loadedTask
+	expect(taskResponse.ok()).toBe(true)
+	expect((await taskResponse.json()).title).toBe('Open this actual task from a notification')
+	await expect(page).toHaveURL(`${ORIGIN}/tasks/43`)
+	const task = page.locator('.task-view')
+	await expect(task).toBeVisible()
+	await expect(task).toContainText('Open this actual task from a notification')
+	const taskElement = await task.elementHandle()
+	await notificationEvent(page, {
+		...event,
+		target: {
+			kind: 'notifications',
+			id: '',
+		},
+	})
+	await expect(page.locator('.notifications-list[role="dialog"]')).toBeVisible()
+	await expect(page.locator('.notifications-list')).toContainText('Notifications')
+	await expect(page).toHaveURL(`${ORIGIN}/tasks/43`)
+	expect(await taskElement?.evaluate(node => node.isConnected && node === document.querySelector('.task-view')))
+		.toBe(true)
+	expect(await page.evaluate(() => performance.timeOrigin)).toBe(initialDocument)
+	expect(documents).toEqual([`${ORIGIN}/projects`])
+	await page.screenshot({path: info.outputPath('native-notification-inbox-390.png')})
+	await page.goto('about:blank')
+})

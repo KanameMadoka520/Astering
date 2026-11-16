@@ -362,7 +362,7 @@ func searchConversationsLocked(uid int64, query, scope string) ([]ConversationSu
 	}
 	result := []ConversationSummary{}
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".enc") {
+		if entry.IsDir() || !storageConversationName(entry.Name()) {
 			continue
 		}
 		record, err := getConversationLocked(uid, strings.TrimSuffix(entry.Name(), ".enc"))
@@ -763,6 +763,7 @@ func launchConversation(ctx context.Context, uid int64, record *conversationFile
 		jobCtx, cancel = context.WithCancel(baseCtx)
 	}
 	live := &liveConversation{acceptingSteering: true, uid: uid, id: record.ID, record: record, cancel: cancel, done: make(chan struct{}), storeRoot: accountKey(uid).root}
+	bindAutomationConversation(ctx, live)
 	conversations.live[liveKey(uid, live.id)] = live
 	live.watchDone = make(chan struct{})
 	go func() { defer close(live.watchDone); watchAccount(jobCtx, uid, cancel, live.done) }()

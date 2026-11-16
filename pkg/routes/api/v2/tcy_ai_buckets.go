@@ -1173,9 +1173,8 @@ func (e *aiExecution) executeBucket(ctx context.Context, name string, raw json.R
 	if op == nil || op.Version == "" {
 		return "", tcyai.ToolFailure("STATE_CONFLICT", "Bucket changes only run from a prepared preview; prepare the operation again.")
 	}
-	// Independent of the runtime review policy: a delete never runs without an approved preview.
-	if name == "delete_bucket" && !op.Approved {
-		return "", tcyai.ToolFailure("REVIEW_REQUIRED", "Deleting a bucket always needs the user's approval of its preview.")
+	if name == "delete_bucket" && !op.Approved && !tcyai.UnattendedWrites(e.input) {
+		return "", tcyai.ToolFailure("REVIEW_REQUIRED", "Deleting a bucket needs approval of its prepared preview unless this run explicitly uses unattended write mode.")
 	}
 	a, err := parseAIBucketArgs(raw)
 	if err != nil {

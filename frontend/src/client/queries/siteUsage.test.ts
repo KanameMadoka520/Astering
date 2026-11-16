@@ -66,6 +66,7 @@ function snapshot(name = 'private-owner-A', page = 1): AccountUsageSnapshot {
 		ai_conversation_bytes: 40,
 		ai_attachment_bytes: 20,
 		ai_settings_bytes: 10,
+		ai_automation_bytes: 0,
 		ai_bytes: 70,
 		total_storage_bytes: 770,
 	}

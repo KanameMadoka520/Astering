@@ -61,10 +61,12 @@ func getThreadID(taskID int64) string {
 
 // ReminderDueNotification represents a ReminderDueNotification notification
 type ReminderDueNotification struct {
-	User         *user.User    `json:"user,omitempty"`
-	Task         *Task         `json:"task"`
-	Project      *Project      `json:"project"`
-	TaskReminder *TaskReminder `json:"reminder"`
+	User              *user.User    `json:"user,omitempty"`
+	Task              *Task         `json:"task"`
+	Project           *Project      `json:"project"`
+	TaskReminder      *TaskReminder `json:"reminder"`
+	ReminderKey       string        `json:"reminder_key,omitempty"`
+	ReminderTriggerAt *time.Time    `json:"reminder_trigger_at,omitempty"`
 }
 
 // ToTitle returns the translated one-line title for ReminderDueNotification
@@ -89,10 +91,16 @@ func (n *ReminderDueNotification) ToMail(lang string) *notifications.Mail {
 
 // ToDB returns the ReminderDueNotification notification in a format which can be saved in the db
 func (n *ReminderDueNotification) ToDB() interface{} {
-	return &ReminderDueNotification{
+	stored := &ReminderDueNotification{
 		Task:    n.Task,
 		Project: n.Project,
 	}
+	if n.TaskReminder != nil && n.TaskReminder.ID > 0 && !n.TaskReminder.Reminder.IsZero() {
+		trigger := n.TaskReminder.Reminder.UTC()
+		stored.ReminderKey = "reminder:" + strconv.FormatInt(n.TaskReminder.ID, 10)
+		stored.ReminderTriggerAt = &trigger
+	}
+	return stored
 }
 
 // Name returns the name of the notification

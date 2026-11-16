@@ -39,6 +39,7 @@ import (
 	"github.com/KanameMadoka520/Astering/pkg/modules/mailsettings"
 	migrationmodule "github.com/KanameMadoka520/Astering/pkg/modules/migration"
 	migrationHandler "github.com/KanameMadoka520/Astering/pkg/modules/migration/handler"
+	"github.com/KanameMadoka520/Astering/pkg/modules/tcyai"
 	"github.com/KanameMadoka520/Astering/pkg/plugins"
 	_ "github.com/KanameMadoka520/Astering/pkg/plugins/yaegi" // register yaegi plugin loader
 	"github.com/KanameMadoka520/Astering/pkg/red"
@@ -144,6 +145,7 @@ func FullInit() {
 	// Start the cron
 	cron.Init()
 	models.RegisterReminderCron()
+	tcyai.RegisterAutomationCron()
 	models.RegisterOverdueReminderCron()
 	models.RegisterUserDeletionCron()
 	models.RegisterTaskCleanupCron()

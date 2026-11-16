@@ -10,6 +10,7 @@ export type NativeClientInfo = {
 	version_code: number,
 	capabilities: {
 		clientSettings: true,
+		deviceNotifications?: true,
 	},
 }
 
@@ -65,6 +66,7 @@ export type NativeAndroidEvent =
 	| {event: 'token', token: string}
 	| {event: 'recording', snapshot: NativeRecordingSnapshot}
 	| {event: 'openNote', note_id: number, user_id: number, sid: string}
+	| {event: 'openNotification', user_id: number, sid: string, server_origin: string, target: unknown}
 	| {event: 'offline', user_id: number, status: NativeOfflineStatus, receipt?: {segment: unknown, stats: unknown}}
 
 declare global {
@@ -149,7 +151,7 @@ function bridge(clearSession = false): NativeBridge {
 				return
 			}
 			if (!isNativeAndroid()) return
-			if (!['recording', 'token', 'openNote', 'offline'].includes(String(message.event))) return
+			if (!['recording', 'token', 'openNote', 'openNotification', 'offline'].includes(String(message.event))) return
 			for (const listener of listeners) {
 				try {
 					listener(message as NativeAndroidEvent)
@@ -228,7 +230,10 @@ export function getNativeAndroidClientInfo(): Promise<NativeClientInfo | null> {
 		return {
 			version_name: info.version_name,
 			version_code: info.version_code,
-			capabilities: {clientSettings: true as const},
+			capabilities: {
+				clientSettings: true as const,
+				...((capabilities as Record<string, unknown>).deviceNotifications === true ? {deviceNotifications: true as const} : {}),
+			},
 		}
 	}).catch(() => null)
 	// Device capabilities are account-independent; remounts and sign-ins share one bounded probe.

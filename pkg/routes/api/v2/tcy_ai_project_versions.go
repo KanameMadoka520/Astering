@@ -199,6 +199,14 @@ func (e *aiExecution) executeProjectVersion(ctx context.Context, name string, ra
 	if op != nil && op.Version != "" && op.Version != prepared.Version {
 		return "", tcyai.ToolFailure("STATE_CONFLICT", "The project or restore plan changed after review. Prepare a new operation.")
 	}
+	if name == "restore_project_version" {
+		if op == nil || op.Version == "" {
+			return "", tcyai.ToolFailure("STATE_CONFLICT", "A project restore must use its exact prepared preview.")
+		}
+		if !op.Approved && !tcyai.UnattendedWrites(e.input) {
+			return "", tcyai.ToolFailure("REVIEW_REQUIRED", "Restoring a project needs human approval unless this run explicitly uses unattended write mode.")
+		}
+	}
 	result, err := dispatchProjectVersionAI(ctx, e.api, e.caller, name, raw)
 	if err != nil {
 		return result, err

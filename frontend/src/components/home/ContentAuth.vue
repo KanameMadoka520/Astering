@@ -104,6 +104,7 @@ import {useRenewTokenOnFocus} from '@/composables/useRenewTokenOnFocus'
 import {useSidebarResize} from '@/composables/useSidebarResize'
 import {useWebSocket} from '@/composables/useWebSocket'
 import {useServerCacheEvents} from '@/composables/useServerCacheEvents'
+import {useNativeNotificationSync} from '@/composables/useNativeNotificationSync'
 import {useAronaRunObserver} from '@/composables/useAronaRunObserver'
 import {useRoutineDayRefresh} from '@/composables/useRoutineDayRefresh'
 import {useBodyClass} from '@/composables/useBodyClass'
@@ -161,6 +162,7 @@ watch(() => route.fullPath, () => {
 useRenewTokenOnFocus()
 
 useServerCacheEvents()
+useNativeNotificationSync()
 // Arona receipts keep applying after leaving the assistant, with or without the floating panel open.
 useAronaRunObserver()
 // One app-level clock re-reads visible routines when a new local day starts or the window regains focus.

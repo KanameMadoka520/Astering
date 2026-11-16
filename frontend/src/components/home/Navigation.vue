@@ -101,6 +101,12 @@
 							<span class="menu-item-label">{{ t('tcymc.text.ai_task_assistant') }}</span>
 						</RouterLink>
 					</li>
+					<li>
+						<RouterLink :to="{name: 'automations'}">
+							<span class="menu-item-icon icon"><Icon icon="bolt" /></span>
+							<span class="menu-item-label">{{ t('automations.title') }}</span>
+						</RouterLink>
+					</li>
 				</menu>
 
 				<p

@@ -283,6 +283,15 @@ func (e *aiExecution) executeChatImage(ctx context.Context, name string, raw jso
 	if op := tcyai.CurrentOperation(ctx); op != nil && op.Version != "" && op.Version != preview.Version {
 		return "", tcyai.ToolFailure("STATE_CONFLICT", "The task description changed after review.")
 	}
+	if name != "get_task_description_layout" {
+		op := tcyai.CurrentOperation(ctx)
+		if op == nil || op.Version == "" {
+			return "", tcyai.ToolFailure("STATE_CONFLICT", "An image change must use its exact prepared preview.")
+		}
+		if !op.Approved && !tcyai.UnattendedWrites(e.input) {
+			return "", tcyai.ToolFailure("REVIEW_REQUIRED", "An image change needs human approval unless this run explicitly uses unattended write mode.")
+		}
+	}
 	var source tcyai.ChatAttachment
 	if args.AttachmentID != "" {
 		source, err = e.chatImageSource(ctx, args.AttachmentID)

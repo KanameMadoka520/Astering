@@ -391,6 +391,24 @@ function resultLabel(item: CleanupResult) { return t(`storage.statuses.${item.st
 			<p>{{ t('notes.storage.help') }}</p>
 		</section>
 		<section
+			v-if="summary"
+			class="storage-notes"
+			aria-labelledby="storage-automations-heading"
+		>
+			<header class="storage-notes__header">
+				<h2 id="storage-automations-heading">
+					{{ t('automations.storageTitle') }}
+				</h2>
+				<RouterLink :to="{name: 'automations'}">
+					{{ t('automations.title') }}
+				</RouterLink>
+			</header>
+			<dl class="storage-notes__metrics">
+				<div><dt>{{ t('automations.storageBytes') }}</dt><dd>{{ bytes(summary.automation_bytes ?? 0) }}</dd></div>
+			</dl>
+			<p>{{ t('automations.storageHint') }}</p>
+		</section>
+		<section
 			class="storage-inventory"
 			:aria-labelledby="'storage-inventory-heading'"
 		>

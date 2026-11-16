@@ -371,6 +371,7 @@ func ReadSummary(ctx context.Context, uid int64) (*StorageSummary, error) {
 	result.ConversationCount = ai.ConversationCount
 	result.IndependentAttachmentBytes = ai.LegacyAttachmentBytes
 	result.SettingsBytes = ai.SettingsBytes
+	result.AutomationBytes = ai.AutomationBytes
 	result.Complete = result.Complete && ai.Complete
 	result.Categories = append(result.Categories,
 		StorageCategory{
@@ -391,6 +392,7 @@ func ReadSummary(ctx context.Context, uid int64) (*StorageSummary, error) {
 			Bytes:     ai.LegacyAttachmentBytes,
 			Cleanable: false,
 		},
+		StorageCategory{ID: "automations", Count: 1, Bytes: ai.AutomationBytes, Cleanable: false},
 		StorageCategory{
 			ID:        "settings",
 			Count:     1,
@@ -398,7 +400,7 @@ func ReadSummary(ctx context.Context, uid int64) (*StorageSummary, error) {
 			Cleanable: false,
 		},
 	)
-	result.TotalBytes = result.OriginalFileBytes + result.PreviewBytes + result.ConversationBytes + result.IndependentAttachmentBytes + result.SettingsBytes
+	result.TotalBytes = result.OriginalFileBytes + result.PreviewBytes + result.ConversationBytes + result.IndependentAttachmentBytes + result.SettingsBytes + result.AutomationBytes
 	return result, nil
 }
 

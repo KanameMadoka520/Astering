@@ -213,3 +213,25 @@ func TestInstanceUsageCacheCoalescesAndHonorsCancellation(t *testing.T) {
 	require.NoError(t, err)
 	assert.EqualValues(t, 2, calls.Load(), "a different storage root must not reuse another snapshot")
 }
+
+func TestAutomationInstanceUsageCountsCiphertextExactlyOnce(t *testing.T) {
+	base := t.TempDir()
+	ai := filepath.Join(base, ".tcymc-ai")
+	writeMetadataFixture(t, filepath.Join(ai, "conversations", "2", ".automations.enc"), 107)
+	writeMetadataFixture(t, filepath.Join(ai, "conversations", "2", ".automations.lock"), 19)
+	writeMetadataFixture(t, filepath.Join(ai, "conversations", "2", ".automation-write-leftover"), 23)
+	scanner := newMetadataScanner(context.Background(), base)
+	defer scanner.close()
+	row := &InstanceUserUsage{ID: 2}
+	scanner.scan(row)
+	assert.True(t, row.AIScanComplete)
+	assert.EqualValues(t, 107, row.AIAutomationBytes)
+	assert.EqualValues(t, 107, row.AIBytes)
+	assert.Zero(t, row.AIConversations)
+	assert.Zero(t, row.AIConversationBytes)
+	assert.Zero(t, row.AISettingsBytes)
+	aggregate := UsageCounts{}
+	addCounts(&aggregate, row.UsageCounts)
+	assert.EqualValues(t, 107, aggregate.AIAutomationBytes)
+	assert.EqualValues(t, 107, aggregate.AIBytes)
+}

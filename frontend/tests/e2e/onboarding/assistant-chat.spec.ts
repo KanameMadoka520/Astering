@@ -379,6 +379,55 @@ test('permission switching survives reload, uses current request settings and re
  expect(restored.mode).toBe('write'); expect(restored.approval).toBe('review')
 })
 
+test('unattended follows the submitted turn and restores from its saved server configuration', async ({
+	authenticatedPage: page,
+}) => {
+	const server = await chatServer(page)
+	await page.goto('/ai')
+	await page.locator('.configuration-toggle:visible').click()
+	const configuration = page.getByRole('dialog', {name: 'Chat configuration', exact: true})
+	await page.locator('.profile-switch select').selectOption('assist')
+	await configuration.getByRole('button', {name: 'Permissions and execution', exact: true}).click()
+	const panel = page.getByRole('dialog', {name: 'Scenarios & preferences'})
+	await panel.getByLabel('Operation review policy').selectOption('unattended')
+	await panel.getByRole('button', {name: 'Use for upcoming messages'}).click()
+	await expect(page.locator('.composer-hint')).toContainText('Execute · Unattended')
+	await configuration.getByRole('button', {name: 'Back to chat', exact: true}).click()
+	const sent = page.waitForRequest(request => request.url().endsWith('/messages') && request.method() === 'POST')
+	await page.getByLabel('Your request').fill('Run with my selected permissions')
+	await page.getByLabel('Your request').press('Enter')
+	expect((await sent).postDataJSON()).toMatchObject({
+		mode: 'write',
+		approval: 'unattended',
+		allow_delete: false,
+		mcp_server_ids: [],
+		tool_modules: {
+			compass: 'off',
+			notes: 'off',
+		},
+	})
+	await expect(page.locator('.chat-markdown')).toHaveText('Saved answer')
+	expect([...server.conversations.values()][0].turns[0].result.configuration.approval).toBe('unattended')
+	await page.evaluate(() => sessionStorage.clear())
+	await page.reload()
+	await page.locator('.configuration-toggle:visible').click()
+	await expect(page.locator('.composer-hint')).toContainText('Execute · Unattended')
+	await configuration.getByRole('button', {name: 'Permissions and execution', exact: true}).click()
+	await expect(panel.getByLabel('Operation review policy')).toHaveValue('unattended')
+	await panel.getByLabel('Working mode').selectOption('read')
+	await expect(panel.getByLabel('Operation review policy')).toBeDisabled()
+	await panel.getByRole('button', {name: 'Use for upcoming messages'}).click()
+	await configuration.getByRole('button', {name: 'Back to chat', exact: true}).click()
+	const readOnly = page.waitForRequest(request => request.url().endsWith('/messages') && request.method() === 'POST')
+	await page.getByLabel('Your request').fill('Read only despite the stored review policy')
+	await page.getByLabel('Your request').press('Enter')
+	expect((await readOnly).postDataJSON()).toMatchObject({
+		mode: 'read',
+		approval: 'unattended',
+		allow_delete: false,
+	})
+})
+
 for (const width of [1440, 390]) {
  test(`sending is immediate and sources stay collapsed at ${width}px`, async ({authenticatedPage: page}, testInfo) => {
   const server = await chatServer(page)

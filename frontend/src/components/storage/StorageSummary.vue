@@ -287,6 +287,9 @@ const scannedAt = computed(() => {
 .is-settings {
 	background: #9b80c4;
 }
+.is-automations {
+	background: #4b9db3;
+}
 .storage-summary__incomplete {
 	margin-block: .75rem 0;
 	color: var(--warning);

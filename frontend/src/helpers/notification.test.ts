@@ -39,6 +39,18 @@ function notification(name: string, payload: unknown): DatabaseNotification {
 }
 
 describe('notificationText', () => {
+	it('renders automation messages as text and localizes run status', () => {
+		expect(notificationText(notification(NOTIFICATION_NAMES.AUTOMATION, {
+			title: 'Morning',
+			kind: 'reminder',
+			message: '<script>Not HTML</script>',
+		}))).toBe('Automation: Morning · <script>Not HTML</script>')
+		expect(notificationText(notification(NOTIFICATION_NAMES.AUTOMATION, {
+			title: 'Review',
+			kind: 'agent',
+			status: 'needs_attention',
+		}))).toBe('Review · Needs attention')
+	})
 	it('names the task for comment, delete and create notifications', () => {
 		expect(notificationText(notification(NOTIFICATION_NAMES.TASK_COMMENT, {task: TASK}))).toBe('commented on #12')
 		expect(notificationText(notification(NOTIFICATION_NAMES.TASK_DELETED, {task: TASK}))).toBe('deleted #12')
@@ -93,6 +105,16 @@ describe('notificationText', () => {
 })
 
 describe('notificationRoute', () => {
+	it('routes automation notices only to a valid internal identifier', () => {
+		const id = 'b0dc72ce-2c05-414f-a319-183f36097d83'
+		expect(notificationRoute(notification(NOTIFICATION_NAMES.AUTOMATION, {automation_id: id}))).toEqual({
+			name: 'automations',
+			params: {automationId: id},
+		})
+		for (const invalid of ['', '../../private', 'https://example.com', 42, null]) {
+			expect(notificationRoute(notification(NOTIFICATION_NAMES.AUTOMATION, {automation_id: invalid}))).toBeNull()
+		}
+	})
 	it('routes every task notification to the task detail', () => {
 		const taskNames = [
 			NOTIFICATION_NAMES.TASK_COMMENT,

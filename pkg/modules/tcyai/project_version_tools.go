@@ -58,7 +58,7 @@ func ProjectVersionTools(mode string) []map[string]any {
 		tool("save_project_version", "为有权编辑的项目建立命名内容保存点，保存服务器已保存的项目内容、任务、视图看板和附件引用；不复制媒体原件。不会替用户保存浏览器尚未提交的草稿，也不改变项目当前内容。请求幂等标识由执行层生成。", map[string]any{
 			"project_id": id, "name": map[string]any{"type": "string", "minLength": 1, "maxLength": 160},
 		}, "project_id", "name"),
-		tool("restore_project_version", "整项目恢复真实保存点，必须先get_project_version_preview并使用最新current_hash与plan_hash；只有当前项目管理员且本轮写入范围允许时才可执行，始终人工审核。原子恢复并先保存恢复前内容，再产生新版本，保留评论、实际打卡和当前权限；不会撤销已发通知或外部MCP动作。存在冲突时整个拒绝，不能改hash强行覆盖。一次操作是一次原子恢复，实际变更数量见预览。", map[string]any{
+		tool("restore_project_version", "整项目恢复真实保存点，必须先get_project_version_preview并使用最新current_hash与plan_hash；只有当前项目管理员且本轮写入范围允许时才可执行，遵循本轮审批策略；显式unattended可免人工点击，但仍须准备并核对完整恢复预览。原子恢复并先保存恢复前内容，再产生新版本，保留评论、实际打卡和当前权限；不会撤销已发通知或外部MCP动作。存在冲突时整个拒绝，不能改hash强行覆盖。一次操作是一次原子恢复，实际变更数量见预览。", map[string]any{
 			"project_id": id, "version_id": id, "expected_current_hash": hash, "plan_hash": hash,
 		}, "project_id", "version_id", "expected_current_hash", "plan_hash"),
 	)

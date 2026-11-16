@@ -2,6 +2,13 @@ export const toolModuleIDs = ['project_tasks', 'compass', 'notes'] as const
 export type ToolModuleID = typeof toolModuleIDs[number]
 export type ToolModuleAccess = 'off' | 'read' | 'write'
 export type ToolModules = Record<ToolModuleID, ToolModuleAccess>
+export const approvalPolicies = ['smart', 'review', 'auto', 'unattended'] as const
+export type ApprovalPolicy = typeof approvalPolicies[number]
+
+function isApprovalPolicy(value: unknown): value is ApprovalPolicy {
+	return typeof value === 'string' && approvalPolicies.includes(value as ApprovalPolicy)
+}
+
 export const defaultToolModules = (): ToolModules => ({project_tasks: 'write', compass: 'off', notes: 'off'})
 export function normalizeToolModules(value?: Partial<ToolModules> | null): ToolModules {
 	return Object.fromEntries(toolModuleIDs.map(id => {
@@ -29,7 +36,7 @@ export interface AssistantOptions {
 	project_id: number
 	mode: 'read' | 'write'
 	allow_delete: boolean
-	approval: 'smart' | 'review' | 'auto'
+	approval: ApprovalPolicy
 	write_project_ids: number[]
 	mcp_server_ids: string[]
 	max_rounds: number
@@ -72,6 +79,7 @@ export function normalizeOptions(options?: Omit<Partial<AssistantOptions>, 'writ
 	return {
 		...profileOptions(),
 		...options,
+		approval: isApprovalPolicy(options?.approval) ? options.approval : 'smart',
 		write_project_ids: [...(options?.write_project_ids ?? [])],
 		mcp_server_ids: [...new Set((options?.mcp_server_ids ?? []).filter(id => typeof id === 'string' && id !== ''))],
 		tool_modules: normalizeToolModules(options?.tool_modules),
@@ -80,7 +88,8 @@ export function normalizeOptions(options?: Omit<Partial<AssistantOptions>, 'writ
 	}
 }
 export function validOptions(o: AssistantOptions) {
-	return [o.stop_at_segment_limit, o.enable_subagents].every(v => v === undefined || typeof v === 'boolean')
+	return (o.approval === undefined || isApprovalPolicy(o.approval))
+		&& [o.stop_at_segment_limit, o.enable_subagents].every(v => v === undefined || typeof v === 'boolean')
 		&& (o.tool_modules === undefined || (o.tool_modules !== null && typeof o.tool_modules === 'object'
 			&& !Array.isArray(o.tool_modules)
 			&& Object.entries(o.tool_modules).every(([key, value]) => toolModuleIDs.includes(key as ToolModuleID)

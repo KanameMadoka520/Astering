@@ -135,7 +135,7 @@ func CompassToolDefinitions(mode string) []map[string]any {
 		tool("update_compass_space", "仅修改明确提供的星图空间字段，未提供的背景/裁切等保持。必须先读并提交真实revision，冲突不能擅自重试覆盖。需要空间管理权限；不改变归属/共享。", space, "id", "revision"),
 		tool("create_compass_entry", "在有权写入的星图空间创建记录。默认note/active/inherit；需要space_id和标题。正文净化，创建第一版历史。", createEntry, "space_id", "title"),
 		tool("update_compass_entry", "修改星图记录内容/类型/主题/标签/置顶或状态，仅提供的字段改变。state=archived归档，trashed移入回收站，active恢复；均保留历史，不永久删除。必须提供刚读到的revision，旧版本拒绝。正文是完整替换而非追加。", entry, "id", "revision"),
-		tool("restore_compass_revision", "把历史星图正文和分类恢复为新当前版本，保留当前状态和置顶，不抹掉历史。revision为选定历史版本，expected_revision为刚读到的当前版本。必须审核。", map[string]any{
+		tool("restore_compass_revision", "把历史星图正文和分类恢复为新当前版本，保留当前状态和置顶，不抹掉历史。revision为选定历史版本，expected_revision为刚读到的当前版本。遵循本轮审批策略；显式unattended可免人工点击，仍核对当前版本。", map[string]any{
 			"id":                id,
 			"revision":          id,
 			"expected_revision": id,

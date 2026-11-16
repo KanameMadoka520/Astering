@@ -32,8 +32,8 @@ type AssistantOptions struct {
 	ConnectionID       string      `json:"connection_id" maxLength:"80" doc:"Empty follows the configured assistant connection."`
 	ProjectID          int64       `json:"project_id" minimum:"0" doc:"Context project only, not a permission boundary."`
 	Mode               string      `json:"mode" enum:"read,write" doc:"Read only or execute writes within existing account permissions."`
-	AllowDelete        bool        `json:"allow_delete" doc:"Enable task and personal-note deletion; personal-note writes always require human review."`
-	Approval           string      `json:"approval" enum:"smart,review,auto" doc:"Review policy; destructive and notification operations always require review."`
+	AllowDelete        bool        `json:"allow_delete" doc:"Enable task and personal-note deletion within existing account permissions and the selected approval policy."`
+	Approval           string      `json:"approval" enum:"smart,review,auto,unattended" doc:"smart, review and auto retain human review for destructive and sensitive writes; unattended permits prepared writes without human approval, never beyond current permissions."`
 	WriteProjectIDs    []int64     `json:"write_project_ids" maxItems:"50" doc:"Optional additional write restriction, never a permission grant."`
 	MaxRounds          int         `json:"max_rounds" minimum:"1" maximum:"40" doc:"Model requests per execution segment."`
 	MaxOperations      int         `json:"max_operations" minimum:"1" maximum:"100" doc:"Tool operations per execution segment."`
@@ -106,7 +106,7 @@ func runOptions(input RunInput) *AssistantOptions {
 
 func validAssistantOptions(o AssistantOptions) bool {
 	return (o.SearchMode == "" || o.SearchMode == "auto" || o.SearchMode == "off" || o.SearchMode == "required") && (o.Mode == "read" || o.Mode == "write") &&
-		(o.Approval == "smart" || o.Approval == "review" || o.Approval == "auto") &&
+		(o.Approval == "smart" || o.Approval == "review" || o.Approval == "auto" || o.Approval == "unattended") &&
 		(o.Mode != "read" || !o.AllowDelete) && o.ProjectID >= 0 && len(o.ConnectionID) <= 80 &&
 		o.MaxRounds >= 1 && o.MaxRounds <= 40 && o.MaxOperations >= 1 && o.MaxOperations <= 100 &&
 		o.TimeoutSeconds >= 1 && o.TimeoutSeconds <= 600 && o.TokenBudget >= 0 && o.TokenBudget <= 1000000 &&

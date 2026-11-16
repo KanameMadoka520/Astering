@@ -46,6 +46,7 @@ var ErrStorageConversationConfirm = errors.New("storage_conversation_confirm")
 var errStoragePathUnsafe = errors.New("private storage path is not a regular owned path")
 
 type PersonalStorage struct {
+	AutomationBytes       int64 `json:"automation_bytes" required:"true" doc:"Protected encrypted automation definitions and bounded run receipts; managed from Automations rather than generic cleanup."`
 	ConversationCount     int64 `json:"conversation_count" required:"true" doc:"Canonical encrypted conversation records owned by the current account."`
 	ConversationBytes     int64 `json:"conversation_bytes" required:"true" doc:"Conversation ciphertext lengths, counted once per record."`
 	LegacyAttachmentCount int64 `json:"legacy_attachment_count" required:"true" doc:"Canonical legacy encrypted attachment files, counted once regardless of branches."`
@@ -247,6 +248,8 @@ func GetPersonalStorage(ctx context.Context, uid int64) (PersonalStorage, error)
 	result.Complete = complete
 	mcpBytes, complete := storageRegularSize(roots.account, ".mcp-settings")
 	result.SettingsBytes += mcpBytes
+	result.Complete = result.Complete && complete
+	result.AutomationBytes, complete = storageRegularSize(roots.account, automationRecordName)
 	result.Complete = result.Complete && complete
 	remaining := personalStorageEntryLimit
 	complete = visitStorage(ctx, roots.account, &remaining, func(name string, info os.FileInfo) bool {

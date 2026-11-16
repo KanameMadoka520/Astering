@@ -113,6 +113,9 @@ func (s *metadataScanner) scan(row *InstanceUserUsage) {
 		}
 		if root != nil {
 			mcpBytes, valid := regularSize(root, ".mcp-settings")
+			row.AIScanComplete = row.AIScanComplete && valid
+			row.AIAutomationBytes, valid = regularSize(root, ".automations.enc")
+			row.AIScanComplete = row.AIScanComplete && valid
 			row.AISettingsBytes += mcpBytes
 			row.AIScanComplete = row.AIScanComplete && valid
 			row.AIConversations, row.AIConversationBytes, ok = s.enumerate(root, canonicalConversation)
@@ -129,7 +132,7 @@ func (s *metadataScanner) scan(row *InstanceUserUsage) {
 			_ = root.Close()
 		}
 	}
-	row.AIBytes = row.AIConversationBytes + row.AIAttachmentBytes + row.AISettingsBytes
+	row.AIBytes = row.AIConversationBytes + row.AIAttachmentBytes + row.AISettingsBytes + row.AIAutomationBytes
 }
 
 func regularSize(root *os.Root, name string) (int64, bool) {

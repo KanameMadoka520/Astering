@@ -360,6 +360,14 @@ const router = createRouter({
 			component: () => import('@/views/project/ProjectHistory.vue'),
 		},
 		{
+			path: '/automations/:automationId?',
+			name: 'automations',
+			meta: {
+				title: 'automations.title',
+			},
+			component: () => import('@/views/Automations.vue'),
+		},
+		{
 			path: '/calendar',
 			name: 'calendar',
 			meta: {

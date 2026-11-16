@@ -39,8 +39,8 @@ func IsBucketTool(name string) bool {
 	return slices.Contains(bucketToolNames, name)
 }
 
-// Deleting a column relocates its tasks and may clear view settings. It is reviewed in every
-// approval mode and does not depend on allow_delete, which only authorizes task deletion.
+// Deleting a column relocates tasks rather than deleting them. Legacy policies
+// require review; unattended still binds the exact relocation preview.
 func bucketAlwaysReviewed(name string) bool {
 	return name == "delete_bucket"
 }
@@ -151,7 +151,7 @@ func bucketTools(mode string) []map[string]any {
 			"default_bucket_id": optionalID("新的默认栏目 ID；0 清除，之后使用最左侧栏目。"),
 			"done_bucket_id":    optionalID("新的完成列 ID；0 清除。"),
 		}, "project_id", "view_id"),
-		tool("delete_bucket", "删除栏目/桶 delete kanban bucket column：删除看板栏目，不删除任务。栏目中的任务会移到默认栏目（未设置时为最左侧栏目），完成状态不变；如果删除的是默认栏目或完成列，会清除对应设置。以下情况会被拒绝：视图只剩这一个栏目；这个栏目本身就是兜底栏目且仍有任务（需先设置其他默认栏目、调整顺序或移走任务）。无论审核模式如何都需要用户审核，审核预览会显示任务去向和数量。", map[string]any{
+		tool("delete_bucket", "删除栏目/桶 delete kanban bucket column：删除看板栏目，不删除任务。栏目中的任务会移到默认栏目（未设置时为最左侧栏目），完成状态不变；如果删除的是默认栏目或完成列，会清除对应设置。以下情况会被拒绝：视图只剩这一个栏目；这个栏目本身就是兜底栏目且仍有任务（需先设置其他默认栏目、调整顺序或移走任务）。除显式unattended模式外需要用户审核；所有模式的准备预览均显示任务去向和数量，并在执行时重新校验。", map[string]any{
 			"project_id": project(),
 			"view_id":    view(),
 			"bucket_id":  id("要删除的栏目 ID"),

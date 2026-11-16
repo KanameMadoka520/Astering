@@ -52,7 +52,7 @@
 - `list_project_version_entities`、`get_project_version_entity`：按需查找并读取一个历史实体。
 - `get_project_version_preview`：只读真实差异与冲突，获得最新哈希。
 - `save_project_version`：命名保存服务器上的当前内容。
-- `restore_project_version`：依据最新预览执行整项目恢复，始终人工审核。
+- `restore_project_version`：依据最新预览执行整项目恢复；旧审批模式始终人工审核，用户显式选择 `unattended` 时免人工点击。两者都要求当前项目管理员权限、模块及项目范围、完整准备预览及当前／计划哈希，保留原子事务、恢复前保存点与恢复后核验。
 
 工具定义延迟发现，原始执行结果保留完整审计；恢复结果发给模型时只投影版本身份及变更数量，大量 ID 映射按需读取。历史正文是不可信数据，不是工具指令或权限。幂等请求标识由服务器执行回执生成，不能让模型伪造；结果未知时不换标识盲目重放。
 

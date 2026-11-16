@@ -24,13 +24,14 @@ import (
 )
 
 type StorageCategory struct {
-	ID        string `json:"id" required:"true" doc:"Mutually exclusive category: images, video, audio, documents, other, trash, previews, conversations, legacy_attachments or settings."`
+	ID        string `json:"id" required:"true" doc:"Mutually exclusive category: images, video, audio, documents, other, trash, previews, conversations, legacy_attachments, settings or automations."`
 	Count     int64  `json:"count" required:"true"`
 	Bytes     int64  `json:"bytes" required:"true" doc:"Original logical bytes or independent encrypted/derived stored bytes; not filesystem allocated blocks."`
 	Cleanable bool   `json:"cleanable" required:"true" doc:"Whether this category has a supported cleanup operation; individual references may still block it."`
 }
 
 type StorageSummary struct {
+	AutomationBytes            int64             `json:"automation_bytes" required:"true" doc:"Protected encrypted automation definitions and bounded run receipts, managed in Automations."`
 	AsOf                       time.Time         `json:"as_of" required:"true"`
 	Complete                   bool              `json:"complete" required:"true" doc:"False means measured bytes are a lower bound, never proof of zero usage."`
 	TotalBytes                 int64             `json:"total_bytes" required:"true" doc:"Unique original file bytes plus independent AI ciphertext and measured previews. Excludes database, backups and server/application files."`

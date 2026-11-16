@@ -78,7 +78,7 @@ function snapshot(): ManagedAccountsSnapshot {
 		ai_conversations: 0,
 		ai_conversation_bytes: 0,
 		ai_attachment_bytes: 0,
-		ai_settings_bytes: 0,
+		ai_settings_bytes: 0, ai_automation_bytes: 0,
 		ai_bytes: 0,
 		total_storage_bytes: 0,
 	}

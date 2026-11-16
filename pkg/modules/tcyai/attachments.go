@@ -470,7 +470,7 @@ func cleanupAttachments(uid int64, candidates []ChatAttachment) {
 	}
 	referenced := map[string]bool{}
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".enc") {
+		if entry.IsDir() || !storageConversationName(entry.Name()) {
 			continue
 		}
 		record, err := getConversationLocked(uid, strings.TrimSuffix(entry.Name(), ".enc"))

@@ -28,6 +28,10 @@ Android 8–10 保留系统 Decor 原有的 `fitsSystemWindows` 与 `adjustResiz
 
 桌面快捷方式通过无界面、无独立任务归属的转发 Activity 打开现有 MainActivity，只传固定动作，不接受任意网址或其他参数。这样避免 Android 静态快捷方式的默认清任务行为销毁现有网页。依据：[Android 快捷方式的 Activity 启动规则](https://developer.android.com/develop/ui/compose/system/shortcuts/managing-shortcuts#start-one-activity-from-another)。
 
+## 任务通知与提醒
+
+从 `.73` 起，客户端设置提供独立的「通知与提醒」，支持后台摘要同步、已同步时间的本地提醒及系统角标。默认关闭，不依赖录音或常驻网页；服务器地址仍由用户自行填写。授权、有效期、角标能力与 Android 后台限制见[安卓通知与提醒](android-notifications.md)。
+
 ## 客户端更新
 
 从「客户端设置」选择「检查更新」，首次打开及回到前台时还会做有间隔的自动检查（每 12 小时至多一次；手动检查不受这个间隔限制）。检查独立访问 Astering 官方 GitHub Release，不发送所选站点的 Cookie、访问令牌或服务器配置。仅考虑正式、非草稿发布中的确切 Android APK；没有安卓包的服务端发布不会提示升级，已安装版本及更低版本也不会触发。
@@ -65,7 +69,7 @@ Android 首次安装更新需要用户在系统中允许 Astering「安装未知
 
 外站链接交给系统浏览器；文件访问、混合内容和明文 HTTP 被禁用。系统文件选择器只向网页交回具有读取授权的 `content://` 文档，原生端不提供任意路径读取。SSL 错误始终拒绝，HTTP 刷新和 WebSocket 不跟随重定向。
 
-原生访问令牌及会话代次只放进程内存，不写 SharedPreferences、日志或 APK 资源。WebView 沿用网站已有登录状态和 HttpOnly 刷新 Cookie；这不是新增离线凭据仓库。应用禁用自身备份与设备迁移，避免携带 WebView 登录数据到其他设备。
+完整原生登录访问令牌及认证会话代次只放进程内存，不写 SharedPreferences、日志或 APK 资源。用户明确开启的通知功能另有只能读取提醒摘要的 30 天设备令牌，以 Keystore 加密保存在不备份目录；这不允许把完整 JWT 或刷新 Cookie 复制到新凭据仓库。WebView 沿用网站已有登录状态和 HttpOnly 刷新 Cookie；这不是新增离线凭据仓库。应用禁用自身备份与设备迁移，避免携带 WebView 登录数据到其他设备。
 
 刷新使用真实 `POST /api/v2/user/token/refresh`，通过精确刷新 URL 取得路径受限的 `vikunja_refresh_token`。网页和录音服务共用原生串行协调器，两个 v1／v2 `Set-Cookie` 分别完成写入后才返回新访问令牌。响应应用同时核对账户、SID、认证代次与原 Cookie；退出后的迟到结果不能恢复旧会话或覆盖新登录。同一会话刷新不结束录音，旧 `iat`／`exp` 的访问令牌也不能降低已接受令牌。
 

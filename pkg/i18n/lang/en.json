@@ -1,5 +1,8 @@
 {
     "notifications": {
+        "automation": {
+            "subject": "Arona automation"
+        },
         "greeting": "Hi %[1]s,",
         "email_confirm": {
             "subject": "%[1]s, please confirm your email address at Astering",

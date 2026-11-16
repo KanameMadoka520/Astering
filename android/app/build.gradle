@@ -16,8 +16,8 @@ android {
         minSdk 26
         targetSdk 36
         ndk { abiFilters 'arm64-v8a' }
-        versionCode 69
-        versionName '2.7.1-aster.69'
+        versionCode 73
+        versionName '2.7.1-aster.73'
         testInstrumentationRunner 'android.test.InstrumentationTestRunner'
     }
 
@@ -70,6 +70,7 @@ dependencies {
     implementation files('../.offline/sherpa-onnx.aar')
     implementation 'androidx.webkit:webkit:1.18.0'
     implementation 'com.squareup.okhttp3:okhttp:5.4.0'
+    implementation 'androidx.work:work-runtime:2.12.0'
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.json:json:20250517'
 }

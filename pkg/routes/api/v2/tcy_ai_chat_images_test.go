@@ -80,11 +80,20 @@ func chatImageSetDescription(t *testing.T, text string) {
 	require.NoError(t, s.Commit())
 }
 
-func chatImageInvoke(ctx context.Context, t *testing.T, e *aiExecution, name string, args aiChatImageArgs) (string, error) {
+func chatImageInvoke(ctx context.Context, t *testing.T, e *aiExecution, name string, args aiChatImageArgs) error {
 	t.Helper()
 	raw, err := json.Marshal(args)
 	require.NoError(t, err)
-	return e.executeChatImage(ctx, name, raw)
+	if tcyai.IsWriteTool(name) {
+		op, err := e.prepareChatImage(ctx, name, raw)
+		if err != nil {
+			return err
+		}
+		op.Approved = true
+		ctx = tcyai.WithOperation(ctx, &op)
+	}
+	_, err = e.executeChatImage(ctx, name, raw)
+	return err
 }
 
 func chatImageLayout(t *testing.T) *aiDescriptionDocument {
@@ -306,7 +315,7 @@ func TestTCYAIChatImagePlacementAndRetention(t *testing.T) {
 		Position:           "before",
 		BlockIndex:         &block,
 	}
-	_, err = chatImageInvoke(ctx, t, e, "insert_chat_image", args)
+	err = chatImageInvoke(ctx, t, e, "insert_chat_image", args)
 	require.NoError(t, err)
 	document := chatImageLayout(t)
 	require.Len(t, document.images, 1)
@@ -316,7 +325,7 @@ func TestTCYAIChatImagePlacementAndRetention(t *testing.T) {
 	// Reusing the same chat image adds a second placement, not a second file or attachment.
 	args.DescriptionVersion = document.layout.Version
 	args.Position = "end"
-	_, err = chatImageInvoke(ctx, t, e, "insert_chat_image", args)
+	err = chatImageInvoke(ctx, t, e, "insert_chat_image", args)
 	require.NoError(t, err)
 	document = chatImageLayout(t)
 	require.Len(t, document.images, 2)
@@ -339,13 +348,13 @@ func TestTCYAIChatImagePlacementAndRetention(t *testing.T) {
 		Position:           "end",
 		Alt:                &alt,
 	}
-	_, err = chatImageInvoke(ctx, t, e, "update_task_description_image", args)
+	err = chatImageInvoke(ctx, t, e, "update_task_description_image", args)
 	require.NoError(t, err)
 	document = chatImageLayout(t)
 	assert.Equal(t, alt, imageAttribute(document.images[1], "alt"))
 	args.DescriptionVersion = document.layout.Version
 	args.ImageHash = document.layout.Images[0].Hash
-	_, err = chatImageInvoke(ctx, t, e, "remove_task_description_image", args)
+	err = chatImageInvoke(ctx, t, e, "remove_task_description_image", args)
 	require.NoError(t, err)
 	require.Len(t, chatImageLayout(t).images, 1)
 	identity := tcyai.ChatImagesFromContext(ctx)
@@ -372,7 +381,7 @@ func TestTCYAIChatImageSurvivesConversationDeletionAndDriveTrash(t *testing.T) {
 	fileCount, err := s.Count(&files.File{})
 	require.NoError(t, err)
 	require.NoError(t, s.Close())
-	_, err = chatImageInvoke(ctx, t, e, "insert_chat_image", aiChatImageArgs{
+	err = chatImageInvoke(ctx, t, e, "insert_chat_image", aiChatImageArgs{
 		ID:                 1,
 		DescriptionVersion: descriptionHash(chatImageTask(t).Description),
 		AttachmentID:       source.ID,
@@ -488,7 +497,7 @@ func TestTCYAIChatImageGuards(t *testing.T) {
 			if test.mutate != nil {
 				test.mutate(&input)
 			}
-			_, err := chatImageInvoke(test.context, t, test.execution, "insert_chat_image", input)
+			err := chatImageInvoke(test.context, t, test.execution, "insert_chat_image", input)
 			require.Error(t, err)
 			assert.Equal(t, original, chatImageTask(t).Description)
 			s := db.NewSession()
@@ -499,9 +508,9 @@ func TestTCYAIChatImageGuards(t *testing.T) {
 		})
 	}
 	// Description reads still respect model ACL and never expose inaccessible layout.
-	_, err := chatImageInvoke(ctx, t, e, "get_task_description_layout", aiChatImageArgs{ID: 13})
+	err := chatImageInvoke(ctx, t, e, "get_task_description_layout", aiChatImageArgs{ID: 13})
 	require.Error(t, err)
-	_, err = chatImageInvoke(ctx, t, e, "get_task_description_layout", aiChatImageArgs{ID: 18})
+	err = chatImageInvoke(ctx, t, e, "get_task_description_layout", aiChatImageArgs{ID: 18})
 	require.NoError(t, err)
 }
 
@@ -522,11 +531,11 @@ func TestTCYAIChatImageReviewAndIdentity(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, "<p>Concurrent author update</p>", chatImageTask(t).Description)
 	args.DescriptionVersion = descriptionHash(chatImageTask(t).Description)
-	_, err = chatImageInvoke(ctx, t, e, "insert_chat_image", args)
+	err = chatImageInvoke(ctx, t, e, "insert_chat_image", args)
 	require.NoError(t, err)
 	document := chatImageLayout(t)
 	index := 0
-	_, err = chatImageInvoke(ctx, t, e, "remove_task_description_image", aiChatImageArgs{
+	err = chatImageInvoke(ctx, t, e, "remove_task_description_image", aiChatImageArgs{
 		ID:                 1,
 		DescriptionVersion: document.layout.Version,
 		ImageIndex:         &index,
@@ -557,7 +566,7 @@ func TestTCYAIChatImageReplacementAndContextIsolation(t *testing.T) {
 	ids[0] = "mutated after context creation"
 	require.Equal(t, source.ID, tcyai.ChatImagesFromContext(ctx).AttachmentIDs[0])
 	chatImageSetDescription(t, "")
-	_, err = chatImageInvoke(ctx, t, e, "insert_chat_image", aiChatImageArgs{
+	err = chatImageInvoke(ctx, t, e, "insert_chat_image", aiChatImageArgs{
 		ID:                 1,
 		DescriptionVersion: descriptionHash(""),
 		AttachmentID:       source.ID,
@@ -568,7 +577,7 @@ func TestTCYAIChatImageReplacementAndContextIsolation(t *testing.T) {
 	require.Len(t, document.images, 1)
 	oldSrc := imageAttribute(document.images[0], "src")
 	index := 0
-	_, err = chatImageInvoke(ctx, t, e, "update_task_description_image", aiChatImageArgs{
+	err = chatImageInvoke(ctx, t, e, "update_task_description_image", aiChatImageArgs{
 		ID:                 1,
 		DescriptionVersion: document.layout.Version,
 		ImageIndex:         &index,

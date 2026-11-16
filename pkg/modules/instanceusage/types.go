@@ -38,8 +38,9 @@ type UsageCounts struct {
 	AIConversations     int64 `json:"ai_conversations" required:"true" doc:"Canonical UUID-named encrypted conversation files; includes archived conversations without decrypting them."`
 	AIConversationBytes int64 `json:"ai_conversation_bytes" required:"true" doc:"Actual lengths of canonical encrypted conversation files, including encryption overhead."`
 	AIAttachmentBytes   int64 `json:"ai_attachment_bytes" required:"true" doc:"Actual lengths of legacy SHA-256-named encrypted attachment files; excludes Drive originals already included in file_bytes."`
+	AIAutomationBytes   int64 `json:"ai_automation_bytes" required:"true" doc:"Actual length of encrypted automation definitions and bounded execution receipts, without decrypting their content."`
 	AISettingsBytes     int64 `json:"ai_settings_bytes" required:"true" doc:"Actual lengths of the account's encrypted model and MCP settings files. No settings are decrypted."`
-	AIBytes             int64 `json:"ai_bytes" required:"true" doc:"Sum of independent AI encrypted conversation, legacy attachment and settings file lengths. A lower bound when ai_scan_complete is false."`
+	AIBytes             int64 `json:"ai_bytes" required:"true" doc:"Sum of independent AI encrypted conversation, legacy attachment, settings and automation file lengths. A lower bound when ai_scan_complete is false."`
 	TotalStorageBytes   int64 `json:"total_storage_bytes" required:"true" doc:"file_bytes plus independent ai_bytes. Mixed logical original and encrypted file lengths, not filesystem allocated bytes or total server disk use; incomplete when AI scan is incomplete."`
 }
 

@@ -82,6 +82,15 @@ describe('Android client settings capabilities', () => {
 		expect(commands).toHaveLength(1)
 	})
 
+	it.each([true, false, 'true', undefined])('normalizes the optional device notification capability %j', async flag => {
+		const probe = native.getNativeAndroidClientInfo()
+		respond({...CLIENT, capabilities: {...CLIENT.capabilities, deviceNotifications: flag}})
+		await expect(probe).resolves.toEqual({
+			...CLIENT,
+			capabilities: {...CLIENT.capabilities, ...(flag === true ? {deviceNotifications: true} : {})},
+		})
+	})
+
 	it.each([
 		{},
 		{

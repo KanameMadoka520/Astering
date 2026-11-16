@@ -1,7 +1,57 @@
 import {describe, expect, it} from 'vitest'
-import {builtinProfileIDs, changeModuleAccess, effectiveModuleAccess, normalizeOptions, profileOptions, validOptions} from './assistantProfiles'
+import {
+	approvalPolicies,
+	builtinProfileIDs,
+	changeModuleAccess,
+	effectiveModuleAccess,
+	normalizeOptions,
+	profileOptions,
+	validOptions,
+} from './assistantProfiles'
 
 describe('assistant run options', () => {
+	it.each(approvalPolicies)('restores the explicit %s review policy without raising tool permissions', approval => {
+		const options = normalizeOptions({
+			...profileOptions('assist'),
+			approval,
+			mode: 'read',
+			tool_modules: {
+				project_tasks: 'read',
+				compass: 'off',
+				notes: 'off',
+			},
+		})
+		expect(validOptions(options)).toBe(true)
+		expect(normalizeOptions(JSON.parse(JSON.stringify(options)))).toEqual(options)
+		expect(options).toMatchObject({
+			approval,
+			mode: 'read',
+			allow_delete: false,
+			mcp_server_ids: [],
+			tool_modules: {
+				project_tasks: 'read',
+				compass: 'off',
+				notes: 'off',
+			},
+		})
+	})
+
+	it('keeps legacy and built-in templates reviewed unless unattended is explicitly selected', () => {
+		const {approval: _approval, ...legacy} = profileOptions('assist')
+		expect(validOptions(legacy as Parameters<typeof validOptions>[0])).toBe(true)
+		expect(normalizeOptions(legacy).approval).toBe('smart')
+		for (const id of builtinProfileIDs) expect(profileOptions(id).approval).not.toBe('unattended')
+	})
+
+	it.each([null, 'disabled', true])('rejects malformed stored review policy %s and normalizes it safely', approval => {
+		const options = {
+			...profileOptions('assist'),
+			approval: approval as never,
+		}
+		expect(validOptions(options)).toBe(false)
+		expect(normalizeOptions(options).approval).toBe('smart')
+	})
+
 	it('keeps personal notes explicitly off in every built-in scenario and old account template', () => {
 		for (const id of builtinProfileIDs) expect(profileOptions(id).tool_modules.notes).toBe('off')
 		expect(normalizeOptions({tool_modules: {project_tasks: 'write', compass: 'write'}}).tool_modules.notes).toBe('off')
