@@ -53,7 +53,7 @@ test('editing a selected scenario keeps its template target and applies the save
 	const dialog = await openPreferences()
 	const template = dialog.getByLabel('My templates')
 	await template.selectOption(templateID)
-	const model = dialog.getByLabel('Model connection', {exact: true})
+	const model = dialog.locator('label').filter({hasText: /^Model connection/}).locator('select')
 	await model.selectOption(modelID)
 	await expect(template).toHaveValue(templateID)
 	await dialog.getByText('Advanced execution budget', {exact: true}).click()
