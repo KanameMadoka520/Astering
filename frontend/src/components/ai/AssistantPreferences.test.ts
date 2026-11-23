@@ -62,9 +62,13 @@ describe('AssistantPreferences', () => {
 	})
 	beforeEach(() => {
 		client = new QueryClient({defaultOptions: {queries: {staleTime: Infinity, retry: false}}})
+		let stored = STORED
 		client.setQueryData(assistantPreferencesQuery().queryKey, STORED)
-		sdk.tcyAiPreferences.mockReset().mockImplementation(async () => ({data: STORED}))
-		sdk.tcyAiSavePreferences.mockReset().mockImplementation(async ({body}) => ({data: body}))
+		sdk.tcyAiPreferences.mockReset().mockImplementation(async () => ({data: stored}))
+		sdk.tcyAiSavePreferences.mockReset().mockImplementation(async ({body}: {body: Preferences}) => {
+			stored = {...body, revision: (stored.revision ?? 0) + 1}
+			return {data: stored}
+		})
 		// happy-dom has no modal dialogs.
 		HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) { this.open = true }
 	})
@@ -102,6 +106,42 @@ describe('AssistantPreferences', () => {
 		expect(sdk.tcyAiPreferences.mock.calls.length).toBeGreaterThan(reads)
 		expect(savedBodies().map(body => body.default_profile)).toEqual(['custom-weekly', 'custom-weekly', 'custom-weekly'])
 		expect(page().find('[role="alert"]').exists()).toBe(false)
+	})
+
+	it('lets the user apply the saved template while the background read is still pending', async () => {
+		const wrapper = mountDialog()
+		sdk.tcyAiPreferences.mockImplementation(() => new Promise(() => undefined))
+		await page().find('input[type="number"]').setValue(26)
+		await button('assistantUI.updateTemplate')!.trigger('click')
+		await flushPromises()
+
+		expect(client.isFetching({queryKey: assistantPreferencesQuery().queryKey})).toBe(1)
+		expect(page().find('[role="status"]').text()).toBe('assistantUI.saved')
+		await page().find('form').trigger('submit')
+		expect(wrapper.emitted('apply')?.[0]).toEqual([
+			expect.objectContaining({max_rounds: 26}),
+			'custom-weekly',
+		])
+	})
+
+	it('does not replace a newly chosen scenario with the template from an earlier save', async () => {
+		const wrapper = mountDialog()
+		let finish!: () => void
+		sdk.tcyAiSavePreferences.mockImplementationOnce(({body}: {body: Preferences}) => new Promise(resolve => {
+			finish = () => resolve({data: {...body, revision: 1}})
+		}))
+		await button('assistantUI.updateTemplate')!.trigger('click')
+		await flushPromises()
+		await page().findAll('.preset')[2]!.trigger('click')
+		finish()
+		await flushPromises()
+
+		expect(page().find('.preset[aria-pressed="true"]').text()).toContain('assistantUI.presets.assist.name')
+		await page().find('form').trigger('submit')
+		expect(wrapper.emitted('apply')?.[0]).toEqual([
+			expect.objectContaining({max_rounds: 16}),
+			'assist',
+		])
 	})
 
 	it('stays open when a text selection is dragged out onto the backdrop', async () => {

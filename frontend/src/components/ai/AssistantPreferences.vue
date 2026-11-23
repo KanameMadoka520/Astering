@@ -8,6 +8,11 @@ import {builtinProfileIDs, normalizeOptions, profileOptions, validOptions, type 
 import {useProjects} from '@/composables/useProjects'
 import {useAronaDisplayPreferences, defaultAronaDisplayPreferences} from '@/composables/useAronaDisplayPreferences'
 import type {AssistantPreferences} from '@/client/generated'
+import {
+	captureClientRequestContext,
+	isClientRequestContextCurrent,
+	isRequestContextAbort,
+} from '@/client/requestContext'
 import ToolModuleControls from './ToolModuleControls.vue'
 const props = defineProps<{
 	options: AssistantOptions
@@ -26,44 +31,81 @@ const projectList = useProjects()
 const draft = ref(normalizeOptions(props.options))
 // eslint-disable-next-line vue/no-setup-props-reactivity-loss
 const selected = ref(props.profile)
-// eslint-disable-next-line vue/no-setup-props-reactivity-loss
-const sourceProfile = ref(props.profile.startsWith('custom-') ? props.profile : '')
-const name = ref('')
+const modified = ref(false)
+const editedName = ref<string>()
 const error = ref('')
 const saved = ref(false)
+const retrying = ref(false)
+const confirmingDelete = ref(false)
 const dialog = ref<HTMLDialogElement>()
 const previousFocus = document.activeElement as HTMLElement | null
+const owner = captureClientRequestContext()
+let disposed = false
+let draftRevision = 0
 const custom = computed(() => preferences.data.value?.profiles ?? [])
+const sourceTemplate = computed(() => custom.value.find(p => p.id === selected.value))
+const templateSelection = computed({
+	get: () => sourceTemplate.value?.id ?? '',
+	set: choose,
+})
+const name = computed({
+	get: () => editedName.value ?? sourceTemplate.value?.name ?? '',
+	set: value => { editedName.value = value; changed() },
+})
+const chosenProfile = computed(() => sourceTemplate.value?.id
+	?? (builtinProfileIDs.some(id => id === selected.value) ? selected.value : ''))
 const unavailable = computed(() => draft.value.write_project_ids.filter(id => !projectList.projectsArray.some(p => p.id === id && !p.is_archived)))
 const valid = computed(() => validOptions(draft.value))
 const models = computed(() => settings.data.value?.connections.filter(c => c.kind === 'chat') ?? [])
 const defaultID = computed(() => preferences.data.value?.default_profile || 'ask')
+const saving = computed(() => retrying.value || save.isPending.value)
+const canSetDefault = computed(() => !modified.value && Boolean(chosenProfile.value) && Boolean(preferences.data.value))
 const optionId = useId()
 function choose(id: string) {
 	if (props.locked) return
-	selected.value = id
 	const p = custom.value.find(p => p.id === id)
+	if (!p && !builtinProfileIDs.some(profile => profile === id)) return
 	const mcpServerIDs = [...draft.value.mcp_server_ids]
-	draft.value = p ? normalizeOptions(p.options) : {...profileOptions(id), connection_id: draft.value.connection_id, project_id: draft.value.project_id, tool_modules: {...draft.value.tool_modules}}
+	draft.value = p ? normalizeOptions(p.options) : {
+		...profileOptions(id),
+		connection_id: draft.value.connection_id,
+		project_id: draft.value.project_id,
+		tool_modules: {...draft.value.tool_modules},
+	}
 	draft.value.mcp_server_ids = mcpServerIDs
-	name.value = p?.name ?? ''
-	sourceProfile.value = p?.id ?? ''
+	selected.value = id
+	modified.value = false
+	editedName.value = undefined
+	changed()
+}
+function changed() {
+	draftRevision++
 	saved.value = false
+	error.value = ''
+	failedAction.value = undefined
 	confirmingDelete.value = false
 }
-function edited() {selected.value = ''; saved.value = false}
-// The action that failed. Its retry reloads first: a save that lost to another window then applies the same change
-// on top of that window's, instead of failing again or overwriting it.
+function edited() {
+	modified.value = true
+	changed()
+}
 const failedAction = shallowRef<() => Promise<unknown>>()
+function stillEditing(revision = draftRevision) {
+	return !disposed && revision === draftRevision && isClientRequestContextCurrent(owner)
+}
 async function persist(next: AssistantPreferences, again: () => Promise<unknown>) {
+	if (saving.value || !stillEditing()) return false
+	const revision = draftRevision
 	error.value = ''
 	saved.value = false
 	failedAction.value = undefined
 	try {
 		await save.mutateAsync(next)
+		if (!stillEditing(revision)) return false
 		saved.value = true
 		return true
-	} catch {
+	} catch (cause) {
+		if (isRequestContextAbort(cause) || !stillEditing(revision)) return false
 		error.value = t('assistantUI.saveFailed')
 		failedAction.value = again
 		return false
@@ -71,36 +113,48 @@ async function persist(next: AssistantPreferences, again: () => Promise<unknown>
 }
 async function retrySave() {
 	const action = failedAction.value
-	if (!action || save.isPending.value || preferences.isFetching.value) return
-	await preferences.refetch()
-	await action()
+	if (!action || saving.value || !stillEditing()) return
+	const revision = draftRevision
+	retrying.value = true
+	try {
+		const refreshed = await preferences.refetch()
+		if (refreshed.isSuccess && stillEditing(revision)) {
+			retrying.value = false
+			await action()
+		}
+	} finally {
+		retrying.value = false
+	}
 }
 const loadFailed = computed(() => preferences.isError.value && !preferences.data.value)
 async function saveTemplate(overwrite = false) {
 	if (!name.value.trim() || !valid.value || !preferences.data.value || (!overwrite && custom.value.length >= 20)) return
-	const id = overwrite ? sourceProfile.value : `custom-${crypto.randomUUID()}`
-	if (overwrite && !custom.value.some(p => p.id === id)) return
+	const id = overwrite ? sourceTemplate.value?.id : `custom-${crypto.randomUUID()}`
+	if (!id) return
 	const profile = {
 		id,
 		name: name.value.trim(),
-		options: {...normalizeOptions(draft.value), mcp_server_ids: []},
+		options: {
+			...normalizeOptions(draft.value),
+			mcp_server_ids: [],
+		},
 	}
 	const profiles = overwrite ? custom.value.map(p => p.id === id ? profile : p) : [...custom.value, profile]
 	if (await persist({...preferences.data.value, profiles}, () => saveTemplate(overwrite))) {
 		selected.value = id
-		sourceProfile.value = id
+		editedName.value = undefined
+		modified.value = false
 	}
 }
 async function setDefault() {
-	if (!selected.value || !preferences.data.value) return
-	await persist({...preferences.data.value, default_profile: selected.value}, setDefault)
+	if (!canSetDefault.value || !preferences.data.value) return
+	await persist({...preferences.data.value, default_profile: chosenProfile.value}, setDefault)
 }
 // An account-wide template is gone for every device once deleted, so the button asks first.
-const confirmingDelete = ref(false)
 const deleteButton = ref<HTMLButtonElement>()
 const confirmDeleteButton = ref<HTMLButtonElement>()
-const selectedName = computed(() => custom.value.find(p => p.id === selected.value)?.name ?? '')
 async function askDelete() {
+	if (saving.value) return
 	confirmingDelete.value = true
 	await nextTick()
 	confirmDeleteButton.value?.focus()
@@ -111,9 +165,13 @@ async function cancelDelete() {
 	deleteButton.value?.focus()
 }
 async function removeTemplate() {
-	if (save.isPending.value || !selected.value.startsWith('custom-') || !preferences.data.value) return
-	const next = {...preferences.data.value, profiles: custom.value.filter(p => p.id !== selected.value)}
-	if (next.default_profile === selected.value) next.default_profile = 'ask'
+	const id = sourceTemplate.value?.id
+	if (!confirmingDelete.value || !id || !preferences.data.value) return
+	const next = {
+		...preferences.data.value,
+		profiles: custom.value.filter(p => p.id !== id),
+	}
+	if (next.default_profile === id) next.default_profile = 'ask'
 	if (!await persist(next, removeTemplate)) return
 	choose('ask')
 	// The delete button left with the template; the scenario that is selected now takes the focus.
@@ -131,8 +189,8 @@ function clickBackdrop(event: MouseEvent) {
 	pressedBackdrop = false
 }
 function apply() {
-	if (props.locked || !valid.value || save.isPending.value) return
-	emit('apply', normalizeOptions(draft.value), selected.value)
+	if (props.locked || !valid.value || saving.value || !stillEditing()) return
+	emit('apply', normalizeOptions(draft.value), modified.value ? '' : chosenProfile.value)
 	emit('close')
 }
 // Display defaults are device-local view settings: they apply at once and never enter the run-option draft.
@@ -170,8 +228,14 @@ function restoreDisplay() {
 	resetDisplay()
 	noteDisplay(t('aronaDisplay.restored'))
 }
-onMounted(() => {name.value = custom.value.find(p => p.id === sourceProfile.value)?.name ?? ''; dialog.value?.showModal()})
-onBeforeUnmount(() => {clearTimeout(displayNoteTimer); displayNoteRequest++; dialog.value?.close(); previousFocus?.focus()})
+onMounted(() => dialog.value?.showModal())
+onBeforeUnmount(() => {
+	disposed = true
+	clearTimeout(displayNoteTimer)
+	displayNoteRequest++
+	dialog.value?.close()
+	previousFocus?.focus()
+})
 </script>
 
 <template>
@@ -219,8 +283,8 @@ onBeforeUnmount(() => {clearTimeout(displayNoteTimer); displayNoteRequest++; dia
 								:key="id"
 								type="button"
 								class="preset"
-								:class="{selected: selected === id}"
-								:aria-pressed="selected === id"
+								:class="{selected: selected === id && !modified}"
+								:aria-pressed="selected === id && !modified"
 								:disabled="locked"
 								@click="choose(id)"
 							>
@@ -228,10 +292,9 @@ onBeforeUnmount(() => {clearTimeout(displayNoteTimer); displayNoteRequest++; dia
 							</button>
 						</div>
 						<label v-if="custom.length">{{ t('assistantUI.myTemplates') }}<select
+							v-model="templateSelection"
 							class="input"
-							:value="selected.startsWith('custom-') ? selected : ''"
 							:disabled="locked"
-							@change="choose(($event.target as HTMLSelectElement).value)"
 						><option
 							value=""
 							disabled
@@ -243,15 +306,15 @@ onBeforeUnmount(() => {clearTimeout(displayNoteTimer); displayNoteRequest++; dia
 						<div class="template-actions">
 							<button
 								type="button"
-								:disabled="!selected || save.isPending.value || preferences.isPending.value"
+								:aria-disabled="!canSetDefault || saving"
 								@click="setDefault"
 							>
 								{{ t('assistantUI.makeDefault') }}
 							</button><button
-								v-if="selected.startsWith('custom-') && !confirmingDelete"
+								v-if="sourceTemplate && !modified && !confirmingDelete"
 								ref="deleteButton"
 								type="button"
-								:disabled="save.isPending.value"
+								:aria-disabled="saving"
 								@click="askDelete"
 							>
 								{{ t('assistantUI.deleteTemplate') }}
@@ -263,11 +326,11 @@ onBeforeUnmount(() => {clearTimeout(displayNoteTimer); displayNoteRequest++; dia
 							role="group"
 							:aria-label="t('assistantUI.deleteTemplate')"
 						>
-							<span>{{ t('assistantUI.deleteTemplateConfirm', {name: selectedName}) }}</span><button
+							<span>{{ t('assistantUI.deleteTemplateConfirm', {name: sourceTemplate?.name}) }}</span><button
 								ref="confirmDeleteButton"
 								type="button"
 								class="danger-button"
-								:aria-disabled="save.isPending.value"
+								:aria-disabled="saving"
 								@click="removeTemplate"
 							>
 								{{ t('assistantUI.deleteTemplateYes') }}
@@ -279,7 +342,7 @@ onBeforeUnmount(() => {clearTimeout(displayNoteTimer); displayNoteRequest++; dia
 							</button>
 						</div>
 						<p class="help">
-							{{ t('assistantUI.defaultHelp') }}
+							{{ t(sourceTemplate && modified ? 'assistantUI.templateEdited' : 'assistantUI.defaultHelp') }}
 						</p>
 					</section>
 					<section
@@ -419,24 +482,24 @@ onBeforeUnmount(() => {clearTimeout(displayNoteTimer); displayNoteRequest++; dia
 							:placeholder="t('assistantUI.nameExample')"
 						></label><button
 							type="button"
-							:disabled="!name.trim() || !valid || custom.length >= 20 || preferences.isPending.value || save.isPending.value"
+							:aria-disabled="!name.trim() || !valid || custom.length >= 20 || !preferences.data.value || saving"
 							@click="saveTemplate(false)"
 						>
 							{{ t('assistantUI.saveTemplate') }}
 						</button><button
-							v-if="sourceProfile && custom.some(p => p.id === sourceProfile)"
+							v-if="sourceTemplate"
 							type="button"
-							:disabled="!name.trim() || !valid || save.isPending.value"
+							:aria-disabled="!name.trim() || !valid || saving"
 							@click="saveTemplate(true)"
 						>
 							{{ t('assistantUI.updateTemplate') }}
 						</button><small>{{ t('assistantUI.templateHelp') }}</small>
 					</section>
 					<p
-						v-if="saved"
+						v-if="saving || saved"
 						role="status"
 					>
-						{{ t('assistantUI.saved') }}
+						{{ t(saving ? 'assistantUI.saving' : 'assistantUI.saved') }}
 					</p><p
 						v-if="error"
 						role="alert"
@@ -444,7 +507,7 @@ onBeforeUnmount(() => {clearTimeout(displayNoteTimer); displayNoteRequest++; dia
 						{{ error }} <button
 							v-if="failedAction"
 							type="button"
-							:aria-disabled="save.isPending.value || preferences.isFetching.value"
+							:aria-disabled="saving"
 							@click="retrySave"
 						>
 							{{ t('chat.retry') }}
@@ -511,7 +574,8 @@ onBeforeUnmount(() => {clearTimeout(displayNoteTimer); displayNoteRequest++; dia
 					</button><button
 						class="apply-button"
 						type="submit"
-						:disabled="locked || !valid || save.isPending.value"
+						:disabled="locked || !valid"
+						:aria-disabled="saving"
 					>
 						{{ t(context === 'automation' ? 'assistantUI.applyAutomationDraft' : 'assistantUI.apply') }}
 					</button>

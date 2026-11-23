@@ -503,6 +503,10 @@ const profiles = computed(() => [
 	...builtinProfileIDs.map(id => ({id, name: t(`assistantUI.presets.${id}.name`)})),
 	...(preferences.data.value?.profiles ?? []).map(p => ({id: p.id!, name: p.name!})),
 ])
+const profileSelection = computed({
+	get: () => profiles.value.some(p => p.id === selectedProfile.value) ? selectedProfile.value : '',
+	set: selectProfile,
+})
 function applyOptions(o: AssistantOptions, profile: string, remember = true) {
 	searchMode.value = o.search_mode || 'auto'
 	connectionID.value = o.connection_id
@@ -534,9 +538,11 @@ function openPreferences() {
 	if (executionScopeLocked.value) return
 	preferencesOpen.value = true
 }
+watch(chatID, () => { preferencesOpen.value = false }, {flush: 'sync'})
 function selectProfile(id: string) {
 	if (executionScopeLocked.value) return
 	const custom = preferences.data.value?.profiles?.find(p => p.id === id)
+	if (!custom && !builtinProfileIDs.some(profile => profile === id)) return
 	const options = custom
 		? normalizeOptions(custom.options)
 		: {...profileOptions(id), connection_id: connectionID.value, project_id: projectID.value}
@@ -561,8 +567,9 @@ watch([() => preferences.data.value, () => preferences.isError.value, active, ch
 		if (candidate && validOptions(candidate.options) && ['read', 'write'].includes(candidate.options.mode)) saved = {options: normalizeOptions(candidate.options), profile: candidate.profile}
 	} catch { /* Ignore unavailable or obsolete browser preferences. */ }
 	const last = conversation?.turns?.at(-1)?.result?.configuration
-	const defaultID = value?.default_profile || 'ask'
-	const custom = value?.profiles?.find(p => p.id === defaultID)
+	const requestedDefault = value?.default_profile || 'ask'
+	const custom = value?.profiles?.find(p => p.id === requestedDefault)
+	const defaultID = custom || builtinProfileIDs.some(id => id === requestedDefault) ? requestedDefault : 'ask'
 	const options = saved?.options ?? (last ? normalizeOptions(last) : custom ? normalizeOptions(custom.options) : profileOptions(defaultID))
 	if (!saved && !last) options.mcp_server_ids = []
 	if (contextProject.value) options.project_id = contextProject.value
@@ -2070,11 +2077,10 @@ onBeforeUnmount(() => {
 						class="composer-chip profile-switch"
 						:title="t('assistantUI.scenarios')"
 					><span class="configuration-field-label">{{ t('assistantUI.scenarios') }}</span><select
-						:value="selectedProfile"
+						v-model="profileSelection"
 						:disabled="executionScopeLocked"
-						@change="selectProfile(($event.target as HTMLSelectElement).value)"
 					><option
-						v-if="!selectedProfile"
+						v-if="!profileSelection"
 						value=""
 					>{{ t('assistantUI.custom') }}</option><option
 						v-for="p in profiles"
