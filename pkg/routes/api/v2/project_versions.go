@@ -50,7 +50,9 @@ func RegisterProjectVersionRoutes(api huma.API) {
 		}
 	}
 	base := "/projects/{project}/versions"
-	Register(api, op("project-versions-list", http.MethodGet, base, "List saved project checkpoints", "Requires current project read access. Public links cannot read history. Only explicit checkpoints and restore checkpoints are recorded; no automatic expiry."), projectVersionsList)
+	Register(api, op("project-version-schedule-read", http.MethodGet, base+"/schedule", "Read the daily project history schedule", "Requires current project administrator access."), projectVersionScheduleRead)
+	Register(api, op("project-version-schedule-update", http.MethodPut, base+"/schedule", "Set whether the project saves daily history", "Requires current project administrator access. Disabling leaves existing checkpoints available."), projectVersionScheduleUpdate)
+	Register(api, op("project-versions-list", http.MethodGet, base, "List saved project checkpoints", "Requires current project read access. Public links cannot read history. Includes manual, daily, and pre/post restore checkpoints. Only daily checkpoints have automatic retention."), projectVersionsList)
 	Register(api, op("project-versions-create", http.MethodPost, base, "Save a named project checkpoint", "Requires current project write permission. Content objects are compressed and deduplicated within the project; originals are referenced without copying bytes. request_id makes retries idempotent."), projectVersionsCreate)
 	Register(api, op("project-versions-read", http.MethodGet, base+"/{version}", "Read checkpoint metadata", "Requires current project read access. Contains counts and storage accounting, never account credentials or historical permissions."), projectVersionsRead)
 	Register(api, op("project-versions-preview", http.MethodGet, base+"/{version}/preview", "Preview a complete project restore", "Requires current project read access. Returns a paginated diff and stable current_hash/plan_hash for review; no data is modified. Current project administrators alone may apply a conflict-free preview."), projectVersionsPreview)
@@ -145,6 +147,33 @@ func projectVersionSessionAttempt[T any](ctx context.Context, a web.Auth, newSes
 	events.DispatchPending(ctx, s)
 	return out, false, nil
 }
+func projectVersionScheduleRead(ctx context.Context, in *struct {
+	Project int64 `path:"project" minimum:"1"`
+}) (*singleBody[models.ProjectVersionScheduleStatus], error) {
+	result, err := withProjectVersionSession(ctx, func(s *xorm.Session, a web.Auth) (*models.ProjectVersionScheduleStatus, error) {
+		return models.ReadProjectVersionSchedule(s, a, in.Project)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &singleBody[models.ProjectVersionScheduleStatus]{Body: result}, nil
+}
+
+func projectVersionScheduleUpdate(ctx context.Context, in *struct {
+	Project int64 `path:"project" minimum:"1"`
+	Body    struct {
+		Enabled bool `json:"enabled" doc:"Turn daily history on or off without changing existing checkpoints."`
+	}
+}) (*singleBody[models.ProjectVersionScheduleStatus], error) {
+	result, err := withProjectVersionSession(ctx, func(s *xorm.Session, a web.Auth) (*models.ProjectVersionScheduleStatus, error) {
+		return models.UpdateProjectVersionSchedule(s, a, in.Project, in.Body.Enabled)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &singleBody[models.ProjectVersionScheduleStatus]{Body: result}, nil
+}
+
 func projectVersionsList(ctx context.Context, in *struct {
 	Project int64 `path:"project" minimum:"1"`
 	Page    int   `query:"page" default:"1" minimum:"1" maximum:"10000000"`

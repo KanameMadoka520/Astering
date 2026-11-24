@@ -48,6 +48,7 @@ func GetTables() []interface{} {
 		&ProjectLifecycleEvent{},
 		&ProjectVersion{},
 		&projectVersionCounter{},
+		&projectVersionSchedule{},
 		&projectVersionObject{},
 		&projectVersionEntity{},
 		&projectVersionTaskRef{},

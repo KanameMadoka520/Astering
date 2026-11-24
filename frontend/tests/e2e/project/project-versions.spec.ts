@@ -519,3 +519,27 @@ test('returning to a view removed by restore selects a valid restored view witho
 	await expect(page.locator('.tasktext').filter({hasText: 'Saved task'}).first()).toBeVisible()
 	expect(await page.evaluate(() => (window as Window & {projectVersionsDocument?: string}).projectVersionsDocument)).toBe('view-document')
 })
+
+test('project administrators can manage daily checkpoints on a phone', async ({
+	authenticatedPage: page, apiContext, userToken,
+}) => {
+	await seed()
+	const saved = await checkpoint(apiContext, userToken)
+	await page.setViewportSize({width: 390, height: 844})
+	await page.goto('/projects/1/versions')
+	const schedule = page.getByRole('region', {name: 'Daily checkpoints'})
+	await expect(schedule).toContainText('Off.')
+	await expect(schedule).toContainText('03:00')
+	const enable = schedule.getByRole('button', {name: 'Enable daily checkpoints'})
+	const disable = schedule.getByRole('button', {name: 'Disable daily checkpoints'})
+	await enable.click()
+	await expect(schedule).toContainText('Next check')
+	await expect(disable).toBeEnabled()
+	await page.reload()
+	await expect(disable).toBeEnabled()
+	await disable.click()
+	await expect(enable).toBeEnabled()
+	await expect(schedule).toContainText('Off.')
+	await expect(page.getByTestId('version-point').filter({hasText: saved.name})).toBeVisible()
+	expect(await schedule.evaluate(element => element.getBoundingClientRect().right)).toBeLessThanOrEqual(390)
+})

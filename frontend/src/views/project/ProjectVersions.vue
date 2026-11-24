@@ -35,6 +35,12 @@
 			{{ t('misc.loading') }}
 		</p>
 		<template v-else>
+			<ProjectVersionSchedule
+				v-if="canAdmin && (!mobile || selected === 0)"
+				:key="projectId"
+				:project-id="projectId"
+				:archived="!!project.is_archived"
+			/>
 			<Message
 				v-if="outcome"
 				variant="success"
@@ -87,7 +93,7 @@
 								<strong>{{ version.name }}</strong>
 								<span>{{ t(`projectVersions.kinds.${version.kind}`) }} · #{{ version.sequence }}</span>
 								<time :datetime="version.created">{{ formatDateLong(version.created) }}</time>
-								<span>{{ version.created_by.name || version.created_by.username }}</span>
+								<span v-if="version.created_by.id">{{ version.created_by.name || version.created_by.username }}</span>
 							</RouterLink>
 						</li>
 					</ol>
@@ -134,7 +140,7 @@
 							}) }}
 						</p>
 						<p class="project-versions__meta">
-							{{ t('projectVersions.retention') }}
+							{{ t(selectedVersion.kind === 'daily' ? 'projectVersions.schedule.retention' : 'projectVersions.retention') }}
 						</p>
 						<div class="project-versions__actions">
 							<XButton
@@ -406,6 +412,7 @@ import Pagination from '@/components/misc/Pagination.vue'
 import PageHeader from '@/components/misc/state/PageHeader.vue'
 import LoadError from '@/components/misc/state/LoadError.vue'
 import EmptyState from '@/components/misc/state/EmptyState.vue'
+import ProjectVersionSchedule from '@/components/project/versions/ProjectVersionSchedule.vue'
 import ProjectVersionEntity from '@/components/project/versions/ProjectVersionEntity.vue'
 import {projectQuery} from '@/client/queries/projects'
 import {

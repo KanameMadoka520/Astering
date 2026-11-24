@@ -5497,7 +5497,19 @@
     "yes": "Yes",
     "no": "No",
     "otherSetting": "Setting",
+    "schedule": {
+      "title": "Daily checkpoints",
+      "help": "Checks for changes daily at 03:00 ({zone}) and keeps the latest 30 automatic checkpoints.",
+      "retention": "The latest 30 daily checkpoints are retained. Named checkpoints are retained separately.",
+      "enable": "Enable daily checkpoints",
+      "disable": "Disable daily checkpoints",
+      "disabled": "Off. Existing checkpoints are still available for viewing and restoration.",
+      "paused": "Daily checkpoints are paused while this project is archived.",
+      "enabled": "On.",
+      "next": "On. Next check: {date}."
+    },
     "kinds": {
+      "daily": "Daily checkpoint",
       "manual": "Named checkpoint",
       "before_restore": "Before restore",
       "restored": "Restored content"

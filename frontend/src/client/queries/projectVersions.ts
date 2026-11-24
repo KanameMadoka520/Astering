@@ -5,6 +5,8 @@ import {
 } from '@tanstack/vue-query'
 import {
 	projectVersionsList,
+	projectVersionScheduleRead,
+	projectVersionScheduleUpdate,
 	projectVersionsCreate,
 	projectVersionsRead,
 	projectVersionsPreview,
@@ -175,6 +177,7 @@ function normalizePreview(data: ApiProjectVersionPreview, page: number): Project
 export const projectVersionKeys = {
 	all: ['project-versions'] as const,
 	project: (project: number) => [...projectVersionKeys.all, project] as const,
+	schedule: (project: number) => [...projectVersionKeys.project(project), 'schedule'] as const,
 	lists: (project: number) => [...projectVersionKeys.project(project), 'list'] as const,
 	list: (project: number, page: number) => [...projectVersionKeys.lists(project), page] as const,
 	version: (project: number, version: number) => [...projectVersionKeys.project(project), version] as const,
@@ -183,6 +186,27 @@ export const projectVersionKeys = {
 		[...projectVersionKeys.version(project, version), 'preview', page] as const,
 	entity: (project: number, version: number, kind: string, entity: string) =>
 		[...projectVersionKeys.version(project, version), 'entity', kind, entity] as const,
+}
+
+export function projectVersionScheduleQuery(project: number) {
+	return queryOptions({
+		queryKey: projectVersionKeys.schedule(project),
+		queryFn: async ({signal}) => (await projectVersionScheduleRead({path: {project}, signal})).data,
+		meta: {handlesError: true},
+	})
+}
+
+export function useProjectVersionScheduleMutation(owner: ClientRequestContext) {
+	return useMutation(contextMutationOptions({
+		mutationFn: async (input: {project: number, enabled: boolean}) =>
+			(await projectVersionScheduleUpdate({path: {project: input.project}, body: {enabled: input.enabled}})).data,
+		onSuccess: (data, input, client) => {
+			client.setQueryData(projectVersionKeys.schedule(input.project), data)
+		},
+		onSettled: (input, client) => client.invalidateQueries({
+			queryKey: projectVersionKeys.schedule(input.project),
+		}),
+	}, owner))
 }
 
 export function projectVersionsQuery(project: number, page: number) {

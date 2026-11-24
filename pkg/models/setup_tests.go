@@ -58,6 +58,7 @@ func SetupTests() {
 		"project_lifecycle_events",
 		"project_versions",
 		"project_version_counters",
+		"project_version_schedules",
 		"project_version_objects",
 		"project_version_entities",
 		"project_version_task_refs",

@@ -92,7 +92,7 @@ type projectVersionTaskRef struct {
 func (*projectVersionTaskRef) TableName() string { return "project_version_task_refs" }
 
 type ProjectVersionActor struct {
-	ID       int64  `json:"id" doc:"Account that saved this checkpoint."`
+	ID       int64  `json:"id" doc:"Account that saved this checkpoint; zero for scheduled checkpoints."`
 	Username string `json:"username" doc:"Username at the time of saving."`
 	Name     string `json:"name" doc:"Display name at the time of saving."`
 }
@@ -101,7 +101,7 @@ type ProjectVersionSummary struct {
 	ProjectID             int64               `json:"project_id" doc:"Current project controlling access to this checkpoint."`
 	Sequence              int64               `json:"sequence" doc:"Monotonically increasing checkpoint number within the project."`
 	Name                  string              `json:"name" doc:"Explicit checkpoint name or automatic recovery label."`
-	Kind                  string              `json:"kind" enum:"manual,before_restore,restored" doc:"User-saved or automatic pre/post restore checkpoint."`
+	Kind                  string              `json:"kind" enum:"manual,daily,before_restore,restored" doc:"Manual, daily, or automatic pre/post restore checkpoint."`
 	RestoredFromVersionID int64               `json:"restored_from_version_id" doc:"Source checkpoint for an automatic restored version, otherwise zero."`
 	ContentHash           string              `json:"content_hash" doc:"SHA-256 of the canonical checkpoint entity manifest."`
 	SchemaVersion         int                 `json:"schema_version" doc:"Version of the explicit content schema, independent from the application version."`

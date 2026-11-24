@@ -4677,6 +4677,17 @@ export type ProjectCompletionRequest = {
     completed?: boolean;
 };
 
+export type ProjectVersionScheduleUpdateRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Turn daily history on or off without changing existing checkpoints.
+     */
+    enabled?: boolean;
+};
+
 export type ProjectVersionsCreateRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -5119,7 +5130,7 @@ export type ProjectUser = {
 
 export type ProjectVersionActor = {
     /**
-     * Account that saved this checkpoint.
+     * Account that saved this checkpoint; zero for scheduled checkpoints.
      */
     id?: number;
     /**
@@ -5473,6 +5484,25 @@ export type ProjectVersionRestoreResult = {
     version?: ProjectVersionSummary;
 };
 
+export type ProjectVersionScheduleStatus = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Whether daily project history is enabled.
+     */
+    enabled?: boolean;
+    /**
+     * Next scheduled check or retry; absent when disabled.
+     */
+    next_run_at?: string;
+    /**
+     * Server time zone used by the daily schedule.
+     */
+    time_zone?: string;
+};
+
 export type ProjectVersionSummary = {
     /**
      * A URL to the JSON Schema for this object.
@@ -5511,9 +5541,9 @@ export type ProjectVersionSummary = {
      */
     id?: number;
     /**
-     * User-saved or automatic pre/post restore checkpoint.
+     * Manual, daily, or automatic pre/post restore checkpoint.
      */
-    kind?: 'manual' | 'before_restore' | 'restored';
+    kind?: 'manual' | 'daily' | 'before_restore' | 'restored';
     /**
      * Explicit checkpoint name or automatic recovery label.
      */
@@ -10991,6 +11021,13 @@ export type ProjectCompletionRequestWritable = {
     completed?: boolean;
 };
 
+export type ProjectVersionScheduleUpdateRequestWritable = {
+    /**
+     * Turn daily history on or off without changing existing checkpoints.
+     */
+    enabled?: boolean;
+};
+
 export type ProjectVersionsCreateRequestWritable = {
     name?: string;
     request_id?: string;
@@ -11301,6 +11338,21 @@ export type ProjectVersionRestoreResultWritable = {
     version?: ProjectVersionSummaryWritable;
 };
 
+export type ProjectVersionScheduleStatusWritable = {
+    /**
+     * Whether daily project history is enabled.
+     */
+    enabled?: boolean;
+    /**
+     * Next scheduled check or retry; absent when disabled.
+     */
+    next_run_at?: string;
+    /**
+     * Server time zone used by the daily schedule.
+     */
+    time_zone?: string;
+};
+
 export type ProjectVersionSummaryWritable = {
     /**
      * Number of saved task attachment relationships.
@@ -11335,9 +11387,9 @@ export type ProjectVersionSummaryWritable = {
      */
     id?: number;
     /**
-     * User-saved or automatic pre/post restore checkpoint.
+     * Manual, daily, or automatic pre/post restore checkpoint.
      */
-    kind?: 'manual' | 'before_restore' | 'restored';
+    kind?: 'manual' | 'daily' | 'before_restore' | 'restored';
     /**
      * Explicit checkpoint name or automatic recovery label.
      */
@@ -18371,6 +18423,87 @@ export type ProjectVersionsCreateResponses = {
 };
 
 export type ProjectVersionsCreateResponse = ProjectVersionsCreateResponses[keyof ProjectVersionsCreateResponses];
+
+export type ProjectVersionScheduleReadData = {
+    body?: never;
+    path: {
+        project: number;
+    };
+    query?: never;
+    url: '/projects/{project}/versions/schedule';
+};
+
+export type ProjectVersionScheduleReadErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type ProjectVersionScheduleReadError = ProjectVersionScheduleReadErrors[keyof ProjectVersionScheduleReadErrors];
+
+export type ProjectVersionScheduleReadResponses = {
+    /**
+     * OK
+     */
+    200: ProjectVersionScheduleStatus;
+};
+
+export type ProjectVersionScheduleReadResponse = ProjectVersionScheduleReadResponses[keyof ProjectVersionScheduleReadResponses];
+
+export type PatchProjectVersionScheduleReadData = {
+    body: Array<JsonPatchOp> | null;
+    path: {
+        project: number;
+    };
+    query?: never;
+    url: '/projects/{project}/versions/schedule';
+};
+
+export type PatchProjectVersionScheduleReadErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type PatchProjectVersionScheduleReadError = PatchProjectVersionScheduleReadErrors[keyof PatchProjectVersionScheduleReadErrors];
+
+export type PatchProjectVersionScheduleReadResponses = {
+    /**
+     * OK
+     */
+    200: ProjectVersionScheduleStatus;
+};
+
+export type PatchProjectVersionScheduleReadResponse = PatchProjectVersionScheduleReadResponses[keyof PatchProjectVersionScheduleReadResponses];
+
+export type ProjectVersionScheduleUpdateData = {
+    body: ProjectVersionScheduleUpdateRequestWritable;
+    path: {
+        project: number;
+    };
+    query?: never;
+    url: '/projects/{project}/versions/schedule';
+};
+
+export type ProjectVersionScheduleUpdateErrors = {
+    /**
+     * Error
+     */
+    default: VikunjaErrorModel;
+};
+
+export type ProjectVersionScheduleUpdateError = ProjectVersionScheduleUpdateErrors[keyof ProjectVersionScheduleUpdateErrors];
+
+export type ProjectVersionScheduleUpdateResponses = {
+    /**
+     * OK
+     */
+    200: ProjectVersionScheduleStatus;
+};
+
+export type ProjectVersionScheduleUpdateResponse = ProjectVersionScheduleUpdateResponses[keyof ProjectVersionScheduleUpdateResponses];
 
 export type ProjectVersionsDeleteData = {
     body: ProjectVersionsDeleteRequestWritable;

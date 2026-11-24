@@ -531,9 +531,12 @@ func saveProjectVersionSnapshot(s *xorm.Session, a web.Auth, snapshot *versionSn
 	if _, err = s.ID(snapshot.ProjectID).Cols("sequence").Update(counter); err != nil {
 		return nil, err
 	}
-	actor, err := user.GetUserByID(s, a.GetID())
-	if err != nil {
-		return nil, err
+	actor := &user.User{}
+	if kind != dailyProjectVersionKind {
+		actor, err = user.GetUserByID(s, a.GetID())
+		if err != nil {
+			return nil, err
+		}
 	}
 	version := &ProjectVersion{
 		ProjectID:             snapshot.ProjectID,

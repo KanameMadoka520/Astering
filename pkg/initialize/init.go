@@ -149,6 +149,7 @@ func FullInit() {
 	models.RegisterOverdueReminderCron()
 	models.RegisterUserDeletionCron()
 	models.RegisterTaskCleanupCron()
+	models.RegisterProjectVersionScheduleCron()
 	models.RegisterOldExportCleanupCron()
 	migrationmodule.RegisterImportUploadCleanupCron()
 	models.RegisterAddTaskToFilterViewCron()

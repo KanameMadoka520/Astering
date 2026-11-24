@@ -768,6 +768,11 @@ func DeleteProjectVersion(s *xorm.Session, a web.Auth, projectID, versionID int6
 	return deleteProjectVersionRows(s, projectID, versionID)
 }
 func deleteProjectVersionRows(s *xorm.Session, projectID, versionID int64) error {
+	var objects []int64
+	if err := routineCurrentRead(s).Table(new(projectVersionEntity)).Where("version_id = ?", versionID).Cols("object_id").Find(&objects); err != nil {
+		return err
+	}
+
 	for _, model := range []any{
 		&projectVersionEntity{},
 		&projectVersionTaskRef{},
@@ -780,17 +785,21 @@ func deleteProjectVersionRows(s *xorm.Session, projectID, versionID int64) error
 	if _, err := s.Where("id = ? AND project_id = ?", versionID, projectID).Delete(new(ProjectVersion)); err != nil {
 		return err
 	}
-	objects := []*projectVersionObject{}
-	if err := routineCurrentRead(s).Where("project_id = ?", projectID).Find(&objects); err != nil {
-		return err
-	}
-	for _, object := range objects {
-		used, err := routineCurrentRead(s).Where("object_id = ?", object.ID).Exist(new(projectVersionEntity))
-		if err != nil {
+	// Only objects that lost a reference can be collected. Use current
+	// reads inside the project lock, including on repeatable-read databases.
+	slices.Sort(objects)
+	for batch := range slices.Chunk(slices.Compact(objects), 400) {
+		var used []int64
+		if err := routineCurrentRead(s).Table(new(projectVersionEntity)).In("object_id", batch).Cols("object_id").Find(&used); err != nil {
 			return err
 		}
-		if !used {
-			if _, err = s.ID(object.ID).Delete(new(projectVersionObject)); err != nil {
+		slices.Sort(used)
+		unused := slices.DeleteFunc(slices.Clone(batch), func(id int64) bool {
+			_, referenced := slices.BinarySearch(used, id)
+			return referenced
+		})
+		if len(unused) > 0 {
+			if _, err := s.Where("project_id = ?", projectID).In("id", unused).Delete(new(projectVersionObject)); err != nil {
 				return err
 			}
 		}
@@ -848,6 +857,7 @@ func deleteAllProjectVersions(s *xorm.Session, projectID int64) error {
 		new(ProjectVersion),
 		new(projectVersionObject),
 		new(projectVersionCounter),
+		new(projectVersionSchedule),
 	} {
 		if _, err := s.Where("project_id = ?", projectID).Delete(model); err != nil {
 			return err
